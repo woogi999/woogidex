@@ -98,7 +98,13 @@ import { state, api } from './app.js';
                     spd: parseInt(document.getElementById('stat-spd').value) || 60,
                     spe: parseInt(document.getElementById('stat-spe').value) || 60
                 },
-                abilities: state.abilities.filter(a => a.name && a.name.trim()).map(a => ({ name: a.name.trim(), source: a.source || 'sd', desc: a.desc || a.description || '' })),
+                abilities: state.abilities.filter(a => a.name && a.name.trim()).map(a => ({
+                    name: a.name.trim(),
+                    source: a.source || 'sd',
+                    custom: a.custom === true || a.source === 'custom',
+                    ...(a.customId ? { customId: a.customId } : {}),
+                    desc: a.desc || a.description || ''
+                })),
                 dexEntry1: document.getElementById('dex-entry1').value.trim(),
                 dexEntry2: document.getElementById('dex-entry2').value.trim(),
                 height: document.getElementById('fakemon-height').value.trim(),
@@ -182,6 +188,9 @@ import { state, api } from './app.js';
 // ==================== STORAGE (IndexedDB) ====================
         async function saveToStorage() {
             try {
+                // Keep the persisted collections normalized as well as the in-memory
+                // state. This makes the fix self-healing for existing databases.
+                dedupeStoredCollections();
                 await idbSet('fakemonDB_v4', state.fakemonDB);
                 await idbSet('woogidexFolders_v1', state.folders);
                 await idbSet('woogidexCustomMoves_v1', state.customMoves);
@@ -189,6 +198,39 @@ import { state, api } from './app.js';
             }
             catch (e) { api.showToast('Warning: Storage limit may be reached. Export your collection!', 'error'); }
         }
+        // Remove exact duplicate records created by older autosave/migration paths.
+        // Deduplication is intentionally conservative: only records with the same
+        // stable id OR the same complete serialized payload are collapsed. This does
+        // not merge legitimately different Fakemon that happen to share a name.
+        function dedupeStoredCollections() {
+            const stablePayload = (item, stripKeys = []) => {
+                const copy = JSON.parse(JSON.stringify(item));
+                stripKeys.forEach(k => delete copy[k]);
+                return JSON.stringify(copy);
+            };
+            const dedupeList = (list, keyFn) => {
+                const seen = new Set();
+                return (Array.isArray(list) ? list : []).filter(item => {
+                    if (!item || typeof item !== 'object') return false;
+                    const key = keyFn(item);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            };
+
+            state.fakemonDB = dedupeList(state.fakemonDB, item =>
+                'fakemon:' + stablePayload(item, ['id', 'createdAt', 'updatedAt'])
+            );
+            state.customMoves = dedupeList(state.customMoves, item =>
+                'move:' + String(item.name || '').trim().toLowerCase()
+            );
+            state.customAbilities = dedupeList(state.customAbilities, item =>
+                'ability:' + String(item.name || '').trim().toLowerCase()
+            );
+        }
+
+
         async function loadFromStorage() {
             try {
                 const data = await idbGet('fakemonDB_v4');
@@ -217,30 +259,52 @@ import { state, api } from './app.js';
                 const customAbilities = await idbGet('woogidexCustomAbilities_v1');
                 state.customMoves = Array.isArray(customMoves) ? customMoves : [];
                 state.customAbilities = Array.isArray(customAbilities) ? customAbilities : [];
+                dedupeStoredCollections();
                 migrateCustomLibrariesFromCollection();
+                dedupeStoredCollections();
                 await saveToStorage();
             } catch (e) { state.fakemonDB = []; state.folders = []; }
             await migrateLearnsetsToMinimal();
         }
         function migrateCustomLibrariesFromCollection() {
             const moveMap = new Map((state.customMoves || []).filter(m => m && m.id).map(m => [m.id, m]));
+            const moveNameMap = new Map((state.customMoves || []).filter(m => m && m.name).map(m => [String(m.name).trim().toLowerCase(), m]));
             const abilityMap = new Map((state.customAbilities || []).filter(a => a && a.id).map(a => [a.id, a]));
+            const abilityNameMap = new Map((state.customAbilities || []).filter(a => a && a.name).map(a => [String(a.name).trim().toLowerCase(), a]));
+
             state.fakemonDB.forEach(f => {
                 (f.learnset || []).forEach(m => {
                     if (m && (m.source === 'custom' || m.custom === true) && m.name) {
-                        const id = m.customId || ('cm_' + String(m.name).toLowerCase().replace(/[^a-z0-9]+/g,'-'));
+                        const nameKey = String(m.name).trim().toLowerCase();
+                        const existing = m.customId && moveMap.get(m.customId) || moveNameMap.get(nameKey);
+                        const id = existing?.id || m.customId || ('cm_' + nameKey.replace(/[^a-z0-9]+/g,'-'));
                         m.customId = id;
-                        if (!moveMap.has(id)) moveMap.set(id, { id, name:m.name, type:m.type||'Normal', category:m.category||'Status', basePower:m.basePower||0, accuracy:m.accuracy ?? 100, pp:m.pp||10, priority:m.priority||0, flags:m.flags||{}, desc:m.desc||'' });
+                        if (existing) {
+                            m.customId = existing.id;
+                        } else {
+                            const entry = { id, name:m.name, type:m.type||'Normal', category:m.category||'Status', basePower:m.basePower||0, accuracy:m.accuracy ?? 100, pp:m.pp||10, priority:m.priority||0, flags:m.flags||{}, desc:m.desc||'' };
+                            moveMap.set(id, entry);
+                            moveNameMap.set(nameKey, entry);
+                        }
                     }
                 });
                 (f.abilities || []).forEach(a => {
                     if (a && (a.source === 'custom' || a.custom === true) && a.name) {
-                        const id = a.customId || ('ca_' + String(a.name).toLowerCase().replace(/[^a-z0-9]+/g,'-'));
+                        const nameKey = String(a.name).trim().toLowerCase();
+                        const existing = a.customId && abilityMap.get(a.customId) || abilityNameMap.get(nameKey);
+                        const id = existing?.id || a.customId || ('ca_' + nameKey.replace(/[^a-z0-9]+/g,'-'));
                         a.customId = id;
-                        if (!abilityMap.has(id)) abilityMap.set(id, { id, name:a.name, desc:a.desc || a.description || '' });
+                        if (existing) {
+                            a.customId = existing.id;
+                        } else {
+                            const entry = { id, name:a.name, desc:a.desc || a.description || '' };
+                            abilityMap.set(id, entry);
+                            abilityNameMap.set(nameKey, entry);
+                        }
                     }
                 });
             });
+
             state.customMoves = [...moveMap.values()];
             state.customAbilities = [...abilityMap.values()];
         }

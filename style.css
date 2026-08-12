@@ -2814,3 +2814,66 @@
         gap: 5px;
     }
 }
+
+
+/* ==================== MOBILE BOARD BREAKPOINT ====================
+   Keep the same visual order, but stop forcing the artwork and data panes into
+   two tiny columns once the board becomes genuinely phone-sized. */
+@media (max-width: 600px) {
+    #preview-modal-board-wrap .board-top-row,
+    #pokedex-board-container .board-top-row {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    #preview-modal-board-wrap .board-artwork-left,
+    #pokedex-board-container .board-artwork-left {
+        width: min(100%, 320px) !important;
+        height: auto !important;
+        aspect-ratio: 1 / 1;
+        margin: 0 auto;
+    }
+
+    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
+    #pokedex-board-container .board-top-row > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    #preview-modal-board-wrap .board-gender-compact,
+    #pokedex-board-container .board-gender-compact {
+        flex-wrap: wrap;
+    }
+
+    #preview-modal-board-wrap .board-gender-compact .gender-bar,
+    #pokedex-board-container .board-gender-compact .gender-bar {
+        width: min(160px, 45vw);
+    }
+
+    #preview-modal-board-wrap .board-ability-item .ability-name,
+    #pokedex-board-container .board-ability-item .ability-name {
+        font-size: clamp(13px, 4vw, 16px);
+    }
+
+    #preview-modal-board-wrap .board-ability-item .ability-desc,
+    #pokedex-board-container .board-ability-item .ability-desc {
+        font-size: clamp(11px, 3.2vw, 14px);
+    }
+}
+
+@media (max-width: 420px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board {
+        padding: 9px !important;
+    }
+
+    #preview-modal-board-wrap .board-artwork-left,
+    #pokedex-board-container .board-artwork-left {
+        width: min(100%, 260px) !important;
+    }
+
+    #preview-modal-board-wrap .board-data-right,
+    #pokedex-board-container .board-data-right {
+        min-width: 0;
+    }
+}
