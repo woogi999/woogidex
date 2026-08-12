@@ -12,6 +12,7 @@ export const state = {
     sdItems: {},
     sdPokedex: {},
     sdLearnsets: {},
+    pokeApiSpeciesCache: {},
     sdMoveUsefulness: {},
     sdLoaded: false,
     fakemonDB: [],

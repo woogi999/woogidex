@@ -9,16 +9,315 @@ import { POKEMON_COLORS } from './data.js';
             document.getElementById('save-status').style.display = 'none';
             setCollectionView(collectionView || 'fakemon');
         }
+        // ==================== NEW FAKEMON FLOW ====================
         function createNewFakemon() {
-            api.autoSave(true); // Save current before starting new
+            api.autoSave(true);
+            const input = document.getElementById('new-fakemon-name');
+            if (input) input.value = '';
+            document.getElementById('new-fakemon-modal')?.classList.add('active');
+            setTimeout(() => input?.focus(), 50);
+        }
+
+        function getNewFakemonName() {
+            const input = document.getElementById('new-fakemon-name');
+            const name = input?.value.trim() || '';
+            if (!name) {
+                api.showToast('Please enter a Pokemon name first!', 'error');
+                input?.focus();
+                return '';
+            }
+            return name;
+        }
+
+        async function startNewFakemonEditor(name, template) {
+            api.autoSave(true);
             state.editingId = null;
             api.resetEditor();
+            document.getElementById('fakemon-name').value = name;
             document.getElementById('collection-view').style.display = 'none';
             document.getElementById('editor-view').style.display = 'block';
             document.getElementById('save-status').style.display = '';
             switchTab(document.querySelector('.tab'), 'basic');
+            document.getElementById('new-fakemon-modal')?.classList.remove('active');
+            document.getElementById('pokemon-template-modal')?.classList.remove('active');
+
+            // Apply the vanilla data before the first editor render. The template
+            // learnset is hydrated immediately from the already-loaded Showdown
+            // move dex, so the Moves tab is fully populated without needing to
+            // leave and reopen the editor. PokeAPI species/lore can finish loading
+            // afterward without delaying the editor itself.
+            if (template) await applyPokemonTemplate(template, name);
             api.updatePreview();
         }
+
+        function createBlankFakemonFromModal() {
+            const name = getNewFakemonName();
+            if (name) startNewFakemonEditor(name, null);
+        }
+
+        function openPokemonTemplateChooser() {
+            // A name is optional when starting from a vanilla template. The
+            // selected Pokemon's name is used as the initial editor name when
+            // the user leaves this field blank.
+            if (!state.sdLoaded || !Object.keys(state.sdPokedex || {}).length) {
+                api.showToast('Vanilla Pokemon data is still loading. Please try again in a moment.', 'info');
+                return;
+            }
+            document.getElementById('new-fakemon-modal')?.classList.remove('active');
+            const search = document.getElementById('pokemon-template-search');
+            if (search) search.value = '';
+            document.getElementById('pokemon-template-modal')?.classList.add('active');
+            renderPokemonTemplateChooser();
+            setTimeout(() => search?.focus(), 50);
+        }
+
+        function getPokemonTemplateEntries() {
+            return Object.values(state.sdPokedex || {})
+                .filter(p => p && p.types && p.stats && p.num > 0)
+                .sort((a,b) => (a.num||99999)-(b.num||99999) || String(a.name).localeCompare(String(b.name)));
+        }
+
+        function getPokemonTemplateSprite(pokemon) {
+            // Showdown's Pokedex keys for regional forms are commonly compact
+            // (e.g. raticatealola), while its sprite filenames use the dashed
+            // form ID (raticate-alola). Always prefer the dashed regional form.
+            const raw = String(pokemon?.id || '').trim().toLowerCase();
+            const dashed = raw
+                .replace(/[-_\s]+/g, '-')
+                .replace(/(alola|galar|hisui|paldea)$/i, '-$1');
+            const primary = dashed || raw || 'missingno';
+            return `https://play.pokemonshowdown.com/sprites/gen5/${primary}.png`;
+        }
+
+        function escapeTemplateHtml(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
+
+        function renderPokemonTemplateChooser() {
+            const listEl = document.getElementById('pokemon-template-list');
+            const statusEl = document.getElementById('pokemon-template-status');
+            const query = (document.getElementById('pokemon-template-search')?.value || '').trim().toLowerCase();
+            if (!listEl) return;
+            const normalizedQuery = query.replace(/[^a-z0-9]/g, '');
+            const entries = getPokemonTemplateEntries().filter(p => {
+                if (!query) return true;
+                const name = String(p.name || '').toLowerCase();
+                const id = String(p.id || '').toLowerCase();
+                const normalizedName = name.replace(/[^a-z0-9]/g, '');
+                const normalizedId = id.replace(/[^a-z0-9]/g, '');
+                return name.includes(query) || id.includes(query) || normalizedName.includes(normalizedQuery) || normalizedId.includes(normalizedQuery) || String(p.num||'').includes(query);
+            });
+            if (statusEl) statusEl.textContent = query ? `${entries.length} matching Pokemon` : `${entries.length} vanilla Pokemon available`;
+            if (!entries.length) {
+                listEl.innerHTML = '<div class="pokemon-template-empty">No Pokemon match that search.</div>';
+                return;
+            }
+            listEl.innerHTML = entries.map(p => {
+                const s=p.stats||{};
+                const bst=['hp','atk','def','spa','spd','spe'].reduce((sum,k)=>sum+(Number(s[k])||0),0);
+                const types=(p.types||[]).map(t=>`<span class="type-pill type-${String(t).toLowerCase()}">${escapeTemplateHtml(t)}</span>`).join('');
+                return `<button class="pokemon-template-card" type="button" onclick="usePokemonTemplate('${escapeTemplateHtml(p.id)}')">
+                    <img class="pokemon-template-sprite" src="${escapeTemplateHtml(getPokemonTemplateSprite(p))}" alt="${escapeTemplateHtml(p.name)}" loading="lazy" onerror="this.style.visibility='hidden'">
+                    <span class="pokemon-template-info">
+                        <span class="pokemon-template-number">#${String(p.num).padStart(3,'0')}</span>
+                        <span class="pokemon-template-name">${escapeTemplateHtml(p.name)}</span>
+                        <span class="pokemon-template-meta">${types}<span class="pokemon-template-bst">BST ${bst}</span></span>
+                    </span>
+                    <span class="pokemon-template-arrow">›</span>
+                </button>`;
+            }).join('');
+        }
+
+        function classifyTemplateLearnsetSource(sources) {
+            const parsed=(Array.isArray(sources)?sources:[sources]).map(source=>{
+                const text=String(source||'');
+                const gen=Number(text.match(/^\d+/)?.[0]||0);
+                const level=Number(text.match(/L(\d+)$/)?.[1]||0);
+                if (level) return {gen,method:'level',level};
+                if (/M$/.test(text)) return {gen,method:'tm',level:null};
+                if (/E$/.test(text)) return {gen,method:'egg',level:null};
+                if (/T$/.test(text)) return {gen,method:'tm',level:null};
+                return null;
+            }).filter(Boolean);
+            parsed.sort((a,b)=>b.gen-a.gen || (a.method==='level'?0:1)-(b.method==='level'?0:1) || (a.level||999)-(b.level||999));
+            return parsed[0]||{gen:0,method:'none',level:null};
+        }
+
+        function getPokemonTemplateLearnset(pokemon) {
+            const raw=state.sdLearnsets?.[pokemon.id] || state.sdLearnsets?.[String(pokemon.id).replace(/-/g,'')] || state.sdLearnsets?.[String(pokemon.name || '').toLowerCase().replace(/[^a-z0-9]/g,'')] || {};
+            const order={level:0,egg:1,tm:2,none:3};
+            const unique=new Map();
+            Object.entries(raw).forEach(([moveId,sources])=>{
+                const move=state.sdMoves?.[moveId];
+                if(!move?.name) return;
+                const source=classifyTemplateLearnsetSource(sources);
+                const entry={name:move.name,learnMethod:source.method,level:source.method==='level'?source.level:null};
+                const old=unique.get(entry.name);
+                if(!old || order[entry.learnMethod]<order[old.learnMethod] || (entry.learnMethod==='level' && entry.level<old.level)) unique.set(entry.name,entry);
+            });
+            return [...unique.values()].sort((a,b)=>{
+                const d=(order[a.learnMethod]??3)-(order[b.learnMethod]??3);
+                return d || (a.learnMethod==='level' ? (a.level||999)-(b.level||999) : a.name.localeCompare(b.name));
+            });
+        }
+
+        function getTemplateGenderRatio(pokemon) {
+            if (pokemon.genderPct === -1) return 'genderless';
+            const male=Math.max(0,Math.min(100,Number(pokemon.genderPct)));
+            return `${male}-${100-male}`;
+        }
+
+        function getTemplateAbilities(pokemon) {
+            const entries=Object.entries(pokemon.abilities||{});
+            const normal=entries.filter(([slot,name])=>name && !/^H$/i.test(String(slot)) && !/hidden/i.test(String(slot))).map(([,name])=>String(name));
+            const hidden=entries.find(([slot,name])=>name && (/^H$/i.test(String(slot)) || /hidden/i.test(String(slot))));
+            if(hidden) normal.push(String(hidden[1]));
+            return [...new Set(normal)].slice(0,4).map(name=>{
+                const normalized=name.toLowerCase().replace(/[^a-z0-9]/g,'');
+                const entry=Object.entries(state.sdAbilities||{}).find(([key,a]) => String(key).toLowerCase().replace(/[^a-z0-9]/g,'')===normalized || String(a?.name||'').toLowerCase().replace(/[^a-z0-9]/g,'')===normalized);
+                return {name,source:'sd',desc:entry?.[1]?.desc||''};
+            });
+        }
+
+        function clampTemplateBaseStatValue(value) {
+            const parsed = Number.parseInt(String(value).replace(/[^0-9-]/g, ''), 10);
+            if (!Number.isFinite(parsed)) return 1;
+            return Math.max(1, Math.min(255, parsed));
+        }
+
+        async function fetchPokemonSpeciesTemplateData(template) {
+            const cacheKey = String(template?.id || template?.name || '').trim().toLowerCase();
+            if (!cacheKey) return null;
+            if (state.pokeApiSpeciesCache?.[cacheKey]) return state.pokeApiSpeciesCache[cacheKey];
+
+            const rawId = String(template.id || template.name || '').trim().toLowerCase();
+            const speciesCandidates = [
+                String(template.name || rawId).toLowerCase(),
+                rawId,
+                rawId.replace(/-(alola|galar|hisui|paldea|normal|origin|therian|incarnate|standard|attack|defense|speed|plant|sandy|trash|heat|wash|frost|fan|mow|ordinary|resolute|aria|pirouette|school|solo|hero|crowned|eternamax)$/i, '')
+            ]
+                .map(value => value.replace(/[’']/g, '').replace(/\./g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, ''))
+                .filter(Boolean);
+
+            let species = null;
+            try {
+                // PokeAPI's Pokemon endpoint is useful for regional/form IDs because
+                // it points back to the canonical Pokemon Species resource.
+                try {
+                    const pokemonResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${encodeURIComponent(rawId)}`);
+                    if (pokemonResponse.ok) {
+                        const pokemon = await pokemonResponse.json();
+                        const speciesUrl = pokemon?.species?.url;
+                        if (speciesUrl) {
+                            const speciesResponse = await fetch(speciesUrl);
+                            if (speciesResponse.ok) species = await speciesResponse.json();
+                        }
+                    }
+                } catch (formErr) {
+                    console.warn('[PokeAPI] Pokemon lookup fallback:', formErr);
+                }
+
+                if (!species) {
+                    for (const candidate of [...new Set(speciesCandidates)]) {
+                        const response = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${encodeURIComponent(candidate)}`);
+                        if (response.ok) {
+                            species = await response.json();
+                            break;
+                        }
+                    }
+                }
+                if (!species) throw new Error('Species not found');
+
+                const english = entry => entry?.language?.name === 'en';
+                const genusEntry = (species.genera || []).find(english);
+                const genus = genusEntry?.genus || '';
+                const lore = [];
+                for (const entry of (species.flavor_text_entries || [])) {
+                    if (!english(entry)) continue;
+                    const text = String(entry.flavor_text || '')
+                        .replace(/[\n\f\r]+/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    if (text && !lore.includes(text)) lore.push(text);
+                    if (lore.length >= 2) break;
+                }
+
+                const result = { genus, dexEntries: lore };
+                state.pokeApiSpeciesCache[cacheKey] = result;
+                return result;
+            } catch (err) {
+                console.warn('[PokeAPI] Could not load species data for template:', template?.name, err);
+                return null;
+            }
+        }
+
+        async function applyPokemonTemplate(template,newName) {
+            const stats=template.stats||{};
+            document.getElementById('fakemon-name').value=newName;
+            // Species/genus and Pokédex lore are supplied asynchronously by PokeAPI.
+            document.getElementById('fakemon-species').value='';
+            document.getElementById('dex-entry1').value='';
+            document.getElementById('dex-entry2').value='';
+            selectType('type1',template.types?.[0]||'');
+            selectType('type2',template.types?.[1]||'');
+            ['hp','atk','def','spa','spd','spe'].forEach(stat=>{
+                const input=document.getElementById('stat-'+stat);
+                if(input) input.value=clampTemplateBaseStatValue(stats[stat]??60);
+            });
+            document.getElementById('fakemon-height').value=template.heightm||'';
+            document.getElementById('height-unit').value='m';
+            document.getElementById('fakemon-height').dataset.lastUnit='m';
+            document.getElementById('fakemon-weight').value=template.weightkg||'';
+            document.getElementById('weight-unit').value='kg';
+            document.getElementById('fakemon-weight').dataset.lastUnit='kg';
+            document.getElementById('fakemon-color').value=template.color||'';
+            document.querySelectorAll('.color-option').forEach(el=>el.classList.remove('selected'));
+            const colorOption=[...document.querySelectorAll('.color-option')].find(el=>el.title===template.color);
+            if(colorOption) colorOption.classList.add('selected');
+            setEggGroupValue((template.eggGroups||[]).join(', ')||'None');
+            setGenderRatioValue(getTemplateGenderRatio(template));
+            state.abilities=getTemplateAbilities(template);
+            state.learnset=getPokemonTemplateLearnset(template);
+            // getPokemonTemplateLearnset intentionally stores minimal move entries.
+            // Rehydrate them immediately so type/category/power/accuracy/PP/flags/
+            // descriptions are available on the first render of the editor.
+            if (state.sdLoaded && state.learnset.length && typeof api.rehydrateCurrentLearnsetFromShowdown === 'function') {
+                api.rehydrateCurrentLearnsetFromShowdown();
+            }
+            state.sampleSets=[];
+            state.artworkData=getPokemonTemplateSprite(template);
+            const preview=document.getElementById('artwork-preview');
+            if(preview) preview.innerHTML=`<img src="${escapeTemplateHtml(state.artworkData)}" alt="Template artwork">`;
+            renderAbilities();
+            renderLearnset();
+            renderCustomMoves();
+            renderSampleSets();
+            updateStats();
+            updateGenderBar();
+            api.updatePreview();
+
+            // PokeAPI's Pokemon Species resource supplies the official genus (the
+            // editor's Species / Category field) and English flavor-text entries.
+            const speciesData = await fetchPokemonSpeciesTemplateData(template);
+            if (speciesData) {
+                if (speciesData.genus) document.getElementById('fakemon-species').value = speciesData.genus;
+                if (speciesData.dexEntries[0]) document.getElementById('dex-entry1').value = speciesData.dexEntries[0];
+                if (speciesData.dexEntries[1]) document.getElementById('dex-entry2').value = speciesData.dexEntries[1];
+                api.updatePreview();
+            }
+        }
+
+        async function usePokemonTemplate(id) {
+            const template=state.sdPokedex?.[id];
+            if(!template) { api.showToast('That Pokemon could not be loaded. Please try another.', 'error'); return; }
+            const enteredName=(document.getElementById('new-fakemon-name')?.value || '').trim();
+            const name=enteredName || template.name || 'Fakemon';
+            startNewFakemonEditor(name,template);
+            api.showToast(`Loading ${template.name} species data...`, 'info');
+        }
+
         function editFakemon(id) {
             api.autoSave(true); // Save current before switching
             const fakemon = state.fakemonDB.find(f => f.id === id);
@@ -573,4 +872,4 @@ import { POKEMON_COLORS } from './data.js';
 
         
 
-export { showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST };
+export { showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate};

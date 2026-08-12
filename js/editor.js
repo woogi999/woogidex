@@ -114,6 +114,7 @@ import { POKEMON_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } f
                     else if (p.genderRatio) genderPct = Math.round((p.genderRatio.M || 0) * 100);
                     state.sdPokedex[key] = {
                         id: key,
+                        num: p.num,
                         name: p.name || key,
                         types: p.types || [],
                         stats: p.baseStats,
@@ -121,13 +122,40 @@ import { POKEMON_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } f
                         weightkg: p.weightkg || 0,
                         color: p.color || '',
                         eggGroups: p.eggGroups || [],
-                        genderPct
+                        genderPct,
+                        // Showdown stores regional/form abilities directly on the
+                        // Pokedex entry. Keep them with the species record so template
+                        // creation can populate the editor without guessing from names.
+                        abilities: p.abilities || {}
                     };
+
+                    // Showdown's internal IDs omit punctuation in many form names
+                    // (e.g. raticatealola), while users/databases commonly use
+                    // raticate-alola. Make both spellings resolve to the same record
+                    // without duplicating entries in Object.values()/bulk comparison.
+                    const dashedId = String(p.name || key).toLowerCase()
+                        .replace(/['’]/g, '')
+                        .replace(/[^a-z0-9]+/g, '-')
+                        .replace(/^-+|-+$/g, '');
+                    const compactId = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+                    [dashedId, compactId].forEach(alias => {
+                        if (alias && alias !== key && !Object.prototype.hasOwnProperty.call(state.sdPokedex, alias)) {
+                            Object.defineProperty(state.sdPokedex, alias, { value: state.sdPokedex[key], enumerable: false, configurable: true });
+                        }
+                    });
                 }
                 // Parse learnsets (moveid -> array of "{gen}{method}{level?}" source strings)
                 for (const [key, l] of Object.entries(learnsetsRaw)) {
                     if (!l.learnset) continue;
                     state.sdLearnsets[key] = l.learnset;
+                    const dex = state.sdPokedex[key];
+                    const dashedId = String(dex?.name || key).toLowerCase()
+                        .replace(/['’]/g, '')
+                        .replace(/[^a-z0-9]+/g, '-')
+                        .replace(/^-+|-+$/g, '');
+                    if (dashedId && dashedId !== key && !Object.prototype.hasOwnProperty.call(state.sdLearnsets, dashedId)) {
+                        Object.defineProperty(state.sdLearnsets, dashedId, { value: l.learnset, enumerable: false, configurable: true });
+                    }
                 }
 
                 state.sdLoaded = true;
@@ -1171,6 +1199,28 @@ function handleMoveKey(e) {
             };
         }
 
+        function normalizePokemonLookupId(value) {
+            return String(value || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]/g, '');
+        }
+
+        function getPokemonLearnsetData(pokemonId) {
+            const raw = String(pokemonId || '');
+            const candidates = [
+                raw,
+                raw.toLowerCase(),
+                raw.replace(/-/g, ''),
+                raw.toLowerCase().replace(/-/g, ''),
+                raw.replace(/-(alola|galar|hisui|paldea)$/i, ''),
+                raw.toLowerCase().replace(/-(alola|galar|hisui|paldea)$/i, '').replace(/-/g, '')
+            ];
+            for (const candidate of candidates) {
+                if (state.sdLearnsets[candidate]) return state.sdLearnsets[candidate];
+            }
+            const normalized = normalizePokemonLookupId(raw);
+            const key = Object.keys(state.sdLearnsets).find(k => normalizePokemonLookupId(k) === normalized);
+            return key ? state.sdLearnsets[key] : null;
+        }
+
         // ---- Similarity engine ----
         // Scores every real Pokemon against this Fakemon's profile (typing, stats,
         // height/weight, color, egg groups, gender ratio) and returns the closest
@@ -1179,7 +1229,7 @@ function handleMoveKey(e) {
         function findSimilarPokemon(profile, limit) {
             const scored = [];
             for (const dex of Object.values(state.sdPokedex)) {
-                if (!state.sdLearnsets[dex.id] && !state.sdLearnsets[dex.id.replace(/-.*$/, '')]) continue;
+                if (!getPokemonLearnsetData(dex.id)) continue;
                 let score = 0;
 
                 // Typing — the single biggest driver of what a mon's movepool looks like
@@ -1297,7 +1347,7 @@ function handleMoveKey(e) {
             };
 
             similar.forEach(({ dex, score }, rank) => {
-                const learnsetData = state.sdLearnsets[dex.id] || state.sdLearnsets[dex.id.replace(/-.*$/, '')];
+                const learnsetData = getPokemonLearnsetData(dex.id);
                 if (!learnsetData) return;
                 const weight = score / (1 + rank * 0.12);
                 for (const [moveId, sources] of Object.entries(learnsetData)) {
@@ -3910,10 +3960,13 @@ function resetEditor() {
         
 // ==================== BULK COMPARISON ====================
         function getSpriteUrl(dexId) {
-            // Convert dex ID to sprite filename (lowercase, hyphenated)
-            let name = dexId.toLowerCase();
-            // Remove forme suffixes for sprite lookup
-            name = name.replace(/-alola$/, '').replace(/-galar$/, '').replace(/-hisui$/, '').replace(/-paldea$/, '');
+            // Showdown sprite filenames use dashed regional form IDs. The internal
+            // Pokedex keys can be compact (moltresgalar), so normalize them before
+            // constructing the URL. Never strip a regional suffix.
+            const raw = String(dexId || '').trim().toLowerCase();
+            const name = raw
+                .replace(/[-_\s]+/g, '-')
+                .replace(/(alola|galar|hisui|paldea)$/i, '-$1');
             return 'https://play.pokemonshowdown.com/sprites/gen5ani/' + name + '.gif';
         }
 

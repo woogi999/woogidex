@@ -726,6 +726,42 @@
         </div>
     </div>
 
+
+    <!-- New Fakemon flow -->
+    <div class="modal-overlay" id="new-fakemon-modal">
+        <div class="modal new-fakemon-modal">
+            <div class="modal-header">
+                <h3>New Fakemon</h3>
+                <button class="modal-close" type="button" onclick="closeModal('new-fakemon-modal')" aria-label="Close">&times;</button>
+            </div>
+            <div class="form-group" style="margin-bottom:18px;">
+                <label for="new-fakemon-name">Enter your Fakemon's name</label>
+                <input id="new-fakemon-name" type="text" placeholder="e.g., Flareon" autocomplete="off"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();createBlankFakemonFromModal();}">
+            </div>
+            <div class="new-fakemon-actions">
+                <button class="btn btn-primary new-fakemon-choice" type="button" onclick="createBlankFakemonFromModal()">Create Fakemon</button>
+                <button class="btn btn-secondary new-fakemon-choice" type="button" onclick="openPokemonTemplateChooser()">Use Existing Pokemon as Template</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="pokemon-template-modal">
+        <div class="modal pokemon-template-modal">
+            <div class="modal-header">
+                <h3>Choose a Pokemon Template</h3>
+                <button class="modal-close" type="button" onclick="closeModal('pokemon-template-modal')" aria-label="Close">&times;</button>
+            </div>
+            <p class="new-fakemon-subtitle">Choose a vanilla Pokémon. Its stats, typing, abilities, dimensions, learnset, and other available data will be copied into your new Fakemon.</p>
+            <div class="pokemon-template-controls">
+                <input id="pokemon-template-search" type="text" placeholder="Search Pokemon by name..." autocomplete="off"
+                       oninput="renderPokemonTemplateChooser()">
+            </div>
+            <div id="pokemon-template-status" class="pokemon-template-status"></div>
+            <div id="pokemon-template-list" class="pokemon-template-list"></div>
+        </div>
+    </div>
+
     <div class="toast-container" id="toast-container"></div>
 
 

@@ -3034,3 +3034,25 @@
     .settings-row { align-items:flex-start; }
     .settings-label { max-width:calc(100% - 64px); }
 }
+
+/* ==================== NEW FAKEMON / VANILLA TEMPLATE FLOW ==================== */
+.new-fakemon-modal { max-width: 560px; }
+.new-fakemon-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.new-fakemon-choice { flex:1 1 220px; justify-content:center; }
+.pokemon-template-modal { max-width:820px; }
+.pokemon-template-controls { margin-bottom:10px; }
+.pokemon-template-controls input { width:100%; padding:11px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:10px; color:var(--text-primary); font-family:'Exo 2',sans-serif; font-size:14px; }
+.pokemon-template-controls input:focus { outline:none; border-color:var(--text-secondary); box-shadow:0 0 0 3px var(--accent-glow); }
+.pokemon-template-status { min-height:18px; margin:4px 0 10px; color:var(--text-muted); font-size:11px; }
+.pokemon-template-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-height:55vh; overflow-y:auto; padding-right:3px; }
+.pokemon-template-card { display:grid; grid-template-columns:62px 1fr auto; align-items:center; gap:10px; min-width:0; padding:8px 10px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:transform .15s ease,border-color .15s ease,background .15s ease; font:inherit; color:var(--text-primary); text-align:left; }
+.pokemon-template-card:hover { transform:translateY(-1px); border-color:var(--text-secondary); background:var(--bg-card); }
+.pokemon-template-sprite { width:58px; height:58px; object-fit:contain; image-rendering:pixelated; }
+.pokemon-template-info { min-width:0; }
+.pokemon-template-name { display:block; font-weight:700; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pokemon-template-number { display:block; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-size:10px; margin-bottom:3px; }
+.pokemon-template-meta { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; align-items:center; }
+.pokemon-template-bst { color:var(--text-muted); font-size:10px; white-space:nowrap; }
+.pokemon-template-arrow { color:var(--text-muted); font-size:18px; }
+.pokemon-template-empty { grid-column:1/-1; padding:30px; text-align:center; color:var(--text-muted); border:1px dashed var(--border); border-radius:10px; }
+@media (max-width:700px) { .pokemon-template-list { grid-template-columns:1fr; } }
