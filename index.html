@@ -31,7 +31,8 @@
             <div class="header-actions">
                 <div class="api-status" id="api-status">Loading data...</div>
                 <div class="save-status unsaved" id="save-status" style="display:none;">Unsaved</div>
-                <button class="btn btn-secondary" onclick="toggleDarkMode()" id="dark-mode-btn" title="Toggle Dark Mode"><i data-lucide="sun" style="width:18px;height:18px;"></i></button>
+                <button class="btn btn-secondary" onclick="toggleDarkMode()" id="dark-mode-btn" title="Toggle Dark Mode" aria-label="Toggle Dark Mode"><i data-lucide="sun" style="width:18px;height:18px;"></i></button>
+                <button class="btn btn-secondary btn-icon" onclick="openSettings()" id="settings-btn" title="Settings" aria-label="Settings"><i data-lucide="settings" style="width:18px;height:18px;"></i></button>
                 <button class="btn btn-secondary" onclick="showCollection()">My Collection</button>
             </div>
         </header>
@@ -438,6 +439,45 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal settings-modal">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button class="modal-close" onclick="closeModal('settings-modal')" aria-label="Close settings"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="settings-list">
+                <label class="settings-row" for="settings-dark-toggle">
+                    <span class="settings-label">Dark Mode:</span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-dark-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleDarkMode()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-fade-toggle">
+                    <span class="settings-label">Fade Out Usually Useless Moves</span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-fade-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleFadeUselessMoves()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-own-bulk-toggle">
+                    <span class="settings-label">Include own Fakemons in Bulk Comparison</span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-own-bulk-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInBulkComparison()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-own-recommended-toggle">
+                    <span class="settings-label">Include own Fakemons in Recommended Moves</span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-own-recommended-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInRecommendedMoves()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+            </div>
         </div>
     </div>
 

@@ -1270,25 +1270,91 @@ function handleMoveKey(e) {
         function buildSimilarMovePools(profile) {
             const similar = findSimilarPokemon(profile, 25);
             const signatureMoveIds = getSignatureMoveIds();
-            const agg = {}; // moveName -> { weight, levelWeightedSum, levelWeight, level:w, egg:w, tm:w, supporters:[names] }
+            const agg = {};
+
+            const addMoveSource = (moveId, sources, weight, supporterName) => {
+                if (signatureMoveIds.has(moveId)) return;
+                const classified = classifyLearnsetSource(sources);
+                if (!classified) return;
+                const mv = state.sdMoves[moveId];
+                if (!mv) return;
+                if (!agg[mv.name]) {
+                    agg[mv.name] = {
+                        move: mv, weight: 0, levelWeightedSum: 0, levelWeight: 0,
+                        level: 0, egg: 0, tm: 0, supporters: []
+                    };
+                }
+                const a = agg[mv.name];
+                a.weight += weight;
+                a[classified.method] += weight;
+                if (classified.method === 'level') {
+                    a.levelWeightedSum += classified.level * weight;
+                    a.levelWeight += weight;
+                }
+                if (a.supporters.length < 4 && supporterName && !a.supporters.includes(supporterName)) {
+                    a.supporters.push(supporterName);
+                }
+            };
+
             similar.forEach(({ dex, score }, rank) => {
                 const learnsetData = state.sdLearnsets[dex.id] || state.sdLearnsets[dex.id.replace(/-.*$/, '')];
                 if (!learnsetData) return;
-                const weight = score / (1 + rank * 0.12); // higher-ranked (more similar) mons count more
+                const weight = score / (1 + rank * 0.12);
                 for (const [moveId, sources] of Object.entries(learnsetData)) {
-                    if (signatureMoveIds.has(moveId)) continue; // skip near-exclusive signature moves
-                    const classified = classifyLearnsetSource(sources);
-                    if (!classified) continue;
-                    const mv = state.sdMoves[moveId];
-                    if (!mv) continue;
-                    if (!agg[mv.name]) agg[mv.name] = { move: mv, weight: 0, levelWeightedSum: 0, levelWeight: 0, level: 0, egg: 0, tm: 0, supporters: [] };
-                    const a = agg[mv.name];
-                    a.weight += weight;
-                    a[classified.method] += weight;
-                    if (classified.method === 'level') { a.levelWeightedSum += classified.level * weight; a.levelWeight += weight; }
-                    if (a.supporters.length < 4 && !a.supporters.includes(dex.name)) a.supporters.push(dex.name);
+                    addMoveSource(moveId, sources, weight, dex.name);
                 }
             });
+
+            // Optional second source pool: saved Woogidex Fakemons. Their learned
+            // moves are weighted by profile similarity, so an unrelated Fakemon does
+            // not overwhelm the recommendations.
+            const includeOwn = typeof api.getIncludeOwnFakemonsInRecommendedMoves === 'function'
+                ? api.getIncludeOwnFakemonsInRecommendedMoves()
+                : false;
+
+            const typeSet = new Set((profile.types || []).map(t => String(t).toLowerCase()));
+            const statNames = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
+
+            if (includeOwn) {
+                (state.fakemonDB || []).forEach(fakemon => {
+                    if (!fakemon || !fakemon.name || !fakemon.stats) return;
+
+                    const ownTypes = [fakemon.type1, fakemon.type2].filter(Boolean).map(t => String(t).toLowerCase());
+                    const sharedTypes = ownTypes.filter(t => typeSet.has(t)).length;
+                    let statDistance = 0;
+                    let statCount = 0;
+                    statNames.forEach(stat => {
+                        const a = Number(profile.stats?.[stat]);
+                        const b = Number(fakemon.stats?.[stat]);
+                        if (Number.isFinite(a) && Number.isFinite(b)) {
+                            statDistance += Math.abs(a - b) / 254;
+                            statCount++;
+                        }
+                    });
+                    const statSimilarity = statCount ? Math.max(0, 1 - (statDistance / statCount)) : 0.5;
+                    const typeSimilarity = ownTypes.length && typeSet.size
+                        ? (sharedTypes / Math.max(ownTypes.length, typeSet.size))
+                        : 0.25;
+
+                    // Keep own-Fakemon contributions meaningful but secondary to
+                    // the National Dex similarity pool.
+                    const ownWeight = Math.max(0.35, (typeSimilarity * 0.65) + (statSimilarity * 0.35));
+
+                    const ownLearnset = Array.isArray(fakemon.learnset) ? fakemon.learnset : [];
+                    ownLearnset.forEach(entry => {
+                        if (!entry || !entry.name) return;
+                        const move = findClosestMove(entry.name);
+                        if (!move) return;
+                        const method = entry.learnMethod || 'tm';
+                        const source = {
+                            method: method === 'level' ? 'level' : method === 'egg' ? 'egg' : 'tm',
+                            level: method === 'level' ? (Number(entry.level) || 1) : null
+                        };
+                        addMoveSource(move.id || move.name.toLowerCase().replace(/[^a-z0-9]/g, ''), source, ownWeight, fakemon.name);
+                    });
+                });
+            }
+
             const entries = Object.values(agg).sort((a, b) => b.weight - a.weight);
             return {
                 similar: similar.map(s => s.dex.name),
@@ -3865,51 +3931,88 @@ function resetEditor() {
             const physBulk = hp * def;
             const specBulk = hp * spd;
 
-            // Find closest by physical bulk
+            const candidates = Object.values(state.sdPokedex)
+                .filter(dex => dex && dex.stats)
+                .map(dex => ({ ...dex, isOwnFakemon: false }));
+
+            const includeOwn = typeof api.getIncludeOwnFakemonsInBulkComparison === 'function'
+                ? api.getIncludeOwnFakemonsInBulkComparison()
+                : false;
+
+            if (includeOwn) {
+                (state.fakemonDB || []).forEach(fakemon => {
+                    if (!fakemon || !fakemon.name || !fakemon.stats) return;
+                    candidates.push({
+                        id: `woogidex-${fakemon.id || fakemon.name}`,
+                        name: fakemon.name,
+                        stats: {
+                            hp: clampBaseStatValue(fakemon.stats.hp ?? 60),
+                            def: clampBaseStatValue(fakemon.stats.def ?? 60),
+                            spd: clampBaseStatValue(fakemon.stats.spd ?? 60)
+                        },
+                        isOwnFakemon: true,
+                        artwork: fakemon.artwork || null
+                    });
+                });
+            }
+
             let closestPhys = null, closestPhysDiff = Infinity;
             let closestSpec = null, closestSpecDiff = Infinity;
 
-            for (const dex of Object.values(state.sdPokedex)) {
-                if (!dex.stats) continue;
+            for (const dex of candidates) {
                 const dHp = dex.stats.hp || 0;
                 const dDef = dex.stats.def || 0;
                 const dSpd = dex.stats.spd || 0;
-                const dPhys = dHp * dDef;
-                const dSpec = dHp * dSpd;
-                const physDiff = Math.abs(dPhys - physBulk);
-                const specDiff = Math.abs(dSpec - specBulk);
-                if (physDiff < closestPhysDiff) { closestPhysDiff = physDiff; closestPhys = dex; }
-                if (specDiff < closestSpecDiff) { closestSpecDiff = specDiff; closestSpec = dex; }
+                const physDiff = Math.abs((dHp * dDef) - physBulk);
+                const specDiff = Math.abs((dHp * dSpd) - specBulk);
+                if (physDiff < closestPhysDiff) {
+                    closestPhysDiff = physDiff;
+                    closestPhys = dex;
+                }
+                if (specDiff < closestSpecDiff) {
+                    closestSpecDiff = specDiff;
+                    closestSpec = dex;
+                }
             }
 
-            const physSprite = closestPhys ? getSpriteUrl(closestPhys.id) : '';
-            const specSprite = closestSpec ? getSpriteUrl(closestSpec.id) : '';
+            const getMatchSprite = match => {
+                if (!match) return '';
+                if (match.isOwnFakemon && match.artwork) return match.artwork;
+                return getSpriteUrl(match.id);
+            };
+
+            const getMatchLabel = (match, kind) => {
+                if (!match) return 'N/A';
+                const bulk = (match.stats.hp * (kind === 'physical' ? match.stats.def : match.stats.spd)).toLocaleString();
+                return `${match.name} — ${bulk} bulk`;
+            };
+
+            const physSprite = getMatchSprite(closestPhys);
+            const specSprite = getMatchSprite(closestSpec);
 
             container.innerHTML = `
                 <div class="bulk-comparison-title">Bulk Comparison</div>
                 <div class="bulk-row">
-                    <div class="bulk-card">
+                    <div class="bulk-card${closestPhys?.isOwnFakemon ? ' bulk-card-own' : ''}">
                         <div class="bulk-label">Physical Bulk (HP x Def)</div>
                         <div class="bulk-value">${physBulk.toLocaleString()}</div>
                         <div class="bulk-match">
                             <img class="bulk-match-sprite" src="${physSprite}" alt="${closestPhys ? closestPhys.name : ''}" onerror="this.style.display='none'">
-                            <span class="bulk-match-name">Closest: ${closestPhys ? closestPhys.name : 'N/A'}${closestPhys ? ` — ${((closestPhys.stats?.hp || 0) * (closestPhys.stats?.def || 0)).toLocaleString()} bulk` : ''}</span>
+                            <span class="bulk-match-name">Closest: ${getMatchLabel(closestPhys, 'physical')}</span>
                         </div>
                     </div>
-                    <div class="bulk-card">
+                    <div class="bulk-card${closestSpec?.isOwnFakemon ? ' bulk-card-own' : ''}">
                         <div class="bulk-label">Special Bulk (HP x SpD)</div>
                         <div class="bulk-value">${specBulk.toLocaleString()}</div>
                         <div class="bulk-match">
                             <img class="bulk-match-sprite" src="${specSprite}" alt="${closestSpec ? closestSpec.name : ''}" onerror="this.style.display='none'">
-                            <span class="bulk-match-name">Closest: ${closestSpec ? closestSpec.name : 'N/A'}${closestSpec ? ` — ${((closestSpec.stats?.hp || 0) * (closestSpec.stats?.spd || 0)).toLocaleString()} bulk` : ''}</span>
+                            <span class="bulk-match-name">Closest: ${getMatchLabel(closestSpec, 'special')}</span>
                         </div>
                     </div>
                 </div>
             `;
         }
 
-        
-// ==================== ARTWORK ====================
         function processArtworkFile(file) {
             if (!file) return;
             if (!file.type || !file.type.startsWith('image/')) {
@@ -4170,7 +4273,8 @@ function getGenderRatioValue() {
             const catClass = m.category === 'Physical' ? 'physical' : m.category === 'Special' ? 'special' : 'status';
             let lowValue = false;
             try { lowValue = !sampleMoveIsActuallyUseful(m); } catch (e) { lowValue = false; }
-            return `<span class="move-tag ${catClass}${lowValue ? ' low-value' : ''}" onclick="showMoveDetail('${m.name}')">${m.name}</span>`;
+            const fadeClass = (typeof api.getFadeUselessMoves === 'function' ? api.getFadeUselessMoves() : true) && lowValue ? ' low-value' : '';
+            return `<span class="move-tag ${catClass}${fadeClass}" onclick="showMoveDetail('${m.name}')">${m.name}</span>`;
         }
 
 

@@ -66,6 +66,75 @@ export const api = {};
             }
         }
 
+        function isDarkModeEnabled() {
+            return document.documentElement.getAttribute('data-theme') === 'dark';
+        }
+
+        function getFadeUselessMoves() {
+            return localStorage.getItem('woogidex-fade-useless-moves') !== 'false';
+        }
+
+        function setFadeUselessMoves(enabled) {
+            localStorage.setItem('woogidex-fade-useless-moves', enabled ? 'true' : 'false');
+            updateSettingsUI();
+            if (typeof api.updatePreview === 'function') api.updatePreview();
+        }
+
+        function toggleFadeUselessMoves() {
+            setFadeUselessMoves(!getFadeUselessMoves());
+        }
+
+        function getIncludeOwnFakemonsInBulkComparison() {
+            return localStorage.getItem('woogidex-include-own-fakemons-bulk') === 'true';
+        }
+
+        function setIncludeOwnFakemonsInBulkComparison(enabled) {
+            localStorage.setItem('woogidex-include-own-fakemons-bulk', enabled ? 'true' : 'false');
+            updateSettingsUI();
+            if (typeof api.updateBulkComparison === 'function') api.updateBulkComparison();
+        }
+
+        function toggleIncludeOwnFakemonsInBulkComparison() {
+            setIncludeOwnFakemonsInBulkComparison(!getIncludeOwnFakemonsInBulkComparison());
+        }
+
+        function getIncludeOwnFakemonsInRecommendedMoves() {
+            return localStorage.getItem('woogidex-include-own-fakemons-recommended') === 'true';
+        }
+
+        function setIncludeOwnFakemonsInRecommendedMoves(enabled) {
+            localStorage.setItem('woogidex-include-own-fakemons-recommended', enabled ? 'true' : 'false');
+            updateSettingsUI();
+        }
+
+        function toggleIncludeOwnFakemonsInRecommendedMoves() {
+            setIncludeOwnFakemonsInRecommendedMoves(!getIncludeOwnFakemonsInRecommendedMoves());
+        }
+
+        function openSettings() {
+            const modal = document.getElementById('settings-modal');
+            if (!modal) return;
+            updateSettingsUI();
+            modal.classList.add('active');
+        }
+
+        function updateSettingsUI() {
+            const dark = isDarkModeEnabled();
+            const fade = getFadeUselessMoves();
+            const darkToggle = document.getElementById('settings-dark-toggle');
+            const fadeToggle = document.getElementById('settings-fade-toggle');
+            const ownBulkToggle = document.getElementById('settings-own-bulk-toggle');
+            const ownRecommendedToggle = document.getElementById('settings-own-recommended-toggle');
+            if (darkToggle) darkToggle.checked = dark;
+            if (fadeToggle) fadeToggle.checked = fade;
+            if (ownBulkToggle) ownBulkToggle.checked = getIncludeOwnFakemonsInBulkComparison();
+            if (ownRecommendedToggle) ownRecommendedToggle.checked = getIncludeOwnFakemonsInRecommendedMoves();
+        }
+
+        function loadSettings() {
+            updateSettingsUI();
+        }
+
         
 
 // ==================== TOAST ====================
@@ -161,7 +230,10 @@ export const api = {};
 
 // ==================== MODULE COORDINATION ====================
 Object.assign(api, data, editor, pokedex, storage, exporter, {
-    loadDarkMode, toggleDarkMode, updateDarkModeUI, showToast,
+    loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
+    getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
+    getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
+    updateSettingsUI, loadSettings, showToast,
     initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor
 });
 
@@ -175,6 +247,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     api.renderCollection();
     api.fetchShowdownData();
     loadDarkMode();
+    loadSettings();
     if (typeof lucide !== 'undefined') lucide.createIcons();
     api.updateEditorStats();
 });
