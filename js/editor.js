@@ -3691,12 +3691,12 @@ function resetEditor() {
             selectType('type2', fakemon.type2 || '');
             document.getElementById('fakemon-number').value = fakemon.number || '';
             document.getElementById('editor-level').value = fakemon.level || 100;
-            document.getElementById('stat-hp').value = fakemon.stats?.hp || 60;
-            document.getElementById('stat-atk').value = fakemon.stats?.atk || 60;
-            document.getElementById('stat-def').value = fakemon.stats?.def || 60;
-            document.getElementById('stat-spa').value = fakemon.stats?.spa || 60;
-            document.getElementById('stat-spd').value = fakemon.stats?.spd || 60;
-            document.getElementById('stat-spe').value = fakemon.stats?.spe || 60;
+            document.getElementById('stat-hp').value = clampBaseStatValue(fakemon.stats?.hp ?? 60);
+            document.getElementById('stat-atk').value = clampBaseStatValue(fakemon.stats?.atk ?? 60);
+            document.getElementById('stat-def').value = clampBaseStatValue(fakemon.stats?.def ?? 60);
+            document.getElementById('stat-spa').value = clampBaseStatValue(fakemon.stats?.spa ?? 60);
+            document.getElementById('stat-spd').value = clampBaseStatValue(fakemon.stats?.spd ?? 60);
+            document.getElementById('stat-spe').value = clampBaseStatValue(fakemon.stats?.spe ?? 60);
             document.getElementById('dex-entry1').value = fakemon.dexEntry1 || '';
             document.getElementById('dex-entry2').value = fakemon.dexEntry2 || '';
             // Parse height string (e.g., "0.9 m" or "3.5 ft")
@@ -3802,6 +3802,18 @@ function resetEditor() {
         }
 
         
+// ==================== STAT INPUT VALIDATION ====================
+        function clampBaseStatValue(value) {
+            const parsed = Number.parseInt(String(value).replace(/[^0-9-]/g, ''), 10);
+            if (!Number.isFinite(parsed)) return 1;
+            return Math.max(1, Math.min(255, parsed));
+        }
+
+        function enforceBaseStatInput(input) {
+            if (!input) return;
+            input.value = clampBaseStatValue(input.value);
+        }
+
 // ==================== STATS ====================
         function updateEditorStats() {
             const level = parseInt(document.getElementById('editor-level').value) || 100;
@@ -3809,7 +3821,9 @@ function resetEditor() {
             const statLabels = { hp: 'HP', atk: 'Atk', def: 'Def', spa: 'SpA', spd: 'SpD', spe: 'Spe' };
             let bst = 0;
             stats.forEach(stat => {
-                const base = parseInt(document.getElementById('stat-' + stat).value) || 0;
+                const input = document.getElementById('stat-' + stat);
+                const base = clampBaseStatValue(input?.value);
+                if (input) input.value = base;
                 bst += base;
                 // Update bar fill
                 const bar = document.getElementById('editor-bar-' + stat);
@@ -3845,9 +3859,9 @@ function resetEditor() {
                 return;
             }
 
-            const hp = parseInt(document.getElementById('stat-hp').value) || 60;
-            const def = parseInt(document.getElementById('stat-def').value) || 60;
-            const spd = parseInt(document.getElementById('stat-spd').value) || 60;
+            const hp = clampBaseStatValue(document.getElementById('stat-hp').value);
+            const def = clampBaseStatValue(document.getElementById('stat-def').value);
+            const spd = clampBaseStatValue(document.getElementById('stat-spd').value);
             const physBulk = hp * def;
             const specBulk = hp * spd;
 
@@ -3879,7 +3893,7 @@ function resetEditor() {
                         <div class="bulk-value">${physBulk.toLocaleString()}</div>
                         <div class="bulk-match">
                             <img class="bulk-match-sprite" src="${physSprite}" alt="${closestPhys ? closestPhys.name : ''}" onerror="this.style.display='none'">
-                            <span class="bulk-match-name">Closest: ${closestPhys ? closestPhys.name : 'N/A'}</span>
+                            <span class="bulk-match-name">Closest: ${closestPhys ? closestPhys.name : 'N/A'}${closestPhys ? ` — ${((closestPhys.stats?.hp || 0) * (closestPhys.stats?.def || 0)).toLocaleString()} bulk` : ''}</span>
                         </div>
                     </div>
                     <div class="bulk-card">
@@ -3887,7 +3901,7 @@ function resetEditor() {
                         <div class="bulk-value">${specBulk.toLocaleString()}</div>
                         <div class="bulk-match">
                             <img class="bulk-match-sprite" src="${specSprite}" alt="${closestSpec ? closestSpec.name : ''}" onerror="this.style.display='none'">
-                            <span class="bulk-match-name">Closest: ${closestSpec ? closestSpec.name : 'N/A'}</span>
+                            <span class="bulk-match-name">Closest: ${closestSpec ? closestSpec.name : 'N/A'}${closestSpec ? ` — ${((closestSpec.stats?.hp || 0) * (closestSpec.stats?.spd || 0)).toLocaleString()} bulk` : ''}</span>
                         </div>
                     </div>
                 </div>
