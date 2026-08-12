@@ -1371,6 +1371,9 @@ function handleMoveKey(e) {
 
             if (includeOwn) {
                 (state.fakemonDB || []).forEach(fakemon => {
+                    // Never use the Fakemon currently being edited as a recommendation
+                    // source. The setting is meant to include OTHER saved Fakemon.
+                    if (state.editingId && String(fakemon?.id) === String(state.editingId)) return;
                     if (!fakemon || !fakemon.name || !fakemon.stats) return;
 
                     const ownTypes = [fakemon.type1, fakemon.type2].filter(Boolean).map(t => String(t).toLowerCase());
@@ -4054,6 +4057,8 @@ function resetEditor() {
 
             if (includeOwn) {
                 (state.fakemonDB || []).forEach(fakemon => {
+                    // Exclude the Fakemon currently open in the editor.
+                    if (state.editingId && String(fakemon?.id) === String(state.editingId)) return;
                     if (!fakemon || !fakemon.name || !fakemon.stats) return;
                     candidates.push({
                         id: `woogidex-${fakemon.id || fakemon.name}`,

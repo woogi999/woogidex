@@ -2916,7 +2916,10 @@
     }
     .sample-set-stats-header,
     .sample-set-stat-row {
-        grid-template-columns: clamp(42px, 12vw, 80px) clamp(26px, 8vw, 40px) clamp(34px, 10vw, 80px) minmax(55px, 1fr) clamp(30px, 8vw, 60px) clamp(34px, 9vw, 55px);
+        /* Keep the EV/IV controls comfortably wide on phones so values such as
+           252 and 31 never get clipped. The boxes themselves stay full-size;
+           only the surrounding stat columns are allowed to tighten. */
+        grid-template-columns: clamp(42px, 12vw, 80px) clamp(26px, 8vw, 40px) clamp(44px, 13vw, 80px) minmax(55px, 1fr) clamp(38px, 10vw, 60px) clamp(38px, 10vw, 55px);
         gap: clamp(3px, 1vw, 8px);
     }
     .sample-set-stats-header { font-size: clamp(7px, 1.7vw, 10px); }
@@ -2925,7 +2928,12 @@
     .sample-set-stat-base,
     .sample-set-stat-calc { font-size: clamp(9px, 2vw, 12px); }
     .sample-set-ev-input-compact,
-    .sample-set-iv-input { font-size: clamp(9px, 2vw, 12px); }
+    .sample-set-iv-input {
+        width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+        font-size: clamp(9px, 2vw, 12px);
+    }
     .sample-set-stat-col.slider-col { min-width: 0; }
     .sample-set-ev-track { min-width: 0; }
 
@@ -3060,3 +3068,59 @@
 .pokemon-template-arrow { color:var(--text-muted); font-size:18px; }
 .pokemon-template-empty { grid-column:1/-1; padding:30px; text-align:center; color:var(--text-muted); border:1px dashed var(--border); border-radius:10px; }
 @media (max-width:700px) { .pokemon-template-list { grid-template-columns:1fr; } }
+
+
+/* Small-screen EV/IV number text: keep the existing input dimensions,
+   only reduce the oversized numeric text on narrow screens. */
+@media (max-width: 600px) {
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input {
+        font-size: 11px !important;
+    }
+}
+
+@media (max-width: 380px) {
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input {
+        font-size: 10px !important;
+    }
+}
+
+/* Progressive EV/IV number sizing on narrow screens.
+   Keep the input boxes exactly the same size; only the numeric text scales down. */
+@media (max-width: 600px) {
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input,
+    input.sample-set-ev-input-compact[type="number"],
+    input.sample-set-iv-input[type="number"] {
+        font-size: 9px !important;
+        line-height: 1 !important;
+    }
+}
+
+@media (max-width: 520px) {
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input,
+    input.sample-set-ev-input-compact[type="number"],
+    input.sample-set-iv-input[type="number"] {
+        font-size: 8px !important;
+    }
+}
+
+@media (max-width: 420px) {
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input,
+    input.sample-set-ev-input-compact[type="number"],
+    input.sample-set-iv-input[type="number"] {
+        font-size: 7px !important;
+    }
+}
+
+@media (max-width: 360px) {
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input,
+    input.sample-set-ev-input-compact[type="number"],
+    input.sample-set-iv-input[type="number"] {
+        font-size: 6px !important;
+    }
+}
