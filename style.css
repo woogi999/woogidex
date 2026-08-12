@@ -82,7 +82,7 @@
             display: inline-flex; align-items: center; gap: 8px;
         }
         .btn-primary {
-            background: linear-gradient(135deg, var(--accent), var(--text-secondary)); color: white;
+            background: linear-gradient(135deg, var(--accent), var(--text-secondary)); color: var(--bg-dark);
             box-shadow: 0 4px 15px rgba(0,0,0,0.15);
         }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 25px rgba(0,0,0,0.2); filter: brightness(1.15); }
@@ -2652,4 +2652,165 @@
     .tab { flex: 1 1 100% !important; }
     .header-actions .btn span,
     .collection-header-actions .btn span { display: inline; }
+}
+
+/* ==================== FINAL RESPONSIVE PREVIEW OVERRIDES ====================
+   Keep the Pokedex board's desktop composition on small screens where practical.
+   The artwork/data split shrinks fluidly instead of immediately becoming a huge
+   vertical stack; only the dense lower columns are stacked on phones. */
+.pokedex-board {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.board-top-row,
+.board-bottom-row,
+.board-lower-row,
+.board-top-row > div,
+.board-top-row > div:nth-child(2),
+.board-top-row > div:nth-child(2) > * {
+    min-width: 0;
+}
+
+@media (max-width: 768px) {
+    .quick-preview-modal {
+        width: min(96vw, 1250px) !important;
+        max-width: 96vw !important;
+        padding: 12px !important;
+    }
+
+    #preview-modal-board-wrap {
+        width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+    }
+
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board {
+        padding: clamp(12px, 3vw, 22px);
+        border-radius: 14px;
+    }
+
+    /* Preserve the artwork | information composition instead of stacking it. */
+    #preview-modal-board-wrap .board-top-row,
+    #pokedex-board-container .board-top-row {
+        grid-template-columns: minmax(0, 38%) minmax(0, 1fr) !important;
+        gap: clamp(8px, 2vw, 14px);
+    }
+
+    #preview-modal-board-wrap .board-artwork-left,
+    #pokedex-board-container .board-artwork-left {
+        width: 100% !important;
+        height: auto !important;
+        aspect-ratio: 1 / 1;
+        max-height: none !important;
+        border-radius: clamp(10px, 2vw, 16px);
+    }
+
+    #preview-modal-board-wrap .board-artwork-left .placeholder,
+    #pokedex-board-container .board-artwork-left .placeholder {
+        font-size: clamp(36px, 10vw, 72px);
+    }
+
+    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
+    #pokedex-board-container .board-top-row > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+        gap: clamp(6px, 1.5vw, 12px) !important;
+    }
+
+    #preview-modal-board-wrap .board-data-row,
+    #pokedex-board-container .board-data-row {
+        font-size: clamp(11px, 2.4vw, 15px);
+        gap: 5px;
+    }
+
+    #preview-modal-board-wrap .board-data-row .label,
+    #pokedex-board-container .board-data-row .label {
+        min-width: 0;
+        font-size: clamp(8px, 1.8vw, 11px);
+    }
+
+    #preview-modal-board-wrap .board-data-row .value,
+    #pokedex-board-container .board-data-row .value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-name h2,
+    #pokedex-board-container .board-name h2 {
+        font-size: clamp(20px, 6vw, 34px) !important;
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-species,
+    #pokedex-board-container .board-species {
+        font-size: clamp(11px, 3vw, 16px);
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-number,
+    #pokedex-board-container .board-number {
+        font-size: clamp(10px, 2.5vw, 14px);
+        padding: 4px 9px;
+    }
+
+    #preview-modal-board-wrap .board-types .type-badge,
+    #pokedex-board-container .board-types .type-badge {
+        font-size: clamp(9px, 2.4vw, 13px);
+        padding: 4px 9px;
+    }
+
+    /* Dense lower content remains the same sections/cards, but gets a readable
+       single column rather than forcing a desktop-width layout into a phone. */
+    #preview-modal-board-wrap .board-lower-row,
+    #pokedex-board-container .board-lower-row {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    #preview-modal-board-wrap .board-lower-row > .board-learnset-slot,
+    #preview-modal-board-wrap .board-lower-row > .board-sets-slot,
+    #pokedex-board-container .board-lower-row > .board-learnset-slot,
+    #pokedex-board-container .board-lower-row > .board-sets-slot {
+        grid-column: 1 !important;
+    }
+
+    #preview-modal-board-wrap .board-bottom-row,
+    #pokedex-board-container .board-bottom-row {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 12px;
+    }
+
+    #preview-modal-board-wrap .board-section,
+    #pokedex-board-container .board-section {
+        min-width: 0;
+    }
+
+    #preview-modal-board-wrap .move-tag,
+    #pokedex-board-container .move-tag {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 390px) {
+    /* Below this width, the data pane itself becomes single-column while the
+       artwork/data split is retained. */
+    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
+    #pokedex-board-container .board-top-row > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board {
+        padding: 10px;
+        border-radius: 12px;
+    }
+
+    #preview-modal-board-wrap .board-types,
+    #pokedex-board-container .board-types {
+        gap: 5px;
+    }
 }
