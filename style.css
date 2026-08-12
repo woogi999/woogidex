@@ -1783,7 +1783,11 @@
         .bulk-card .bulk-match-sprite {
             width: 64px;
             height: 64px;
-            image-rendering: pixelated;
+            aspect-ratio: 1 / 1;
+            object-fit: contain;
+            object-position: center;
+            display: block;
+            image-rendering: auto;
         }
 
 

@@ -77,16 +77,44 @@ import { POKEMON_COLORS } from './data.js';
                 .sort((a,b) => (a.num||99999)-(b.num||99999) || String(a.name).localeCompare(String(b.name)));
         }
 
+        function slugPokemonPart(value) {
+            return String(value || '')
+                .toLowerCase()
+                .replace(/[’']/g, '')
+                .replace(/\./g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+        }
+
+        function getShowdownSpriteId(pokemon) {
+            const raw = String(pokemon?.id || pokemon?.name || '').trim().toLowerCase();
+            const slug = value => String(value || '')
+                .toLowerCase()
+                .replace(/[’']/g, '')
+                .replace(/\./g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            const base = slug(pokemon?.baseSpecies || '');
+            const forme = slug(pokemon?.forme || '');
+            if (base && forme) {
+                // Showdown's sprite directory uses a few compact form tokens:
+                // Mega-X/Y => megax/megay, Alola-Totem => alolatotem, etc.
+                let suffix = forme;
+                suffix = suffix.replace(/^mega-([xy])$/, 'mega$1');
+                suffix = suffix.replace(/^alola-totem$/, 'alolatotem');
+                suffix = suffix.replace(/^galar-totem$/, 'galartotem');
+                suffix = suffix.replace(/^hisui-totem$/, 'hisuitotem');
+                suffix = suffix.replace(/^paldea-totem$/, 'paldeatotem');
+                return `${base}-${suffix}`;
+            }
+            return raw.replace(/[-_\s]+/g, '-');
+        }
+
         function getPokemonTemplateSprite(pokemon) {
-            // Showdown's Pokedex keys for regional forms are commonly compact
-            // (e.g. raticatealola), while its sprite filenames use the dashed
-            // form ID (raticate-alola). Always prefer the dashed regional form.
-            const raw = String(pokemon?.id || '').trim().toLowerCase();
-            const dashed = raw
-                .replace(/[-_\s]+/g, '-')
-                .replace(/(alola|galar|hisui|paldea)$/i, '-$1');
-            const primary = dashed || raw || 'missingno';
-            return `https://play.pokemonshowdown.com/sprites/gen5/${primary}.png`;
+            const spriteId = getShowdownSpriteId(pokemon);
+            // The animated Showdown directory has the canonical form filenames,
+            // including charizard-megax and raticate-alolatotem.
+            return `https://play.pokemonshowdown.com/sprites/ani/${spriteId || 'missingno'}.gif`;
         }
 
         function escapeTemplateHtml(value) {
@@ -119,7 +147,7 @@ import { POKEMON_COLORS } from './data.js';
                 const bst=['hp','atk','def','spa','spd','spe'].reduce((sum,k)=>sum+(Number(s[k])||0),0);
                 const types=(p.types||[]).map(t=>`<span class="type-pill type-${String(t).toLowerCase()}">${escapeTemplateHtml(t)}</span>`).join('');
                 return `<button class="pokemon-template-card" type="button" onclick="usePokemonTemplate('${escapeTemplateHtml(p.id)}')">
-                    <img class="pokemon-template-sprite" src="${escapeTemplateHtml(getPokemonTemplateSprite(p))}" alt="${escapeTemplateHtml(p.name)}" loading="lazy" onerror="this.style.visibility='hidden'">
+                    <img class="pokemon-template-sprite" src="${escapeTemplateHtml(getPokemonTemplateSprite(p))}" alt="${escapeTemplateHtml(p.name)}" loading="lazy" onerror="window.fallbackPokemonImage(this, '${String(p.name || '').replace(/'/g, "\\'")}', '${String(p.baseSpecies || '').replace(/'/g, "\\'")}')">
                     <span class="pokemon-template-info">
                         <span class="pokemon-template-number">#${String(p.num).padStart(3,'0')}</span>
                         <span class="pokemon-template-name">${escapeTemplateHtml(p.name)}</span>
@@ -193,10 +221,22 @@ import { POKEMON_COLORS } from './data.js';
             if (state.pokeApiSpeciesCache?.[cacheKey]) return state.pokeApiSpeciesCache[cacheKey];
 
             const rawId = String(template.id || template.name || '').trim().toLowerCase();
+            const formSuffixes = /-(?:alola|galar|hisui|paldea|normal|origin|therian|incarnate|standard|attack|defense|speed|plant|sandy|trash|heat|wash|frost|fan|mow|ordinary|resolute|aria|pirouette|school|solo|hero|crowned|eternamax|mega(?:-[a-z0-9]+)?|gmax|unbound|totem|zen|dusk|dawn|midnight|sunny|rainy|snowy|low-key|amped|gulping|gorging|10-percent|complete)$/i;
+            const stripAllFormSuffixes = value => {
+                let current = String(value || '').toLowerCase();
+                for (let i = 0; i < 8; i++) {
+                    const next = current.replace(formSuffixes, '');
+                    if (next === current) break;
+                    current = next;
+                }
+                return current;
+            };
             const speciesCandidates = [
+                String(template?.baseSpecies || '').toLowerCase(),
                 String(template.name || rawId).toLowerCase(),
                 rawId,
-                rawId.replace(/-(alola|galar|hisui|paldea|normal|origin|therian|incarnate|standard|attack|defense|speed|plant|sandy|trash|heat|wash|frost|fan|mow|ordinary|resolute|aria|pirouette|school|solo|hero|crowned|eternamax)$/i, '')
+                stripAllFormSuffixes(String(template?.name || rawId).toLowerCase()),
+                stripAllFormSuffixes(rawId)
             ]
                 .map(value => value.replace(/[’']/g, '').replace(/\./g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, ''))
                 .filter(Boolean);

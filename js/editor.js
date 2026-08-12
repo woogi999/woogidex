@@ -106,7 +106,9 @@ import { POKEMON_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } f
                 // — used to find real Pokemon similar to this Fakemon for state.learnset generation.
                 for (const [key, p] of Object.entries(pokedexRaw)) {
                     if (!p.baseStats || !p.types || !p.num || p.num <= 0) continue; // skip CAP/nonstandard/formes w/o stats
-                    if (p.forme && !/^(Alola|Galar|Hisui|Paldea)/.test(p.forme)) continue; // skip mega/gmax/other cosmetic-ish formes, keep regional
+                    // Keep all usable alternate formes (regional, Mega, Unbound, Totem,
+                    // Origin, Therian, etc.). The old filter discarded Mega/other formes,
+                    // which made them impossible to use as templates or comparisons.
                     let genderPct = 50;
                     if (p.gender === 'N') genderPct = -1; // genderless
                     else if (p.gender === 'M') genderPct = 100;
@@ -123,6 +125,8 @@ import { POKEMON_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } f
                         color: p.color || '',
                         eggGroups: p.eggGroups || [],
                         genderPct,
+                        forme: p.forme || '',
+                        baseSpecies: p.baseSpecies || '',
                         // Showdown stores regional/form abilities directly on the
                         // Pokedex entry. Keep them with the species record so template
                         // creation can populate the editor without guessing from names.
@@ -3958,16 +3962,72 @@ function resetEditor() {
         function updateStats() { updateEditorStats(); }
 
         
-// ==================== BULK COMPARISON ====================
-        function getSpriteUrl(dexId) {
-            // Showdown sprite filenames use dashed regional form IDs. The internal
-            // Pokedex keys can be compact (moltresgalar), so normalize them before
-            // constructing the URL. Never strip a regional suffix.
-            const raw = String(dexId || '').trim().toLowerCase();
-            const name = raw
-                .replace(/[-_\s]+/g, '-')
-                .replace(/(alola|galar|hisui|paldea)$/i, '-$1');
-            return 'https://play.pokemonshowdown.com/sprites/gen5ani/' + name + '.gif';
+// ==================== SPRITE FALLBACKS ====================
+        const pokeApiArtworkCache = new Map();
+        const pokeApiArtworkPending = new Map();
+
+        function normalizePokeApiPokemonName(value) {
+            return String(value || '').trim().toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        }
+
+        async function getPokeApiOfficialArtwork(pokemonName, fallbackName) {
+            const candidates = [...new Set([pokemonName, fallbackName].map(normalizePokeApiPokemonName).filter(Boolean))];
+            for (const name of candidates) {
+                if (pokeApiArtworkCache.has(name)) return pokeApiArtworkCache.get(name);
+                if (!pokeApiArtworkPending.has(name)) {
+                    pokeApiArtworkPending.set(name, fetch(`https://pokeapi.co/api/v2/pokemon/${encodeURIComponent(name)}`)
+                        .then(res => res.ok ? res.json() : null)
+                        .then(data => {
+                            const url = data?.sprites?.other?.['official-artwork']?.front_default || null;
+                            if (url) pokeApiArtworkCache.set(name, url);
+                            return url;
+                        }).catch(() => null));
+                }
+                const url = await pokeApiArtworkPending.get(name);
+                pokeApiArtworkPending.delete(name);
+                if (url) return url;
+            }
+            return null;
+        }
+
+        async function fallbackPokemonImage(img, pokemonName, fallbackName) {
+            if (!img || img.dataset.pokeapiFallbackAttempted === 'true') return;
+            img.dataset.pokeapiFallbackAttempted = 'true';
+            const url = await getPokeApiOfficialArtwork(pokemonName, fallbackName);
+            if (url) {
+                img.src = url;
+                img.style.visibility = 'visible';
+                img.style.display = '';
+            } else {
+                img.style.visibility = 'hidden';
+            }
+        }
+        window.fallbackPokemonImage = fallbackPokemonImage;
+
+        // ==================== BULK COMPARISON ====================
+        function getSpriteUrl(dexId, dexRecord) {
+            const raw = String(dexId || dexRecord?.id || dexRecord?.name || '').trim().toLowerCase();
+            const slug = value => String(value || '')
+                .toLowerCase()
+                .replace(/[’']/g, '')
+                .replace(/\./g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            const base = slug(dexRecord?.baseSpecies || '');
+            const forme = slug(dexRecord?.forme || '');
+            let name;
+            if (base && forme) {
+                let suffix = forme;
+                suffix = suffix.replace(/^mega-([xy])$/, 'mega$1');
+                suffix = suffix.replace(/^alola-totem$/, 'alolatotem');
+                suffix = suffix.replace(/^galar-totem$/, 'galartotem');
+                suffix = suffix.replace(/^hisui-totem$/, 'hisuitotem');
+                suffix = suffix.replace(/^paldea-totem$/, 'paldeatotem');
+                name = `${base}-${suffix}`;
+            } else {
+                name = raw.replace(/[-_\s]+/g, '-');
+            }
+            return 'https://play.pokemonshowdown.com/sprites/ani/' + (name || 'missingno') + '.gif';
         }
 
         function updateBulkComparison() {
@@ -4031,7 +4091,7 @@ function resetEditor() {
             const getMatchSprite = match => {
                 if (!match) return '';
                 if (match.isOwnFakemon && match.artwork) return match.artwork;
-                return getSpriteUrl(match.id);
+                return getSpriteUrl(match.id, match);
             };
 
             const getMatchLabel = (match, kind) => {
@@ -4050,7 +4110,7 @@ function resetEditor() {
                         <div class="bulk-label">Physical Bulk (HP x Def)</div>
                         <div class="bulk-value">${physBulk.toLocaleString()}</div>
                         <div class="bulk-match">
-                            <img class="bulk-match-sprite" src="${physSprite}" alt="${closestPhys ? closestPhys.name : ''}" onerror="this.style.display='none'">
+                            <img class="bulk-match-sprite" src="${physSprite}" alt="${closestPhys ? closestPhys.name : ''}" onerror="window.fallbackPokemonImage(this, '${String(closestPhys?.name || '').replace(/'/g, "\\'")}', '${String(closestPhys?.baseSpecies || '').replace(/'/g, "\\'")}')">
                             <span class="bulk-match-name">Closest: ${getMatchLabel(closestPhys, 'physical')}</span>
                         </div>
                     </div>
@@ -4058,7 +4118,7 @@ function resetEditor() {
                         <div class="bulk-label">Special Bulk (HP x SpD)</div>
                         <div class="bulk-value">${specBulk.toLocaleString()}</div>
                         <div class="bulk-match">
-                            <img class="bulk-match-sprite" src="${specSprite}" alt="${closestSpec ? closestSpec.name : ''}" onerror="this.style.display='none'">
+                            <img class="bulk-match-sprite" src="${specSprite}" alt="${closestSpec ? closestSpec.name : ''}" onerror="window.fallbackPokemonImage(this, '${String(closestSpec?.name || '').replace(/'/g, "\\'")}', '${String(closestSpec?.baseSpecies || '').replace(/'/g, "\\'")}')">
                             <span class="bulk-match-name">Closest: ${getMatchLabel(closestSpec, 'special')}</span>
                         </div>
                     </div>
