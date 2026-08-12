@@ -1,6 +1,8 @@
 import { POKEMON_TYPES, POKEMON_COLORS } from './data.js';
 import * as data from './data.js';
 import * as editor from './editor.js';
+import * as sampleSets from './sample-sets.js';
+import * as editorCore from './editor-core.js';
 import * as pokedex from './pokedex.js';
 import * as storage from './storage.js';
 import * as exporter from './export.js';
@@ -252,7 +254,7 @@ export const api = {};
     
 
 // ==================== MODULE COORDINATION ====================
-Object.assign(api, data, editor, pokedex, storage, exporter, evolution, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, evolution, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,

@@ -1727,7 +1727,7 @@
         }
         .bulk-comparison-title {
             font-size: 13px;
-            font-weight: 700;
+            font-weight: 500;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: var(--text-secondary);
@@ -3134,7 +3134,11 @@
 #fakemon-species:disabled { opacity:.48; cursor:not-allowed; background:var(--bg-panel); }
 .evolution-section { margin-top:4px; padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--bg-card); }
 .evolution-section-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
-.section-title { font-size:14px; font-weight:700; color:var(--text-primary); }
+.section-title {
+    display: block; font-size: 13px; font-weight: 600;
+    color: var(--text-secondary); margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
 .evolution-status { font-size:11px; color:var(--text-muted); margin-top:3px; }
 .evolution-toolbar { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
 .evolution-board { position:relative; width:100%; min-height:520px; height:520px; overflow:hidden; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); background-image:radial-gradient(circle, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px); background-size:20px 20px; }
