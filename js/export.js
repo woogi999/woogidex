@@ -678,10 +678,22 @@ import { state, api } from './app.js';
             if (menu) menu.style.display = 'none';
         }
 
+        function toggleCollectionExportMenu(event) {
+            if (event) event.stopPropagation();
+            const menu = document.getElementById('collection-export-menu');
+            if (!menu) return;
+            menu.style.display = menu.style.display === 'none' || !menu.style.display ? 'block' : 'none';
+        }
+
+        function closeCollectionExportMenu() {
+            const menu = document.getElementById('collection-export-menu');
+            if (menu) menu.style.display = 'none';
+        }
+
         document.addEventListener('click', (event) => {
-            if (!event.target.closest('.export-as-wrap')) closeExportMenu();
+            if (!event.target.closest('.export-as-wrap')) { closeExportMenu(); closeCollectionExportMenu(); }
         });
 
         
 
-export { exportCollection, exportCustomLibraryItem, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon };
+export { exportCollection, exportCustomLibraryItem, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon };

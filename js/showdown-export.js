@@ -69,7 +69,7 @@ import { state, api } from './app.js';
             return '9T';
         }
 
-        function buildPokedexTs(fakemon, speciesId) {
+        function buildSpeciesEntry(fakemon) {
             const num = parseInt(String(fakemon.number || '').replace(/[^0-9]/g, ''), 10) || 0;
             const types = [fakemon.type1, fakemon.type2].filter(Boolean);
             const eggGroups = getEggGroupsArray(fakemon.eggGroups);
@@ -92,8 +92,30 @@ import { state, api } from './app.js';
                 entry.baseSpecies = fakemon.species || fakemon.name;
                 entry.forme = fakemon.isMega ? 'Mega' : 'Forme';
             }
-
             const hasCustomAbility = (fakemon.abilities || []).some(a => a && (a.source === 'custom' || a.custom === true));
+            return { entry, hasCustomAbility };
+        }
+
+        function buildLearnsetLines(fakemon) {
+            const learnset = (fakemon.learnset || []).filter(m => m && m.name && !(m.source === 'custom' || m.custom === true));
+            const skippedCustom = (fakemon.learnset || []).filter(m => m && m.name && (m.source === 'custom' || m.custom === true));
+            const entries = learnset.map(m => `\t\t\t${toShowdownId(m.name)}: ["${learnMethodToken(m)}"],`).join('\n');
+            return { entries, skippedCustom };
+        }
+
+        function makeUniqueSpeciesIds(fakemonList) {
+            const used = new Map();
+            return fakemonList.map(f => {
+                let id = toShowdownId(f.name) || 'fakemon';
+                const count = used.get(id) || 0;
+                used.set(id, count + 1);
+                if (count > 0) id = `${id}${count + 1}`;
+                return id;
+            });
+        }
+
+        function buildPokedexTs(fakemon, speciesId) {
+            const { entry, hasCustomAbility } = buildSpeciesEntry(fakemon);
 
             return `// Made with Woogidex!
 // Toss this file into your Showdown server's mod folder as pokedex.ts
@@ -106,9 +128,7 @@ export const Pokedex: {[k: string]: Partial<import('../../../sim/dex-species').S
         }
 
         function buildLearnsetsTs(fakemon, speciesId) {
-            const learnset = (fakemon.learnset || []).filter(m => m && m.name && !(m.source === 'custom' || m.custom === true));
-            const skippedCustom = (fakemon.learnset || []).filter(m => m && m.name && (m.source === 'custom' || m.custom === true));
-            const entries = learnset.map(m => `\t\t\t${toShowdownId(m.name)}: ["${learnMethodToken(m)}"],`).join('\n');
+            const { entries, skippedCustom } = buildLearnsetLines(fakemon);
 
             return `// Made with Woogidex!
 // Toss this file into your Showdown server's mod folder as learnsets.ts
@@ -167,6 +187,48 @@ A couple things worth knowing:
 `;
         }
 
+        function buildCollectionReadmeTxt(fakemonList, modId, skippedTotal) {
+            const names = fakemonList.map(f => f.name).join(', ');
+            return `Your Collection's Showdown Mod
+===================================
+
+Hey! This ZIP has your whole collection (${fakemonList.length} Fakemon)
+bundled into one ready-to-go Pokémon Showdown mod: ${names}.
+
+What's inside:
+- A "${modId}" folder with pokedex.ts and learnsets.ts for every Fakemon
+  in your collection. It's already set up as a full mod folder, so you
+  don't need to build anything yourself.
+
+Getting it installed:
+1. Drag the "${modId}" folder straight into your server's data/mods/
+   directory. That's it for the mod itself.
+2. Get your Fakemon into a format so you can actually battle with them.
+   You've got two options:
+   a. Add this mod to a format you already run. Find that format's entry
+      in config/formats.ts and set mod: '${modId}' to point at the folder
+      you just dropped in (if it already has a different mod, you'll
+      need to merge the two mods together; Showdown only allows one
+      mod per format).
+   b. Make a new format for it. Something like this works:
+        {
+            name: "[Gen 9] My Collection Mod",
+            mod: '${modId}',
+            ruleset: ['Standard', 'Dynamax Clause'],
+        },
+      Add that to the Formats array in config/formats.ts.
+3. Restart your server and you're set.
+
+A couple things worth knowing:
+- Only moves that already exist in vanilla Showdown made it into each
+  learnset. Custom moves got left out, since they'd need actual
+  battle-effect code written for them to work.${skippedTotal ? ` (${skippedTotal} custom move${skippedTotal === 1 ? '' : 's'} skipped across your collection.)` : ''}
+- Custom abilities are still listed by name in pokedex.ts, but won't do
+  anything in battle unless you write them up yourself in an abilities.ts
+  file in the mod folder.
+`;
+        }
+
         async function exportShowdownMod() {
             try {
                 const fakemon = typeof api.buildFakemonObject === 'function' ? api.buildFakemonObject() : null;
@@ -195,4 +257,76 @@ A couple things worth knowing:
             }
         }
 
-export { exportShowdownMod };
+        function buildCollectionPokedexTs(fakemonList, speciesIds) {
+            const anyCustomAbility = fakemonList.some(f => (f.abilities || []).some(a => a && (a.source === 'custom' || a.custom === true)));
+            const entries = fakemonList.map((f, i) => {
+                const { entry } = buildSpeciesEntry(f);
+                return `\t${speciesIds[i]}: ${JSON.stringify(entry, null, '\t').replace(/\n/g, '\n\t')},`;
+            }).join('\n');
+
+            return `// Made with Woogidex!
+// Your whole collection's species data, ready to drop into
+// data/mods/<modname>/pokedex.ts (this file's already sitting in the mod
+// folder in this ZIP, so you shouldn't need to move it).
+${anyCustomAbility ? '//\n// Heads up: some of these Fakemon have custom abilities on them, and\n// that\'s not something a vanilla Showdown server knows about, so those\n// abilities won\'t actually do anything in battle. If you want them\n// working, you\'ll need to write them up yourself in an abilities.ts file\n// in this same mod folder.\n' : ''}
+export const Pokedex: {[k: string]: Partial<import('../../../sim/dex-species').SpeciesData>} = {
+${entries}
+};
+`;
+        }
+
+        function buildCollectionLearnsetsTs(fakemonList, speciesIds) {
+            let totalSkipped = 0;
+            const entries = fakemonList.map((f, i) => {
+                const { entries: lines, skippedCustom } = buildLearnsetLines(f);
+                totalSkipped += skippedCustom.length;
+                return `\t${speciesIds[i]}: {\n\t\tlearnset: {\n${lines || '\t\t\t// No vanilla Showdown moves in this learnset.'}\n\t\t},\n\t},`;
+            }).join('\n');
+
+            const text = `// Made with Woogidex!
+// Your whole collection's learnsets, ready to drop into
+// data/mods/<modname>/learnsets.ts (this file's already sitting in the
+// mod folder in this ZIP, so you shouldn't need to move it).
+//
+// Only moves that actually exist in vanilla Showdown made the cut here.${totalSkipped ? `\n// Left out ${totalSkipped} custom move${totalSkipped === 1 ? '' : 's'} across your collection that Showdown doesn't know about.` : ''}
+
+export const Learnsets: {[k: string]: import('../../../sim/dex-species').LearnsetData} = {
+${entries}
+};
+`;
+            return { text, totalSkipped };
+        }
+
+        async function exportCollectionAsShowdownMod() {
+            try {
+                const fakemonList = (state.fakemonDB || []).filter(f => f && f.name);
+                if (!fakemonList.length) { api.showToast('Your collection is empty; nothing to export!', 'error'); return; }
+                if (typeof JSZip === 'undefined') { api.showToast('ZIP library failed to load. Check your connection and try again.', 'error'); return; }
+
+                const modId = 'woogidexmod';
+                const speciesIds = makeUniqueSpeciesIds(fakemonList);
+
+                const zip = new JSZip();
+                const modFolder = zip.folder(modId);
+                modFolder.file('pokedex.ts', buildCollectionPokedexTs(fakemonList, speciesIds));
+                const { text: learnsetsText, totalSkipped } = buildCollectionLearnsetsTs(fakemonList, speciesIds);
+                modFolder.file('learnsets.ts', learnsetsText);
+                zip.file('README.txt', buildCollectionReadmeTxt(fakemonList, modId, totalSkipped));
+
+                const blob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${modId}-showdown-mod.zip`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                api.showToast('Collection exported as a Showdown mod!', 'success');
+            } catch (err) {
+                console.error('[Collection Showdown Mod Export]', err);
+                api.showToast('Collection Showdown mod export failed!', 'error');
+            }
+        }
+
+export { exportShowdownMod, exportCollectionAsShowdownMod };
