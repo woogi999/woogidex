@@ -3124,3 +3124,61 @@
         font-size: 6px !important;
     }
 }
+
+/* ==================== EVOLUTION WHITEBOARD ==================== */
+.species-evo-row { display:flex; gap:14px; align-items:flex-end; }
+.species-field-wrap { flex:1 1 auto; min-width:0; }
+.species-evo-toggles { display:flex; gap:10px; flex:0 0 auto; padding-bottom:1px; flex-wrap:wrap; justify-content:flex-end; }
+.compact-toggle-label { display:flex; align-items:center; gap:7px; font-size:11px; font-weight:600; color:var(--text-secondary); white-space:nowrap; cursor:pointer; }
+.compact-toggle-label input { width:15px; height:15px; accent-color:var(--accent); }
+#fakemon-species:disabled { opacity:.48; cursor:not-allowed; background:var(--bg-panel); }
+.evolution-section { margin-top:4px; padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--bg-card); }
+.evolution-section-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
+.section-title { font-size:14px; font-weight:700; color:var(--text-primary); }
+.evolution-status { font-size:11px; color:var(--text-muted); margin-top:3px; }
+.evolution-toolbar { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+.evolution-board { position:relative; width:100%; min-height:520px; height:520px; overflow:hidden; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); background-image:radial-gradient(circle, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px); background-size:20px 20px; }
+.evo-wires { position:absolute; inset:0; width:100%; height:100%; overflow:visible; color:var(--accent); pointer-events:none; z-index:1; }
+.evo-wire { fill:none; stroke:currentColor; stroke-width:2.2; opacity:.72; transition:stroke-width .12s ease, opacity .12s ease, color .12s ease; }
+.evo-wire-hit { fill:none; stroke:transparent; stroke-width:18; cursor:pointer; }
+.evo-wire-group.hover .evo-wire { stroke:var(--danger); stroke-width:4; opacity:1; }
+.evo-wire-scissors { display:none; fill:var(--danger); font-size:16px; font-weight:800; paint-order:stroke; stroke:var(--bg-card); stroke-width:3px; }
+.evo-wire-group.hover .evo-wire-scissors { display:block; }
+.evo-node { position:absolute; width:196px; min-height:104px; box-sizing:border-box; border:1px solid var(--border); border-radius:11px; background:var(--bg-card); box-shadow:0 5px 18px rgba(0,0,0,.10); z-index:3; cursor:grab; user-select:none; }
+.evo-node:active { cursor:grabbing; }
+.evo-node.current { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), 0 5px 18px rgba(0,0,0,.12); }
+.evo-node-head { display:flex; justify-content:space-between; align-items:center; padding:6px 9px; border-bottom:1px solid var(--border); font-size:9px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); }
+.evo-stage { font-weight:800; color:var(--accent); }
+.evo-kind { opacity:.75; }
+.evo-node-body { display:flex; align-items:center; gap:8px; padding:7px 9px; }
+.evo-sprite-wrap { width:48px; height:48px; flex:0 0 48px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.evo-sprite-wrap img { max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; image-rendering:auto; }
+.evo-node-name { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.evo-node-name strong { font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.evo-node-name small { font-size:9px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.evo-node-name em { font-size:8px; color:var(--accent); font-style:normal; font-weight:700; }
+.evo-handle { touch-action:none; user-select:none; position:absolute; top:50%; transform:translateY(-50%); width:11px; height:11px; padding:0; border:2px solid var(--bg-card); border-radius:50%; background:var(--accent); box-shadow:0 0 0 1px var(--accent); cursor:crosshair; z-index:5; }
+.evo-handle-left { left:-7px; }
+.evo-handle-right { right:-7px; }
+.evo-handle:hover { transform:translateY(-50%) scale(1.25); }
+.evolution-help { margin-top:8px; color:var(--text-muted); font-size:11px; line-height:1.45; }
+.evolution-node-modal { width:min(820px,92vw); }
+.evolution-node-modal .pokemon-template-controls { margin:0 0 10px; padding:0 16px; }
+.evolution-node-modal .pokemon-template-list { padding:0 16px 16px; }
+.evo-handle.evo-snap-target { transform:translateY(-50%) scale(1.45); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent), 0 0 0 1px var(--accent); }
+.evolution-node-list { max-height:55vh; overflow-y:auto; padding:0 3px 3px; }
+.evo-picker-empty { grid-column:1/-1; padding:30px; text-align:center; color:var(--text-muted); border:1px dashed var(--border); border-radius:10px; }
+@media (max-width:640px) {
+    .species-evo-row { flex-direction:column; align-items:stretch; gap:8px; }
+    .species-evo-toggles { justify-content:flex-start; }
+    .evolution-section-header { flex-direction:column; }
+    .evolution-toolbar { justify-content:flex-start; }
+    .evolution-board { min-height:470px; height:470px; }
+}
+
+.evo-remove { border:0; background:transparent; color:var(--text-muted); font-size:14px; line-height:1; padding:0 1px; cursor:pointer; }
+.evo-remove:hover { color:var(--danger); }
+
+/* Evolution handle drag feedback */
+.evo-handle.dragging { transform:translateY(-50%) scale(1.35); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 0 0 1px var(--accent); }
+.evo-wire-preview { stroke-dasharray:6 5; opacity:.8; pointer-events:none; }

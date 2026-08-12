@@ -114,7 +114,8 @@ import { POKEMON_COLORS } from './data.js';
             const spriteId = getShowdownSpriteId(pokemon);
             // The animated Showdown directory has the canonical form filenames,
             // including charizard-megax and raticate-alolatotem.
-            return `https://play.pokemonshowdown.com/sprites/ani/${spriteId || 'missingno'}.gif`;
+            const spriteDir = typeof api.getUse2DSprites === 'function' && api.getUse2DSprites() ? 'gen5ani' : 'ani';
+            return `https://play.pokemonshowdown.com/sprites/${spriteDir}/${spriteId || 'missingno'}.gif`;
         }
 
         function escapeTemplateHtml(value) {
@@ -378,6 +379,9 @@ import { POKEMON_COLORS } from './data.js';
             document.getElementById(`tab-${tabName}`).style.display = 'block';
             if (tabName === 'moves') {
                 setTimeout(() => api.toggleLevelInput(), 10);
+            }
+            if (tabName === 'stats') {
+                setTimeout(() => api.renderEvolutionBoard?.(), 10);
             }
         }
 

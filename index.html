@@ -63,7 +63,7 @@
                     <div class="panel">
                         <div class="tabs">
                             <button class="tab active" onclick="switchTab(this, 'basic')">Basic Info</button>
-                            <button class="tab" onclick="switchTab(this, 'stats')">Stats & Abilities</button>
+                            <button class="tab" onclick="switchTab(this, 'stats')">Stats, Abilities, &amp; Evos</button>
                             <button class="tab" onclick="switchTab(this, 'moves')">Moves & Sets</button>
                         </div>
 
@@ -72,9 +72,21 @@
                                 <label>Pokemon Name</label>
                                 <input type="text" id="fakemon-name" placeholder="e.g., Flareon" oninput="updatePreview()">
                             </div>
-                            <div class="form-group">
-                                <label>Species / Category</label>
-                                <input type="text" id="fakemon-species" placeholder="e.g., Flame Pokemon" oninput="updatePreview()">
+                            <div class="form-group species-evo-row">
+                                <div class="species-field-wrap">
+                                    <label>Species / Category</label>
+                                    <input type="text" id="fakemon-species" placeholder="e.g., Flame Pokemon" oninput="updatePreview()">
+                                </div>
+                                <div class="species-evo-toggles">
+                                    <label class="compact-toggle-label" title="This Fakemon is a Mega Evolution">
+                                        <input type="checkbox" id="fakemon-is-mega" onchange="toggleEvolutionMode('mega', this.checked)">
+                                        <span>Is Mega Evolution</span>
+                                    </label>
+                                    <label class="compact-toggle-label" title="This Fakemon is a forme change">
+                                        <input type="checkbox" id="fakemon-is-forme" onchange="toggleEvolutionMode('forme', this.checked)">
+                                        <span>Is a Forme Change</span>
+                                    </label>
+                                </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
@@ -306,6 +318,25 @@
                                 <div id="abilities-list"></div>
                                 <button class="btn btn-secondary btn-sm" onclick="openCustomAbilityChooser()" style="margin-top:8px;">＋ Add Custom Ability</button>
                             </div>
+
+                            <div class="section-divider"></div>
+                            <div class="evolution-section">
+                                <div class="evolution-section-header">
+                                    <div>
+                                        <div class="section-title">EVOLUTIONS &amp; FORMES</div>
+                                        <div id="evolution-status" class="evolution-status">1 Pokémon · 0 connections</div>
+                                    </div>
+                                    <div class="evolution-toolbar">
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('fakemon')">＋ Add Fakemon</button>
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('vanilla')">＋ Add Vanilla Pokémon</button>
+                                    </div>
+                                </div>
+                                <div id="evolution-board" class="evolution-board">
+                                    <svg class="evo-wires" aria-hidden="true"></svg>
+                                </div>
+                                <div class="evolution-help">Drag Pokémon to arrange them. Drag from a <strong>right handle</strong> to a <strong>left handle</strong> to connect them. Hover a connection and click the scissors to sever it. Stages are calculated automatically.</div>
+                            </div>
+
                         </div>
 
                         
@@ -442,6 +473,19 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="evolution-node-modal">
+        <div class="modal evolution-node-modal">
+            <div class="modal-header">
+                <h3 id="evolution-node-modal-title">Add Pokémon</h3>
+                <button class="modal-close" onclick="closeModal('evolution-node-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="pokemon-template-controls">
+                <input id="evolution-node-search" type="text" placeholder="Search Pokemon by name..." autocomplete="off" oninput="renderEvolutionNodeChooser()">
+            </div>
+            <div id="evolution-node-list" class="evolution-node-list"></div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="settings-modal">
         <div class="modal settings-modal">
             <div class="modal-header">
@@ -474,6 +518,13 @@
                     <span class="settings-label">Include own Fakemons in Recommended Moves</span>
                     <span class="settings-switch-wrap">
                         <input id="settings-own-recommended-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInRecommendedMoves()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-2d-sprites-toggle">
+                    <span class="settings-label">Use 2d sprites instead of 3D models</span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-2d-sprites-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleUse2DSprites()">
                         <span class="settings-toggle-slider"></span>
                     </span>
                 </label>

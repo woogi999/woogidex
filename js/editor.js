@@ -3771,6 +3771,9 @@ function updateStatDisplay(setIndex, statKey, evVal, ivVal) {
 function resetEditor() {
             document.getElementById('fakemon-name').value = '';
             document.getElementById('fakemon-species').value = '';
+            document.getElementById('fakemon-species').disabled = false;
+            if (document.getElementById('fakemon-is-mega')) document.getElementById('fakemon-is-mega').checked = false;
+            if (document.getElementById('fakemon-is-forme')) document.getElementById('fakemon-is-forme').checked = false;
             selectType('type1', '');
             selectType('type2', '');
             document.getElementById('fakemon-number').value = getNextPokedexNumber();
@@ -3798,6 +3801,7 @@ function resetEditor() {
             state.learnset = [];
             state.sampleSets = [];
             state.artworkData = null;
+            state.evolutionGraph = null;
             document.getElementById('artwork-preview').innerHTML = '<span class="placeholder">ART</span>';
             renderAbilities();
             renderLearnset();
@@ -3805,6 +3809,7 @@ function resetEditor() {
             renderSampleSets();
             updateStats();
             updateGenderBar();
+            api.initializeEvolutionGraph?.(null);
         }
 
         function loadFakemonIntoEditor(fakemon) {
@@ -3920,6 +3925,8 @@ function resetEditor() {
             renderLearnset();
             renderCustomMoves();
             renderSampleSets();
+            api.syncEvolutionOnBasicLoad?.(fakemon);
+            api.initializeEvolutionGraph?.(fakemon.evolutionGraph || null);
             updateStats();
             updateGenderBar();
         }
@@ -4030,7 +4037,8 @@ function resetEditor() {
             } else {
                 name = raw.replace(/[-_\s]+/g, '-');
             }
-            return 'https://play.pokemonshowdown.com/sprites/ani/' + (name || 'missingno') + '.gif';
+            const spriteDir = typeof api.getUse2DSprites === 'function' && api.getUse2DSprites() ? 'gen5ani' : 'ani';
+            return 'https://play.pokemonshowdown.com/sprites/' + spriteDir + '/' + (name || 'missingno') + '.gif';
         }
 
         function updateBulkComparison() {

@@ -65,6 +65,7 @@ import { state, api } from './app.js';
 
                 await saveToStorage();
                 state.lastSavedId = fakemon.id;
+                api.onFakemonSaved?.(fakemon.id);
                 updateSaveStatus('saved');
             };
 
@@ -86,6 +87,8 @@ import { state, api } from './app.js';
                 folderId: state.editingId ? (state.fakemonDB.find(f => f.id === state.editingId)?.folderId ?? null) : (state.currentFolderId || null),
                 pinned: state.editingId ? (state.fakemonDB.find(f => f.id === state.editingId)?.pinned || false) : false,
                 species: document.getElementById('fakemon-species').value.trim(),
+                isMega: !!document.getElementById('fakemon-is-mega')?.checked,
+                isFormeChange: !!document.getElementById('fakemon-is-forme')?.checked,
                 type1: document.getElementById('fakemon-type1').value,
                 type2: document.getElementById('fakemon-type2').value,
                 number: document.getElementById('fakemon-number').value.trim(),
@@ -122,6 +125,8 @@ import { state, api } from './app.js';
                 customMoves: [],
                 sampleSets: state.sampleSets,
                 artwork: state.artworkData,
+                evolutionGraph: state.evolutionGraph ? JSON.parse(JSON.stringify(state.evolutionGraph)) : null,
+                evolutionStage: state.evolutionGraph && typeof api.calculateEvolutionStages === 'function' ? (api.calculateEvolutionStages(state.evolutionGraph)[state.editingId ? `fakemon:${state.editingId}` : 'current:fakemon'] || 1) : 1,
                 createdAt: state.editingId ? (state.fakemonDB.find(f => f.id === state.editingId)?.createdAt || Date.now()) : Date.now(),
                 updatedAt: Date.now()
             };

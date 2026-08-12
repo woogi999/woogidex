@@ -4,6 +4,7 @@ import * as editor from './editor.js';
 import * as pokedex from './pokedex.js';
 import * as storage from './storage.js';
 import * as exporter from './export.js';
+import * as evolution from './evolution.js';
 
 // ==================== SHARED STATE ====================
 export const state = {
@@ -28,7 +29,8 @@ export const state = {
     sampleSets: [],
     artworkData: null,
     autoSaveTimer: null,
-    lastSavedId: null
+    lastSavedId: null,
+    evolutionGraph: null
 };
 
 export const api = {};
@@ -85,6 +87,24 @@ export const api = {};
             setFadeUselessMoves(!getFadeUselessMoves());
         }
 
+        function getUse2DSprites() {
+            // 3D/animated sprites are the default. The preference is persisted locally.
+            return localStorage.getItem('woogidex-use-2d-sprites') === 'true';
+        }
+
+        function setUse2DSprites(enabled) {
+            localStorage.setItem('woogidex-use-2d-sprites', enabled ? 'true' : 'false');
+            updateSettingsUI();
+            if (typeof api.renderPokemonTemplateChooser === 'function' && document.getElementById('pokemon-template-modal')?.classList.contains('active')) {
+                api.renderPokemonTemplateChooser();
+            }
+            if (typeof api.updateBulkComparison === 'function') api.updateBulkComparison();
+        }
+
+        function toggleUse2DSprites() {
+            setUse2DSprites(!getUse2DSprites());
+        }
+
         function getIncludeOwnFakemonsInBulkComparison() {
             return localStorage.getItem('woogidex-include-own-fakemons-bulk') === 'true';
         }
@@ -126,10 +146,12 @@ export const api = {};
             const fadeToggle = document.getElementById('settings-fade-toggle');
             const ownBulkToggle = document.getElementById('settings-own-bulk-toggle');
             const ownRecommendedToggle = document.getElementById('settings-own-recommended-toggle');
+            const use2dToggle = document.getElementById('settings-2d-sprites-toggle');
             if (darkToggle) darkToggle.checked = dark;
             if (fadeToggle) fadeToggle.checked = fade;
             if (ownBulkToggle) ownBulkToggle.checked = getIncludeOwnFakemonsInBulkComparison();
             if (ownRecommendedToggle) ownRecommendedToggle.checked = getIncludeOwnFakemonsInRecommendedMoves();
+            if (use2dToggle) use2dToggle.checked = getUse2DSprites();
         }
 
         function loadSettings() {
@@ -230,10 +252,11 @@ export const api = {};
     
 
 // ==================== MODULE COORDINATION ====================
-Object.assign(api, data, editor, pokedex, storage, exporter, {
+Object.assign(api, data, editor, pokedex, storage, exporter, evolution, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
+    getUse2DSprites, setUse2DSprites, toggleUse2DSprites,
     updateSettingsUI, loadSettings, showToast,
     initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor
 });
