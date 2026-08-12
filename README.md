@@ -1,4 +1,4 @@
-# Woogidex
+<img width="1019" height="343" alt="woogidex_icon" src="https://github.com/user-attachments/assets/babf850a-8043-41d5-aece-380676c3a56e" />
 
 A little browser-based toolkit for making and organizing Fakemon.
 
