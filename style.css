@@ -2815,65 +2815,185 @@
     }
 }
 
-
-/* ==================== MOBILE BOARD BREAKPOINT ====================
-   Keep the same visual order, but stop forcing the artwork and data panes into
-   two tiny columns once the board becomes genuinely phone-sized. */
-@media (max-width: 600px) {
-    #preview-modal-board-wrap .board-top-row,
-    #pokedex-board-container .board-top-row {
-        grid-template-columns: minmax(0, 1fr) !important;
-        gap: 12px !important;
+/* ==================== PREVIEW SCALE ON SMALL SCREENS ====================
+   The board now reflows on phones, but its individual controls should also
+   become proportionally smaller. `zoom` is used here instead of transform:
+   it scales the board's text, padding, badges, bars, and cards while keeping
+   the existing document flow intact. */
+@media (max-width: 768px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board {
+        zoom: 0.90;
+        width: 111.111% !important;
     }
+}
 
-    #preview-modal-board-wrap .board-artwork-left,
-    #pokedex-board-container .board-artwork-left {
-        width: min(100%, 320px) !important;
-        height: auto !important;
-        aspect-ratio: 1 / 1;
-        margin: 0 auto;
+@media (max-width: 640px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board {
+        zoom: 0.82;
+        width: 121.951% !important;
     }
+}
 
-    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
-    #pokedex-board-container .board-top-row > div:nth-child(2) {
-        grid-template-columns: minmax(0, 1fr) !important;
-        gap: 12px !important;
-    }
-
-    #preview-modal-board-wrap .board-gender-compact,
-    #pokedex-board-container .board-gender-compact {
-        flex-wrap: wrap;
-    }
-
-    #preview-modal-board-wrap .board-gender-compact .gender-bar,
-    #pokedex-board-container .board-gender-compact .gender-bar {
-        width: min(160px, 45vw);
-    }
-
-    #preview-modal-board-wrap .board-ability-item .ability-name,
-    #pokedex-board-container .board-ability-item .ability-name {
-        font-size: clamp(13px, 4vw, 16px);
-    }
-
-    #preview-modal-board-wrap .board-ability-item .ability-desc,
-    #pokedex-board-container .board-ability-item .ability-desc {
-        font-size: clamp(11px, 3.2vw, 14px);
+@media (max-width: 520px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board {
+        zoom: 0.76;
+        width: 131.579% !important;
     }
 }
 
 @media (max-width: 420px) {
     #preview-modal-board-wrap .pokedex-board,
     #pokedex-board-container .pokedex-board {
-        padding: 9px !important;
+        zoom: 0.70;
+        width: 142.857% !important;
+    }
+}
+
+@media (max-width: 360px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board {
+        zoom: 0.64;
+        width: 156.25% !important;
+    }
+}
+
+/* ==================== SMALL-SCREEN UI SCALING ====================
+   Extend the same proportional treatment used by the live preview to the
+   sample-set editor and its dense stat controls. */
+@media (max-width: 768px) {
+    .sample-set-card {
+        padding: clamp(10px, 2.5vw, 16px);
+        border-radius: 10px;
+        margin-bottom: 10px;
     }
 
-    #preview-modal-board-wrap .board-artwork-left,
-    #pokedex-board-container .board-artwork-left {
-        width: min(100%, 260px) !important;
-    }
+    .sample-set-header { margin-bottom: 9px; }
+    .sample-set-name { font-size: clamp(12px, 2.8vw, 15px); margin-right: 8px; }
 
-    #preview-modal-board-wrap .board-data-right,
-    #pokedex-board-container .board-data-right {
+    .sample-set-field { gap: 5px; margin-bottom: 6px; }
+    .sample-set-field label {
+        width: clamp(52px, 15vw, 70px);
+        font-size: clamp(9px, 2.1vw, 12px);
+    }
+    .sample-set-field input,
+    .sample-set-field select,
+    .sample-set-moves input {
         min-width: 0;
+        padding: clamp(6px, 1.8vw, 8px) clamp(8px, 2.4vw, 12px);
+        font-size: clamp(11px, 2.5vw, 13px);
     }
+
+    .sample-set-row { gap: 6px; margin-bottom: 6px; }
+    .sample-set-moves { gap: 6px; margin-top: 9px; }
+    .sample-set-output {
+        margin-top: 9px;
+        padding: 10px 38px 10px 10px;
+        font-size: clamp(10px, 2.3vw, 13px);
+        line-height: 1.5;
+    }
+    .sample-set-copy { top: 8px; right: 34px; width: 25px; height: 25px; }
+    .sample-set-delete { top: 8px; right: 8px; width: 22px; height: 22px; }
+
+    .sample-set-stats-section {
+        margin-top: 9px;
+        padding: clamp(7px, 2vw, 12px);
+        overflow: hidden;
+    }
+    .sample-set-stats-header,
+    .sample-set-stat-row {
+        grid-template-columns: clamp(42px, 12vw, 80px) clamp(26px, 8vw, 40px) clamp(34px, 10vw, 80px) minmax(55px, 1fr) clamp(30px, 8vw, 60px) clamp(34px, 9vw, 55px);
+        gap: clamp(3px, 1vw, 8px);
+    }
+    .sample-set-stats-header { font-size: clamp(7px, 1.7vw, 10px); }
+    .sample-set-stat-row { padding: 4px 0; }
+    .sample-set-stat-label,
+    .sample-set-stat-base,
+    .sample-set-stat-calc { font-size: clamp(9px, 2vw, 12px); }
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input { font-size: clamp(9px, 2vw, 12px); }
+    .sample-set-stat-col.slider-col { min-width: 0; }
+    .sample-set-ev-track { min-width: 0; }
+
+    .sample-set-ev-total-row { gap: 6px; flex-wrap: wrap; }
+    .sample-set-ev-total-text { font-size: clamp(9px, 2.1vw, 12px); }
+    .sample-set-guess-btn { max-width: 100%; font-size: clamp(9px, 2vw, 12px) !important; }
+
+    .sample-set-add { padding: 9px; font-size: clamp(11px, 2.5vw, 14px); }
+}
+
+@media (max-width: 520px) {
+    /* Keep the artwork | information split, but let the information pane stack
+       its Pokedex data and entries vertically instead of squeezing two cards
+       into a very narrow column. */
+    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
+    #pokedex-board-container .board-top-row > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px !important;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact,
+    #pokedex-board-container .board-dex-entries-compact {
+        padding: 9px 10px;
+        border-radius: 10px;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact .board-section-title,
+    #pokedex-board-container .board-dex-entries-compact .board-section-title {
+        font-size: clamp(9px, 2.4vw, 13px);
+        margin-bottom: 6px;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact .dex-entry,
+    #pokedex-board-container .board-dex-entries-compact .dex-entry {
+        font-size: clamp(9px, 2.4vw, 13px);
+        line-height: 1.4;
+        padding: 8px;
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact .dex-entry-label,
+    #pokedex-board-container .board-dex-entries-compact .dex-entry-label {
+        font-size: clamp(7px, 1.9vw, 10px);
+    }
+}
+
+/* The preview's gender row uses the normal UI font rather than allowing the
+   surrounding monospace/stat styling to leak into it. It also shrinks and
+   wraps cleanly on narrow screens. */
+#preview-modal-board-wrap .board-gender-compact,
+#pokedex-board-container .board-gender-compact {
+    min-width: 0;
+    gap: clamp(4px, 1vw, 10px);
+    flex-wrap: wrap;
+}
+#preview-modal-board-wrap .board-gender-compact > .label,
+#pokedex-board-container .board-gender-compact > .label {
+    min-width: 0 !important;
+    flex: 0 0 auto;
+    font-family: 'Exo 2', sans-serif !important;
+    font-size: clamp(8px, 1.8vw, 10px) !important;
+    line-height: 1.2;
+}
+#preview-modal-board-wrap .board-gender-compact .gender-bar,
+#pokedex-board-container .board-gender-compact .gender-bar {
+    width: clamp(48px, 10vw, 160px);
+    height: clamp(8px, 1.8vw, 16px);
+    border-radius: 999px;
+    flex: 1 1 48px;
+    min-width: 48px;
+    margin-top: 0;
+}
+#preview-modal-board-wrap .board-gender-compact .gender-label,
+#pokedex-board-container .board-gender-compact .gender-label {
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-family: 'Exo 2', sans-serif !important;
+    font-size: clamp(7px, 1.8vw, 11px) !important;
+    line-height: 1.2;
 }
