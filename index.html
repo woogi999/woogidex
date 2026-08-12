@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woogidex</title>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+<base target="_blank">
+
+<base target="_blank">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="logo">
+                <img src="woogidex_icon.png" alt="Woogidex" style="height: 60px; width: auto; object-fit: contain;">
+            </div>
+            <div class="header-actions">
+                <div class="api-status" id="api-status">Loading data...</div>
+                <div class="save-status unsaved" id="save-status" style="display:none;">Unsaved</div>
+                <button class="btn btn-secondary" onclick="toggleDarkMode()" id="dark-mode-btn" title="Toggle Dark Mode"><i data-lucide="sun" style="width:18px;height:18px;"></i></button>
+                <button class="btn btn-secondary" onclick="showCollection()">My Collection</button>
+            </div>
+        </header>
+
+        <div id="main-content">
+            <!-- Editor View -->
+            <div id="editor-view" style="display: none;">
+                <div class="main-layout">
+                    <div>
+                        <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px;">
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <div class="export-as-wrap" style="position:relative;display:inline-block;">
+                                <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
+                                <div id="export-as-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeExportMenu();">Export as PNG</button>
+                                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeExportMenu();">Export as Plain Text</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeExportMenu();">Export as JSON</button>
+                                </div>
+                                </div>
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
+                                <input type="file" id="fakemon-import-file" accept=".json,.txt,application/json,text/plain" style="display:none;" onchange="handleFakemonImport(event)">
+                            </div>
+                        </div>
+                        <div id="pokedex-board-container"></div>
+                    </div>
+                </div>
+            
+                    <div class="panel">
+                        <div class="tabs">
+                            <button class="tab active" onclick="switchTab(this, 'basic')">Basic Info</button>
+                            <button class="tab" onclick="switchTab(this, 'stats')">Stats & Abilities</button>
+                            <button class="tab" onclick="switchTab(this, 'moves')">Moves & Sets</button>
+                        </div>
+
+                        <div id="tab-basic" class="tab-content">
+                            <div class="form-group">
+                                <label>Pokemon Name</label>
+                                <input type="text" id="fakemon-name" placeholder="e.g., Flareon" oninput="updatePreview()">
+                            </div>
+                            <div class="form-group">
+                                <label>Species / Category</label>
+                                <input type="text" id="fakemon-species" placeholder="e.g., Flame Pokemon" oninput="updatePreview()">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Type 1</label>
+                                    <div class="type-dropdown" id="type1-dropdown">
+                                        <button class="type-dropdown-trigger" onclick="toggleTypeDropdown('type1')" type="button">
+                                            <span class="type-dropdown-value" id="type1-value">Select Type</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="type-dropdown-menu" id="type1-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="fakemon-type1" value="">
+                                </div>
+                                <div class="form-group">
+                                    <label>Type 2 (Optional)</label>
+                                    <div class="type-dropdown" id="type2-dropdown">
+                                        <button class="type-dropdown-trigger" onclick="toggleTypeDropdown('type2')" type="button">
+                                            <span class="type-dropdown-value" id="type2-value">None</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="type-dropdown-menu" id="type2-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="fakemon-type2" value="">
+                                </div>
+                            </div>
+                            <div id="type-effectiveness-analysis" class="type-effectiveness-analysis"></div>
+                            <div class="form-group">
+                                <label>Pokedex Number</label>
+                                <input type="text" id="fakemon-number" placeholder="e.g., #001" oninput="updatePreview()">
+                            </div>
+                            <div class="form-group">
+                                <label>Artwork</label>
+                                <div class="artwork-upload-combined" id="artwork-upload-zone"
+                                     onclick="document.getElementById('artwork-upload').click()"
+                                     ondragover="handleArtworkDragOver(event)"
+                                     ondragleave="handleArtworkDragLeave(event)"
+                                     ondrop="handleArtworkDrop(event)"
+                                     title="Click or drag an image here to upload artwork">
+                                    <div class="artwork-preview" id="artwork-preview"><span class="placeholder">ART</span></div>
+                                    <input type="file" id="artwork-upload" accept="image/*" onchange="handleArtworkUpload(event)">
+                                    <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span>Click or drag artwork here</span></div>
+                                </div>
+                            </div>
+                        
+
+                            <div class="form-group">
+                                <label>Pokedex Entry 1</label>
+                                <textarea id="dex-entry1" placeholder="First Pokedex description..." oninput="updatePreview()"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Pokedex Entry 2</label>
+                                <textarea id="dex-entry2" placeholder="Second Pokedex description..." oninput="updatePreview()"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Height</label>
+                                    <div class="measurement-input-wrap">
+                                        <input type="text" id="fakemon-height" placeholder="e.g., 0.9" oninput="handleHeightInput(this); updatePreview()" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*">
+                                        <select id="height-unit" onchange="convertHeight(); updatePreview()">
+                                            <option value="m">meters</option>
+                                            <option value="ft">feet</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Weight</label>
+                                    <div class="measurement-input-wrap">
+                                        <input type="text" id="fakemon-weight" placeholder="e.g., 25.0" oninput="handleWeightInput(this); updatePreview()" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*">
+                                        <select id="weight-unit" onchange="convertWeight(); updatePreview()">
+                                            <option value="kg">kilograms</option>
+                                            <option value="lb">pounds</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Pokedex Colour</label>
+                                <div class="color-options" id="color-options"></div>
+                                <input type="hidden" id="fakemon-color" value="">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Egg Group 1</label>
+                                    <select id="fakemon-egg1" onchange="updatePreview()">
+                                        <option value="">None</option>
+                                        <option value="Monster">Monster</option>
+                                        <option value="Water 1">Water 1</option>
+                                        <option value="Bug">Bug</option>
+                                        <option value="Flying">Flying</option>
+                                        <option value="Field">Field</option>
+                                        <option value="Fairy">Fairy</option>
+                                        <option value="Grass">Grass</option>
+                                        <option value="Human-Like">Human-Like</option>
+                                        <option value="Water 3">Water 3</option>
+                                        <option value="Mineral">Mineral</option>
+                                        <option value="Amorphous">Amorphous</option>
+                                        <option value="Water 2">Water 2</option>
+                                        <option value="Ditto">Ditto</option>
+                                        <option value="Dragon">Dragon</option>
+                                        <option value="Undiscovered">Undiscovered</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Egg Group 2</label>
+                                    <select id="fakemon-egg2" onchange="updatePreview()">
+                                        <option value="">None</option>
+                                        <option value="Monster">Monster</option>
+                                        <option value="Water 1">Water 1</option>
+                                        <option value="Bug">Bug</option>
+                                        <option value="Flying">Flying</option>
+                                        <option value="Field">Field</option>
+                                        <option value="Fairy">Fairy</option>
+                                        <option value="Grass">Grass</option>
+                                        <option value="Human-Like">Human-Like</option>
+                                        <option value="Water 3">Water 3</option>
+                                        <option value="Mineral">Mineral</option>
+                                        <option value="Amorphous">Amorphous</option>
+                                        <option value="Water 2">Water 2</option>
+                                        <option value="Ditto">Ditto</option>
+                                        <option value="Dragon">Dragon</option>
+                                        <option value="Undiscovered">Undiscovered</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Gender Ratio</label>
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <input type="checkbox" id="gender-genderless" onchange="toggleGenderless(); updateGenderBar(); updatePreview()" style="width:auto;">
+                                    <label for="gender-genderless" style="margin:0; font-weight:400; cursor:pointer;">Genderless</label>
+                                </div>
+                                <div id="gender-ratio-controls">
+                                    <input type="range" id="gender-slider" min="0" max="100" step="0.1" value="50"
+                                        oninput="genderSliderChanged(); updateGenderBar(); updatePreview()"
+                                        style="width:100%; accent-color:#3b82f6;">
+                                    <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                                        <div style="flex:1; display:flex; align-items:center; gap:6px;">
+                                            <span style="color:#3b82f6; font-weight:600; font-size:13px;"><span style="color:#3b82f6;font-weight:600;font-size:13px;">Male</span></span>
+                                            <input type="number" id="gender-male-input" min="0" max="100" step="0.1" value="50"
+                                                oninput="genderMaleInputChanged(); updateGenderBar(); updatePreview()"
+                                                style="width:70px;">
+                                            <span style="font-size:13px;">%</span>
+                                        </div>
+                                        <div style="flex:1; display:flex; align-items:center; gap:6px; justify-content:flex-end;">
+                                            <span style="font-size:13px;">%</span>
+                                            <input type="number" id="gender-female-input" min="0" max="100" step="0.1" value="50"
+                                                oninput="genderFemaleInputChanged(); updateGenderBar(); updatePreview()"
+                                                style="width:70px;">
+                                            <span style="color:#ec4899; font-weight:600; font-size:13px;"><span style="color:#ec4899;font-weight:600;font-size:13px;">Female</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="gender-bar" id="gender-bar-preview">
+                                    <div class="male" style="width: 50%"></div>
+                                    <div class="female" style="width: 50%"></div>
+                                </div>
+                            </div>
+                        
+</div>
+
+                        <div id="tab-stats" class="tab-content" style="display: none;">
+                            <div class="form-group">
+                                <label>Level</label>
+                                <input type="number" id="editor-level" min="1" max="100" value="100" oninput="updateEditorStats()" style="width:80px;">
+                            </div>
+                            <div id="editor-stat-bars">
+                                <div class="editor-stat-row" data-stat="hp">
+                                    <span class="editor-stat-label">HP</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill hp" id="editor-bar-hp" style="width:0%"></div></div>
+                                        <input type="number" id="stat-hp" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-hp">—</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="atk">
+                                    <span class="editor-stat-label">ATK</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill atk" id="editor-bar-atk" style="width:0%"></div></div>
+                                        <input type="number" id="stat-atk" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-atk">—</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="def">
+                                    <span class="editor-stat-label">DEF</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill def" id="editor-bar-def" style="width:0%"></div></div>
+                                        <input type="number" id="stat-def" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-def">—</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="spa">
+                                    <span class="editor-stat-label">SPA</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spa" id="editor-bar-spa" style="width:0%"></div></div>
+                                        <input type="number" id="stat-spa" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-spa">—</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="spd">
+                                    <span class="editor-stat-label">SPD</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spd" id="editor-bar-spd" style="width:0%"></div></div>
+                                        <input type="number" id="stat-spd" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-spd">—</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="spe">
+                                    <span class="editor-stat-label">SPE</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spe" id="editor-bar-spe" style="width:0%"></div></div>
+                                        <input type="number" id="stat-spe" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-spe">—</span>
+                                </div>
+                            </div>
+                            <div class="bst-display">
+                                <div class="label">Base Stat Total</div>
+                                <div class="value" id="bst-value">360</div>
+                            </div>
+                            <div id="bulk-comparison" class="bulk-comparison"></div>
+                            <div class="section-divider"></div>
+                            <div class="form-group">
+                                <label>Abilities <span style="font-size:11px;color:var(--text-muted);font-weight:500;text-transform:none;letter-spacing:0;">(up to 4)</span></label>
+                                <div class="autocomplete-container">
+                                    <input type="text" id="ability-input" placeholder="Search abilities..." 
+                                        oninput="filterAbilities(this.value)" onkeydown="handleAbilityKey(event)" onblur="hideAbilityDropdownDelayed()">
+                                    <div class="autocomplete-dropdown" id="ability-dropdown"></div>
+                                </div>
+                                <p style="font-size:12px;color:var(--text-muted);margin:8px 0;">Drag the abilities to reorder. If you have more than 1 ability, the last one will be the Hidden Ability. If you have 4, the 3rd one is the Hidden Ability, the last one is Event Ability.</p>
+                                <div id="abilities-list"></div>
+                                <button class="btn btn-secondary btn-sm" onclick="openCustomAbilityChooser()" style="margin-top:8px;">＋ Add Custom Ability</button>
+                            </div>
+                        </div>
+
+                        
+
+                        <div id="tab-moves" class="tab-content" style="display: none;">
+                            <div class="form-group">
+                                <label>Learnset</label>
+                                <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Add your moves here!</p>
+                                <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                                    <input type="text" id="learnset-search" placeholder="Search learnset..." style="flex:1;min-width:140px;" oninput="renderLearnset()">
+                                    <div class="type-dropdown" id="learnset-filter-type-dropdown" style="width:130px;">
+                                        <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('learnset-filter-type')">
+                                            <span class="type-dropdown-value" id="learnset-filter-type-value">All Types</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="type-dropdown-menu" id="learnset-filter-type-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="learnset-filter-type" value="">
+                                    <div class="cat-dropdown" id="learnset-filter-category-dropdown" style="width:150px;">
+                                        <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('learnset-filter-category')">
+                                            <span class="cat-dropdown-value" id="learnset-filter-category-value">All Categories</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="cat-dropdown-menu" id="learnset-filter-category-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="learnset-filter-category" value="">
+                                    <select id="learnset-sort" style="width:130px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="renderLearnset()">
+                                        <option value="default">Sort: Default</option>
+                                        <option value="name">Sort: Name</option>
+                                        <option value="type">Sort: Type</option>
+                                        <option value="power">Sort: Power</option>
+                                        <option value="category">Sort: Category</option>
+                                    </select>
+                                    <select id="learnset-order" style="width:100px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="renderLearnset()">
+                                        <option value="desc">Desc ▼</option>
+                                        <option value="asc">Asc ▲</option>
+                                    </select>
+                                    <button class="btn btn-secondary btn-sm" onclick="clearLearnsetFilters()" title="Clear all filters">Clear</button>
+                                </div>
+                                <div id="learnset-list"></div>
+                                <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+                                    <div class="autocomplete-container" style="flex:1;">
+                                        <input type="text" id="move-input" placeholder="Search moves..." 
+                                            oninput="filterMoves(this.value)" onkeydown="handleMoveKey(event)" onblur="hideMoveDropdownDelayed()">
+                                        <div class="autocomplete-dropdown" id="move-dropdown"></div>
+                                    </div>
+                                    <select id="move-method" style="width:90px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="toggleLevelInput()">
+                                        <option value="none">—</option>
+                                        <option value="level">Level</option>
+                                        <option value="tm">TM</option>
+                                        <option value="egg">Egg</option>
+                                    </select>
+                                    <input type="number" id="move-level" placeholder="Lv" min="1" max="100" style="width:64px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:13px;display:none;">
+                                    <button class="btn btn-secondary btn-sm" onclick="addMoveFromInput()">Add</button>
+                                </div>
+                                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+                                    <button class="btn btn-secondary btn-sm" onclick="openCustomMoveChooser()">+ Add Custom Move</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="addUniversalMoves()">+ Add Universal Moves</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openMoveImportExportModal()">Import / Export Moves</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openRecommendMovesModal()">Recommend Moves</button>
+                                    <button class="btn btn-danger btn-sm" onclick="clearMoveset()" style="margin-left:auto;">Clear Moveset</button>
+                                </div>
+                                <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light);">
+                                    <div style="display:flex;justify-content:center;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                                        <select id="learnset-chart-group" style="width:150px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="renderLearnsetChart()">
+                                            <option value="type">By Type</option>
+                                            <option value="category">By Category</option>
+                                            <option value="method">By Learn Method</option>
+                                        </select>
+                                    </div>
+                                    <div id="learnset-chart-wrap" style="display:flex;gap:20px;align-items:center;justify-content:center;flex-wrap:wrap;"></div>
+                                </div>
+                            </div>
+                            <div class="section-divider"></div>
+                            <div class="form-group">
+                                <label>Sample Sets</label>
+                                <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Build competitive sets in Showdown export format</p>
+                                <div id="sample-sets-list"></div>
+                                <button class="sample-set-add" onclick="addSampleSet()">+ Add Sample Set</button>
+                            </div>
+                        </div>
+
+                        <div class="section-divider"></div>
+                    </div></div>
+
+            <!-- Collection View -->
+            <div id="collection-view">
+                <div class="panel">
+                    <div class="collection-title-row" id="collection-header-row">
+                        <div class="collection-title-left">
+                            <h2 class="collection-heading" id="collection-heading"><span class="breadcrumb-root" onclick="openFolder(null)">My Collection</span></h2>
+                            <select id="collection-view-select" class="collection-view-select" aria-label="Collection view" onchange="setCollectionView(this.value)">
+                                <option value="fakemon">Fakemon</option>
+                                <option value="moves">Moves</option>
+                                <option value="abilities">Abilities</option>
+                            </select>
+                        </div>
+                        <div class="collection-header-actions">
+                            <button class="btn btn-secondary btn-sm" id="collection-import-btn" onclick="openImportModal()">Import</button>
+                            <button class="btn btn-secondary btn-sm" id="collection-export-btn" onclick="exportCollection()">Export</button>
+                        </div>
+                    </div>
+                    <div class="search-bar">
+                        <input type="text" id="search-input" placeholder="Search your Fakemon..." oninput="filterCollection()">
+                        <select id="collection-sort" onchange="renderCollection()" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;background:var(--bg-input);color:var(--text-primary);">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="name-asc">Name (A-Z)</option>
+                            <option value="name-desc">Name (Z-A)</option>
+                            <option value="bst-desc">BST (High-Low)</option>
+                            <option value="bst-asc">BST (Low-High)</option>
+                            <option value="updated">Recently Updated</option>
+                        </select>
+                        <div class="export-as-wrap" style="position:relative;display:inline-block;">
+                            <button class="btn btn-primary" type="button" onclick="toggleCreateMenu(event)">Create <span style="font-size:10px;">▼</span></button>
+                            <div id="create-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:180px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
+                                <button class="export-as-menu-item" id="create-fakemon-menu-item" type="button" onclick="createNewFakemon(); closeCreateMenu();">＋ New Fakemon</button>
+                                <button class="export-as-menu-item" id="create-folder-menu-item" type="button" onclick="createFolder(); closeCreateMenu();">＋ New Folder</button>
+                                <button class="export-as-menu-item" id="create-move-menu-item" type="button" onclick="openCustomMoveModal(); closeCreateMenu();">＋ New Custom Move</button>
+                                <button class="export-as-menu-item" id="create-ability-menu-item" type="button" onclick="openCustomAbilityLibraryModal(); closeCreateMenu();">＋ New Custom Ability</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="collection-grid" class="collection-grid"></div>
+                    <div id="empty-collection" class="empty-state" style="display: none;">
+                        <div class="icon">?</div>
+                        <h3>No Fakemon Yet</h3>
+                        <p>Create your first custom Pokemon to get started!</p>
+                        <button class="btn btn-primary" onclick="createNewFakemon()" style="margin-top: 16px;">Create Fakemon</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-entity-chooser-modal">
+        <div class="modal" style="max-width: 620px;">
+            <div class="modal-header">
+                <h3 id="custom-entity-chooser-title">Add Custom Move</h3>
+                <button class="modal-close" onclick="closeModal('custom-entity-chooser-modal')">&times;</button>
+            </div>
+            <div id="custom-entity-chooser-body"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-ability-modal">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 id="custom-ability-modal-title">Create Custom Ability</h3>
+                <button class="modal-close" onclick="closeModal('custom-ability-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Ability Name</label>
+                <input type="text" id="custom-ability-name" placeholder="e.g., Solar Heart">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="custom-ability-desc" rows="4" placeholder="Describe what this ability does..."></textarea>
+            </div>
+            <input type="hidden" id="custom-ability-edit-id" value="">
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeModal('custom-ability-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveCustomAbilityLibraryEntry()">Save Ability</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="fakemon-preview-modal">
+        <div class="modal quick-preview-modal">
+            <div class="modal-header">
+                <h3>Quick Preview</h3>
+                <button class="modal-close" onclick="closeModal('fakemon-preview-modal')">&times;</button>
+            </div>
+            <div id="preview-modal-board-wrap"></div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                <button class="btn btn-primary" id="preview-modal-edit-btn">Edit Fakemon</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="folder-name-modal">
+        <div class="modal" style="max-width: 380px;">
+            <div class="modal-header">
+                <h3 id="folder-name-modal-title">New Folder</h3>
+                <button class="modal-close" onclick="closeModal('folder-name-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Folder Name</label>
+                <input type="text" id="folder-name-input" placeholder="e.g., Legendaries" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmFolderName();}">
+            </div>
+            <div class="form-group">
+                <label>Folder Color</label>
+                <div id="folder-color-options" class="color-options"></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeModal('folder-name-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmFolderName()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-move-modal">
+        <div class="modal" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 id="custom-move-modal-title">Create Custom Move</h3>
+                <button class="modal-close" onclick="closeModal('custom-move-modal')">&times;</button>
+            </div>
+            <div id="custom-move-form">
+                <input type="hidden" id="custom-move-edit-index" value="">
+                <input type="hidden" id="custom-move-library-edit-id" value="">
+                <div class="form-group">
+                    <label>Move Name</label>
+                    <input type="text" id="custom-move-name" placeholder="e.g., Ember Fang">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Type</label>
+                        <div class="type-dropdown" id="custom-move-type-dropdown">
+                            <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('custom-move-type')">
+                                <span class="type-dropdown-value" id="custom-move-type-value">Select Type</span>
+                                <span class="type-dropdown-arrow">▼</span>
+                            </button>
+                            <div class="type-dropdown-menu" id="custom-move-type-menu"></div>
+                        </div>
+                        <input type="hidden" id="custom-move-type" value="Normal">
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <div class="cat-dropdown" id="custom-move-category-dropdown">
+                            <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('custom-move-category')">
+                                <span class="cat-dropdown-value" id="custom-move-category-value">Status</span>
+                                <span class="type-dropdown-arrow">▼</span>
+                            </button>
+                            <div class="cat-dropdown-menu" id="custom-move-category-menu"></div>
+                        </div>
+                        <input type="hidden" id="custom-move-category" value="Status">
+                    </div>
+                </div>
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label>Base Power</label>
+                        <input type="number" id="custom-move-power" min="0" max="250" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Accuracy</label>
+                        <input type="number" id="custom-move-accuracy" min="0" max="100" value="100">
+                    </div>
+                    <div class="form-group">
+                        <label>PP</label>
+                        <input type="number" id="custom-move-pp" min="1" max="64" value="10">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Priority</label>
+                    <input type="number" id="custom-move-priority" min="-7" max="5" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Flags</label>
+                    <div class="flag-checkboxes" id="custom-move-flags">
+                        <label><input type="checkbox" value="contact"> Contact</label>
+                        <label><input type="checkbox" value="punch"> Punch</label>
+                        <label><input type="checkbox" value="slicing"> Slicing</label>
+                        <label><input type="checkbox" value="sound"> Sound</label>
+                        <label><input type="checkbox" value="bite"> Bite</label>
+                        <label><input type="checkbox" value="bullet"> Bullet</label>
+                        <label><input type="checkbox" value="pulse"> Pulse</label>
+                        <label><input type="checkbox" value="wind"> Wind</label>
+                        <label><input type="checkbox" value="dance"> Dance</label>
+                        <label><input type="checkbox" value="powder"> Powder</label>
+                        <label><input type="checkbox" value="heal"> Heal</label>
+                        <label><input type="checkbox" value="charge"> Charge</label>
+                        <label><input type="checkbox" value="recharge"> Recharge</label>
+                        <label><input type="checkbox" value="highcrit"> High Crit</label>
+                        <label><input type="checkbox" value="protect"> Bypass Protect</label>
+                        <label><input type="checkbox" value="reflectable"> Bypass Reflect</label>
+                        <label><input type="checkbox" value="snatch"> Bypass Snatch</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="custom-move-desc" rows="3" placeholder="Describe what this move does..."></textarea>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 16px;">
+                    <button class="btn btn-success" onclick="saveCustomMove()" style="flex: 1;">Save Move</button>
+                    <button class="btn btn-secondary" onclick="closeModal('custom-move-modal')">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="sample-set-modal">
+        <div class="modal" style="max-width: 620px;">
+            <div class="modal-header">
+                <h3>Add Sample Set</h3>
+                <button class="modal-close" onclick="closeSampleSetModal()">&times;</button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+                
+            </p>
+            <button class="btn btn-secondary" onclick="addBlankSampleSet()" style="width:100%;justify-content:center;margin-bottom:18px;">
+                Blank Slate
+            </button>
+            <div style="border-top:1px solid var(--border-light);padding-top:16px;">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:8px;">
+                    Sample Set Ideas
+                </div>
+                <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">
+                    Based from this Fakemon's data. It's kinda stupid right now but hey, it's better than nothing!
+                </p>
+                <div id="suggested-sample-sets-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="move-import-export-modal">
+        <div class="modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Import / Export Moves</h3>
+                <button class="modal-close" onclick="closeModal('move-import-export-modal')">&times;</button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+                Import and Export your moves here.
+            </p>
+            <textarea id="move-import-export-text" spellcheck="false"
+                placeholder="Absorb&#10;Acid Armor&#10;Aerial Ace&#10;..."></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:flex-end;">
+                <button class="btn btn-secondary btn-sm" onclick="exportMovesToText()">Export Current Moves</button>
+                <button class="btn btn-primary btn-sm" onclick="importMovesFromText()">Import Moves</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeModal('move-import-export-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="plain-text-export-modal">
+        <div class="modal" style="max-width: 850px;">
+            <div class="modal-header">
+                <h3>Export as Plain Text</h3>
+                <button class="modal-close" onclick="closeModal('plain-text-export-modal')">&times;</button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Copy the text below or download it as a .txt file.</p>
+            <textarea id="plain-text-export-text" spellcheck="false" style="min-height:520px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap;">
+                <button class="btn btn-secondary btn-sm" onclick="copyPlainTextExport()">Copy Text</button>
+                <button class="btn btn-primary btn-sm" onclick="downloadPlainTextExport()">Download .txt</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeModal('plain-text-export-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="recommend-moves-modal">
+        <div class="modal" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3>Recommended Moves</h3>
+                <button class="modal-close" onclick="closeModal('recommend-moves-modal')">&times;</button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Based on this Fakemon's typing and stat spread. Click a move to add it to the learnset.</p>
+            <button class="btn btn-secondary btn-sm" onclick="generateLearnset()" style="width:100%;margin-bottom:6px;justify-content:center;">Generate Learnset</button>
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">Too lazy to think of a proper moveset? I got you! It finds real Pokémon similar to this Fakemon's data and builds a learnset from their actual movesets. Moves you've already added are adjusted accordingly.</p>
+            <div id="recommend-moves-list"></div>
+        </div>
+    </div>
+<div class="modal-overlay" id="import-modal">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header">
+                <h3>Import Collection</h3>
+                <button class="modal-close" onclick="closeModal('import-modal')">&times;</button>
+            </div>
+            <p style="margin-bottom: 16px; color: var(--text-secondary);">Import a collection or a Fakemon export. You can choose to add the imported Fakemon to your collection, or replace the current collection.</p>
+            <label class="file-upload-btn" style="width:100%;box-sizing:border-box;text-align:center;">
+                <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" onchange="handleCollectionImportFile(event)">
+                Choose JSON / TXT File
+            </label>
+            <div id="collection-import-status" style="margin-top:12px;font-size:12px;color:var(--text-muted);text-align:center;">Choose a .json or .txt file first.</div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button id="collection-import-add" class="btn btn-secondary" type="button" onclick="importCollection('add')" disabled style="flex:1;justify-content:center;">Add to Collection</button>
+                <button id="collection-import-replace" class="btn btn-danger" type="button" onclick="importCollection('replace')" disabled style="flex:1;justify-content:center;">Replace Collection</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
