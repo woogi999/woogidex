@@ -10,8 +10,6 @@ Woogidex is a local-first Fakemon editor and Pokédex builder.
 
 You can make a Pokémon, give it stats, abilities, moves, Dex entries, sample competitive sets, etc., and then see everything presented as a little Pokédex-style board.
 
-The tool is basically this: **"What if I had a Pokédex database that was also a Fakemon design tool?"**
-
 It's primarily something I made to help organize my own Fakemon work and **Pokeathlon contest submissions**, but it's meant to be a general-purpose tool for anyone making Fakemon.
 
 ## Features
