@@ -2,8 +2,12 @@ import { state, api } from './app.js';
 
 // Evolution / forme whiteboard. The graph is persisted with each participating
 // Fakemon so opening any member of a connected chain restores the same board.
-const NODE_W = 196;
-const NODE_H = 104;
+// Node size scales down on narrow/mobile viewports so boards stay usable
+// and draggable without nodes overflowing the visible board width.
+function getNodeSize() {
+    const mobile = window.innerWidth <= 640;
+    return mobile ? { w: 148, h: 90 } : { w: 196, h: 104 };
+}
 const DEFAULT_GRAPH = () => ({
     version: 1,
     nodes: [],
@@ -65,8 +69,9 @@ function renderEvolutionBoard() {
     const g = ensureGraph();
     const me = addCurrentNode();
     const stageMap = calculateStages(g);
-    const W = Math.max(board.clientWidth || 900, 700);
-    const H = Math.max(board.clientHeight || 520, 520);
+    const { w: NODE_W, h: NODE_H } = getNodeSize();
+    const W = Math.max(board.clientWidth || 900, NODE_W + 40);
+    const H = Math.max(board.clientHeight || 520, NODE_H + 40);
     board.querySelectorAll('.evo-node').forEach(x => x.remove());
     const svg = board.querySelector('.evo-wires');
     if (svg) svg.innerHTML = '';
@@ -76,6 +81,8 @@ function renderEvolutionBoard() {
         const el = document.createElement('div');
         el.className = `evo-node${n.id === me.id ? ' current' : ''}`;
         el.dataset.nodeId = n.id;
+        el.style.width = `${NODE_W}px`;
+        el.style.minHeight = `${NODE_H}px`;
         el.style.left = `${Math.max(4, Math.min(W - NODE_W - 4, n.x || 20))}px`;
         el.style.top = `${Math.max(4, Math.min(H - NODE_H - 4, n.y || 20))}px`;
         const stage = stageMap[n.id] || 1;
@@ -139,8 +146,9 @@ function drawEvolutionEdges() {
     const svg = board?.querySelector('.evo-wires');
     if (!board || !svg) return;
     const g = ensureGraph();
+    const { w: NODE_W, h: NODE_H } = getNodeSize();
     const br = board.getBoundingClientRect();
-    svg.setAttribute('viewBox', `0 0 ${Math.max(br.width,700)} ${Math.max(br.height,520)}`);
+    svg.setAttribute('viewBox', `0 0 ${Math.max(br.width, NODE_W + 40)} ${Math.max(br.height, NODE_H + 40)}`);
     const defs = `<defs><marker id="evo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker></defs>`;
     svg.innerHTML = defs;
     if (handleDrag) {
@@ -223,6 +231,7 @@ document.addEventListener('pointermove', e => {
     const board = document.getElementById('evolution-board');
     const n = ensureGraph().nodes.find(x => x.id === drag.id);
     if (!board || !n) return;
+    const { w: NODE_W, h: NODE_H } = getNodeSize();
     const r = board.getBoundingClientRect();
     n.x = Math.max(4, Math.min(r.width-NODE_W-4, e.clientX-r.left-drag.ox));
     n.y = Math.max(4, Math.min(r.height-NODE_H-4, e.clientY-r.top-drag.oy));
@@ -311,6 +320,32 @@ document.addEventListener('pointermove', e => {
 });
 document.addEventListener('pointerup', finishHandleDrag);
 document.addEventListener('pointercancel', finishHandleDrag);
+function effectiveDirectionOf(g, from, to) {
+    const toNode = g.nodes.find(n => n.id === to);
+    if (toNode && isSpecialNode(toNode)) return { from: to, to: from };
+    return { from, to };
+}
+function canReach(g, startId, targetId) {
+    const effective = effectiveEdges(g);
+    const adj = new Map();
+    effective.forEach(e => { if (!adj.has(e.from)) adj.set(e.from, []); adj.get(e.from).push(e.to); });
+    const seen = new Set();
+    const stack = [startId];
+    while (stack.length) {
+        const cur = stack.pop();
+        if (cur === targetId) return true;
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        (adj.get(cur) || []).forEach(n => stack.push(n));
+    }
+    return false;
+}
+function wouldCreateCycle(g, from, to) {
+    const { from: ef, to: et } = effectiveDirectionOf(g, from, to);
+    if (ef === et) return true;
+    return canReach(g, et, ef);
+}
+
 function connectHandles(aId, aSide, bId, bSide) {
     let from = {nodeId:aId, side:aSide}, to = {nodeId:bId, side:bSide};
     if (from.side !== 'right' || to.side !== 'left') {
@@ -318,11 +353,11 @@ function connectHandles(aId, aSide, bId, bSide) {
         else { api.showToast('Connect a right handle to a left handle.', 'info'); return; }
     }
     const g = ensureGraph();
-    if (!g.edges.some(e => e.from===from.nodeId && e.to===to.nodeId)) {
-        g.edges.push({from:from.nodeId,to:to.nodeId,fromSide:'right',toSide:'left'});
-        persistEvolutionGraph();
-        renderEvolutionBoard();
-    }
+    if (g.edges.some(e => e.from===from.nodeId && e.to===to.nodeId)) return;
+    if (wouldCreateCycle(g, from.nodeId, to.nodeId)) { api.showToast('That connection would create a loop in the evolution chain.', 'error'); return; }
+    g.edges.push({from:from.nodeId,to:to.nodeId,fromSide:'right',toSide:'left'});
+    persistEvolutionGraph();
+    renderEvolutionBoard();
 }
 let pendingHandle = null;
 function selectConnectionHandle(nodeId, side) {
@@ -334,7 +369,9 @@ function selectConnectionHandle(nodeId, side) {
         else { pendingHandle=null; updateEvolutionStatus('Connect a right handle to a left handle.'); return; }
     }
     const g = ensureGraph();
-    if (!g.edges.some(e => e.from===from.nodeId && e.to===to.nodeId)) g.edges.push({from:from.nodeId,to:to.nodeId,fromSide:'right',toSide:'left'});
+    if (g.edges.some(e => e.from===from.nodeId && e.to===to.nodeId)) { pendingHandle=null; updateEvolutionStatus(); return; }
+    if (wouldCreateCycle(g, from.nodeId, to.nodeId)) { pendingHandle=null; api.showToast('That connection would create a loop in the evolution chain.', 'error'); updateEvolutionStatus(); return; }
+    g.edges.push({from:from.nodeId,to:to.nodeId,fromSide:'right',toSide:'left'});
     pendingHandle=null;
     persistEvolutionGraph(); renderEvolutionBoard();
 }
@@ -393,13 +430,36 @@ function addEvolutionNode(kind, refId) {
     const id=`${kind}:${refId}`;
     if (g.nodes.some(n=>n.id===id)) { api.showToast('That Pokémon is already on the board.','info'); return; }
     const idx=g.nodes.length;
-    g.nodes.push({id,kind,refId,name: kind==='fakemon' ? (getFakemon(refId)?.name||'Fakemon') : (getVanilla(refId)?.name||refId),x:30+(idx%3)*205,y:30+Math.floor(idx/3)*125,isMega:false,isFormeChange:false});
+    const { w: NODE_W, h: NODE_H } = getNodeSize();
+    const mobile = window.innerWidth <= 640;
+    const cols = mobile ? 2 : 3;
+    const colGap = NODE_W + 9, rowGap = NODE_H + 21;
+    g.nodes.push({id,kind,refId,name: kind==='fakemon' ? (getFakemon(refId)?.name||'Fakemon') : (getVanilla(refId)?.name||refId),x:30+(idx%cols)*colGap,y:30+Math.floor(idx/cols)*rowGap,isMega:false,isFormeChange:false});
     api.closeModal?.('evolution-node-modal'); persistEvolutionGraph(); renderEvolutionBoard();
 }
 function removeEvolutionNode(id) {
     const g=ensureGraph();
     if (id===currentNodeId()) return api.showToast('The current Fakemon cannot be removed from its own evolution board.','info');
-    g.nodes=g.nodes.filter(n=>n.id!==id); g.edges=g.edges.filter(e=>e.from!==id&&e.to!==id); persistEvolutionGraph(); renderEvolutionBoard();
+    const removedNode = g.nodes.find(n => n.id === id);
+    g.nodes=g.nodes.filter(n=>n.id!==id); g.edges=g.edges.filter(e=>e.from!==id&&e.to!==id);
+    // The removed Pokémon's own saved record still points at the old shared
+    // graph (which still includes itself and its old connections). Reset it
+    // to a solo graph so it doesn't keep reappearing/reconnecting the next
+    // time someone opens its editor.
+    if (removedNode && removedNode.kind === 'fakemon' && removedNode.refId) {
+        const removedFakemon = getFakemon(removedNode.refId);
+        if (removedFakemon) {
+            const soloGraph = DEFAULT_GRAPH();
+            soloGraph.nodes.push({
+                id: `fakemon:${removedFakemon.id}`, kind:'fakemon', refId: removedFakemon.id,
+                name: removedFakemon.name, x: 50, y: 190,
+                isMega: !!removedFakemon.isMega, isFormeChange: !!removedFakemon.isFormeChange
+            });
+            removedFakemon.evolutionGraph = soloGraph;
+            removedFakemon.evolutionStage = 1;
+        }
+    }
+    persistEvolutionGraph(); renderEvolutionBoard();
 }
 
 function persistEvolutionGraph() {
@@ -468,3 +528,13 @@ function shareSpecialPropertiesWithChild() {
 }
 
 export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, renderEvolutionNodeChooser, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, syncEvolutionOnBasicLoad, persistEvolutionGraph, shareSpecialPropertiesWithChild };
+
+// Re-layout the board when the viewport crosses the mobile breakpoint (e.g.
+// on rotation), since node size and spacing depend on window width.
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        if (document.getElementById('evolution-board')) renderEvolutionBoard();
+    }, 150);
+});
