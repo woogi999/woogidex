@@ -51,6 +51,7 @@ function resetEditor() {
             state.artworkData = null;
             state.shinyArtworkData = null;
             state.artworkMode = 'normal';
+            state.previewArtworkMode = 'normal';
             updateArtworkModeUI();
             state.evolutionGraph = null;
             document.getElementById('artwork-preview').innerHTML = '<span class="placeholder">ART</span>';
@@ -806,15 +807,27 @@ window.toggleCollectionShinyPreview = toggleCollectionShinyPreview;
 function setPreviewArtworkMode(mode) {
     state.previewArtworkMode = mode === 'shiny' && state.shinyArtworkData ? 'shiny' : 'normal';
     const activeMode = state.previewArtworkMode;
-    const toggle = document.getElementById('board-artwork-shiny-toggle');
+    // Scope lookups to the board container itself rather than a bare
+    // getElementById. If any other panel/modal ever leaves a stray element
+    // with the same id in the DOM, document.getElementById would silently
+    // grab whichever one happens to be first and the toggle would appear to
+    // do nothing even though the state changed correctly underneath it.
+    const boardContainer = document.getElementById('pokedex-board-container');
+    const toggle = boardContainer?.querySelector('#board-artwork-shiny-toggle') || document.getElementById('board-artwork-shiny-toggle');
     if (toggle) {
         toggle.classList.toggle('active', activeMode === 'shiny');
         toggle.setAttribute('aria-pressed', activeMode === 'shiny' ? 'true' : 'false');
         toggle.title = activeMode === 'shiny' ? 'Show normal artwork' : 'Show shiny artwork';
         toggle.setAttribute('aria-label', activeMode === 'shiny' ? 'Show normal artwork' : 'Show shiny artwork');
     }
-    const image = document.getElementById('board-artwork-image');
-    if (!image) return;
+    const image = boardContainer?.querySelector('#board-artwork-image') || document.getElementById('board-artwork-image');
+    if (!image) {
+        // The direct DOM update couldn't find its target (stale/missing node).
+        // Rather than leaving the click with no visible effect, force a full
+        // board re-render, which will pick up the state we already set above.
+        if (typeof updatePreview === 'function') updatePreview();
+        return;
+    }
     const artwork = activeMode === 'shiny' ? state.shinyArtworkData : state.artworkData;
     const name = document.getElementById('fakemon-name')?.value?.trim() || 'Fakemon';
     image.innerHTML = artwork ? `<img src="${artwork}" alt="${name}${activeMode === 'shiny' ? ' shiny' : ''} artwork">` : `<span class="placeholder">${activeMode === 'shiny' ? 'SHINY' : 'ART'}</span>`;
