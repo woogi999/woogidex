@@ -383,6 +383,9 @@ import { POKEMON_COLORS } from './data.js';
             if (tabName === 'stats') {
                 setTimeout(() => api.renderEvolutionBoard?.(), 10);
             }
+            if (tabName === 'analysis') {
+                setTimeout(() => api.renderAnalysis?.(), 10);
+            }
         }
 
 // ==================== QUICK PREVIEW POPUP ====================

@@ -9,6 +9,7 @@ import * as exporter from './export.js';
 import * as showdownExport from './showdown-export.js';
 import * as essentialsExport from './essentials-export.js';
 import * as evolution from './evolution.js';
+import * as analysis from './analysis.js';
 
 // ==================== SHARED STATE ====================
 export const state = {
@@ -274,7 +275,7 @@ export const api = {};
     
 
 // ==================== MODULE COORDINATION ====================
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
