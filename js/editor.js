@@ -462,7 +462,8 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                         'snatch': 'snatch', 'sound': 'sound', 'punch': 'punch', 'bite': 'bite',
                         'pulse': 'pulse', 'recharge': 'recharge', 'charge': 'charge', 'heal': 'heal',
                         'authentic': 'authentic', 'powder': 'powder', 'bullet': 'bullet', 'slicing': 'slicing',
-                        'wind': 'wind', 'dance': 'dance', 'mental': 'mental', 'defrost': 'defrost'
+                        'wind': 'wind', 'dance': 'dance', 'mental': 'mental', 'defrost': 'defrost',
+                        'thaws': 'thawing', 'thawsuser': 'thawing', 'thawing': 'thawing'
                     };
                     if (known[key]) flags[known[key]] = 1;
                 });
@@ -847,7 +848,8 @@ function handleMoveKey(e) {
                 protect: !source.protect,
                 reflectable: isStatus ? !source.reflectable : false,
                 snatch: isStatus ? !source.snatch : false,
-                bypasssub: !!source.bypasssub
+                bypasssub: !!source.bypasssub,
+                thawing: !!source.defrost
             };
         }
 
@@ -1443,19 +1445,56 @@ function handleMoveKey(e) {
         // purpose is a secondary effect rather than damage (Thief, Round, Snore...).
         const MIN_STAB_COVERAGE_BP = 65;
         const CONDITIONAL_TYPE_MOVE_NAMES = new Set(['Tera Blast', 'Hidden Power', 'Judgment', 'Weather Ball', 'Natural Gift', 'Techno Blast', 'Multi-Attack', 'Revelation Dance', 'Terrain Pulse', 'Raging Bull', 'Ivy Cudgel']);
-        const FILLER_ATTACK_MOVE_NAMES = new Set(['Round', 'Snore', 'Thief', 'Covet', 'Tackle', 'Pound', 'Scratch', 'Constrict', 'Present']);
+        const FILLER_ATTACK_MOVE_NAMES = new Set([
+            'Round', 'Snore', 'Thief', 'Covet', 'Tackle', 'Pound', 'Scratch', 'Constrict', 'Present',
+            'Bide', 'Rage', 'Fury Attack', 'Fury Swipes', 'Take Down', 'Submission', 'Headbutt',
+            'Mega Drain', 'Absorb', 'Vine Whip', 'Razor Leaf', 'Ember', 'Water Gun', 'Bubble',
+            'Powder Snow', 'Gust', 'Peck', 'Astonish', 'Lick', 'Nuzzle', 'Pounce',
+            'Fling', 'Natural Gift', 'Echoed Voice', 'Struggle Bug', 'Infestation'
+        ]);
+        // Showdown lists basePower as 0 for moves whose damage is computed dynamically
+        // in battle (weight/HP-based, weather, etc). Without this, genuinely strong
+        // moves like Facade, Return, or Gyro Ball would always look like 0-power
+        // filler and get bucketed as Flavour instead of STAB/Coverage.
+        const VARIABLE_BP_ESTIMATE = {
+            'Low Kick': 80, 'Grass Knot': 80, 'Heavy Slam': 80, 'Heat Crash': 80,
+            'Gyro Ball': 80, 'Electro Ball': 60, 'Flail': 100, 'Reversal': 100,
+            'Wring Out': 90, 'Crush Grip': 90, 'Punishment': 60, 'Payback': 50,
+            'Facade': 70, 'Hex': 65, 'Acrobatics': 75, 'Stored Power': 70, 'Power Trip': 70,
+            'Return': 100, 'Frustration': 60, 'Foul Play': 95, 'Eruption': 100,
+            'Water Spout': 100, 'Last Respects': 100, 'Rage Fist': 90
+        };
+        function effectiveMoveBasePower(move) {
+            const raw = Number(move.basePower || 0);
+            return raw > 0 ? raw : (VARIABLE_BP_ESTIMATE[move.name] || 0);
+        }
+        // A move only counts as real "coverage" if it's actually super-effective
+        // against something the Fakemon's own STAB doesn't already hit hard — e.g.
+        // for a pure Normal-type Fakemon (whose STAB never resists/hits 2x anything),
+        // any strong off-type attack with a genuine 2x matchup qualifies, but a
+        // neutral-everywhere off-type move does not; it's just Flavour.
+        function moveHasMeaningfulCoverage(moveType, ownTypes) {
+            for (const defender of POKEMON_TYPES) {
+                const stabBest = Math.max(...ownTypes.map(t => TYPE_EFFECTIVENESS[t]?.[defender] ?? 1), 0);
+                const coverageMult = TYPE_EFFECTIVENESS[moveType]?.[defender] ?? 1;
+                if (stabBest < 2 && coverageMult >= 2) return true;
+            }
+            return false;
+        }
 
         function classifyMoveRole(move, types) {
             if (SPEED_MOVE_NAMES.has(move.name) && move.name !== 'Dragon Dance') return 'speed';
             if (SETUP_MOVE_NAMES.has(move.name)) return 'setup';
             if (RECOVERY_MOVE_NAMES.has(move.name)) return 'recovery';
             if (UTILITY_MOVE_NAMES.has(move.name)) return 'utility';
-            if (move.category !== 'Status' && (move.basePower || 0) > 0) {
-                const isLowValue = (move.basePower || 0) < MIN_STAB_COVERAGE_BP
+            const bp = effectiveMoveBasePower(move);
+            if (move.category !== 'Status' && bp > 0) {
+                const isLowValue = bp < MIN_STAB_COVERAGE_BP
                     || CONDITIONAL_TYPE_MOVE_NAMES.has(move.name)
                     || FILLER_ATTACK_MOVE_NAMES.has(move.name);
                 if (isLowValue) return 'flavour';
-                return types.includes(move.type) ? 'stab' : 'coverage';
+                if (types.includes(move.type)) return 'stab';
+                return moveHasMeaningfulCoverage(move.type, types) ? 'coverage' : 'flavour';
             }
             return 'flavour';
         }
@@ -1480,6 +1519,26 @@ function handleMoveKey(e) {
 
             const buckets = { stab: [], flavour: [], setup: [], speed: [], recovery: [], utility: [], coverage: [] };
             candidates.forEach(e => buckets[classifyMoveRole(e.move, profile.types)].push(e));
+
+            // Collapse "slight variations" of the same job (e.g. five different mid-power
+            // Normal physical moves for a Normal-type Fakemon) down to the strongest
+            // representative per type+category, so the list doesn't fill up with
+            // near-identical redundant picks.
+            const dedupeByTypeCategory = arr => {
+                const best = new Map();
+                arr.forEach(e => {
+                    const key = `${e.move.type}|${e.move.category}`;
+                    const bp = effectiveMoveBasePower(e.move);
+                    const current = best.get(key);
+                    if (!current || bp > current.bp + 5 || (bp >= current.bp - 5 && e.weight > current.entry.weight)) {
+                        best.set(key, { entry: e, bp });
+                    }
+                });
+                return Array.from(best.values()).map(v => v.entry);
+            };
+            buckets.stab = dedupeByTypeCategory(buckets.stab);
+            buckets.coverage = dedupeByTypeCategory(buckets.coverage);
+
             Object.values(buckets).forEach(arr => arr.sort((a, b) => b.weight - a.weight));
 
             const reasonFor = e => e.learnMethod === 'level'
@@ -1493,7 +1552,7 @@ function handleMoveKey(e) {
                 sections.push({ label, moves: arr.slice(0, limit).map(e => ({ move: e.move, reason: reasonFor(e), learnMethod: e.learnMethod, level: e.level })) });
             };
 
-            pushSection('STAB Moves', buckets.stab, 6);
+            pushSection('STAB Moves', buckets.stab, 4);
             pushSection('Flavour Moves', buckets.flavour, 4);
             pushSection('Setup', buckets.setup, 3);
             if (profile.stats.spe < 80) pushSection('Speed Control', buckets.speed, 1);

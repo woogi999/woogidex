@@ -136,6 +136,21 @@ export const api = {};
             setIncludeOwnFakemonsInRecommendedMoves(!getIncludeOwnFakemonsInRecommendedMoves());
         }
 
+        function getUseRawStatBulk() {
+            // Defaults to on: absent/unset key means "not explicitly disabled".
+            return localStorage.getItem('woogidex-raw-stat-bulk') !== 'false';
+        }
+
+        function setUseRawStatBulk(enabled) {
+            localStorage.setItem('woogidex-raw-stat-bulk', enabled ? 'true' : 'false');
+            updateSettingsUI();
+            if (typeof api.updateBulkComparison === 'function') api.updateBulkComparison();
+        }
+
+        function toggleUseRawStatBulk() {
+            setUseRawStatBulk(!getUseRawStatBulk());
+        }
+
         function openSettings() {
             const modal = document.getElementById('settings-modal');
             if (!modal) return;
@@ -151,11 +166,13 @@ export const api = {};
             const ownBulkToggle = document.getElementById('settings-own-bulk-toggle');
             const ownRecommendedToggle = document.getElementById('settings-own-recommended-toggle');
             const use2dToggle = document.getElementById('settings-2d-sprites-toggle');
+            const rawBulkToggle = document.getElementById('settings-raw-bulk-toggle');
             if (darkToggle) darkToggle.checked = dark;
             if (fadeToggle) fadeToggle.checked = fade;
             if (ownBulkToggle) ownBulkToggle.checked = getIncludeOwnFakemonsInBulkComparison();
             if (ownRecommendedToggle) ownRecommendedToggle.checked = getIncludeOwnFakemonsInRecommendedMoves();
             if (use2dToggle) use2dToggle.checked = getUse2DSprites();
+            if (rawBulkToggle) rawBulkToggle.checked = getUseRawStatBulk();
         }
 
         function loadSettings() {
@@ -261,6 +278,7 @@ Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, expor
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
     getUse2DSprites, setUse2DSprites, toggleUse2DSprites,
+    getUseRawStatBulk, setUseRawStatBulk, toggleUseRawStatBulk,
     updateSettingsUI, loadSettings, showToast,
     initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor
 });

@@ -538,6 +538,13 @@
                         <span class="settings-toggle-slider"></span>
                     </span>
                 </label>
+                <label class="settings-row" for="settings-raw-bulk-toggle">
+                    <span class="settings-label">Calculate Bulk From Raw Stat</span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-raw-bulk-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleUseRawStatBulk()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
             </div>
         </div>
     </div>
@@ -677,6 +684,7 @@
                         <label><input type="checkbox" value="dance"> Dance</label>
                         <label><input type="checkbox" value="powder"> Powder</label>
                         <label><input type="checkbox" value="heal"> Heal</label>
+                        <label><input type="checkbox" value="thawing"> Thaws User</label>
                         <label><input type="checkbox" value="charge"> Charge</label>
                         <label><input type="checkbox" value="recharge"> Recharge</label>
                         <label><input type="checkbox" value="highcrit"> High Crit</label>

@@ -22,7 +22,8 @@ import { updatePreview } from './editor-core.js';
                 support: { name: 'Support', attack: null, natureFast: null, natureSlow: null },
                 pivot: { name: 'Pivot', attack: null, natureFast: null, natureSlow: null },
                 setupSweeper: { name: 'Setup Sweeper', attack: null, natureFast: null, natureSlow: null },
-                hazard: { name: 'Hazard Setter/Remover', attack: null, natureFast: null, natureSlow: null }
+                hazard: { name: 'Hazard Setter/Remover', attack: null, natureFast: null, natureSlow: null },
+                screens: { name: 'Screens', attack: null, natureFast: 'Timid', natureSlow: 'Bold' }
             },
             move: {
                 stab: 34,
@@ -71,22 +72,27 @@ import { updatePreview } from './editor-core.js';
             screens: new Set(['Reflect','Light Screen','Aurora Veil'])
         };
 
+        // Setup moves that boost Speed alongside their main stat(s), used to give
+        // Quiver Dance/Shell Smash/etc. proper credit over Speed-less equivalents
+        // like Calm Mind/Nasty Plot when the Fakemon still benefits from more Speed.
+        const SAMPLE_SET_SETUP_SPEED_BOOST = new Set(['Quiver Dance','Shell Smash','Shift Gear','Dragon Dance','Victory Dance']);
+
         // Competitive-set filters. These are intentionally explicit so the generator
         // prefers moves that actually belong on a serious set instead of merely having
         // high BP or being technically legal.
         const SAMPLE_SET_BAD_DEFAULT_MOVES = new Set([
             // Generic/weak attacks that should never be auto-selected for a competitive
             // sample set. These remain perfectly legal in the Fakemon's learnset and can
-            // still be selected manually.
+            // still be selected manually. Genuinely useful tools (priority moves like
+            // Mach Punch/Bullet Punch, coverage like Aerial Ace/Snarl, trapping moves
+            // like Pursuit, etc.) are deliberately NOT in this list; their value is
+            // instead judged by their actual stats via sampleMoveIntrinsicScore.
             'Covet','Thief','Tackle','Pound','Scratch','Constrict','Present','Round','Snore',
             'Bide','Rage','Fury Attack','Fury Swipes','Take Down','Submission','Headbutt',
             'Mega Drain','Absorb','Vine Whip','Razor Leaf','Ember','Water Gun','Bubble',
-            'Powder Snow','Gust','Peck','Pursuit','Astonish','Lick','Aerial Ace',
-            'Quick Attack','Feint','Vacuum Wave','Mach Punch','Bullet Punch',
-            'Nuzzle','Pounce','Mud Shot','Bulldoze','Rock Smash','Low Sweep',
-            'Fling','Natural Gift','Echoed Voice','Uproar','Swift','Snarl',
-            'Struggle Bug','Infestation','Inflict',
-            'Focus Energy','Laser Focus'
+            'Powder Snow','Gust','Peck','Astonish','Lick',
+            'Nuzzle','Pounce','Fling','Natural Gift','Echoed Voice',
+            'Struggle Bug','Infestation'
         ]);
 
         // Additional low-value status/utility moves. The sample-set generator is
@@ -96,16 +102,79 @@ import { updatePreview } from './editor-core.js';
             'Safeguard','Mist','Lucky Chant','Sweet Scent','Odor Sleuth','Foresight',
             'Flash','Sand Attack','Smokescreen','Kinesis','Mud-Slap','Tail Whip',
             'Growl','Leer','String Shot','Scary Face','Baby-Doll Eyes','Play Nice',
-            'Tickle','Noble Roar','Screech','Fake Tears','Metal Sound','Defog',
+            'Tickle','Noble Roar','Screech','Fake Tears','Metal Sound',
             'Harden','Withdraw','Defense Curl','Minimize','Double Team','Swagger',
             'Flatter','Teeter Dance','Confide','Charm','Captivate','Attract',
             'Sweet Kiss','Flatter','Supersonic','Confusion','Kinesis','Smog',
             'Poison Gas','Smokescreen','Sand Attack','Water Sport','Mud Sport',
             'Lucky Chant','Magic Coat'
         ]);
+        // Moves whose damage also functions as a trapping effect. These are not
+        // general-purpose coverage/utility: they should only appear when the set has
+        // an identifiable trapping gameplan (explicit trapping move/ability).
+        const SAMPLE_SET_TRAPPING_DAMAGE_MOVES = new Set([
+            'Bind','Clamp','Fire Spin','Magma Storm','Sand Tomb','Snap Trap',
+            'Whirlpool','Wrap','Infestation'
+        ]);
+
+        const SAMPLE_SET_PASSIVE_DAMAGE_MOVES = new Set([
+            'Seismic Toss','Night Shade','Psywave','Endeavor'
+        ]);
+
+        const SAMPLE_SET_EXPLICIT_TRAPPING_MOVES = new Set([
+            'Mean Look','Block','Spider Web','Jaw Lock','Anchor Shot','Spirit Shackle',
+            'Thousand Waves','Octolock'
+        ]);
+
+        const SAMPLE_SET_TRAPPING_ABILITIES = /shadow tag|arena trap|magnet pull/i;
+
+        // Powerful but conditional attacks should not be treated as ordinary coverage.
+        // They become reasonable when the set explicitly supplies the condition.
+        // Moves whose normal value depends heavily on an external battle condition.
+        // These should not be treated as generic coverage unless the set itself supplies
+        // the condition (or the Pokemon has an ability that supplies it automatically).
+        //
+        // Weather:
+        //   Sun  -> Solar Beam, Solar Blade, Weather Ball
+        //   Rain -> Thunder, Hurricane, Electro Shot
+        //   Snow -> Blizzard
+        //
+        // Terrain:
+        //   Terrain Pulse, Nature Power, Rising Voltage, Grassy Glide,
+        //   Expanding Force, Psyblade
+        //
+        // Aurora Veil is utility rather than coverage, but it is also conditional and
+        // is handled by the same support check below.
+        const SAMPLE_SET_CONDITIONAL_COVERAGE_MOVES = new Set([
+            'Solar Beam','Solar Blade','Weather Ball',
+            'Thunder','Hurricane','Electro Shot','Blizzard',
+            'Terrain Pulse','Nature Power','Rising Voltage',
+            'Grassy Glide','Expanding Force','Psyblade'
+        ]);
+
+        const SAMPLE_SET_WEATHER_SETTERS = new Set([
+            'Sunny Day','Rain Dance','Sandstorm','Snowscape','Hail'
+        ]);
+
+        const SAMPLE_SET_TERRAIN_SETTERS = new Set([
+            'Electric Terrain','Grassy Terrain','Misty Terrain','Psychic Terrain'
+        ]);
+
+        const SAMPLE_SET_EXTERNAL_CONDITION_SETTERS = new Set([
+            ...SAMPLE_SET_WEATHER_SETTERS,
+            ...SAMPLE_SET_TERRAIN_SETTERS,
+            'Gravity','Trick Room','Wonder Room','Magic Room'
+        ]);
+
         const SAMPLE_SET_SELF_KO_MOVES = new Set([
             'Explosion','Self-Destruct','Misty Explosion','Final Gambit','Memento','Healing Wish','Lunar Dance'
         ]);
+        // Moves that cost the user a huge, fixed chunk of their own max HP to use
+        // (independent of recoil-from-damage-dealt, which scales with the hit and is
+        // penalized separately). These are especially bad on a set that wants to set up
+        // first and then stick around to sweep, since half their HP is gone before they
+        // even get to attack with their boosted stats.
+        const SAMPLE_SET_HEAVY_SELF_DAMAGE_MOVES = new Set(['Steel Beam','Mind Blown','Chloroblast','Light of Ruin']);
         const SAMPLE_SET_COVERAGE_TYPES = ['Normal','Fire','Water','Electric','Grass','Ice','Fighting','Poison','Ground','Flying','Psychic','Bug','Rock','Ghost','Dragon','Dark','Steel','Fairy'];
         // Premium attacks that should survive competitive-usefulness filtering even when
         // they have little/no sample-set frequency. These are not blanket auto-picks;
@@ -114,6 +183,15 @@ import { updatePreview } from './editor-core.js';
             'V-create','Gigaton Hammer','Make It Rain','Fleur Cannon','Bolt Beak','Fishious Rend',
             'Headlong Rush','Glacial Lance','Astral Barrage','Collision Course','Electro Drift',
             'Population Bomb','Last Respects','Rage Fist','Expanding Force','Surging Strikes'
+        ]);
+
+        // Strong attacks whose stat drops are especially valuable with Contrary.
+        // Keep this separate from the generic premium-attack list so Contrary can
+        // recognize the strategic interaction rather than merely rewarding raw BP.
+        const SAMPLE_SET_CONTRARY_SYNERGY_MOVES = new Set([
+            'V-create','Superpower','Close Combat','Leaf Storm','Overheat',
+            'Draco Meteor','Make It Rain','Psycho Boost','Fleur Cannon',
+            'Headlong Rush','Contrary Boost Move'
         ]);
 
         function sampleSetHash(value) {
@@ -200,6 +278,61 @@ import { updatePreview } from './editor-core.js';
             return move.category === 'Physical' || move.category === 'Special';
         }
 
+        // Showdown lists basePower as 0 for moves whose damage is computed dynamically
+        // in battle (weight/HP/weather-based, etc). Falling back to 0 here would make
+        // the scoring system treat genuinely strong moves like Facade, Gyro Ball, or
+        // Stored Power as worthless. These are rough "typical case" estimates used only
+        // for scoring/filtering purposes, not for anything shown to the user.
+        const SAMPLE_SET_VARIABLE_BP_ESTIMATE = {
+            'Low Kick': 80, 'Grass Knot': 80, 'Heavy Slam': 80, 'Heat Crash': 80,
+            'Gyro Ball': 80, 'Electro Ball': 60, 'Flail': 100, 'Reversal': 100,
+            'Wring Out': 90, 'Crush Grip': 90, 'Punishment': 60, 'Payback': 50,
+            'Facade': 70, 'Hex': 65, 'Acrobatics': 75, 'Stored Power': 70, 'Power Trip': 70,
+            'Return': 100, 'Frustration': 60, 'Rollout': 60, 'Ice Ball': 60,
+            'Triple Kick': 60, 'Water Shuriken': 40, 'Beat Up': 60, 'Trump Card': 60,
+            'Weather Ball': 100, 'Terrain Pulse': 100, 'Magnitude': 70, 'Present': 60,
+            'Foul Play': 95, 'Spit Up': 100, 'Eruption': 100, 'Water Spout': 100,
+            'Dragon Energy': 100, 'Last Respects': 100, 'Rage Fist': 90, 'Barb Barrage': 60,
+            'Nature Power': 80, 'Fury Cutter': 40, 'Freeze-Dry': 70
+        };
+
+        function sampleEffectiveBasePower(move) {
+            const raw = Number(move.basePower || 0);
+            if (raw > 0) return raw;
+            return SAMPLE_SET_VARIABLE_BP_ESTIMATE[move.name] || 0;
+        }
+
+        // Standard 2-5 hit moves land ~3.1 hits on average (35/35/15/15% for 2/3/4/5
+        // hits); fixed 2-hit and 3-hit moves get their real average instead.
+        const SAMPLE_SET_MULTIHIT_AVG_MULT = {
+            'Bullet Seed': 3.1, 'Rock Blast': 3.1, 'Icicle Spear': 3.1, 'Pin Missile': 3.1,
+            'Tail Slap': 3.1, 'Bone Rush': 3.1, 'Scale Shot': 3.1, 'Population Bomb': 4.4,
+            'Double Kick': 2, 'Twineedle': 2, 'Dual Chop': 2, 'Dragon Darts': 2,
+            'Gear Grind': 2, 'Double Hit': 2, 'Surging Strikes': 3
+        };
+
+        // Self-contained, network-independent quality estimate for a damaging move.
+        // Folds in effective power, accuracy, priority (which is extremely valuable
+        // competitively since it bypasses Speed entirely), multi-hit averages, and
+        // guaranteed drain, without relying on any external usage-stats fetch.
+        function sampleMoveIntrinsicScore(move) {
+            if (!sampleIsDamaging(move)) return 0;
+            const bp = sampleEffectiveBasePower(move);
+            if (!bp) return 0;
+            const accRaw = move.accuracy;
+            const acc = (accRaw === true || accRaw == null) ? 100 : (Number(accRaw) || 100);
+            let score = bp * Math.min(1, acc / 100);
+            score *= SAMPLE_SET_MULTIHIT_AVG_MULT[move.name] || 1;
+            if (move.priority > 0) score += 20 + move.priority * 8;
+            const flags = move.flags || {};
+            if (flags.drain) score += 10;
+            if (flags.recoil) score -= 8;
+            const desc = (move.desc || '').toLowerCase();
+            if (/flinch|paraly|burn|freeze|poison|lowers? the target|lower(s)? its target/.test(desc)) score += 6;
+            if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name)) score += 20;
+            return score;
+        }
+
         function sampleTypeEffectiveness(moveType, defenderType) {
             const chart = {
                 Normal:{Rock:.5,Steel:.5,Ghost:0}, Fire:{Grass:2,Ice:2,Bug:2,Steel:2,Fire:.5,Water:.5,Rock:.5,Dragon:.5},
@@ -276,7 +409,7 @@ import { updatePreview } from './editor-core.js';
             const scores = {
                 physicalSweeper: 0, specialSweeper: 0, wallbreaker: 0,
                 bulkyAttacker: 0, defensive: 0, support: 0, pivot: 0,
-                setupSweeper: 0, hazard: 0
+                setupSweeper: 0, hazard: 0, screens: 0
             };
 
             // Offensive profile: reward both the stat and the existence of genuinely
@@ -326,11 +459,21 @@ import { updatePreview } from './editor-core.js';
                 if (bulk >= 270) scores.bulkyAttacker += 10;
             }
 
-            scores.pivot += pivot.length * 30 + Math.max(0, stats.spe - 70) * 0.35 + utility.length * 2;
+            // Likewise, Pivot only makes sense with an actual pivot move (U-turn, Volt
+            // Switch, etc.) on the learnset.
+            if (pivot.length) {
+                scores.pivot += pivot.length * 30 + Math.max(0, stats.spe - 70) * 0.35 + utility.length * 2;
+            }
             scores.setupSweeper += setup.length * 30 + Math.max(0, stats.spe - 75) * 0.45;
             scores.defensive += defensiveSetup.length * 8;
             scores.bulkyAttacker += defensiveSetup.length * 4;
-            scores.hazard += hazards.length * 34 + removal.length * 20 + utility.length * 3;
+            // The Hazard role only makes sense if the Fakemon actually learns a hazard
+            // move. Removal (Rapid Spin/Defog) and generic utility moves used to inflate
+            // this score on their own, which could win the role for a Fakemon with zero
+            // hazard moves and produce a "hazard set" with no hazard in it.
+            if (hazards.length) {
+                scores.hazard += hazards.length * 40 + removal.length * 8 + utility.length * 2;
+            }
 
             if (stats.atk >= 110 && hasPhysicalSTAB) scores.physicalSweeper += 10;
             if (stats.spa >= 110 && hasSpecialSTAB) scores.specialSweeper += 10;
@@ -351,6 +494,13 @@ import { updatePreview } from './editor-core.js';
             }
             if (/prankster|magic bounce/.test(abilityText)) scores.support += 14;
 
+            if (sampleHasScreensGameplan(profile)) {
+                scores.screens += 95;
+                scores.screens += pivot.length * 20;
+                if (fast) scores.screens += 20;
+                if (/prankster/.test(abilityText)) scores.screens += 25;
+            }
+
             return scores;
         }
 
@@ -364,7 +514,8 @@ import { updatePreview } from './editor-core.js';
                 support: { attack: 'either', require: 'utility', preferRecovery: true },
                 pivot: { attack: 'either', require: 'pivot', preferSpeed: true },
                 setupSweeper: { attack: 'either', require: 'damaging', preferSetup: true, preferSpeed: true },
-                hazard: { attack: 'either', require: 'utility', preferHazard: true }
+                hazard: { attack: 'either', require: 'utility', preferHazard: true },
+                screens: { attack: 'either', require: 'utility', preferSpeed: true }
             }[role];
         }
 
@@ -410,7 +561,14 @@ import { updatePreview } from './editor-core.js';
             if (/iron fist/.test(n)) score += profile.moves.some(m => /punch/i.test(m.name)) ? 20 : 0;
             if (/sharpness/.test(n)) score += profile.moves.some(m => /slash|blade|sword|cut/i.test(m.name)) ? 20 : 0;
             if (/mega launcher/.test(n)) score += profile.moves.some(m => /pulse/i.test(m.name)) ? 20 : 0;
-            if (/contrary/.test(n)) score += profile.moves.some(m => /lower|drop|v-create|leaf storm|superpower|overheat/i.test(m.name + ' ' + (m.desc || ''))) ? 28 : -4;
+            // Contrary is a set-level ability. Do NOT reward it merely because the
+            // learnset contains a Contrary-friendly move; that produces the exact
+            // failure mode where Contrary is selected on one sample while V-create
+            // appears on another. The ability is only valuable when the chosen set
+            // actually contains a stat-dropping attack it can reverse.
+            if (/contrary/.test(n)) {
+                score -= 8;
+            }
             if (/speed boost/.test(n)) score += offensive && s.spe >= 70 ? 22 : 4;
             if (/clear body|white smoke/.test(n)) score += bulky ? 10 : 4;
             if (/intimidate/.test(n)) score += bulky && s.def >= s.spd ? 24 : 8;
@@ -449,10 +607,18 @@ import { updatePreview } from './editor-core.js';
                 || hasChosen('Swords Dance','Nasty Plot','Calm Mind','Iron Defense','Amnesia','Acid Armor','Cotton Guard','Bulk Up','Dragon Dance','Quiver Dance','Coil','Curse','Shell Smash','Rock Polish','Agility','Autotomize');
 
             if (/contrary/.test(n)) {
-                if (hasSelfDropMove) score += 42;
-                else score -= 28;
-                if (hasDirectRaise) score -= 55;
-                if (hasChosen('Swords Dance','Nasty Plot','Calm Mind','Iron Defense','Amnesia','Acid Armor','Cotton Guard','Bulk Up','Dragon Dance','Quiver Dance','Coil','Curse','Shell Smash','Rock Polish','Agility','Autotomize')) score -= 70;
+                // Only select Contrary when the actual four-move set contains a
+                // meaningful stat-dropping attack. One such move is enough to make
+                // the ability viable; multiple compatible moves make it substantially
+                // more compelling.
+                const contraryCount = chosen.filter(m =>
+                    SAMPLE_SET_CONTRARY_SYNERGY_MOVES.has(m.name) ||
+                    /(?:lowers?|drops?).*(?:user|its).*(?:attack|defen|sp\.? atk|sp\.? def|speed|stats)/i.test(`${m.name} ${m.desc || ''}`)
+                ).length;
+                if (contraryCount > 0) score += 55 + Math.min(35, (contraryCount - 1) * 18);
+                else score -= 60;
+
+                if (hasDirectRaise) score -= 80;
             }
             if (/simple/.test(n)) {
                 score += hasDirectRaise ? 28 : -8;
@@ -504,6 +670,13 @@ import { updatePreview } from './editor-core.js';
         }
 
         function sampleMoveCompatibleWithRole(move, profile, role) {
+            // Screens are a dedicated archetype. Reflect/Light Screen/Aurora Veil are
+            // never generic defensive utility, even if the Pokemon happens to learn one.
+            if (sampleMoveKind(move).screens) {
+                if (role !== 'screens') return false;
+                if (!sampleHasScreensGameplan(profile)) return false;
+            }
+
             // A damaging move must use the offensive category the set is built around.
             // This is a hard compatibility rule: it prevents things like Eruption from
             // appearing on a physical sweeper simply because its raw BP is high.
@@ -555,32 +728,175 @@ import { updatePreview } from './editor-core.js';
             // Only status moves with explicit recovery semantics count as recovery.
             if (kind.recovery && move.category === 'Status') return true;
             if (!sampleIsDamaging(move)) return false;
-            const bp = Number(move.basePower || 0);
-            const usefulness = sampleCompetitiveUsefulness(move);
+            const bp = sampleEffectiveBasePower(move);
             const accuracy = move.accuracy === true || move.accuracy == null || Number(move.accuracy) >= 75;
+            // A move's own combat stats (power/accuracy/priority/secondary effects) are
+            // the primary signal here, not ladder-usage frequency, so this stays
+            // reliable even without any external usage-stats data loaded.
+            const intrinsic = sampleMoveIntrinsicScore(move);
             // Usage is a preference, not a legality/usefulness gate. Strong/signature
             // attacks such as V-create and Gigaton Hammer must remain viable even when
             // they have little or no ladder usage history.
             if (!accuracy) return (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name) && bp >= 100 && Number(move.accuracy) >= 65) || (bp >= 120 && Number(move.accuracy) >= 65);
             if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name) && bp >= 90) return true;
-            if (bp >= 120) return true;
-            if (bp >= 100) return true;
-            if (bp >= 80 && usefulness >= 1.05) return true;
-            return bp >= 60 && usefulness >= 2.0;
+            // ~58 roughly corresponds to a clean 60bp always-hit move, a 72bp neutral
+            // attack, or a 40bp priority move; comfortably below strong STAB attacks.
+            return intrinsic >= 58;
+        }
+
+        function sampleIsPassiveProfile(profile, role) {
+            if (!['defensive','support','hazard'].includes(role)) return false;
+
+            const damaging = profile.moves.filter(m => sampleIsDamaging(m) && sampleMoveIsActuallyUseful(m));
+            const strongAttacks = damaging.filter(m => (m.basePower || 0) >= 80).length;
+            const atk = Number(profile.stats.atk || 0);
+            const spa = Number(profile.stats.spa || 0);
+
+            // Fixed-damage/attrition attacks are for Pokemon that genuinely cannot
+            // threaten opponents well through normal attacks.
+            return strongAttacks <= 1 && Math.max(atk, spa) < 90;
+        }
+
+        function sampleHasTrappingGameplan(profile, chosen, role = '') {
+            const chosenNames = new Set((chosen || []).map(m => m.name));
+
+            // Shadow Tag / Arena Trap / Magnet Pull already provide the trapping
+            // mechanism. Do NOT add Fire Spin / Whirlpool / Magma Storm just because
+            // one of these abilities is present.
+            if (SAMPLE_SET_TRAPPING_ABILITIES.test((profile.abilities || []).join(' '))) return false;
+
+            // An explicit trapping move means trapping is deliberately part of the set.
+            if ([...SAMPLE_SET_EXPLICIT_TRAPPING_MOVES].some(name => chosenNames.has(name))) return true;
+
+            // Very passive Pokemon may use trapping damage as their actual attrition plan.
+            return sampleIsPassiveProfile(profile, role);
+        }
+
+        function sampleHasScreensGameplan(profile) {
+            const moveNames = new Set(profile.moves.map(m => m.name));
+            const hasReflect = moveNames.has('Reflect');
+            const hasLightScreen = moveNames.has('Light Screen');
+            const hasAuroraVeil = moveNames.has('Aurora Veil');
+            const hasPivot = profile.moves.some(m => sampleMoveKind(m).pivot);
+            const prankster = /prankster/i.test((profile.abilities || []).join(' '));
+            const fast = Number(profile.stats.spe || 0) >= 100;
+            const snowAbility = /snow warning/i.test((profile.abilities || []).join(' '));
+
+            // A Screens set is an actual archetype, not a generic support set.
+            // Normal Screens requires BOTH Reflect and Light Screen. Aurora Veil is
+            // the only alternative, and it requires an actual snow-setting ability.
+            const dualScreens = hasReflect && hasLightScreen;
+            const veilScreens = hasAuroraVeil && snowAbility;
+
+            // It also needs a credible way to establish screens: fast enough to act
+            // before most threats or Prankster, plus a pivoting move to retain momentum.
+            return (dualScreens || veilScreens) && hasPivot && (fast || prankster);
+        }
+
+        function sampleIsScreensMoveAllowed(move, profile, role, chosen) {
+            if (!sampleMoveKind(move).screens) return true;
+            if (role !== 'screens' || !sampleHasScreensGameplan(profile)) return false;
+
+            const names = new Set(profile.moves.map(m => m.name));
+            const hasReflect = names.has('Reflect');
+            const hasLightScreen = names.has('Light Screen');
+            const hasVeil = names.has('Aurora Veil');
+            const snowAbility = /snow warning/i.test((profile.abilities || []).join(' '));
+
+            if (move.name === 'Aurora Veil') return hasVeil && snowAbility;
+            if (move.name === 'Reflect') return hasReflect && hasLightScreen && !hasVeil;
+            if (move.name === 'Light Screen') return hasLightScreen && hasReflect && !hasVeil;
+            return false;
+        }
+
+        function sampleHasExternalCondition(profile, chosen, condition) {
+            const chosenNames = new Set((chosen || []).map(m => m.name));
+            const abilityText = (profile.abilities || []).join(' ').toLowerCase();
+
+            if (condition === 'sun') {
+                return chosenNames.has('Sunny Day') || /drought|desolate land|orichalcum pulse/.test(abilityText);
+            }
+            if (condition === 'rain') {
+                return chosenNames.has('Rain Dance') || /drizzle|primordial sea/.test(abilityText);
+            }
+            if (condition === 'sand') {
+                return chosenNames.has('Sandstorm') || /sand stream|sand spit/.test(abilityText);
+            }
+            if (condition === 'snow') {
+                return chosenNames.has('Snowscape') || chosenNames.has('Hail') || /snow warning/.test(abilityText);
+            }
+            if (condition === 'terrain') {
+                return SAMPLE_SET_TERRAIN_SETTERS.has([...chosenNames].find(n => SAMPLE_SET_TERRAIN_SETTERS.has(n))) ||
+                    /electric surge|grassy surge|misty surge|psychic surge/.test(abilityText);
+            }
+
+            return false;
+        }
+
+        function sampleHasConditionalCoverageSupport(move, profile, chosen) {
+            if (!SAMPLE_SET_CONDITIONAL_COVERAGE_MOVES.has(move.name)) return true;
+
+            // Sun-dependent attacks.
+            if (['Solar Beam','Solar Blade','Weather Ball'].includes(move.name)) {
+                return sampleHasExternalCondition(profile, chosen, 'sun');
+            }
+
+            // Rain-dependent / rain-enhanced attacks. Electro Shot is especially
+            // inappropriate as generic coverage because it normally requires rain.
+            if (['Thunder','Hurricane','Electro Shot'].includes(move.name)) {
+                return sampleHasExternalCondition(profile, chosen, 'rain');
+            }
+
+            // Blizzard is the snow analogue.
+            if (move.name === 'Blizzard') {
+                return sampleHasExternalCondition(profile, chosen, 'snow');
+            }
+
+            // Terrain-dependent moves should only be selected when the set supplies
+            // a terrain or the ability supplies one automatically.
+            if (['Terrain Pulse','Nature Power','Rising Voltage','Grassy Glide','Expanding Force','Psyblade'].includes(move.name)) {
+                return sampleHasExternalCondition(profile, chosen, 'terrain');
+            }
+
+            return false;
         }
 
         function sampleHasGoodCoverage(move, profile, chosen) {
             if (!sampleIsDamaging(move) || profile.types.includes(move.type)) return false;
             if (!sampleMoveIsActuallyUseful(move)) return false;
+
+            // Trapping damage is not generic coverage. Fire Spin / Whirlpool /
+            // Magma Storm / etc. need an actual trapping plan.
+            if (SAMPLE_SET_TRAPPING_DAMAGE_MOVES.has(move.name) && !sampleHasTrappingGameplan(profile, chosen)) {
+                return false;
+            }
+
+            // Conditional/weather/terrain attacks should not be treated as normal
+            // coverage without the condition that makes them worthwhile.
+            if (!sampleHasConditionalCoverageSupport(move, profile, chosen)) return false;
+
+            const bp = sampleEffectiveBasePower(move);
+
+            // Coverage gets a substantially higher quality floor than ordinary
+            // "useful" attacks. Weak attacks should not occupy an offensive coverage
+            // slot merely because they happen to hit something super-effectively.
+            const premiumCoverage = SAMPLE_SET_PREMIUM_ATTACKS.has(move.name);
+            if (bp < 80 && !(premiumCoverage && bp >= 70)) return false;
+
+            // Air Slash is perfectly legitimate as STAB, but should not be treated as
+            // strong off-type coverage merely because it is a legal damaging move.
+            if (move.name === 'Air Slash' && !profile.types.includes(move.type)) return false;
+
             const chosenGood = chosen.filter(sampleMoveIsActuallyUseful);
             const stabTypes = profile.types;
             let best = 1;
+
             for (const defender of SAMPLE_SET_COVERAGE_TYPES) {
                 const stabBest = Math.max(...stabTypes.map(t => sampleTypeEffectiveness(t, defender)));
                 const cov = sampleTypeEffectiveness(move.type, defender);
                 if (stabBest < 2 && cov >= 2) best = Math.max(best, cov);
             }
-            // Don't call a coverage move "coverage" if it merely adds another neutral hit.
+
             if (best < 2) return false;
             if (chosenGood.some(m => !profile.types.includes(m.type) && m.type === move.type)) return false;
             return true;
@@ -596,6 +912,25 @@ import { updatePreview } from './editor-core.js';
             if (SAMPLE_SET_BAD_DEFAULT_MOVES.has(move.name)) return -9000;
             if (kind.selfKO) return -8500;
 
+            // Trapping damage is specialized tech, not generic utility. Do not let
+            // Fire Spin/Whirlpool/etc. win simply because their raw damage/secondary
+            // effect score happens to look attractive.
+            if (SAMPLE_SET_TRAPPING_DAMAGE_MOVES.has(move.name) && !sampleHasTrappingGameplan(profile, chosen, role)) {
+                return -7000;
+            }
+
+            if (SAMPLE_SET_PASSIVE_DAMAGE_MOVES.has(move.name) && !sampleIsPassiveProfile(profile, role)) {
+                return -7000;
+            }
+
+            if (!sampleIsScreensMoveAllowed(move, profile, role, chosen)) {
+                return -7000;
+            }
+
+            if (SAMPLE_SET_CONDITIONAL_COVERAGE_MOVES.has(move.name) && !sampleHasConditionalCoverageSupport(move, profile, chosen)) {
+                return -7000;
+            }
+
             const usefulness = sampleCompetitiveUsefulness(move);
             score += usefulness * SAMPLE_SET_CONFIG.move.usefulness;
             if (!sampleIsDamaging(move) && !kind.recovery && !kind.hazard && !kind.removal && !kind.pivot && !kind.disruption && !kind.speedControl && !kind.screens && !kind.setup && !kind.defensiveSetup) score -= 40;
@@ -609,15 +944,28 @@ import { updatePreview } from './editor-core.js';
                 // Strong attacks deserve to compete on their actual combat value, not
                 // merely on usage frequency. This is especially important for legal
                 // Fakemon movepools containing moves such as V-create or Gigaton Hammer.
-                score += Math.min(10, (move.basePower || 0) * 0.05);
-                if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name)) score += 12;
-                if ((move.basePower || 0) >= 120 && (move.accuracy === true || move.accuracy == null || Number(move.accuracy) >= 80)) score += 8;
+                const effBp = sampleEffectiveBasePower(move);
+                score += Math.min(10, effBp * 0.05);
+                if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name)) score += 24;
+
+                // V-create, Superpower, Close Combat, Boomburst, etc. are good
+                // attacks in their own right. Contrary is an optional synergy, not
+                // a prerequisite for selecting them.
+                if (move.name === 'V-create') score += 18;
+                if (move.name === 'Superpower' || move.name === 'Close Combat' || move.name === 'Boomburst') score += 12;
+                if (effBp >= 120 && (move.accuracy === true || move.accuracy == null || Number(move.accuracy) >= 80)) score += 8;
                 if (move.accuracy === true || move.accuracy === undefined) score += SAMPLE_SET_CONFIG.move.accuracy;
                 else if (typeof move.accuracy === 'number') score += (move.accuracy / 100) * SAMPLE_SET_CONFIG.move.accuracy;
                 if (move.priority > 0) score += SAMPLE_SET_CONFIG.move.priority;
                 if (req.attack === move.category) score += 15;
                 if (!sampleMoveIsActuallyUseful(move)) score -= 25;
-                if ((move.basePower || 0) < 60) score -= SAMPLE_SET_CONFIG.move.lowPowerPenalty;
+                if (effBp < 60) score -= SAMPLE_SET_CONFIG.move.lowPowerPenalty;
+                // Big self-damage costs are far worse on a set that needs to survive
+                // multiple turns (setup sweepers, bulky attackers) than on a wallbreaker
+                // that's already committing to trading in one or two hits.
+                const setupReliant = ['physicalSweeper','specialSweeper','setupSweeper','bulkyAttacker'].includes(role);
+                if (SAMPLE_SET_HEAVY_SELF_DAMAGE_MOVES.has(move.name)) score -= setupReliant ? 55 : 18;
+                else if ((move.flags || {}).recoil) score -= setupReliant ? 20 : 8;
             }
 
             // Stat-aware offensive fit. The same move is worth more when it matches the
@@ -625,19 +973,63 @@ import { updatePreview } from './editor-core.js';
             if (sampleIsDamaging(move)) {
                 if (move.category === 'Physical') score += Math.max(-4, Math.min(12, (stats.atk - stats.spa) * 0.18));
                 if (move.category === 'Special') score += Math.max(-4, Math.min(12, (stats.spa - stats.atk) * 0.18));
+
+                // Contrary makes self-dropping attacks a central part of the set.
+                // Without this, a high-BP move can lose to generic STAB/utility even
+                // though the ability fundamentally changes how the move functions.
+                const abilityText = (profile.abilities || []).join(' ').toLowerCase();
+                if (/contrary/.test(abilityText)) {
+                    const moveText = `${move.name} ${move.desc || ''}`.toLowerCase();
+                    const selfDrop = SAMPLE_SET_CONTRARY_SYNERGY_MOVES.has(move.name) ||
+                        /(?:lowers?|drops?).*(?:user|its).*(?:attack|defen|sp\.? atk|sp\.? def|speed|stats)/i.test(moveText);
+                    const directBoost = /(?:raises?|boosts?).*(?:user|its).*(?:attack|defen|sp\.? atk|sp\.? def|speed|stats)/i.test(moveText);
+                    // Contrary synergy is deliberately modest here. The move must
+                    // already be good on its own; this bonus simply makes the ability
+                    // and move converge on the same generated set.
+                    if (selfDrop) score += 28;
+                    if (directBoost) score -= 35;
+                }
             }
 
-            if (kind.setup) score += req.preferSetup ? SAMPLE_SET_CONFIG.move.setup : -12;
+            if (kind.setup) {
+                score += req.preferSetup ? SAMPLE_SET_CONFIG.move.setup : -12;
+
+                const premiumSetup = new Set([
+                    'Shell Smash','Quiver Dance','Victory Dance','Shift Gear','Dragon Dance'
+                ]);
+                const strongSetup = new Set([
+                    'Swords Dance','Nasty Plot','Tail Glow','Geomancy','Fillet Away'
+                ]);
+                const genericSetup = new Set([
+                    'Calm Mind','Bulk Up','Coil','Growth','Work Up','Hone Claws'
+                ]);
+
+                if (premiumSetup.has(move.name)) {
+                    score += 75;
+                    if (req.preferSpeed) score += 25;
+                } else if (strongSetup.has(move.name)) {
+                    score += 30;
+                } else if (genericSetup.has(move.name)) {
+                    score += 4;
+                }
+            }
             if (kind.recovery) {
                 score += req.preferRecovery ? SAMPLE_SET_CONFIG.move.recovery : (role === 'physicalSweeper' || role === 'specialSweeper' || role === 'wallbreaker' ? -5 : 8);
                 if (['defensive','support','hazard','bulkyAttacker'].includes(role)) score += 18;
             }
             if (kind.hazard) score += req.preferHazard ? SAMPLE_SET_CONFIG.move.hazard : (['defensive','support','hazard'].includes(role) ? 10 : -4);
-            if (kind.removal) score += ['defensive','support','pivot','hazard'].includes(role) ? SAMPLE_SET_CONFIG.move.removal : 2;
-            if (kind.pivot) score += role === 'pivot' ? SAMPLE_SET_CONFIG.move.pivot : 3;
+            if (kind.removal) {
+                if (['defensive','support','pivot','hazard'].includes(role)) score += SAMPLE_SET_CONFIG.move.removal + 18;
+                else score += 2;
+            }
+            if (kind.pivot) {
+                if (['defensive','support','hazard','bulkyAttacker'].includes(role)) score += 18;
+                if (role === 'pivot') score += SAMPLE_SET_CONFIG.move.pivot;
+                else score += 3;
+            }
             if (kind.speedControl) score += ['support','pivot'].includes(role) ? SAMPLE_SET_CONFIG.move.speedControl : 1;
             if (kind.disruption) score += ['support','defensive','pivot'].includes(role) ? SAMPLE_SET_CONFIG.move.disruption : 2;
-            if (kind.screens) score += role === 'support' ? 16 : -6;
+            if (kind.screens) score += role === 'screens' ? 55 : -7000;
             score += sampleAbilityScore(move, profile, role);
 
             // Defensive roles should not spend slots on four attacks if they have real
@@ -655,7 +1047,7 @@ import { updatePreview } from './editor-core.js';
                 if (kind.recovery && ok.recovery) score -= SAMPLE_SET_CONFIG.move.redundantRolePenalty * 2;
                 if (kind.hazard && ok.hazard) score -= SAMPLE_SET_CONFIG.move.redundantRolePenalty * 2;
                 if (kind.removal && ok.removal) score -= SAMPLE_SET_CONFIG.move.redundantRolePenalty * 2;
-                if (kind.pivot && ok.pivot) score -= SAMPLE_SET_CONFIG.move.redundantRolePenalty;
+                if (kind.pivot && ok.pivot) score -= SAMPLE_SET_CONFIG.move.redundantRolePenalty * 2;
             });
 
             return score;
@@ -667,18 +1059,31 @@ import { updatePreview } from './editor-core.js';
             const clean = compatible.filter(m => !SAMPLE_SET_SELF_KO_MOVES.has(m.name) && !SAMPLE_SET_BAD_DEFAULT_MOVES.has(m.name));
             const usable = clean.length >= 4 ? clean : compatible.filter(m => !SAMPLE_SET_SELF_KO_MOVES.has(m.name));
             if (usable.length < 4) return [];
+            // A "Hazard Setter/Remover" set with no hazard move, or a "Pivot" set with no
+            // pivot move, is a broken/misleading suggestion. Fail outright instead of
+            // silently falling back to a generic attacking set under the wrong label.
+            if (role === 'hazard' && !usable.some(m => sampleMoveKind(m).hazard)) return [];
+            if (role === 'pivot' && !usable.some(m => sampleMoveKind(m).pivot)) return [];
             const chosen = [];
             const pickBest = (pool, mandatory=false) => {
-                const candidates = pool.filter(m => !chosen.some(c => c.name === m.name)).map(m => ({move:m,score:sampleMoveScore(m,profile,role,chosen)+rng()*0.0001})).sort((a,b)=>b.score-a.score||a.move.name.localeCompare(b.move.name));
+                const candidates = pool
+                    .filter(m => !chosen.some(c => c.name === m.name))
+                    .map(m => ({move:m,score:sampleMoveScore(m,profile,role,chosen)}))
+                    .sort((a,b)=>b.score-a.score||a.move.name.localeCompare(b.move.name));
                 if (!candidates.length) return null;
-                if (mandatory) { chosen.push(candidates[0].move); return candidates[0].move; }
-                const top = candidates.slice(0, Math.min(3,candidates.length));
-                const pick = top[Math.floor(rng()*top.length)].move; chosen.push(pick); return pick;
+                const pick = candidates[0].move;
+                chosen.push(pick);
+                return pick;
             };
             const defensiveRole=['defensive','support','hazard'].includes(role), bulkyRole=role==='bulkyAttacker';
             const offensiveRole=['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker'].includes(role);
             const useful=m=>sampleMoveIsActuallyUseful(m,profile,role);
-            const attacks=usable.filter(m=>sampleIsDamaging(m)&&useful(m));
+            // Pivot moves (U-turn, Volt Switch, etc.) are handled exclusively through the
+            // dedicated "pivot" bucket below. Without this exclusion, a second pivot move
+            // of a different type could sneak in through the generic STAB/coverage pools,
+            // producing a set that's loaded with 2+ pivot moves instead of one pivot plus
+            // real attacking/utility moves.
+            const attacks=usable.filter(m=>sampleIsDamaging(m)&&useful(m)&&!sampleMoveKind(m).pivot);
             const goodStabs=attacks.filter(m=>profile.types.includes(m.type));
             const goodCoverage=attacks.filter(m=>!profile.types.includes(m.type)&&sampleHasGoodCoverage(m,profile,chosen));
             const recovery=usable.filter(m=>sampleMoveKind(m).recovery && m.category === 'Status' && !sampleIsDamaging(m));
@@ -687,6 +1092,13 @@ import { updatePreview } from './editor-core.js';
             const removal=usable.filter(m=>sampleMoveKind(m).removal);
             const pivot=usable.filter(m=>sampleMoveKind(m).pivot);
             const realUtility=usable.filter(m=>{const k=sampleMoveKind(m);return k.hazard||k.removal||k.pivot||k.disruption||k.speedControl||k.screens;});
+            const passiveDamage=usable.filter(m=>SAMPLE_SET_PASSIVE_DAMAGE_MOVES.has(m.name)&&sampleIsPassiveProfile(profile, role));
+
+            if (role === 'screens') {
+                const screenMoves = usable.filter(m => sampleMoveKind(m).screens && sampleIsScreensMoveAllowed(m, profile, role, chosen));
+                if (screenMoves.length) pickBest(screenMoves, true);
+                if (pivot.length) pickBest(pivot, true);
+            }
 
             // Defensive sets: recovery is a structural slot, and at least one genuinely
             // useful attack is preferred. Draining attacks are not recovery for this purpose.
@@ -694,34 +1106,52 @@ import { updatePreview } from './editor-core.js';
                 if (recovery.length) pickBest(recovery, true);
                 if (goodStabs.length) pickBest(goodStabs, true);
                 if (role==='hazard' && hazards.length) pickBest(hazards, true);
-                else if (role==='pivot' && pivot.length) pickBest(pivot, true);
                 else if (removal.length) pickBest(removal, true);
+
+                // Defensive utility should actively use momentum tools when available.
+                // For a Corviknight-style profile this naturally becomes Roost + STAB +
+                // Defog + U-turn instead of filling the fourth slot with a random status
+                // move or screens.
+                if (pivot.length && chosen.length < 4) pickBest(pivot, true);
+
+                if (passiveDamage.length && chosen.length < 4) pickBest(passiveDamage);
+            }
+            // Pivot's defining move is mandatory regardless of the defensive/bulky gate
+            // above, since 'pivot' isn't itself a defensive or bulky-attacker role.
+            if (role==='pivot' && pivot.length) pickBest(pivot, true);
+            if (role==='screens') {
+                const screenMoves = usable.filter(m => sampleMoveKind(m).screens && sampleIsScreensMoveAllowed(m, profile, role, chosen));
+                if (screenMoves.length && chosen.filter(m => sampleMoveKind(m).screens).length < 2) pickBest(screenMoves);
             }
             if (['physicalSweeper','specialSweeper','setupSweeper'].includes(role) && setup.length) pickBest(setup, true);
-            if (offensiveRole && !chosen.some(sampleIsDamaging)) {
+            if ((offensiveRole || role==='pivot') && !chosen.some(sampleIsDamaging)) {
                 if (goodStabs.length) pickBest(goodStabs, true);
             }
             // Prefer a second distinct STAB before coverage when it is actually good.
             const firstStabType = chosen.find(m=>sampleIsDamaging(m)&&profile.types.includes(m.type))?.type;
             const secondStab = goodStabs.filter(m=>m.type!==firstStabType);
-            if (offensiveRole && secondStab.length && chosen.length<4) pickBest(secondStab);
+            if ((offensiveRole || role==='pivot') && secondStab.length && chosen.length<4) pickBest(secondStab);
             // Coverage is optional: only use a genuinely good coverage move when one exists.
-            if (offensiveRole && goodCoverage.length && chosen.length<4) pickBest(goodCoverage);
+            if ((offensiveRole || role==='pivot') && goodCoverage.length && chosen.length<4) pickBest(goodCoverage);
 
             while(chosen.length<4){
                 const remaining=usable.filter(m=>!chosen.some(c=>c.name===m.name));
                 if(!remaining.length) break;
                 const pool = remaining.filter(m => {
                     const k=sampleMoveKind(m);
-                    if (sampleIsDamaging(m)) return useful(m);
+                    if (sampleIsDamaging(m)) {
+                        if (SAMPLE_SET_PASSIVE_DAMAGE_MOVES.has(m.name)) return sampleIsPassiveProfile(profile, role);
+                        if (profile.types.includes(m.type)) return useful(m);
+                        return useful(m) && sampleHasGoodCoverage(m,profile,chosen);
+                    }
+                    if (k.screens) return role === 'screens' && sampleIsScreensMoveAllowed(m, profile, role, chosen);
                     // Only genuinely role-relevant status moves may fill a slot.
                     // Do not fall back to arbitrary legal utility such as Safeguard.
-                    return k.hazard||k.removal||k.pivot||k.disruption||k.speedControl||k.screens||k.setup||k.defensiveSetup || (k.recovery && m.category==='Status');
+                    return k.hazard||k.removal||k.pivot||k.disruption||k.speedControl||k.setup||k.defensiveSetup || (k.recovery && m.category==='Status');
                 });
                 if (!pool.length) break;
                 const candidates=pool.map(m=>{
                     let score=sampleMoveScore(m,profile,role,chosen);
-                    if (sampleIsDamaging(m) && !profile.types.includes(m.type) && !sampleHasGoodCoverage(m,profile,chosen)) score-=18;
                     if (!sampleIsDamaging(m) && !sampleMoveKind(m).recovery && ['physicalSweeper','specialSweeper','wallbreaker','bulkyAttacker'].includes(role)) score-=22;
                     if (defensiveRole && sampleIsDamaging(m) && chosen.some(c=>sampleIsDamaging(c))) score+=6;
                     return {move:m,score:score+rng()*0.0001};
@@ -833,40 +1263,41 @@ import { updatePreview } from './editor-core.js';
             const fast = profile.stats.spe >= 95;
             const bulky = profile.stats.hp + profile.stats.def + profile.stats.spd >= 265;
             const rockWeak = hasHazardWeakness(profile.types);
+            const offensive = ['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role);
 
             if (/guts/.test(abilityText) && !['defensive','support','hazard'].includes(role)) return 'Flame Orb';
             if (/magic guard/.test(abilityText) && ['physicalSweeper','specialSweeper','setupSweeper','wallbreaker'].includes(role) && !bulky) return 'Life Orb';
 
-            // Longevity is the default for bulky roles. Life Orb is intentionally never
-            // selected for a Bulky Attacker, Defensive, Support, Pivot, or Hazard set.
+            // Rock weakness, especially 4x weakness, makes Boots the default item for
+            // offensive Pokemon that are expected to switch in repeatedly.
+            if (rockWeak && offensive) return 'Heavy-Duty Boots';
+
+            if (role === 'screens') return 'Light Clay';
+
             if (role === 'defensive' || role === 'support' || role === 'hazard') {
                 if (hasRecovery) return 'Leftovers';
                 if (hasHazard || hasRemoval) return 'Rocky Helmet';
                 return 'Leftovers';
             }
+
             if (role === 'bulkyAttacker') {
                 if (hasRecovery || bulky) return 'Leftovers';
                 if (!hasStatus && !hasSetup && (physical ? profile.stats.atk : profile.stats.spa) >= 105) return 'Assault Vest';
                 return 'Leftovers';
             }
-            if (role === 'pivot') {
-                if (rockWeak && hasPivot) return 'Heavy-Duty Boots';
-                return hasRecovery ? 'Leftovers' : 'Heavy-Duty Boots';
-            }
+
+            if (role === 'pivot') return hasRecovery ? 'Leftovers' : 'Heavy-Duty Boots';
             if (role === 'wallbreaker') return physical ? 'Choice Band' : 'Choice Specs';
 
             if (['physicalSweeper','specialSweeper','setupSweeper'].includes(role)) {
-                // Setup sweepers prefer a safer setup item unless the ability specifically
-                // wants Life Orb. Fast offensive sets can use Expert Belt when they have
-                // real coverage, otherwise Leftovers/Lum Berry are safer defaults.
-                if (hasSetup && hasStatus) return 'Lum Berry';
-                if (hasSetup && bulky) return 'Leftovers';
                 const goodCoverage = moves.some(m => sampleHasGoodCoverage(m, profile, moves));
                 if (goodCoverage && fast) return 'Expert Belt';
-                if (hasSetup && fast && !bulky && goodCoverage && profile.stats[physical ? 'atk' : 'spa'] >= 110) return 'Life Orb';
-                if (hasSetup && !bulky) return 'Leftovers';
+                if (hasSetup && fast && !bulky && profile.stats[physical ? 'atk' : 'spa'] >= 110) return 'Life Orb';
+                if (hasSetup && bulky) return 'Leftovers';
+                if (hasSetup) return 'Leftovers';
                 return fast ? 'Expert Belt' : 'Leftovers';
             }
+
             return 'Leftovers';
         }
 
@@ -974,11 +1405,20 @@ import { updatePreview } from './editor-core.js';
         function openSampleSetModal() {
             const modal = document.getElementById('sample-set-modal');
             if (!modal) return;
-            renderSuggestedSampleSets();
             modal.classList.add('active');
-            loadCompetitiveMoveUsefulness().then(() => {
-                if (modal.classList.contains('active')) renderSuggestedSampleSets();
-            });
+            const container = document.getElementById('suggested-sample-sets-list');
+            const alreadyLoaded = state.sdMoveUsefulness && Object.keys(state.sdMoveUsefulness).length;
+            // Rendering once (after usefulness data is ready) instead of rendering
+            // immediately and then re-rendering when the fetch resolves avoids a
+            // visible "blink" where the suggested sets swap out right after opening.
+            if (alreadyLoaded) {
+                renderSuggestedSampleSets();
+            } else {
+                if (container) container.innerHTML = '<div class="sample-set-empty-message">Loading move data…</div>';
+                loadCompetitiveMoveUsefulness().then(() => {
+                    if (modal.classList.contains('active')) renderSuggestedSampleSets();
+                });
+            }
         }
 
         function closeSampleSetModal() {

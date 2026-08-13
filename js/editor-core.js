@@ -297,11 +297,20 @@ function resetEditor() {
                 return;
             }
 
+            const useRawStat = typeof api.getUseRawStatBulk === 'function' ? api.getUseRawStatBulk() : true;
+            // "Raw stat" bulk runs each base stat through the real level-100,
+            // neutral-nature, no-EV stat formula (api.calcStat) instead of just
+            // multiplying base stat numbers together. This tracks in-game bulk
+            // more accurately, since HP scales differently from Def/SpD.
+            const toBulkStat = (base, statKey) => useRawStat
+                ? calcStat(base, 0, 31, 'Hardy', statKey, 100)
+                : base;
+
             const hp = clampBaseStatValue(document.getElementById('stat-hp').value);
             const def = clampBaseStatValue(document.getElementById('stat-def').value);
             const spd = clampBaseStatValue(document.getElementById('stat-spd').value);
-            const physBulk = hp * def;
-            const specBulk = hp * spd;
+            const physBulk = toBulkStat(hp, 'hp') * toBulkStat(def, 'def');
+            const specBulk = toBulkStat(hp, 'hp') * toBulkStat(spd, 'spd');
 
             const candidates = Object.values(state.sdPokedex)
                 .filter(dex => dex && dex.stats)
@@ -334,9 +343,9 @@ function resetEditor() {
             let closestSpec = null, closestSpecDiff = Infinity;
 
             for (const dex of candidates) {
-                const dHp = dex.stats.hp || 0;
-                const dDef = dex.stats.def || 0;
-                const dSpd = dex.stats.spd || 0;
+                const dHp = toBulkStat(dex.stats.hp || 0, 'hp');
+                const dDef = toBulkStat(dex.stats.def || 0, 'def');
+                const dSpd = toBulkStat(dex.stats.spd || 0, 'spd');
                 const physDiff = Math.abs((dHp * dDef) - physBulk);
                 const specDiff = Math.abs((dHp * dSpd) - specBulk);
                 if (physDiff < closestPhysDiff) {
@@ -357,7 +366,7 @@ function resetEditor() {
 
             const getMatchLabel = (match, kind) => {
                 if (!match) return 'N/A';
-                const bulk = (match.stats.hp * (kind === 'physical' ? match.stats.def : match.stats.spd)).toLocaleString();
+                const bulk = (toBulkStat(match.stats.hp, 'hp') * (kind === 'physical' ? toBulkStat(match.stats.def, 'def') : toBulkStat(match.stats.spd, 'spd'))).toLocaleString();
                 return `${match.name} — ${bulk} bulk`;
             };
 
@@ -630,6 +639,7 @@ function getGenderRatioValue() {
             if (flags.dance) labels.push('Dance');
             if (flags.powder) labels.push('Powder');
             if (flags.heal || flags.recovery) labels.push('Heal');
+            if (flags.thawing) labels.push('Thaws User');
             if (flags.charge) labels.push('Charge');
             if (flags.recharge) labels.push('Recharge');
             if (flags.highcrit) labels.push('High Crit');
