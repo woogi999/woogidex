@@ -128,14 +128,19 @@
                             <div class="form-group">
                                 <label>Artwork</label>
                                 <div class="artwork-upload-combined" id="artwork-upload-zone"
-                                     onclick="document.getElementById('artwork-upload').click()"
+                                     onclick="if (!event.target.closest('button')) document.getElementById('artwork-upload').click()"
                                      ondragover="handleArtworkDragOver(event)"
                                      ondragleave="handleArtworkDragLeave(event)"
                                      ondrop="handleArtworkDrop(event)"
                                      title="Click or drag an image here to upload artwork">
-                                    <div class="artwork-preview" id="artwork-preview"><span class="placeholder">ART</span></div>
-                                    <input type="file" id="artwork-upload" accept="image/*" onchange="handleArtworkUpload(event)">
-                                    <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span>Click or drag artwork here</span></div>
+                                    <div class="artwork-mode-tabs" role="tablist" aria-label="Artwork type">
+                                <button type="button" class="artwork-mode-tab active" id="artwork-mode-normal" onclick="setArtworkMode('normal'); event.stopPropagation()"><i data-lucide="image" aria-hidden="true"></i><span>Normal</span></button>
+                                <button type="button" class="artwork-mode-tab" id="artwork-mode-shiny" onclick="setArtworkMode('shiny'); event.stopPropagation()"><i data-lucide="sparkles" aria-hidden="true"></i><span>Shiny</span></button>
+                            </div>
+                            <div class="artwork-preview" id="artwork-preview"><span class="placeholder">ART</span></div>
+                            <input type="file" id="artwork-upload" accept="image/*" onchange="handleArtworkUpload(event)">
+                            <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span id="artwork-upload-label">Click or drag artwork here</span></div>
+                            <button type="button" class="artwork-remove-btn" id="artwork-remove-btn" onclick="removeCurrentArtwork(event)" hidden>Remove artwork</button>
                                 </div>
                             </div>
                         
@@ -445,6 +450,9 @@
                             </select>
                         </div>
                         <div class="collection-header-actions">
+                            <button class="btn btn-secondary btn-sm collection-shiny-toggle" id="collection-shiny-toggle" type="button" onclick="toggleCollectionShinyPreview()" title="Show shiny artwork in your collection" aria-label="Toggle shiny artwork in collection" aria-pressed="false">
+                                <i data-lucide="sparkles" aria-hidden="true"></i>
+                            </button>
                             <button class="btn btn-secondary btn-sm" id="collection-import-btn" onclick="openImportModal()">Import</button>
                             <div class="export-as-wrap" style="position:relative;display:inline-block;">
                                 <button class="btn btn-primary btn-sm" id="collection-export-btn" type="button" onclick="toggleCollectionExportMenu(event)">Export Collection <span style="font-size:10px;">▼</span></button>
@@ -463,6 +471,7 @@
                             <option value="oldest">Oldest First</option>
                             <option value="name-asc">Name (A-Z)</option>
                             <option value="name-desc">Name (Z-A)</option>
+                            <option value="number-asc">Pokédex Number</option>
                             <option value="bst-desc">BST (High-Low)</option>
                             <option value="bst-asc">BST (Low-High)</option>
                             <option value="updated">Recently Updated</option>

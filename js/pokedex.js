@@ -646,6 +646,17 @@ import { POKEMON_COLORS } from './data.js';
                     sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
                 case 'name-desc':
                     sorted.sort((a, b) => b.name.localeCompare(a.name)); break;
+                case 'number-asc': {
+                    const num = f => {
+                        const n = parseInt(String(f.number || '').replace(/^#/, ''), 10);
+                        return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+                    };
+                    sorted.sort((a, b) => {
+                        const diff = num(a) - num(b);
+                        return diff || a.name.localeCompare(b.name);
+                    });
+                    break;
+                }
                 case 'bst-desc':
                     sorted.sort((a, b) => getFakemonBST(b) - getFakemonBST(a)); break;
                 case 'bst-asc':
@@ -698,8 +709,10 @@ import { POKEMON_COLORS } from './data.js';
             const moveCreate = document.getElementById('create-move-menu-item');
             const abilityCreate = document.getElementById('create-ability-menu-item');
             const itemCreate = document.getElementById('create-item-menu-item');
+            const shinyToggle = document.getElementById('collection-shiny-toggle');
 
             if (collectionView === 'fakemon') {
+                if (shinyToggle) shinyToggle.style.display = 'inline-flex';
                 if (searchInput) searchInput.placeholder = 'Search your Fakemon...';
                 if (sort) {
                     sort.innerHTML = `
@@ -707,6 +720,7 @@ import { POKEMON_COLORS } from './data.js';
                         <option value="oldest">Oldest First</option>
                         <option value="name-asc">Name (A-Z)</option>
                         <option value="name-desc">Name (Z-A)</option>
+                        <option value="number-asc">Pokédex Number</option>
                         <option value="bst-desc">BST (High-Low)</option>
                         <option value="bst-asc">BST (Low-High)</option>
                         <option value="updated">Recently Updated</option>`;
@@ -719,6 +733,7 @@ import { POKEMON_COLORS } from './data.js';
                 if (abilityCreate) abilityCreate.style.display = '';
                 if (itemCreate) itemCreate.style.display = '';
             } else {
+                if (shinyToggle) shinyToggle.style.display = 'none';
                 if (searchInput) searchInput.placeholder = collectionView === 'moves' ? 'Search your custom moves...' : collectionView === 'abilities' ? 'Search your custom abilities...' : 'Search your custom items...';
                 if (sort) {
                     sort.innerHTML = `
@@ -735,6 +750,7 @@ import { POKEMON_COLORS } from './data.js';
                 if (moveCreate) moveCreate.style.display = '';
                 if (abilityCreate) abilityCreate.style.display = '';
                 if (itemCreate) itemCreate.style.display = '';
+                if (shinyToggle) shinyToggle.style.display = 'none';
             }
             renderCollection();
         }
@@ -959,7 +975,8 @@ import { POKEMON_COLORS } from './data.js';
                             </div>
                             <button class="card-delete-btn" onclick="deleteFakemon('${f.id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
                         </div>
-                        <div class="card-art">${f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false">` : '<span class="placeholder">ART</span>'}</div>
+                        <div class="card-art">${(state.collectionShinyPreview && f.shinyArtwork) ? `<img src="${f.shinyArtwork}" alt="${f.name} shiny" draggable="false">` : (f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false">` : '<span class="placeholder">ART</span>')}</div>
+                        <div class="card-number">${escapeCollectionHtml(f.number || '#???')}</div>
                         <div class="card-name">${f.name}</div>
                         <div class="card-types">
                             ${f.type1 ? `<span class="type-badge ${type1Class}">${f.type1}</span>` : ''}
@@ -972,6 +989,7 @@ import { POKEMON_COLORS } from './data.js';
 
             grid.innerHTML = folderCards + fakemonCards;
             if (typeof lucide !== 'undefined') lucide.createIcons();
+            api.updateCollectionShinyPreviewUI?.();
         }
 
         function toggleCollectionFakemonExportMenu(id, event) {

@@ -34,6 +34,10 @@ export const state = {
     customMoves: [],
     sampleSets: [],
     artworkData: null,
+    shinyArtworkData: null,
+    artworkMode: 'normal',
+    previewArtworkMode: 'normal',
+    collectionShinyPreview: localStorage.getItem('woogidex-collection-shiny-preview') === 'true',
     autoSaveTimer: null,
     lastSavedId: null,
     evolutionGraph: null

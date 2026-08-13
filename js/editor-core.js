@@ -49,6 +49,9 @@ function resetEditor() {
             state.learnset = [];
             state.sampleSets = [];
             state.artworkData = null;
+            state.shinyArtworkData = null;
+            state.artworkMode = 'normal';
+            updateArtworkModeUI();
             state.evolutionGraph = null;
             document.getElementById('artwork-preview').innerHTML = '<span class="placeholder">ART</span>';
             renderAbilities();
@@ -163,11 +166,12 @@ function resetEditor() {
             sortLearnset();
             state.sampleSets = fakemon.sampleSets || [];
             state.artworkData = fakemon.artwork || null;
-            if (state.artworkData) {
-                document.getElementById('artwork-preview').innerHTML = `<img src="${state.artworkData}" alt="Artwork">`;
-            } else {
-                document.getElementById('artwork-preview').innerHTML = '<span class="placeholder">ART</span>';
-            }
+            state.shinyArtworkData = fakemon.shinyArtwork || null;
+            state.artworkMode = 'normal';
+            state.previewArtworkMode = 'normal';
+            updateArtworkModeUI();
+            renderCurrentArtworkPreview();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
             renderAbilities();
             renderCustomAbilities();
             renderLearnset();
@@ -405,6 +409,39 @@ function resetEditor() {
             `;
         }
 
+        function setArtworkMode(mode) {
+            state.artworkMode = mode === 'shiny' ? 'shiny' : 'normal';
+            updateArtworkModeUI();
+            renderCurrentArtworkPreview();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function updateArtworkModeUI() {
+            const mode = state.artworkMode || 'normal';
+            document.getElementById('artwork-mode-normal')?.classList.toggle('active', mode === 'normal');
+            document.getElementById('artwork-mode-shiny')?.classList.toggle('active', mode === 'shiny');
+            const label = document.getElementById('artwork-upload-label');
+            if (label) label.textContent = mode === 'shiny' ? 'Click or drag shiny artwork here' : 'Click or drag artwork here';
+        }
+
+        function renderCurrentArtworkPreview() {
+            const mode = state.artworkMode || 'normal';
+            const artwork = mode === 'shiny' ? state.shinyArtworkData : state.artworkData;
+            const preview = document.getElementById('artwork-preview');
+            if (preview) preview.innerHTML = artwork ? `<img src="${artwork}" alt="${mode === 'shiny' ? 'Shiny artwork' : 'Artwork'}">` : `<span class="placeholder">${mode === 'shiny' ? 'SHINY' : 'ART'}</span>`;
+            const remove = document.getElementById('artwork-remove-btn');
+            if (remove) remove.hidden = !artwork;
+        }
+
+        function removeCurrentArtwork(event) {
+            event?.stopPropagation();
+            if ((state.artworkMode || 'normal') === 'shiny') state.shinyArtworkData = null;
+            else state.artworkData = null;
+            renderCurrentArtworkPreview();
+            updatePreview();
+            autoSave();
+        }
+
         function processArtworkFile(file) {
             if (!file) return;
             if (!file.type || !file.type.startsWith('image/')) {
@@ -413,9 +450,9 @@ function resetEditor() {
             }
             const reader = new FileReader();
             reader.onload = (e) => {
-                state.artworkData = e.target.result;
-                const preview = document.getElementById('artwork-preview');
-                if (preview) preview.innerHTML = `<img src="${state.artworkData}" alt="Artwork">`;
+                if ((state.artworkMode || 'normal') === 'shiny') state.shinyArtworkData = e.target.result;
+                else state.artworkData = e.target.result;
+                renderCurrentArtworkPreview();
                 const zone = document.getElementById('artwork-upload-zone');
                 if (zone) zone.classList.remove('artwork-drag-over');
                 updatePreview();
@@ -428,6 +465,15 @@ function resetEditor() {
             processArtworkFile(event?.target?.files?.[0]);
             if (event?.target) event.target.value = '';
         }
+
+        window.setArtworkMode = setArtworkMode;
+        window.removeCurrentArtwork = removeCurrentArtwork;
+        window.handleArtworkUpload = handleArtworkUpload;
+        window.handleArtworkDragOver = handleArtworkDragOver;
+        window.handleArtworkDragLeave = handleArtworkDragLeave;
+        window.handleArtworkDrop = handleArtworkDrop;
+        window.setPreviewArtworkMode = setPreviewArtworkMode;
+window.togglePreviewArtworkMode = togglePreviewArtworkMode;
 
         function handleArtworkDragOver(event) {
             event.preventDefault();
@@ -727,6 +773,60 @@ function renderTypeEffectiveness() {
     `;
 }
 
+function getCollectionShinyPreview() {
+    return !!state.collectionShinyPreview;
+}
+
+function updateCollectionShinyPreviewUI() {
+    const btn = document.getElementById('collection-shiny-toggle');
+    if (!btn) return;
+    const enabled = getCollectionShinyPreview();
+    btn.classList.toggle('active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    btn.title = enabled ? 'Show normal artwork in your collection' : 'Show shiny artwork in your collection';
+    btn.innerHTML = '<i data-lucide="sparkles" aria-hidden="true"></i>';
+    btn.setAttribute('aria-label', enabled ? 'Show normal artwork in collection' : 'Show shiny artwork in collection');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function setCollectionShinyPreview(enabled) {
+    state.collectionShinyPreview = !!enabled;
+    localStorage.setItem('woogidex-collection-shiny-preview', state.collectionShinyPreview ? 'true' : 'false');
+    updateCollectionShinyPreviewUI();
+    api.renderCollection?.();
+}
+
+function toggleCollectionShinyPreview() {
+    setCollectionShinyPreview(!getCollectionShinyPreview());
+}
+
+window.setCollectionShinyPreview = setCollectionShinyPreview;
+window.toggleCollectionShinyPreview = toggleCollectionShinyPreview;
+
+function setPreviewArtworkMode(mode) {
+    state.previewArtworkMode = mode === 'shiny' && state.shinyArtworkData ? 'shiny' : 'normal';
+    const activeMode = state.previewArtworkMode;
+    const toggle = document.getElementById('board-artwork-shiny-toggle');
+    if (toggle) {
+        toggle.classList.toggle('active', activeMode === 'shiny');
+        toggle.setAttribute('aria-pressed', activeMode === 'shiny' ? 'true' : 'false');
+        toggle.title = activeMode === 'shiny' ? 'Show normal artwork' : 'Show shiny artwork';
+        toggle.setAttribute('aria-label', activeMode === 'shiny' ? 'Show normal artwork' : 'Show shiny artwork');
+    }
+    const image = document.getElementById('board-artwork-image');
+    if (!image) return;
+    const artwork = activeMode === 'shiny' ? state.shinyArtworkData : state.artworkData;
+    const name = document.getElementById('fakemon-name')?.value?.trim() || 'Fakemon';
+    image.innerHTML = artwork ? `<img src="${artwork}" alt="${name}${activeMode === 'shiny' ? ' shiny' : ''} artwork">` : `<span class="placeholder">${activeMode === 'shiny' ? 'SHINY' : 'ART'}</span>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function togglePreviewArtworkMode(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setPreviewArtworkMode(state.previewArtworkMode === 'shiny' ? 'normal' : 'shiny');
+}
+
 function updatePreview() {
             renderTypeEffectiveness();
             const name = document.getElementById('fakemon-name').value || 'Unnamed Pokemon';
@@ -866,7 +966,10 @@ function updatePreview() {
                     <!-- Top Row: Art (left) | Data + Dex Entries (right, side by side) -->
                     <div class="board-top-row">
                         <div class="board-artwork-left">
-                            ${state.artworkData ? `<img src="${state.artworkData}" alt="${name}">` : '<span class="placeholder">ART</span>'}
+                            ${state.shinyArtworkData ? `<div class="board-artwork-mode" aria-label="Preview artwork">
+                                <button type="button" class="collection-shiny-toggle board-artwork-shiny-toggle" id="board-artwork-shiny-toggle" onclick="togglePreviewArtworkMode(event)" title="Show shiny artwork" aria-label="Show shiny artwork" aria-pressed="false"><i data-lucide="sparkles" aria-hidden="true"></i></button>
+                            </div>` : ''}
+                            <div id="board-artwork-image"></div>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                             <div class="board-data-right">
@@ -911,9 +1014,11 @@ function updatePreview() {
             container.querySelectorAll('.sample-set-copy[data-copy-text]').forEach(btn => {
                 btn.onclick = () => copySampleSetText(btn.dataset.copyText);
             });
+            setPreviewArtworkMode(state.previewArtworkMode || 'normal');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
 
 
 
-export { getNextPokedexNumber, resetEditor, loadFakemonIntoEditor, updateEditorStats, updateStats, getSpriteUrl, updateBulkComparison, handleArtworkUpload, handleArtworkDragOver, handleArtworkDragLeave, handleArtworkDrop, handleEggGroupChange, getEggGroupValue, setEggGroupValue, getGenderRatioValue, setGenderRatioValue, toggleGenderless, genderSliderChanged, genderMaleInputChanged, genderFemaleInputChanged, updateGenderBar, getFlagLabels, renderMoveTag, updatePreview, handleHeightInput, handleWeightInput, convertHeight, convertWeight, getHeightDisplay, getWeightDisplay, getTypeDamageMultiplier, renderTypeEffectiveness };
+export { getNextPokedexNumber, resetEditor, loadFakemonIntoEditor, setPreviewArtworkMode, setCollectionShinyPreview, toggleCollectionShinyPreview, updateCollectionShinyPreviewUI, updateEditorStats, updateStats, getSpriteUrl, updateBulkComparison, handleArtworkUpload, handleArtworkDragOver, handleArtworkDragLeave, handleArtworkDrop, handleEggGroupChange, getEggGroupValue, setEggGroupValue, getGenderRatioValue, setGenderRatioValue, toggleGenderless, genderSliderChanged, genderMaleInputChanged, genderFemaleInputChanged, updateGenderBar, getFlagLabels, renderMoveTag, updatePreview, handleHeightInput, handleWeightInput, convertHeight, convertWeight, getHeightDisplay, getWeightDisplay, getTypeDamageMultiplier, renderTypeEffectiveness };

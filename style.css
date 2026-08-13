@@ -256,6 +256,14 @@
         }
         .collection-card .card-art img { width: 100%; height: 100%; object-fit: contain; }
         .collection-card .card-art .placeholder { font-size: 40px; opacity: 0.3; color: var(--text-muted); }
+        .collection-card .card-number {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            letter-spacing: 0.04em;
+            margin-bottom: 2px;
+        }
         .collection-card .card-name { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
         .collection-card .card-types { display: flex; gap: 6px; margin-bottom: 8px; }
         .collection-card .card-bst { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); }
@@ -3553,3 +3561,36 @@
 .analysis-discord-name::after{content:'  ';font-weight:400}
 .analysis-discord-text{font-size:12px;line-height:1.65;color:var(--text-primary)}
 .analysis-disclaimer{margin-top:12px}
+
+/* Shiny artwork controls */
+.artwork-upload-combined { position:relative; }
+.artwork-mode-tabs { position:absolute; top:10px; left:10px; z-index:8; display:flex; gap:4px; padding:4px; background:color-mix(in srgb, var(--bg-card) 88%, transparent); border:1px solid var(--border); border-radius:9px; box-shadow:0 4px 14px rgba(0,0,0,.12); backdrop-filter:blur(8px); }
+.artwork-mode-tab { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:30px; padding:5px 9px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--text-secondary); font:600 12px 'Exo 2',sans-serif; cursor:pointer; pointer-events:auto; }
+.artwork-mode-tab svg { width:14px; height:14px; stroke-width:2; }
+.artwork-mode-tab:hover { color:var(--text-primary); background:var(--bg-panel); }
+.artwork-mode-tab.active { color:var(--text-primary); background:var(--bg-panel); border-color:var(--border); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+.artwork-remove-btn { position:absolute; right:10px; bottom:10px; z-index:8; padding:6px 9px; border:1px solid var(--border); border-radius:7px; background:color-mix(in srgb, var(--bg-card) 90%, transparent); color:var(--text-secondary); cursor:pointer; font:600 11px 'Exo 2',sans-serif; backdrop-filter:blur(8px); }
+.artwork-remove-btn:hover { color:var(--danger); border-color:var(--danger); }
+.board-artwork-left { position:relative; }
+.board-artwork-mode { position:absolute; top:10px; left:10px; z-index:8; display:flex; margin:0; }
+.board-artwork-shiny-toggle { width:34px; height:34px; padding:0 !important; appearance:none; -webkit-appearance:none; border:1px solid var(--border) !important; border-radius:8px !important; background:var(--bg-card) !important; box-shadow:none !important; outline:none; }
+.board-artwork-shiny-toggle:hover { box-shadow:none !important; }
+.board-artwork-shiny-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.board-artwork-shiny-toggle.active { color:#facc15; border-color:#facc15 !important; background:color-mix(in srgb, #facc15 10%, var(--bg-card)) !important; box-shadow:0 0 0 1px color-mix(in srgb, #facc15 35%, transparent), 0 0 14px color-mix(in srgb, #facc15 32%, transparent) !important; }
+.board-artwork-left #board-artwork-image { position:absolute; inset:0; height:auto; min-height:0; padding:48px 14px 14px; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+.board-artwork-left #board-artwork-image img { width:100%; height:100%; max-width:100%; max-height:100%; object-fit:contain; }
+
+
+/* Collection shiny preview toggle */
+.collection-shiny-toggle { width:34px; height:34px; padding:0 !important; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; }
+.collection-shiny-toggle svg { width:16px; height:16px; }
+.collection-shiny-toggle.active { color:#facc15; border-color:#facc15; background:color-mix(in srgb, #facc15 10%, var(--bg-card)); box-shadow:0 0 0 1px color-mix(in srgb, #facc15 35%, transparent), 0 0 14px color-mix(in srgb, #facc15 32%, transparent); }
+.collection-shiny-toggle.active:hover { color:#fde047; border-color:#fde047; background:color-mix(in srgb, #facc15 14%, var(--bg-card)); box-shadow:0 0 0 1px color-mix(in srgb, #facc15 45%, transparent), 0 0 18px color-mix(in srgb, #facc15 42%, transparent); }
+.collection-shiny-toggle:not(.active) { color:var(--text-secondary); }
+.collection-shiny-toggle:not(.active):hover { color:var(--text-primary); }
+
+/* Preview artwork controls stay out of the way until the artwork is hovered. */
+.board-artwork-left .board-artwork-mode { opacity:0; transform:translateY(-4px); pointer-events:none; transition:opacity .16s ease, transform .16s ease; }
+.board-artwork-left:hover .board-artwork-mode,
+.board-artwork-left:focus-within .board-artwork-mode { opacity:1; transform:translateY(0); pointer-events:auto; }
+.board-artwork-left .board-artwork-shiny-toggle { pointer-events:auto; }
