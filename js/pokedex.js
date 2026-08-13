@@ -793,8 +793,8 @@ import { POKEMON_COLORS } from './data.js';
                     return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('moves','${id}', event)" ondragend="handleCardDragEnd()">
                         <div class="card-actions">
                             <button onclick="editCustomMoveLibrary('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
-                            <button onclick="exportCustomLibraryItem('move','${id}');event.stopPropagation();" title="Export Move"><i data-lucide="download" style="width:14px;height:14px"></i></button>
                             ${moveOutBtn}
+                            <button onclick="exportCustomLibraryItem('move','${id}');event.stopPropagation();" title="Export Move"><i data-lucide="download" style="width:14px;height:14px"></i></button>
                             <button class="card-delete-btn" onclick="deleteCustomLibraryItem('moves','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                         </div>
                         <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>
@@ -806,8 +806,8 @@ import { POKEMON_COLORS } from './data.js';
                     return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('items','${id}', event)" ondragend="handleCardDragEnd()">
                         <div class="card-actions">
                             <button onclick="editCustomItemLibrary('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
-                            <button onclick="exportCustomLibraryItem('item','${id}');event.stopPropagation();" title="Export Item"><i data-lucide="download" style="width:14px;height:14px"></i></button>
                             ${moveOutBtn}
+                            <button onclick="exportCustomLibraryItem('item','${id}');event.stopPropagation();" title="Export Item"><i data-lucide="download" style="width:14px;height:14px"></i></button>
                             <button class="card-delete-btn" onclick="deleteCustomLibraryItem('items','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                         </div>
                         ${item.artwork ? `<div class="collection-library-artwork"><img src="${item.artwork}" alt="${escapeCollectionHtml(item.name)} artwork"></div>` : ''}
@@ -818,8 +818,8 @@ import { POKEMON_COLORS } from './data.js';
                 return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('abilities','${id}', event)" ondragend="handleCardDragEnd()">
                     <div class="card-actions">
                         <button onclick="editCustomAbilityLibrary('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
-                        <button onclick="exportCustomLibraryItem('ability','${id}');event.stopPropagation();" title="Export Ability"><i data-lucide="download" style="width:14px;height:14px"></i></button>
                         ${moveOutBtn}
+                        <button onclick="exportCustomLibraryItem('ability','${id}');event.stopPropagation();" title="Export Ability"><i data-lucide="download" style="width:14px;height:14px"></i></button>
                         <button class="card-delete-btn" onclick="deleteCustomLibraryItem('abilities','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                     </div>
                     <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>
@@ -907,6 +907,16 @@ import { POKEMON_COLORS } from './data.js';
                             <button onclick="editFakemon('${f.id}'); event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
                             ${inFolder ? `<button onclick="moveFakemonOutOfFolder('${f.id}', event)" title="Remove from folder"><i data-lucide="folder-output" style="width:14px;height:14px;"></i></button>` : ''}
                             <button onclick="duplicateFakemon('${f.id}', event)" title="Duplicate"><i data-lucide="copy" style="width:14px;height:14px;"></i></button>
+                            <div class="collection-card-export-wrap">
+                                <button onclick="toggleCollectionFakemonExportMenu('${f.id}', event)" title="Export"><i data-lucide="download" style="width:14px;height:14px;"></i></button>
+                                <div class="collection-card-export-menu" id="fakemon-export-menu-${f.id}" style="display:none;">
+                                    <button type="button" onclick="exportCollectionFakemonAsPNG('${f.id}', event)">Export as PNG</button>
+                                    <button type="button" onclick="exportCollectionFakemonAsPlainText('${f.id}', event)">Export as Plain Text</button>
+                                    <button type="button" onclick="exportCollectionFakemonAsJSON('${f.id}', event)">Export as JSON</button>
+                                    <button type="button" onclick="exportCollectionFakemonAsShowdown('${f.id}', event)">Export as Showdown Mod</button>
+                                    <button type="button" onclick="exportCollectionFakemonAsEssentials('${f.id}', event)">Export as Essentials Mod</button>
+                                </div>
+                            </div>
                             <button class="card-delete-btn" onclick="deleteFakemon('${f.id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
                         </div>
                         <div class="card-art">${f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false">` : '<span class="placeholder">ART</span>'}</div>
@@ -924,6 +934,23 @@ import { POKEMON_COLORS } from './data.js';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
+        function toggleCollectionFakemonExportMenu(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            document.querySelectorAll('.collection-card-export-menu').forEach(menu => {
+                if (menu.id !== `fakemon-export-menu-${id}`) menu.style.display = 'none';
+            });
+            const menu = document.getElementById(`fakemon-export-menu-${id}`);
+            if (menu) menu.style.display = menu.style.display === 'none' || !menu.style.display ? 'block' : 'none';
+        }
+
+        function closeCollectionFakemonExportMenus() {
+            document.querySelectorAll('.collection-card-export-menu').forEach(menu => menu.style.display = 'none');
+        }
+
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.collection-card-export-wrap')) closeCollectionFakemonExportMenus();
+        });
+
         function renderCustomLibraries() {
             const escapeLibraryHtml = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
             const moveGrid=document.getElementById('custom-move-library-grid'), moveEmpty=document.getElementById('custom-move-library-empty');
@@ -938,4 +965,4 @@ import { POKEMON_COLORS } from './data.js';
 
         
 
-export { showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate};
+export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate};

@@ -160,6 +160,8 @@ function evolutionItemSlug(name) {
     return String(name || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
 }
 function evolutionItemIcon(name) {
+    const custom = (state.customItems || []).find(x => x?.name && x.name.toLowerCase() === String(name || '').toLowerCase());
+    if (custom?.artwork) return custom.artwork;
     const slug = evolutionItemSlug(name);
     return slug ? `https://play.pokemonshowdown.com/sprites/itemicons/${slug}.png` : '';
 }
@@ -173,7 +175,8 @@ function renderEvolutionMethodItemOptions(items) {
     menu.innerHTML=items.map((item,i)=>{
         const icon=evolutionItemIcon(item.name);
         const desc=String(item.desc || '').trim();
-        return `<div class="autocomplete-item evo-method-item-option" data-index="${i}">` +
+        const isCustom = item.source === 'custom' || item.custom === true;
+        return `<div class="autocomplete-item evo-method-item-option${isCustom?' evo-method-custom-item':''}" data-index="${i}">` +
             `<span class="evo-method-item-main">${icon?`<img src="${esc(icon)}" alt="" class="evo-method-item-icon" onerror="this.style.display='none'">`:''}<span>${esc(item.name)}</span></span>` +
             `${desc?`<span class="meta">${esc(desc.length>70?desc.slice(0,67)+'...':desc)}</span>`:''}` +
             `</div>`;
@@ -189,10 +192,21 @@ function renderEvolutionMethodItemOptions(items) {
 }
 function populateEvolutionMethodItems(query='') {
     const q=String(query||'').trim().toLowerCase();
-    const items=Object.values(state.sdItems||{})
+    const vanilla = Object.values(state.sdItems||{})
         .filter(x=>x?.name)
-        .filter((x,i,arr)=>arr.findIndex(y=>y.name===x.name)===i)
+        .map(x=>({...x, source:'vanilla'}));
+    const custom = (state.customItems || [])
+        .filter(x=>x?.name)
+        .map(x=>({...x, source:'custom', custom:true}));
+    const seen = new Set();
+    const items = [...custom, ...vanilla]
         .filter(x=>!q || x.name.toLowerCase().includes(q))
+        .filter(x=>{
+            const key=x.name.toLowerCase();
+            if(seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
         .slice(0,8);
     renderEvolutionMethodItemOptions(items);
 }

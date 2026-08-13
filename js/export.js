@@ -268,6 +268,59 @@ import { state, api } from './app.js';
             }
         }
 
+        function getCollectionFakemon(id) {
+            return (state.fakemonDB || []).find(f => String(f.id) === String(id)) || null;
+        }
+
+        async function prepareCollectionFakemonForExport(id, callback) {
+            const fakemon = getCollectionFakemon(id);
+            if (!fakemon) { api.showToast('That Fakemon could not be found.', 'error'); return; }
+            try {
+                await api.autoSave?.(true);
+                state.editingId = fakemon.id;
+                api.loadFakemonIntoEditor(fakemon);
+                api.updatePreview?.();
+                await callback(fakemon);
+            } catch (err) {
+                console.error('[Collection Fakemon Export]', err);
+                api.showToast(`Export failed: ${err.message || 'unknown error'}`, 'error');
+            }
+        }
+
+        function exportCollectionFakemonAsJSON(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            const fakemon = getCollectionFakemon(id);
+            if (!fakemon) { api.showToast('That Fakemon could not be found.', 'error'); return; }
+            const name = fakemon.name || 'fakemon';
+            downloadJsonFile(`${name}-pokedex.json`, fakemon);
+            api.showToast('JSON exported!', 'success');
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsPNG(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { await exportAsPNG(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsPlainText(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { openPlainTextExportModal(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsShowdown(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { await api.exportShowdownMod(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsEssentials(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { await api.exportEssentialsMod(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
         function openFakemonImport() {
             const input = document.getElementById('fakemon-import-file');
             if (input) input.click();
@@ -705,4 +758,4 @@ import { state, api } from './app.js';
 
         
 
-export { exportCollection, exportCustomLibraryItem, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon };
+export { exportCollection, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon };

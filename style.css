@@ -3295,3 +3295,63 @@
 .custom-item-artwork-zone { max-width:none; }
 .custom-item-artwork-zone .artwork-preview { height:180px; }
 .custom-item-artwork-zone .artwork-preview img { object-fit:contain; }
+
+/* Unified collection card actions */
+.collection-card .card-actions,
+.collection-library-card .card-actions {
+    display:flex;
+    align-items:center;
+    gap:4px;
+    flex-wrap:nowrap;
+}
+.collection-card .card-actions > button,
+.collection-library-card .card-actions > button,
+.collection-card-export-wrap > button {
+    flex:0 0 30px;
+}
+.collection-card-export-wrap { position:relative; display:flex; flex:0 0 30px; }
+.collection-card-export-wrap > button {
+    width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--border); border-radius:7px; background:var(--bg-panel);
+    color:var(--text-secondary); cursor:pointer;
+}
+.collection-card-export-wrap > button:hover { color:var(--text-primary); border-color:var(--text-secondary); }
+.collection-card-export-menu {
+    position:absolute;
+    top:calc(100% + 6px);
+    right:0;
+    z-index:3000;
+    min-width:190px;
+    padding:6px;
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.18);
+}
+.collection-card-export-menu button {
+    display:block;
+    width:100%;
+    padding:9px 12px;
+    border:0;
+    border-radius:7px;
+    background:transparent;
+    color:var(--text-primary);
+    font:600 13px 'Exo 2', sans-serif;
+    text-align:left;
+    cursor:pointer;
+    white-space:nowrap;
+}
+.collection-card-export-menu button:hover { background:var(--bg-panel); }
+
+/* Custom items in evolution-method pickers use the standard gold custom tint. */
+.evo-method-item-option.evo-method-custom-item {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.10), rgba(212, 175, 55, 0.035));
+    border-color: rgba(212, 175, 55, 0.40);
+}
+.evo-method-item-option.evo-method-custom-item:hover {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(212, 175, 55, 0.06));
+    border-color: rgba(212, 175, 55, 0.58);
+}
+.evo-method-item-option.evo-method-custom-item .evo-method-item-main > span:last-child {
+    color: #c9a227;
+}
