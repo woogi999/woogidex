@@ -297,20 +297,27 @@ function resetEditor() {
                 return;
             }
 
-            const useRawStat = typeof api.getUseRawStatBulk === 'function' ? api.getUseRawStatBulk() : true;
-            // "Raw stat" bulk runs each base stat through the real level-100,
-            // neutral-nature, no-EV stat formula (api.calcStat) instead of just
-            // multiplying base stat numbers together. This tracks in-game bulk
-            // more accurately, since HP scales differently from Def/SpD.
-            const toBulkStat = (base, statKey) => useRawStat
-                ? calcStat(base, 0, 31, 'Hardy', statKey, 100)
-                : base;
+            // Bulk is always calculated from the real level-100 in-game stat formula
+            // using maximum IVs (31) and maximum relevant EVs (252). For the
+            // defensive stat we use a beneficial nature, which is the maximum
+            // possible value for that stat. HP has no nature multiplier. This
+            // intentionally models maximum physical/special bulk rather than
+            // multiplying base stats or using neutral/no-EV stats.
+            const MAX_IV = 31;
+            const MAX_EV = 252;
+            const toBulkStat = (base, statKey) => {
+                const nature = statKey === 'def' ? 'Impish' : statKey === 'spd' ? 'Careful' : 'Hardy';
+                return calcStat(clampBaseStatValue(base), MAX_EV, MAX_IV, nature, statKey, 100);
+            };
 
             const hp = clampBaseStatValue(document.getElementById('stat-hp').value);
             const def = clampBaseStatValue(document.getElementById('stat-def').value);
             const spd = clampBaseStatValue(document.getElementById('stat-spd').value);
-            const physBulk = toBulkStat(hp, 'hp') * toBulkStat(def, 'def');
-            const specBulk = toBulkStat(hp, 'hp') * toBulkStat(spd, 'spd');
+            const hpStat = toBulkStat(hp, 'hp');
+            const defStat = toBulkStat(def, 'def');
+            const spdStat = toBulkStat(spd, 'spd');
+            const physBulk = hpStat * defStat;
+            const specBulk = hpStat * spdStat;
 
             const candidates = Object.values(state.sdPokedex)
                 .filter(dex => dex && dex.stats)
@@ -377,7 +384,8 @@ function resetEditor() {
                 <div class="bulk-comparison-title">Bulk Comparison</div>
                 <div class="bulk-row">
                     <div class="bulk-card${closestPhys?.isOwnFakemon ? ' bulk-card-own' : ''}">
-                        <div class="bulk-label">Physical Bulk (HP x Def)</div>
+                        <div class="bulk-label">Physical Bulk (HP × Def)</div>
+                        <div class="bulk-stats"><span>HP <strong>${hpStat.toLocaleString()}</strong></span><span>Def <strong>${defStat.toLocaleString()}</strong></span></div>
                         <div class="bulk-value">${physBulk.toLocaleString()}</div>
                         <div class="bulk-match">
                             <img class="bulk-match-sprite" src="${physSprite}" alt="${closestPhys ? closestPhys.name : ''}" onerror="window.fallbackPokemonImage(this, '${String(closestPhys?.name || '').replace(/'/g, "\\'")}', '${String(closestPhys?.baseSpecies || '').replace(/'/g, "\\'")}')">
@@ -385,7 +393,8 @@ function resetEditor() {
                         </div>
                     </div>
                     <div class="bulk-card${closestSpec?.isOwnFakemon ? ' bulk-card-own' : ''}">
-                        <div class="bulk-label">Special Bulk (HP x SpD)</div>
+                        <div class="bulk-label">Special Bulk (HP × SpD)</div>
+                        <div class="bulk-stats"><span>HP <strong>${hpStat.toLocaleString()}</strong></span><span>SpD <strong>${spdStat.toLocaleString()}</strong></span></div>
                         <div class="bulk-value">${specBulk.toLocaleString()}</div>
                         <div class="bulk-match">
                             <img class="bulk-match-sprite" src="${specSprite}" alt="${closestSpec ? closestSpec.name : ''}" onerror="window.fallbackPokemonImage(this, '${String(closestSpec?.name || '').replace(/'/g, "\\'")}', '${String(closestSpec?.baseSpecies || '').replace(/'/g, "\\'")}')">

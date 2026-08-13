@@ -3359,3 +3359,20 @@
 .evo-method-item-option.evo-method-custom-item .evo-method-item-main > span:last-child {
     color: #c9a227;
 }
+
+.bulk-card .bulk-stats {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin: 0 0 7px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.bulk-card .bulk-stats span {
+    white-space: nowrap;
+}
+.bulk-card .bulk-stats strong {
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+}

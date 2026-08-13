@@ -279,7 +279,6 @@ Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, expor
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
     getUse2DSprites, setUse2DSprites, toggleUse2DSprites,
-    getUseRawStatBulk, setUseRawStatBulk, toggleUseRawStatBulk,
     updateSettingsUI, loadSettings, showToast,
     initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor
 });
