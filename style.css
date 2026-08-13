@@ -3289,3 +3289,9 @@
 .evo-method-item-input-wrap { position:relative; display:flex; align-items:center; }
 .evo-method-item-input-wrap input { flex:1; padding-left:42px !important; }
 .evo-method-item-selected-icon { position:absolute; left:10px; width:24px; height:24px; object-fit:contain; z-index:2; pointer-events:none; }
+
+.collection-library-artwork { width:100%; height:110px; margin:-2px 0 10px; border-radius:10px; background:var(--bg-panel); overflow:hidden; display:flex; align-items:center; justify-content:center; }
+.collection-library-artwork img { width:100%; height:100%; object-fit:contain; }
+.custom-item-artwork-zone { max-width:none; }
+.custom-item-artwork-zone .artwork-preview { height:180px; }
+.custom-item-artwork-zone .artwork-preview img { object-fit:contain; }

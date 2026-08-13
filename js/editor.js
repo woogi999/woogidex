@@ -1874,6 +1874,77 @@ function handleMoveKey(e) {
         function addExistingCustomAbility(id){const a=getCustomAbilityLibrary().find(x=>x.id===id);if(!a)return;if(document.getElementById('editor-view')?.style.display==='none'){api.showToast('Open a Fakemon in the editor before adding a custom ability.','info');return;}if(state.abilities.length>=4){api.showToast('A Pokemon can have a maximum of 4 abilities.','error');return;}if(state.abilities.some(x=>x&&x.customId===id)){api.showToast('That custom ability is already on this Fakemon.','info');return;}state.abilities.push({name:a.name,source:'custom',custom:true,customId:id,desc:a.desc||''});closeModal('custom-entity-chooser-modal');renderAbilities();updatePreview();api.autoSave();api.showToast('Custom ability added!','success');}
         function editCustomAbilityLibrary(id){openCustomAbilityLibraryModal(id);}
 
+
+// ==================== CUSTOM ITEMS ====================
+let pendingSampleSetItemTarget = null;
+function getCustomItemLibrary() { return Array.isArray(state.customItems) ? state.customItems : []; }
+function openCustomItemModal(id='', sampleSetTarget=null) {
+    pendingSampleSetItemTarget = sampleSetTarget || null;
+    const item = id ? getCustomItemLibrary().find(x => x.id === id) : null;
+    const modal = document.getElementById('custom-item-modal');
+    if (!modal) return;
+    document.getElementById('custom-item-edit-id').value = id;
+    document.getElementById('custom-item-modal-title').textContent = item ? 'Edit Custom Item' : 'Create Custom Item';
+    document.getElementById('custom-item-name').value = item?.name || '';
+    document.getElementById('custom-item-desc').value = item?.desc || '';
+    const preview = document.getElementById('custom-item-artwork-preview');
+    if (preview) preview.innerHTML = item?.artwork ? `<img src="${item.artwork}" alt="Item artwork">` : '<span class="placeholder">ITEM</span>';
+    modal.classList.add('active');
+    setTimeout(() => document.getElementById('custom-item-name')?.focus(), 50);
+}
+function saveCustomItemLibraryEntry() {
+    const name = document.getElementById('custom-item-name')?.value.trim() || '';
+    if (!name) { api.showToast('Please enter an item name!', 'error'); return; }
+    const desc = document.getElementById('custom-item-desc')?.value.trim() || '';
+    const artwork = document.getElementById('custom-item-artwork-preview')?.querySelector('img')?.src || '';
+    let id = document.getElementById('custom-item-edit-id')?.value || '';
+    if (!Array.isArray(state.customItems)) state.customItems = [];
+    let item;
+    if (id) {
+        item = state.customItems.find(x => x.id === id);
+        if (!item) { id = ''; }
+    }
+    if (!id) {
+        id = 'ci_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        item = { id, name, desc, artwork, source:'custom', custom:true };
+        state.customItems.push(item);
+    } else {
+        Object.assign(item, { name, desc, artwork, source:'custom', custom:true });
+    }
+    const target = pendingSampleSetItemTarget;
+    pendingSampleSetItemTarget = null;
+    if (target && Number.isInteger(target.setIndex) && state.sampleSets[target.setIndex]) {
+        state.sampleSets[target.setIndex].item = name;
+        state.sampleSets[target.setIndex].itemCustom = true;
+        state.sampleSets[target.setIndex].itemCustomId = id;
+        state.sampleSets[target.setIndex].itemDesc = desc;
+        api.renderSampleSets?.();
+        api.updatePreview?.();
+        api.autoSave?.();
+    }
+    api.saveToStorage();
+    api.renderCollection();
+    closeModal('custom-item-modal');
+    api.showToast(id ? 'Custom item saved!' : 'Custom item created!', 'success');
+}
+function editCustomItemLibrary(id) { openCustomItemModal(id); }
+function processCustomItemArtworkFile(file) {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) { api.showToast('Please use an image file for item artwork.', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const preview = document.getElementById('custom-item-artwork-preview');
+        if (preview) preview.innerHTML = `<img src="${e.target.result}" alt="Item artwork">`;
+        document.getElementById('custom-item-artwork-zone')?.classList.remove('artwork-drag-over');
+    };
+    reader.readAsDataURL(file);
+}
+function handleCustomItemArtworkUpload(event) { processCustomItemArtworkFile(event?.target?.files?.[0]); if (event?.target) event.target.value = ''; }
+function handleCustomItemArtworkDragOver(event) { event.preventDefault(); event.stopPropagation(); document.getElementById('custom-item-artwork-zone')?.classList.add('artwork-drag-over'); }
+function handleCustomItemArtworkDragLeave(event) { event.preventDefault(); document.getElementById('custom-item-artwork-zone')?.classList.remove('artwork-drag-over'); }
+function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stopPropagation(); processCustomItemArtworkFile(event?.dataTransfer?.files?.[0]); }
+
+
 // ==================== CUSTOM MOVES ====================
         // ==================== GENERIC TYPE DROPDOWN HELPERS ====================
         // Reusable version of the fancy pill-style type dropdown (used for Type1/Type2)
@@ -2136,4 +2207,4 @@ function handleMoveKey(e) {
 
         
 
-export { resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };
+export { resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };

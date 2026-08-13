@@ -16,7 +16,7 @@ import { state, api } from './app.js';
         }
 
         function exportCollection() {
-            const hasAnything = state.fakemonDB.length || (state.customMoves || []).length || (state.customAbilities || []).length;
+            const hasAnything = state.fakemonDB.length || (state.customMoves || []).length || (state.customAbilities || []).length || (state.customItems || []).length;
             if (!hasAnything) { api.showToast('Nothing to export!', 'error'); return; }
 
             const bundle = {
@@ -25,7 +25,8 @@ import { state, api } from './app.js';
                 exportedAt: new Date().toISOString(),
                 fakemonDB: state.fakemonDB,
                 customMoves: state.customMoves || [],
-                customAbilities: state.customAbilities || []
+                customAbilities: state.customAbilities || [],
+                customItems: state.customItems || []
             };
 
             downloadJsonFile(`fakemon-collection-${new Date().toISOString().split('T')[0]}.json`, bundle);
@@ -33,12 +34,12 @@ import { state, api } from './app.js';
         }
 
         function exportCustomLibraryItem(kind, id) {
-            const list = kind === 'move' ? (state.customMoves || []) : (state.customAbilities || []);
+            const list = kind === 'move' ? (state.customMoves || []) : kind === 'ability' ? (state.customAbilities || []) : (state.customItems || []);
             const item = list.find(x => String(x.id) === String(id));
             if (!item) { api.showToast('That custom entry could not be found.', 'error'); return; }
 
             const payload = {
-                format: kind === 'move' ? 'woogidex-custom-move' : 'woogidex-custom-ability',
+                format: kind === 'move' ? 'woogidex-custom-move' : kind === 'ability' ? 'woogidex-custom-ability' : 'woogidex-custom-item',
                 version: 1,
                 exportedAt: new Date().toISOString(),
                 item
@@ -56,7 +57,7 @@ import { state, api } from './app.js';
             const addBtn = document.getElementById('collection-import-add');
             const replaceBtn = document.getElementById('collection-import-replace');
             if (input) input.value = '';
-            if (status) status.textContent = 'Choose a collection, Fakemon, custom move, or custom ability JSON/TXT file.';
+            if (status) status.textContent = 'Choose a collection, Fakemon, custom move, custom ability, or custom item JSON/TXT file.';
             if (addBtn) addBtn.disabled = true;
             if (replaceBtn) replaceBtn.disabled = true;
             document.getElementById('import-modal').classList.add('active');
@@ -68,7 +69,7 @@ import { state, api } from './app.js';
             const addBtn = document.getElementById('collection-import-add');
             const replaceBtn = document.getElementById('collection-import-replace');
             if (!pendingCollectionImportFile) {
-                if (status) status.textContent = 'Choose a collection, Fakemon, custom move, or custom ability JSON/TXT file.';
+                if (status) status.textContent = 'Choose a collection, Fakemon, custom move, custom ability, or custom item JSON/TXT file.';
                 if (addBtn) addBtn.disabled = true;
                 if (replaceBtn) replaceBtn.disabled = true;
                 return;
@@ -94,8 +95,8 @@ import { state, api } from './app.js';
                 }
 
                 // Individual custom move/ability import.
-                if (parsed && typeof parsed === 'object' && (parsed.format === 'woogidex-custom-move' || parsed.format === 'woogidex-custom-ability')) {
-                    const kind = parsed.format === 'woogidex-custom-move' ? 'move' : 'ability';
+                if (parsed && typeof parsed === 'object' && (parsed.format === 'woogidex-custom-move' || parsed.format === 'woogidex-custom-ability' || parsed.format === 'woogidex-custom-item')) {
+                    const kind = parsed.format === 'woogidex-custom-move' ? 'move' : parsed.format === 'woogidex-custom-ability' ? 'ability' : 'item';
                     const item = parsed.item;
                     if (!item || !item.name) throw new Error('Invalid custom entry.');
                     const list = kind === 'move' ? (state.customMoves || []) : (state.customAbilities || []);
@@ -108,11 +109,16 @@ import { state, api } from './app.js';
                         copy.level = null;
                         if (!Array.isArray(state.customMoves)) state.customMoves = [];
                         state.customMoves.push(copy);
-                    } else {
+                    } else if (kind === 'ability') {
                         copy.source = 'custom';
                         copy.custom = true;
                         if (!Array.isArray(state.customAbilities)) state.customAbilities = [];
                         state.customAbilities.push(copy);
+                    } else {
+                        copy.source = 'custom';
+                        copy.custom = true;
+                        if (!Array.isArray(state.customItems)) state.customItems = [];
+                        state.customItems.push(copy);
                     }
                     await api.saveToStorage();
                     api.renderCollection();
@@ -127,6 +133,7 @@ import { state, api } from './app.js';
                 let incomingSource = parsed;
                 let importedMoves = isBundle && Array.isArray(parsed.customMoves) ? parsed.customMoves : [];
                 let importedAbilities = isBundle && Array.isArray(parsed.customAbilities) ? parsed.customAbilities : [];
+                let importedItems = isBundle && Array.isArray(parsed.customItems) ? parsed.customItems : [];
 
                 if (isBundle && Array.isArray(parsed.fakemonDB)) incomingSource = parsed.fakemonDB;
                 else if (!Array.isArray(incomingSource) && incomingSource && typeof incomingSource === 'object') {
@@ -136,7 +143,7 @@ import { state, api } from './app.js';
                 }
                 let incoming = Array.isArray(incomingSource) ? incomingSource : [incomingSource];
                 incoming = incoming.filter(f => f && typeof f === 'object' && String(f.name || '').trim());
-                if (!incoming.length && !importedMoves.length && !importedAbilities.length) throw new Error('No valid Fakemon, custom moves, or custom abilities were found in the file.');
+                if (!incoming.length && !importedMoves.length && !importedAbilities.length && !importedItems.length) throw new Error('No valid Fakemon, custom moves, or custom abilities were found in the file.');
 
                 const now = Date.now();
                 incoming = incoming.map((f, index) => {
@@ -188,6 +195,7 @@ import { state, api } from './app.js';
 
                 mergeLibrary('customMoves', importedMoves, 'move');
                 mergeLibrary('customAbilities', importedAbilities, 'ability');
+                mergeLibrary('customItems', importedItems, 'item');
 
                 await api.migrateLearnsetsToMinimal();
                 await api.saveToStorage();
@@ -196,6 +204,7 @@ import { state, api } from './app.js';
                 const libraryBits = [];
                 if (importedMoves.length) libraryBits.push(`${importedMoves.length} custom move${importedMoves.length === 1 ? '' : 's'}`);
                 if (importedAbilities.length) libraryBits.push(`${importedAbilities.length} custom activit${importedAbilities.length === 1 ? 'y' : 'ies'}`);
+                if (importedItems.length) libraryBits.push(`${importedItems.length} custom item${importedItems.length === 1 ? '' : 's'}`);
                 const importedBits = [`${incoming.length} Fakemon${incoming.length === 1 ? '' : 's'}`, ...libraryBits].join(' and ');
                 api.showToast(`${mode === 'replace' ? 'Replaced with' : 'Added'} ${importedBits}!`, 'success');
             } catch (err) {

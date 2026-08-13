@@ -498,6 +498,7 @@ import { POKEMON_COLORS } from './data.js';
             if (!confirm(`Delete "${folder.name}"? ${label} inside will be moved back to My Collection.`)) return;
             if (kind === 'moves') (state.customMoves || []).forEach(m => { if (m.folderId === id) m.folderId = null; });
             else if (kind === 'abilities') (state.customAbilities || []).forEach(a => { if (a.folderId === id) a.folderId = null; });
+            else if (kind === 'items') (state.customItems || []).forEach(i => { if (i.folderId === id) i.folderId = null; });
             else state.fakemonDB.forEach(f => { if (f.folderId === id) f.folderId = null; });
             state.folders = state.folders.filter(f => f.id !== id);
             if (state.currentFolderId === id) state.currentFolderId = null;
@@ -506,7 +507,7 @@ import { POKEMON_COLORS } from './data.js';
             api.showToast('Folder deleted!', 'info');
         }
         function moveLibraryItemToFolder(kind, itemId, folderId) {
-            const arr = kind === 'moves' ? state.customMoves : state.customAbilities;
+            const arr = kind === 'moves' ? state.customMoves : kind === 'abilities' ? state.customAbilities : state.customItems;
             const item = (arr || []).find(x => x.id === itemId);
             if (!item) return;
             item.folderId = folderId || null;
@@ -521,12 +522,13 @@ import { POKEMON_COLORS } from './data.js';
         }
         function deleteCustomLibraryItem(kind, id, event) {
             if (event) event.stopPropagation();
-            const arr = kind === 'moves' ? state.customMoves : state.customAbilities;
+            const arr = kind === 'moves' ? state.customMoves : kind === 'abilities' ? state.customAbilities : state.customItems;
             const item = (arr || []).find(x => x.id === id);
             if (!item) return;
             if (!confirm(`Delete "${item.name}" from your ${kind === 'moves' ? 'move' : 'ability'} library?`)) return;
             if (kind === 'moves') state.customMoves = state.customMoves.filter(x => x.id !== id);
-            else state.customAbilities = state.customAbilities.filter(x => x.id !== id);
+            else if (kind === 'abilities') state.customAbilities = state.customAbilities.filter(x => x.id !== id);
+            else state.customItems = state.customItems.filter(x => x.id !== id);
             api.saveToStorage();
             renderCollection();
             api.showToast(`${kind === 'moves' ? 'Move' : 'Ability'} deleted!`, 'info');
@@ -651,7 +653,7 @@ import { POKEMON_COLORS } from './data.js';
         }
 
         function setCollectionView(view) {
-            const newView = ['fakemon', 'moves', 'abilities'].includes(view) ? view : 'fakemon';
+            const newView = ['fakemon', 'moves', 'abilities', 'items'].includes(view) ? view : 'fakemon';
             if (newView !== collectionView) state.currentFolderId = null;
             collectionView = newView;
             const select = document.getElementById('collection-view-select');
@@ -665,6 +667,7 @@ import { POKEMON_COLORS } from './data.js';
             const folderCreate = document.getElementById('create-folder-menu-item');
             const moveCreate = document.getElementById('create-move-menu-item');
             const abilityCreate = document.getElementById('create-ability-menu-item');
+            const itemCreate = document.getElementById('create-item-menu-item');
 
             if (collectionView === 'fakemon') {
                 if (searchInput) searchInput.placeholder = 'Search your Fakemon...';
@@ -684,8 +687,9 @@ import { POKEMON_COLORS } from './data.js';
                 if (folderCreate) folderCreate.style.display = '';
                 if (moveCreate) moveCreate.style.display = '';
                 if (abilityCreate) abilityCreate.style.display = '';
+                if (itemCreate) itemCreate.style.display = '';
             } else {
-                if (searchInput) searchInput.placeholder = collectionView === 'moves' ? 'Search your custom moves...' : 'Search your custom abilities...';
+                if (searchInput) searchInput.placeholder = collectionView === 'moves' ? 'Search your custom moves...' : collectionView === 'abilities' ? 'Search your custom abilities...' : 'Search your custom items...';
                 if (sort) {
                     sort.innerHTML = `
                         <option value="name-asc">Name (A-Z)</option>
@@ -700,6 +704,7 @@ import { POKEMON_COLORS } from './data.js';
                 if (folderCreate) folderCreate.style.display = '';
                 if (moveCreate) moveCreate.style.display = '';
                 if (abilityCreate) abilityCreate.style.display = '';
+                if (itemCreate) itemCreate.style.display = '';
             }
             renderCollection();
         }
@@ -723,7 +728,8 @@ import { POKEMON_COLORS } from './data.js';
             const search = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
             const sortMode = document.getElementById('collection-sort')?.value || 'name-asc';
             const isMove = kind === 'moves';
-            const source = isMove ? (state.customMoves || []) : (state.customAbilities || []);
+            const isAbility = kind === 'abilities';
+            const source = isMove ? (state.customMoves || []) : isAbility ? (state.customAbilities || []) : (state.customItems || []);
             let items = source.filter(item => {
                 if (!search) return true;
                 const text = isMove
@@ -742,12 +748,15 @@ import { POKEMON_COLORS } from './data.js';
                 grid.style.display = 'grid';
                 grid.innerHTML = '';
                 empty.style.display = 'block';
-                empty.querySelector('h3').textContent = search ? `No ${isMove ? 'custom moves' : 'custom abilities'} found` : `No ${isMove ? 'Custom Moves' : 'Custom Abilities'} Yet`;
-                empty.querySelector('p').textContent = search ? 'Try a different search.' : `Create your first custom ${isMove ? 'move' : 'ability'} to get started!`;
+                const label = isMove ? 'custom moves' : isAbility ? 'custom abilities' : 'custom items';
+                const title = isMove ? 'Custom Moves' : isAbility ? 'Custom Abilities' : 'Custom Items';
+                const singular = isMove ? 'move' : isAbility ? 'ability' : 'item';
+                empty.querySelector('h3').textContent = search ? `No ${label} found` : `No ${title} Yet`;
+                empty.querySelector('p').textContent = search ? 'Try a different search.' : `Create your first custom ${singular} to get started!`;
                 const emptyButton = empty.querySelector('button');
                 if (emptyButton) {
-                    emptyButton.textContent = isMove ? 'Create Custom Move' : 'Create Custom Ability';
-                    emptyButton.onclick = () => isMove ? api.openCustomMoveChooser() : api.openCustomAbilityChooser();
+                    emptyButton.textContent = `Create Custom ${singular.charAt(0).toUpperCase() + singular.slice(1)}`;
+                    emptyButton.onclick = () => isMove ? api.openCustomMoveChooser() : isAbility ? api.openCustomAbilityChooser() : api.openCustomItemModal();
                 }
                 return;
             }
@@ -769,7 +778,7 @@ import { POKEMON_COLORS } from './data.js';
                         </div>
                         <div class="card-art folder-card-art" style="${iconStyle}"><i data-lucide="folder" style="width:48px;height:48px;"></i></div>
                         <div class="card-name">${escapeCollectionHtml(folder.name)}</div>
-                        <div class="card-bst" style="font-size:11px;color:var(--text-muted);">${count} ${isMove ? 'Move' : 'Ability'}${count === 1 ? '' : 's'}</div>
+                        <div class="card-bst" style="font-size:11px;color:var(--text-muted);">${count} ${isMove ? 'Move' : isAbility ? 'Ability' : 'Item'}${count === 1 ? '' : 's'}</div>
                     </div>
                 `;
             }).join('');
@@ -790,6 +799,19 @@ import { POKEMON_COLORS } from './data.js';
                         </div>
                         <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>
                         <div class="collection-library-card-meta"><span class="type-pill ${typeClass}">${escapeCollectionHtml(item.type || 'Normal')}</span> · ${escapeCollectionHtml(item.category || 'Status')} · ${item.basePower || '—'} BP · ${acc} · ${item.pp || '—'} PP</div>
+                        <div class="collection-library-card-desc">${escapeCollectionHtml(item.desc || 'No description')}</div>
+                    </div>`;
+                }
+                if (!isAbility) {
+                    return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('items','${id}', event)" ondragend="handleCardDragEnd()">
+                        <div class="card-actions">
+                            <button onclick="editCustomItemLibrary('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+                            <button onclick="exportCustomLibraryItem('item','${id}');event.stopPropagation();" title="Export Item"><i data-lucide="download" style="width:14px;height:14px"></i></button>
+                            ${moveOutBtn}
+                            <button class="card-delete-btn" onclick="deleteCustomLibraryItem('items','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
+                        </div>
+                        ${item.artwork ? `<div class="collection-library-artwork"><img src="${item.artwork}" alt="${escapeCollectionHtml(item.name)} artwork"></div>` : ''}
+                        <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>
                         <div class="collection-library-card-desc">${escapeCollectionHtml(item.desc || 'No description')}</div>
                     </div>`;
                 }

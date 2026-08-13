@@ -191,6 +191,7 @@ import { state, api } from './app.js';
                 await idbSet('woogidexFolders_v1', state.folders);
                 await idbSet('woogidexCustomMoves_v1', state.customMoves);
                 await idbSet('woogidexCustomAbilities_v1', state.customAbilities);
+                await idbSet('woogidexCustomItems_v1', state.customItems);
             }
             catch (e) { api.showToast('Warning: Storage limit may be reached. Export your collection!', 'error'); }
         }
@@ -220,8 +221,10 @@ import { state, api } from './app.js';
                 state.folders = Array.isArray(folders) ? folders : [];
                 const customMoves = await idbGet('woogidexCustomMoves_v1');
                 const customAbilities = await idbGet('woogidexCustomAbilities_v1');
+                const customItems = await idbGet('woogidexCustomItems_v1');
                 state.customMoves = Array.isArray(customMoves) ? customMoves : [];
                 state.customAbilities = Array.isArray(customAbilities) ? customAbilities : [];
+                state.customItems = Array.isArray(customItems) ? customItems : [];
                 migrateCustomLibrariesFromCollection();
                 await saveToStorage();
             } catch (e) { state.fakemonDB = []; state.folders = []; }
@@ -230,7 +233,16 @@ import { state, api } from './app.js';
         function migrateCustomLibrariesFromCollection() {
             const moveMap = new Map((state.customMoves || []).filter(m => m && m.id).map(m => [m.id, m]));
             const abilityMap = new Map((state.customAbilities || []).filter(a => a && a.id).map(a => [a.id, a]));
+            const itemMap = new Map((state.customItems || []).filter(i => i && i.id).map(i => [i.id, i]));
             state.fakemonDB.forEach(f => {
+                (f.sampleSets || []).forEach(set => {
+                    const name = String(set?.item || '').trim();
+                    if (name && set.itemCustom === true) {
+                        const id = set.itemCustomId || ('ci_' + name.toLowerCase().replace(/[^a-z0-9]+/g,'-'));
+                        set.itemCustomId = id;
+                        if (!itemMap.has(id)) itemMap.set(id, { id, name, desc: set.itemDesc || '', source:'custom', custom:true });
+                    }
+                });
                 (f.learnset || []).forEach(m => {
                     if (m && (m.source === 'custom' || m.custom === true) && m.name) {
                         const id = m.customId || ('cm_' + String(m.name).toLowerCase().replace(/[^a-z0-9]+/g,'-'));
@@ -248,6 +260,7 @@ import { state, api } from './app.js';
             });
             state.customMoves = [...moveMap.values()];
             state.customAbilities = [...abilityMap.values()];
+            state.customItems = [...itemMap.values()];
         }
 
         // Normalize legacy learnsets without destroying unified custom moves.

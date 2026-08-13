@@ -1976,6 +1976,11 @@ import { updatePreview } from './editor-core.js';
             });
             closeSampleSetModal();
             renderSampleSets();
+            (state.sampleSets || []).forEach((set, i) => {
+                const icon = document.getElementById(`set-${i}-item-icon`);
+                const custom = set?.itemCustomId ? (state.customItems || []).find(x => x.id === set.itemCustomId) : null;
+                if (icon && custom?.artwork) { icon.src = custom.artwork; icon.style.display = ''; }
+            });
             updatePreview();
             autoSave();
         }
@@ -2055,8 +2060,13 @@ import { updatePreview } from './editor-core.js';
                 const icon = card.querySelector('.sample-set-item-icon');
                 if (icon) {
                     if (value) {
-                        const slug = value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-                        icon.src = 'https://play.pokemonshowdown.com/sprites/itemicons/' + slug + '.png';
+                        const set = state.sampleSets[setIndex];
+                        const custom = set?.itemCustomId ? (state.customItems || []).find(i => i.id === set.itemCustomId) : null;
+                        if (custom?.artwork) icon.src = custom.artwork;
+                        else {
+                            const slug = value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+                            icon.src = 'https://play.pokemonshowdown.com/sprites/itemicons/' + slug + '.png';
+                        }
                         icon.style.display = '';
                     } else {
                         icon.style.display = 'none';
@@ -2084,12 +2094,32 @@ import { updatePreview } from './editor-core.js';
             const matches = Object.values(state.sdItems)
                 .filter(it => it.name.toLowerCase().includes(value.toLowerCase()))
                 .slice(0, 8);
-            renderDropdown(dropdown, matches, (item) => {
+            const customItems = (state.customItems || [])
+                .filter(it => it?.name && it.name.toLowerCase().includes(value.toLowerCase()))
+                .slice(0, 8)
+                .map(it => ({ ...it, __customItem: true }));
+            const combined = [...matches.map(it => ({ ...it, __customItem: false })), ...customItems]
+                .filter((it, idx, arr) => arr.findIndex(x => x.name.toLowerCase() === it.name.toLowerCase()) === idx)
+                .slice(0, 8);
+            renderDropdown(dropdown, combined, (item) => {
                 const input = dropdown.previousElementSibling;
                 input.value = item.name;
                 updateSampleSetItem(setIndex, item.name);
+                state.sampleSets[setIndex].itemCustom = !!item.__customItem;
+                state.sampleSets[setIndex].itemCustomId = item.__customItem ? item.id : null;
+                state.sampleSets[setIndex].itemDesc = item.__customItem ? (item.desc || '') : '';
+                autoSave();
                 dropdown.classList.remove('active');
             }, false);
+            const add = document.createElement('div');
+            add.className = 'autocomplete-item sample-set-add-custom-item';
+            add.innerHTML = '<span>＋ Add Custom Item</span>';
+            add.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                dropdown.classList.remove('active');
+                api.openCustomItemModal?.('', { setIndex });
+            });
+            dropdown.appendChild(add);
         }
         function filterSampleSetMove(setIndex, slot, value) {
             updateSampleSet(setIndex, `moves.${slot}`, value);

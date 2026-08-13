@@ -24,6 +24,7 @@ export const state = {
     folders: [],
     customMoves: [],
     customAbilities: [],
+    customItems: [],
     currentFolderId: null,
     editingId: null,
     abilities: [],

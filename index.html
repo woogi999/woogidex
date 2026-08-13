@@ -436,6 +436,7 @@
                                 <option value="fakemon">Fakemon</option>
                                 <option value="moves">Moves</option>
                                 <option value="abilities">Abilities</option>
+                                <option value="items">Items</option>
                             </select>
                         </div>
                         <div class="collection-header-actions">
@@ -468,6 +469,7 @@
                                 <button class="export-as-menu-item" id="create-folder-menu-item" type="button" onclick="createFolder(); closeCreateMenu();">＋ New Folder</button>
                                 <button class="export-as-menu-item" id="create-move-menu-item" type="button" onclick="openCustomMoveModal(); closeCreateMenu();">＋ New Custom Move</button>
                                 <button class="export-as-menu-item" id="create-ability-menu-item" type="button" onclick="openCustomAbilityLibraryModal(); closeCreateMenu();">＋ New Custom Ability</button>
+                                <button class="export-as-menu-item" id="create-item-menu-item" type="button" onclick="openCustomItemModal(); closeCreateMenu();">＋ New Custom Item</button>
                             </div>
                         </div>
                     </div>
@@ -578,6 +580,36 @@
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button class="btn btn-secondary" onclick="closeModal('custom-ability-modal')">Cancel</button>
                 <button class="btn btn-primary" onclick="saveCustomAbilityLibraryEntry()">Save Ability</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-item-modal">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 id="custom-item-modal-title">Create Custom Item</h3>
+                <button class="modal-close" onclick="closeModal('custom-item-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Item Name</label>
+                <input type="text" id="custom-item-name" placeholder="e.g., Moonlit Charm">
+            </div>
+            <div class="form-group">
+                <label>Artwork</label>
+                <div class="artwork-upload-combined custom-item-artwork-zone" id="custom-item-artwork-zone" onclick="document.getElementById('custom-item-artwork-upload').click()" ondragover="handleCustomItemArtworkDragOver(event)" ondragleave="handleCustomItemArtworkDragLeave(event)" ondrop="handleCustomItemArtworkDrop(event)">
+                    <div class="artwork-preview" id="custom-item-artwork-preview"><span class="placeholder">ITEM</span></div>
+                    <input type="file" id="custom-item-artwork-upload" accept="image/*" onchange="handleCustomItemArtworkUpload(event)">
+                    <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span>Click or drag item artwork here</span></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="custom-item-desc" rows="4" placeholder="Describe what this item does..."></textarea>
+            </div>
+            <input type="hidden" id="custom-item-edit-id" value="">
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeModal('custom-item-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveCustomItemLibraryEntry()">Save Item</button>
             </div>
         </div>
     </div>
