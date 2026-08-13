@@ -3157,9 +3157,12 @@
 .evo-node-body { display:flex; align-items:center; gap:8px; padding:7px 9px; }
 .evo-sprite-wrap { width:48px; height:48px; flex:0 0 48px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 .evo-sprite-wrap img { max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; image-rendering:auto; }
-.evo-node-name { min-width:0; display:flex; flex-direction:column; gap:2px; }
-.evo-node-name strong { font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.evo-node-name small { font-size:9px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.evo-node-name { min-width:0; flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:3px; overflow:hidden; }
+.evo-node-name strong { width:100%; font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.evo-node-name small { width:100%; font-size:9px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.evo-node-types { display:flex; flex-wrap:wrap; gap:4px; min-height:17px; align-items:center; }
+.evo-node-types:empty { display:none; }
+.evo-node-types .type-pill { font-size:8px; padding:2px 7px; border-radius:6px; letter-spacing:.4px; }
 .evo-node-name em { font-size:8px; color:var(--accent); font-style:normal; font-weight:700; }
 .evo-handle { touch-action:none; user-select:none; position:absolute; top:50%; transform:translateY(-50%); width:11px; height:11px; padding:0; border:2px solid var(--bg-card); border-radius:50%; background:var(--accent); box-shadow:0 0 0 1px var(--accent); cursor:crosshair; z-index:5; }
 .evo-handle::before { content:''; position:absolute; inset:-14px; }
@@ -3184,6 +3187,7 @@
     .evo-sprite-wrap { width:36px; height:36px; flex:0 0 36px; }
     .evo-node-name strong { font-size:11px; }
     .evo-node-name small { font-size:8px; }
+    .evo-node-types .type-pill { font-size:7px; padding:2px 6px; }
     .evo-node-name em { font-size:7px; }
     .evo-handle { width:16px; height:16px; }
     .evo-handle-left { left:-8px; }

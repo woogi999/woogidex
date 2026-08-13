@@ -37,6 +37,30 @@ import { state, api } from './app.js';
             }));
         }
 
+// ==================== COLLECTION NORMALIZATION ====================
+// IDs are the primary key for every saved collection entry. Older builds could
+// accidentally append the same object more than once during overlapping saves.
+// Normalize on load/save so duplicates can no longer accumulate.
+function normalizeCollectionArray(arr) {
+    if (!Array.isArray(arr)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const item of arr) {
+        if (!item || typeof item !== 'object') continue;
+        const id = String(item.id ?? '').trim();
+        if (id && seen.has(id)) continue;
+        if (id) seen.add(id);
+        out.push(item);
+    }
+    return out;
+}
+function normalizeCollections() {
+    state.fakemonDB = normalizeCollectionArray(state.fakemonDB);
+    state.customMoves = normalizeCollectionArray(state.customMoves);
+    state.customAbilities = normalizeCollectionArray(state.customAbilities);
+    state.customItems = normalizeCollectionArray(state.customItems);
+}
+
 // ==================== AUTO SAVE ====================
 
 
@@ -54,14 +78,14 @@ import { state, api } from './app.js';
                 const fakemon = buildFakemonObject();
                 if (!fakemon) return;
 
-                if (state.editingId) {
-                    const idx = state.fakemonDB.findIndex(f => f.id === state.editingId);
-                    if (idx !== -1) state.fakemonDB[idx] = fakemon;
-                    else state.fakemonDB.push(fakemon);
-                } else {
-                    state.fakemonDB.push(fakemon);
-                    state.editingId = fakemon.id;
-                }
+                // Claim the new ID before awaiting IndexedDB. This closes a race
+                // where two auto-saves could both see editingId as empty and append
+                // the same newly-created Fakemon.
+                if (!state.editingId) state.editingId = fakemon.id;
+                const idx = state.fakemonDB.findIndex(f => String(f.id) === String(state.editingId));
+                if (idx !== -1) state.fakemonDB[idx] = fakemon;
+                else state.fakemonDB.push(fakemon);
+                normalizeCollections();
 
                 await saveToStorage();
                 state.lastSavedId = fakemon.id;
@@ -173,7 +197,7 @@ import { state, api } from './app.js';
             const original = state.fakemonDB.find(f => f.id === id);
             if (!original) return;
             const copy = JSON.parse(JSON.stringify(original));
-            copy.id = Date.now().toString();
+            copy.id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             copy.name = copy.name + ' (Copy)';
             copy.createdAt = Date.now();
             copy.updatedAt = Date.now();
@@ -187,6 +211,7 @@ import { state, api } from './app.js';
 // ==================== STORAGE (IndexedDB) ====================
         async function saveToStorage() {
             try {
+                normalizeCollections();
                 await idbSet('fakemonDB_v4', state.fakemonDB);
                 await idbSet('woogidexFolders_v1', state.folders);
                 await idbSet('woogidexCustomMoves_v1', state.customMoves);
@@ -225,7 +250,9 @@ import { state, api } from './app.js';
                 state.customMoves = Array.isArray(customMoves) ? customMoves : [];
                 state.customAbilities = Array.isArray(customAbilities) ? customAbilities : [];
                 state.customItems = Array.isArray(customItems) ? customItems : [];
+                normalizeCollections();
                 migrateCustomLibrariesFromCollection();
+                normalizeCollections();
                 await saveToStorage();
             } catch (e) { state.fakemonDB = []; state.folders = []; }
             await migrateLearnsetsToMinimal();

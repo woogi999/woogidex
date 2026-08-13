@@ -343,7 +343,12 @@ function renderEvolutionBoard() {
           <div class="evo-node-head"><span class="evo-stage">${esc(stageLabel)}</span><span style="display:flex;align-items:center;gap:5px;"><span class="evo-kind">${esc(info.kindLabel)}</span>${n.id !== me.id ? `<button class="evo-remove" type="button" title="Remove">×</button>` : ''}</span></div>
           <div class="evo-node-body">
             <div class="evo-sprite-wrap"><img src="${esc(spriteUrl)}" alt="${esc(info.name)}" onerror="window.fallbackPokemonImage && window.fallbackPokemonImage(this, '${safeOnErrorName}', '${safeOnErrorFallback}')"></div>
-            <div class="evo-node-name"><strong>${esc(info.name)}</strong><small>${esc(info.species || (info.types||[]).join(' / '))}</small>${tags.length ? `<em>${esc(tags.join(' · '))}</em>` : ''}</div>
+            <div class="evo-node-name">
+              <strong>${esc(info.name)}</strong>
+              <small>${esc(info.species || '')}</small>
+              <span class="evo-node-types">${(info.types || []).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${esc(t)}</span>`).join('')}</span>
+              ${tags.length ? `<em>${esc(tags.join(' · '))}</em>` : ''}
+            </div>
           </div>
           ${n.isMega ? '' : '<button class="evo-handle evo-handle-right" type="button" title="Drag from this side to connect"></button>'}
         `;
@@ -749,26 +754,22 @@ function addEvolutionNode(kind, refId) {
 function removeEvolutionNode(id) {
     const g=ensureGraph();
     if (id===currentNodeId()) return api.showToast('The current Fakemon cannot be removed from its own evolution board.','info');
-    const removedNode = g.nodes.find(n => n.id === id);
-    g.nodes=g.nodes.filter(n=>n.id!==id); g.edges=g.edges.filter(e=>e.from!==id&&e.to!==id);
-    // The removed Pokémon's own saved record still points at the old shared
-    // graph (which still includes itself and its old connections). Reset it
-    // to a solo graph so it doesn't keep reappearing/reconnecting the next
-    // time someone opens its editor.
-    if (removedNode && removedNode.kind === 'fakemon' && removedNode.refId) {
-        const removedFakemon = getFakemon(removedNode.refId);
-        if (removedFakemon) {
-            const soloGraph = DEFAULT_GRAPH();
-            soloGraph.nodes.push({
-                id: `fakemon:${removedFakemon.id}`, kind:'fakemon', refId: removedFakemon.id,
-                name: removedFakemon.name, x: 50, y: 190,
-                isMega: !!removedFakemon.isMega, isFormeChange: !!removedFakemon.isFormeChange
-            });
-            removedFakemon.evolutionGraph = soloGraph;
-            removedFakemon.evolutionStage = 1;
-        }
-    }
-    persistEvolutionGraph(); renderEvolutionBoard();
+    g.nodes=g.nodes.filter(n=>n.id!==id);
+    g.edges=g.edges.filter(e=>e.from!==id&&e.to!==id);
+
+    // Remove the node from every saved Fakemon graph as well. Otherwise an old
+    // participant can later reopen its stale copy of the graph and resurrect the
+    // removed Pokémon.
+    (state.fakemonDB || []).forEach(f => {
+        if (!f?.evolutionGraph?.nodes) return;
+        const ng = clone(f.evolutionGraph);
+        ng.nodes = (ng.nodes || []).filter(n => n.id !== id);
+        ng.edges = (ng.edges || []).filter(e => e.from !== id && e.to !== id);
+        f.evolutionGraph = ng;
+    });
+
+    persistEvolutionGraph();
+    renderEvolutionBoard();
 }
 
 function persistEvolutionGraph() {
@@ -802,8 +803,41 @@ function onFakemonSaved(id) {
     renderEvolutionBoard();
 }
 
+function sanitizeEvolutionGraphForCurrent(graph) {
+    const g = graph ? clone(graph) : DEFAULT_GRAPH();
+    if (!Array.isArray(g.nodes)) g.nodes = [];
+    if (!Array.isArray(g.edges)) g.edges = [];
+    const current = currentNodeId();
+    // Keep only nodes that belong to the connected component containing the
+    // currently edited Fakemon. This prevents stale graphs copied onto older
+    // Fakemon records from resurrecting unrelated species in the editor.
+    if (g.nodes.some(n => n.id === current)) {
+        const adjacency = new Map();
+        g.nodes.forEach(n => adjacency.set(n.id, []));
+        g.edges.forEach(e => {
+            if (!adjacency.has(e.from) || !adjacency.has(e.to)) return;
+            adjacency.get(e.from).push(e.to);
+            adjacency.get(e.to).push(e.from);
+        });
+        const keep = new Set([current]);
+        const queue = [current];
+        while (queue.length) {
+            const id = queue.shift();
+            for (const next of adjacency.get(id) || []) {
+                if (!keep.has(next)) { keep.add(next); queue.push(next); }
+            }
+        }
+        g.nodes = g.nodes.filter(n => keep.has(n.id));
+        g.edges = g.edges.filter(e => keep.has(e.from) && keep.has(e.to));
+    } else {
+        g.nodes = [];
+        g.edges = [];
+    }
+    return g;
+}
+
 function initializeEvolutionGraph(graph) {
-    state.evolutionGraph = graph ? clone(graph) : DEFAULT_GRAPH();
+    state.evolutionGraph = sanitizeEvolutionGraphForCurrent(graph);
     addCurrentNode();
     renderEvolutionBoard();
 }
