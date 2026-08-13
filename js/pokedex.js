@@ -520,6 +520,33 @@ import { POKEMON_COLORS } from './data.js';
             if (event) event.stopPropagation();
             moveLibraryItemToFolder(kind, itemId, null);
         }
+        function toggleCustomLibraryPin(kind, id, event) {
+            if (event) event.stopPropagation();
+            const arr = kind === 'moves' ? state.customMoves : kind === 'abilities' ? state.customAbilities : state.customItems;
+            const item = (arr || []).find(x => x.id === id);
+            if (!item) return;
+            item.pinned = !item.pinned;
+            api.saveToStorage();
+            renderCollection();
+            api.showToast(item.pinned ? `"${item.name}" pinned!` : `"${item.name}" unpinned!`, 'success');
+        }
+
+        function duplicateCustomLibraryItem(kind, id, event) {
+            if (event) event.stopPropagation();
+            const arr = kind === 'moves' ? state.customMoves : kind === 'abilities' ? state.customAbilities : state.customItems;
+            const item = (arr || []).find(x => x.id === id);
+            if (!item) return;
+            const copy = JSON.parse(JSON.stringify(item));
+            copy.id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+            copy.name = `${item.name || 'Custom'} Copy`;
+            copy.pinned = false;
+            copy.folderId = item.folderId || null;
+            arr.push(copy);
+            api.saveToStorage();
+            renderCollection();
+            api.showToast(`${item.name || 'Custom entry'} duplicated!`, 'success');
+        }
+
         function deleteCustomLibraryItem(kind, id, event) {
             if (event) event.stopPropagation();
             const arr = kind === 'moves' ? state.customMoves : kind === 'abilities' ? state.customAbilities : state.customItems;
@@ -715,7 +742,9 @@ import { POKEMON_COLORS } from './data.js';
             else if (sortMode === 'newest') sorted.sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
             else if (sortMode === 'oldest') sorted.sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
             else sorted.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-            return sorted;
+            const pinned = sorted.filter(item => item.pinned);
+            const unpinned = sorted.filter(item => !item.pinned);
+            return [...pinned, ...unpinned];
         }
 
         function escapeCollectionHtml(value) {
@@ -792,9 +821,12 @@ import { POKEMON_COLORS } from './data.js';
                     const acc = item.accuracy === true || item.accuracy === undefined || item.accuracy === false ? '—' : `${item.accuracy}%`;
                     return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('moves','${id}', event)" ondragend="handleCardDragEnd()">
                         <div class="card-actions">
+                            <button class="${item.pinned ? 'pinned-btn' : ''}" onclick="toggleCustomLibraryPin('moves','${id}', event)" title="${item.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin" style="width:14px;height:14px"></i></button>
                             <button onclick="editCustomMoveLibrary('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
                             ${moveOutBtn}
-                            <button onclick="exportCustomLibraryItem('move','${id}');event.stopPropagation();" title="Export Move"><i data-lucide="download" style="width:14px;height:14px"></i></button>
+                            <button onclick="duplicateCustomLibraryItem('moves','${id}', event)" title="Duplicate"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
+                            <div class="collection-card-export-wrap"><button onclick="exportCustomLibraryItem('move','${id}');event.stopPropagation();" title="Export Move"><i data-lucide="download" style="width:14px;height:14px"></i></button>
+                            </div>
                             <button class="card-delete-btn" onclick="deleteCustomLibraryItem('moves','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                         </div>
                         <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>
@@ -805,9 +837,12 @@ import { POKEMON_COLORS } from './data.js';
                 if (!isAbility) {
                     return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('items','${id}', event)" ondragend="handleCardDragEnd()">
                         <div class="card-actions">
+                            <button class="${item.pinned ? 'pinned-btn' : ''}" onclick="toggleCustomLibraryPin('items','${id}', event)" title="${item.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin" style="width:14px;height:14px"></i></button>
                             <button onclick="editCustomItemLibrary('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
                             ${moveOutBtn}
-                            <button onclick="exportCustomLibraryItem('item','${id}');event.stopPropagation();" title="Export Item"><i data-lucide="download" style="width:14px;height:14px"></i></button>
+                            <button onclick="duplicateCustomLibraryItem('items','${id}', event)" title="Duplicate"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
+                            <div class="collection-card-export-wrap"><button onclick="exportCustomLibraryItem('item','${id}');event.stopPropagation();" title="Export Item"><i data-lucide="download" style="width:14px;height:14px"></i></button>
+                            </div>
                             <button class="card-delete-btn" onclick="deleteCustomLibraryItem('items','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                         </div>
                         ${item.artwork ? `<div class="collection-library-artwork"><img src="${item.artwork}" alt="${escapeCollectionHtml(item.name)} artwork"></div>` : ''}
@@ -817,9 +852,11 @@ import { POKEMON_COLORS } from './data.js';
                 }
                 return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('abilities','${id}', event)" ondragend="handleCardDragEnd()">
                     <div class="card-actions">
+                        <button class="${item.pinned ? 'pinned-btn' : ''}" onclick="toggleCustomLibraryPin('abilities','${id}', event)" title="${item.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin" style="width:14px;height:14px"></i></button>
                         <button onclick="editCustomAbilityLibrary('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
                         ${moveOutBtn}
-                        <button onclick="exportCustomLibraryItem('ability','${id}');event.stopPropagation();" title="Export Ability"><i data-lucide="download" style="width:14px;height:14px"></i></button>
+                        <button onclick="duplicateCustomLibraryItem('abilities','${id}', event)" title="Duplicate"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
+                        <div class="collection-card-export-wrap"><button onclick="exportCustomLibraryItem('ability','${id}');event.stopPropagation();" title="Export"><i data-lucide="download" style="width:14px;height:14px"></i></button></div>
                         <button class="card-delete-btn" onclick="deleteCustomLibraryItem('abilities','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                     </div>
                     <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>

@@ -3376,3 +3376,26 @@
     font-family: 'JetBrains Mono', monospace;
     font-weight: 800;
 }
+
+
+/* Collection library cards intentionally share the exact Fakemon action-button layout. */
+.collection-library-card .card-actions {
+    position:absolute; top:8px; right:8px; display:flex; align-items:center; gap:4px;
+    flex-wrap:nowrap; opacity:0; transition:opacity .2s;
+}
+.collection-library-card:hover .card-actions { opacity:1; }
+.collection-library-card .card-actions > button,
+.collection-library-card .card-actions .collection-card-export-wrap > button {
+    width:28px; height:28px; flex:0 0 28px; padding:0; border-radius:6px; border:none;
+    background:var(--bg-panel); color:var(--text-primary); cursor:pointer; font-size:14px;
+    display:flex; align-items:center; justify-content:center;
+}
+.collection-library-card .card-actions > button:hover,
+.collection-library-card .card-actions .collection-card-export-wrap > button:hover {
+    background:var(--accent); color:white;
+}
+.collection-library-card .card-actions > button.card-delete-btn:hover { background:var(--danger); color:white; }
+.collection-library-card .card-actions > button.pinned-btn { background:var(--accent); color:white; }
+.collection-library-card.pinned { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent-glow); }
+.collection-library-card .collection-card-export-wrap { position:relative; display:flex; flex:0 0 28px; }
+.collection-library-card .collection-card-export-wrap > button { border:0; border-radius:6px; }
