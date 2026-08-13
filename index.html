@@ -332,6 +332,7 @@
                                     <div class="evolution-toolbar">
                                         <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('fakemon')">＋ Add Fakemon</button>
                                         <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('vanilla')">＋ Add Vanilla Pokémon</button>
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionMethodEditor()">＋ Add Evo Method</button>
                                     </div>
                                 </div>
                                 <div id="evolution-board" class="evolution-board">
@@ -828,6 +829,53 @@
             </div>
             <div id="pokemon-template-status" class="pokemon-template-status"></div>
             <div id="pokemon-template-list" class="pokemon-template-list"></div>
+        </div>
+    </div>
+
+
+    <div class="modal-overlay" id="evolution-method-modal">
+        <div class="modal evolution-method-modal">
+            <div class="modal-header">
+                <h3 id="evolution-method-modal-title">Add Evo Method</h3>
+                <button class="modal-close" type="button" onclick="closeModal('evolution-method-modal')" aria-label="Close">&times;</button>
+            </div>
+            <div class="evolution-method-form">
+                <div class="form-group">
+                    <label>Method</label>
+                    <div class="type-dropdown evo-method-type-dropdown" id="evolution-method-type-dropdown">
+                        <button class="type-dropdown-trigger" type="button" id="evolution-method-type-trigger">
+                            <span class="type-dropdown-value" id="evolution-method-type-value">By Level</span>
+                            <span class="type-dropdown-arrow">▼</span>
+                        </button>
+                        <div class="type-dropdown-menu" id="evolution-method-type-menu">
+                            <div class="type-dropdown-option" data-value="level">By Level</div>
+                            <div class="type-dropdown-option" data-value="item">By Item</div>
+                            <div class="type-dropdown-option" data-value="custom">Custom Method</div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="evolution-method-type" value="level">
+                </div>
+                <div class="form-group" id="evolution-method-level-wrap">
+                    <label for="evolution-method-level">Level</label>
+                    <input id="evolution-method-level" type="number" min="1" max="100" value="16">
+                </div>
+                <div class="form-group" id="evolution-method-value-wrap" style="display:none;">
+                    <label id="evolution-method-value-label" for="evolution-method-value">Item</label>
+                    <div class="evo-combobox">
+                        <input id="evolution-method-value" type="text" autocomplete="off" placeholder="Search or type an item..." onfocus="openEvolutionMethodItemMenu()" oninput="filterEvolutionMethodItems()">
+                        <div class="evo-combobox-menu" id="evolution-method-item-options"></div>
+                    </div>
+                    <div class="evolution-method-hint">Evolution Stones and Mega Stones are detected automatically from the item you choose.</div>
+                </div>
+                <div class="form-group" id="evolution-method-description-wrap" style="display:none;">
+                    <label for="evolution-method-description">Description</label>
+                    <textarea id="evolution-method-description" placeholder="Describe the evolution condition..."></textarea>
+                </div>
+                <div class="evolution-method-actions">
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="closeModal('evolution-method-modal')">Cancel</button>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="saveEvolutionMethod()">Save Method</button>
+                </div>
+            </div>
         </div>
     </div>
 

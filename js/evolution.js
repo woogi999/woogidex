@@ -9,7 +9,7 @@ function getNodeSize() {
     return mobile ? { w: 148, h: 90 } : { w: 196, h: 104 };
 }
 const DEFAULT_GRAPH = () => ({
-    version: 1,
+    version: 2,
     nodes: [],
     edges: []
 });
@@ -47,6 +47,223 @@ function getNodeInfo(node) {
     };
 }
 
+const EVO_METHOD_LABELS = {
+    level: 'By Level',
+    item: 'By Item',
+    custom: 'Custom Method'
+};
+const EVO_STONE_NAMES = new Set([
+    'Fire Stone','Water Stone','Thunder Stone','Leaf Stone','Moon Stone',
+    'Sun Stone','Shiny Stone','Dusk Stone','Dawn Stone','Ice Stone','Oval Stone'
+]);
+function isMegaStoneName(value) { return /\bmega stone$/i.test(String(value || '').trim()); }
+function getDetectedItemLabel(value) {
+    const item = String(value || '').trim();
+    if (!item) return 'By Item';
+    if (isMegaStoneName(item)) return 'Mega Stone';
+    if (EVO_STONE_NAMES.has(item)) return 'Evolution Stone';
+    return 'By Item';
+}
+
+function isMethodNode(node) { return !!(node && node.kind === 'method'); }
+function getMethodLabel(node) {
+    if (node?.methodType === 'item') return getDetectedItemLabel(node.value);
+    return EVO_METHOD_LABELS[node?.methodType] || 'Evolution Method';
+}
+function getMethodSummary(node) {
+    if (!node) return '';
+    const type = node.methodType || 'custom';
+    if (type === 'level') return `Level ${Math.max(1, Number(node.value) || 1)}`;
+    if (type === 'item') return node.value ? String(node.value) : 'Choose an item';
+    return String(node.description || '').trim() || 'Describe the evolution condition';
+}
+function methodNodeId() { return `evo-method:${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
+function getMethodNodes(g) { return g.nodes.filter(isMethodNode); }
+
+// Method nodes are visual/semantic connectors between two Pokemon nodes. For
+// stage calculation and cycle checks, collapse any chain of method nodes so
+// methods never count as extra evolution stages.
+function collapseMethodEdges(g) {
+    const methodIds = new Set(getMethodNodes(g).map(n => n.id));
+    if (!methodIds.size) return g.edges.map(e => ({ from:e.from, to:e.to }));
+    const collapsed = [];
+    const seen = new Set();
+    const outgoing = new Map();
+    g.edges.forEach(e => {
+        if (!outgoing.has(e.from)) outgoing.set(e.from, []);
+        outgoing.get(e.from).push(e.to);
+    });
+    g.nodes.filter(n => !isMethodNode(n)).forEach(start => {
+        const stack = [...(outgoing.get(start.id) || [])];
+        const visited = new Set();
+        while (stack.length) {
+            const next = stack.pop();
+            if (visited.has(next)) continue;
+            visited.add(next);
+            if (!methodIds.has(next)) {
+                if (next !== start.id) {
+                    const key = `${start.id}->${next}`;
+                    if (!seen.has(key)) { seen.add(key); collapsed.push({from:start.id,to:next}); }
+                }
+                continue;
+            }
+            (outgoing.get(next) || []).forEach(n => stack.push(n));
+        }
+    });
+    return collapsed;
+}
+
+function findMethodMergeTarget(g, node, radius = 105) {
+    let best = null;
+    g.nodes.filter(isMethodNode).forEach(other => {
+        if (other.id === node.id) return;
+        const d = Math.hypot((other.x || 0) - (node.x || 0), (other.y || 0) - (node.y || 0));
+        if (d <= radius && (!best || d < best.distance)) best = {node:other, distance:d};
+    });
+    return best;
+}
+function normalizeMethodGroup(g, groupId) {
+    if (!groupId) return;
+    const members = g.nodes.filter(n => isMethodNode(n) && n.mergeGroup === groupId)
+        .sort((a,b) => (a.y||0)-(b.y||0) || String(a.id).localeCompare(String(b.id)));
+    if (members.length < 2) { members.forEach(n => n.mergeGroup = null); return; }
+    const base = members[0];
+    members.forEach((n,i) => { n.x = base.x; n.y = base.y + i * 76; });
+}
+function mergeMethodNodes(nodeId, targetId) {
+    const g = ensureGraph();
+    const node = g.nodes.find(n => n.id === nodeId), target = g.nodes.find(n => n.id === targetId);
+    if (!node || !target || !isMethodNode(node) || !isMethodNode(target)) return;
+    const targetGroup = target.mergeGroup;
+    const nodeGroup = node.mergeGroup;
+    const group = targetGroup || nodeGroup || `evo-method-group:${Date.now()}`;
+    const targetMembers = g.nodes.filter(n => isMethodNode(n) && (targetGroup ? n.mergeGroup === targetGroup : n.id === target.id));
+    const nodeMembers = g.nodes.filter(n => isMethodNode(n) && (nodeGroup ? n.mergeGroup === nodeGroup : n.id === node.id));
+    const ordered = [...targetMembers, ...nodeMembers.filter(n => !targetMembers.includes(n))];
+    ordered.forEach(n => n.mergeGroup = group);
+    // The node being dragged is always appended to the bottom of the stack.
+    const base = targetMembers[0] || target;
+    const gap = getNodeSize().h;
+    ordered.forEach((n, i) => { n.x = base.x; n.y = base.y + i * gap; });
+}
+function maybeMergeMethodNode(nodeId) {
+    const g = ensureGraph(), node = g.nodes.find(n => n.id === nodeId);
+    if (!node || !isMethodNode(node)) return;
+    const target = findMethodMergeTarget(g,node);
+    if (target) mergeMethodNodes(node.id,target.node.id);
+    else if (node.mergeGroup) { const old=node.mergeGroup; node.mergeGroup=null; normalizeMethodGroup(g,old); }
+    persistEvolutionGraph();
+    renderEvolutionBoard();
+}
+
+function evolutionItemSlug(name) {
+    return String(name || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+}
+function evolutionItemIcon(name) {
+    const slug = evolutionItemSlug(name);
+    return slug ? `https://play.pokemonshowdown.com/sprites/itemicons/${slug}.png` : '';
+}
+function renderEvolutionMethodItemOptions(items) {
+    const menu=document.getElementById('evolution-method-item-options');
+    if(!menu) return;
+    if(!items.length) {
+        menu.innerHTML='<div class="autocomplete-item"><span>No matches</span></div>';
+        return;
+    }
+    menu.innerHTML=items.map((item,i)=>{
+        const icon=evolutionItemIcon(item.name);
+        const desc=String(item.desc || '').trim();
+        return `<div class="autocomplete-item evo-method-item-option" data-index="${i}">` +
+            `<span class="evo-method-item-main">${icon?`<img src="${esc(icon)}" alt="" class="evo-method-item-icon" onerror="this.style.display='none'">`:''}<span>${esc(item.name)}</span></span>` +
+            `${desc?`<span class="meta">${esc(desc.length>70?desc.slice(0,67)+'...':desc)}</span>`:''}` +
+            `</div>`;
+    }).join('');
+    menu.querySelectorAll('.evo-method-item-option').forEach((el,i)=>{
+        el.addEventListener('mousedown',e=>{
+            e.preventDefault();
+            const item=items[i];
+            updateEvolutionMethodCombobox(item?.name || '');
+            closeEvolutionMethodItemMenu();
+        });
+    });
+}
+function populateEvolutionMethodItems(query='') {
+    const q=String(query||'').trim().toLowerCase();
+    const items=Object.values(state.sdItems||{})
+        .filter(x=>x?.name)
+        .filter((x,i,arr)=>arr.findIndex(y=>y.name===x.name)===i)
+        .filter(x=>!q || x.name.toLowerCase().includes(q))
+        .slice(0,8);
+    renderEvolutionMethodItemOptions(items);
+}
+function updateEvolutionMethodCombobox(value='') {
+    const input=document.getElementById('evolution-method-value');
+    const icon=document.getElementById('evolution-method-value-icon');
+    if(input) input.value=value;
+    if(icon) {
+        const src=evolutionItemIcon(value);
+        icon.src=src;
+        icon.style.display=src ? '' : 'none';
+    }
+}
+function filterEvolutionMethodItems() {
+    const input=document.getElementById('evolution-method-value');
+    if(!input) return;
+    populateEvolutionMethodItems(input.value);
+    document.getElementById('evolution-method-item-options')?.classList.add('open');
+}
+function closeEvolutionMethodItemMenu() { document.getElementById('evolution-method-item-options')?.classList.remove('open'); }
+function toggleEvolutionMethodTypeDropdown() {
+    document.getElementById('evolution-method-type-dropdown')?.classList.toggle('open');
+}
+function openEvolutionMethodItemMenu() { document.getElementById('evolution-method-item-options')?.classList.add('open'); }
+function setEvolutionMethodType(type, label) {
+    const input=document.getElementById('evolution-method-type');
+    const value=document.getElementById('evolution-method-type-value');
+    if(input) input.value=type;
+    if(value) value.textContent=label;
+    document.getElementById('evolution-method-type-dropdown')?.classList.remove('open');
+    updateEvolutionMethodForm();
+}
+function updateEvolutionMethodForm() {
+    const type=document.getElementById('evolution-method-type')?.value||'level';
+    const level=document.getElementById('evolution-method-level-wrap'), value=document.getElementById('evolution-method-value-wrap'), desc=document.getElementById('evolution-method-description-wrap');
+    if(level) level.style.display=type==='level'?'':'none';
+    if(value) value.style.display=type==='item'?'':'none';
+    if(desc) desc.style.display=type==='custom'?'':'none';
+    const label=document.getElementById('evolution-method-value-label');
+    if(label) label.textContent='Item';
+}
+function openEvolutionMethodEditor(nodeId=null) {
+    const modal=document.getElementById('evolution-method-modal'); if(!modal) return;
+    const node=nodeId?ensureGraph().nodes.find(n=>n.id===nodeId):null;
+    modal.dataset.nodeId=node?.id||'';
+    const initialType=node?.methodType||'level';
+    const initialLabel=initialType==='item'?'By Item':initialType==='custom'?'Custom Method':'By Level';
+    document.getElementById('evolution-method-type').value=initialType;
+    document.getElementById('evolution-method-type-value').textContent=initialLabel;
+    document.getElementById('evolution-method-level').value=node?.methodType==='level'?(node.value||16):16;
+    document.getElementById('evolution-method-value').value=node?.value||'';
+    document.getElementById('evolution-method-description').value=node?.description||'';
+    updateEvolutionMethodCombobox(node?.value||'');
+    document.getElementById('evolution-method-modal-title').textContent=node?'Edit Evo Method':'Add Evo Method';
+    populateEvolutionMethodItems(''); updateEvolutionMethodForm(); modal.classList.add('active');
+}
+function saveEvolutionMethod() {
+    const modal=document.getElementById('evolution-method-modal'), g=ensureGraph();
+    const type=document.getElementById('evolution-method-type')?.value||'level';
+    let node=g.nodes.find(n=>n.id===modal?.dataset.nodeId);
+    if(!node) { const i=getMethodNodes(g).length; node={id:methodNodeId(),kind:'method',methodType:type,value:'',description:'',mergeGroup:null,x:280+(i%3)*205,y:190+Math.floor(i/3)*100}; g.nodes.push(node); }
+    node.methodType=type;
+    node.value=type==='level'?Math.max(1,Math.min(100,Number(document.getElementById('evolution-method-level')?.value)||1)):(type==='item'?String(document.getElementById('evolution-method-value')?.value||'').trim():'');
+    node.description=type==='custom'?String(document.getElementById('evolution-method-description')?.value||'').trim():'';
+    modal?.classList.remove('active'); persistEvolutionGraph(); renderEvolutionBoard();
+}
+function removeEvolutionMethod(id) {
+    const g=ensureGraph(), node=g.nodes.find(n=>n.id===id); if(!node) return;
+    const group=node.mergeGroup; g.nodes=g.nodes.filter(n=>n.id!==id); g.edges=g.edges.filter(e=>e.from!==id&&e.to!==id); normalizeMethodGroup(g,group); persistEvolutionGraph(); renderEvolutionBoard();
+}
+
 function addCurrentNode() {
     const g = ensureGraph();
     const id = currentNodeId();
@@ -79,6 +296,21 @@ function renderEvolutionBoard() {
     g.nodes.forEach(n => {
         const info = getNodeInfo(n);
         const el = document.createElement('div');
+        if (isMethodNode(n)) {
+            el.className = `evo-node evo-method-node${n.mergeGroup ? ' evo-method-merged' : ''}`;
+            el.dataset.nodeId=n.id; el.style.width=`${NODE_W}px`; el.style.minHeight=`${NODE_H}px`;
+            el.style.left=`${Math.max(4,Math.min(W-NODE_W-4,n.x||20))}px`; el.style.top=`${Math.max(4,Math.min(H-NODE_H-4,n.y||20))}px`;
+            el.innerHTML=`<button class="evo-handle evo-handle-left" type="button" title="Connect from previous node"></button>
+                <div class="evo-method-head"><span><span class="evo-method-kicker">EVO METHOD</span><strong>${esc(getMethodLabel(n))}</strong></span>
+                <span style="display:flex;align-items:center;gap:4px;">${n.mergeGroup?'<span class="evo-method-stack-mark" title="Merged method group">◆</span>':''}<button class="evo-method-edit" type="button" title="Edit method">✎</button><button class="evo-remove" type="button" title="Remove">×</button></span></div>
+                <div class="evo-method-summary">${esc(getMethodSummary(n))}</div>
+                <button class="evo-handle evo-handle-right" type="button" title="Connect to next node"></button>`;
+            el.addEventListener('pointerdown',e=>startNodeDrag(e,n.id));
+            el.querySelectorAll('.evo-handle').forEach(h=>h.addEventListener('pointerdown',e=>startHandleDrag(e,n.id,h.classList.contains('evo-handle-left')?'left':'right')));
+            el.querySelector('.evo-method-edit')?.addEventListener('click',e=>{e.stopPropagation();openEvolutionMethodEditor(n.id);});
+            el.querySelector('.evo-remove')?.addEventListener('click',e=>{e.stopPropagation();removeEvolutionMethod(n.id);});
+            board.appendChild(el); return;
+        }
         el.className = `evo-node${n.id === me.id ? ' current' : ''}`;
         el.dataset.nodeId = n.id;
         el.style.width = `${NODE_W}px`;
@@ -130,16 +362,13 @@ function calculateStages(g) {
 }
 
 function effectiveEdges(g) {
-    return g.edges.map(e => {
-        const fromNode = g.nodes.find(n => n.id === e.from);
-        const toNode = g.nodes.find(n => n.id === e.to);
-        // For Mega/forme nodes, a node connected to its LEFT side is explicitly
-        // treated as its child. The visual edge can therefore run child -> special
-        // while the evolution hierarchy runs special -> child.
-        if (toNode && isSpecialNode(toNode) && e.toSide === 'left') return { from:e.to, to:e.from };
-        return { from:e.from, to:e.to };
+    return collapseMethodEdges(g).map(e => {
+        const toNode=g.nodes.find(n=>n.id===e.to);
+        if(toNode && isSpecialNode(toNode)) return {from:e.to,to:e.from};
+        return {from:e.from,to:e.to};
     });
 }
+
 
 function drawEvolutionEdges() {
     const board = document.getElementById('evolution-board');
@@ -148,14 +377,29 @@ function drawEvolutionEdges() {
     const g = ensureGraph();
     const { w: NODE_W, h: NODE_H } = getNodeSize();
     const br = board.getBoundingClientRect();
+    // Use the actual rendered handle centers rather than assuming every node
+    // has the same height. Method cards intentionally have a different visual
+    // layout, and CSS can change their height at breakpoints. Reading the
+    // handle geometry keeps every wire/arrow exactly centered on its node.
+    const getHandlePoint = (node, side) => {
+        const el = board.querySelector(`.evo-node[data-node-id=\"${CSS.escape(node.id)}\"] .evo-handle-${side}`);
+        if (el) {
+            const r = el.getBoundingClientRect();
+            return { x: r.left - br.left + r.width / 2, y: r.top - br.top + r.height / 2 };
+        }
+        const x = (node.x || 0) + (side === 'right' ? NODE_W : 0);
+        const y = (node.y || 0) + NODE_H / 2;
+        return { x, y };
+    };
     svg.setAttribute('viewBox', `0 0 ${Math.max(br.width, NODE_W + 40)} ${Math.max(br.height, NODE_H + 40)}`);
     const defs = `<defs><marker id="evo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker></defs>`;
     svg.innerHTML = defs;
     if (handleDrag) {
         const sourceNode = g.nodes.find(n => n.id === handleDrag.nodeId);
         if (sourceNode) {
-            const sx = handleDrag.side === 'right' ? (sourceNode.x || 0) + NODE_W : (sourceNode.x || 0);
-            const sy = (sourceNode.y || 0) + NODE_H / 2;
+            const sourcePoint = getHandlePoint(sourceNode, handleDrag.side);
+            const sx = sourcePoint.x;
+            const sy = sourcePoint.y;
             const ex = handleDrag.snapTarget?.x ?? handleDrag.x;
             const ey = handleDrag.snapTarget?.y ?? handleDrag.y;
             const dx = Math.max(30, Math.abs(ex - sx) * .45);
@@ -170,8 +414,10 @@ function drawEvolutionEdges() {
         const e = edge;
         const a = g.nodes.find(n => n.id === e.from), b = g.nodes.find(n => n.id === e.to);
         if (!a || !b) return;
-        const ax = (a.x || 0) + NODE_W, ay = (a.y || 0) + NODE_H/2;
-        const bx = b.x || 0, by = (b.y || 0) + NODE_H/2;
+        const fromPoint = getHandlePoint(a, 'right');
+        const toPoint = getHandlePoint(b, 'left');
+        const ax = fromPoint.x, ay = fromPoint.y;
+        const bx = toPoint.x, by = toPoint.y;
         const dx = Math.max(30, Math.abs(bx - ax) * .45);
         const d = `M ${ax} ${ay} C ${ax+dx} ${ay}, ${bx-dx} ${by}, ${bx} ${by}`;
         const group = document.createElementNS('http://www.w3.org/2000/svg','g');
@@ -234,12 +480,61 @@ document.addEventListener('pointermove', e => {
     const { w: NODE_W, h: NODE_H } = getNodeSize();
     const r = board.getBoundingClientRect();
     n.x = Math.max(4, Math.min(r.width-NODE_W-4, e.clientX-r.left-drag.ox));
-    n.y = Math.max(4, Math.min(r.height-NODE_H-4, e.clientY-r.top-drag.oy));
+    const nodeH=NODE_H;
+    n.y = Math.max(4, Math.min(r.height-nodeH-4, e.clientY-r.top-drag.oy));
     const el = board.querySelector(`.evo-node[data-node-id=\"${CSS.escape(drag.id)}\"]`);
     if (el) { el.style.left = `${n.x}px`; el.style.top = `${n.y}px`; }
     drawEvolutionEdges();
 });
-document.addEventListener('pointerup', () => { if (drag) { drag=null; persistEvolutionGraph(); } });
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+    const dx=x2-x1, dy=y2-y1, len2=dx*dx+dy*dy;
+    if (!len2) return {distance:Math.hypot(px-x1,py-y1),t:0,x:x1,y:y1};
+    const t=Math.max(0,Math.min(1,((px-x1)*dx+(py-y1)*dy)/len2));
+    const x=x1+t*dx, y=y1+t*dy;
+    return {distance:Math.hypot(px-x,py-y),t,x,y};
+}
+function cubicPoint(t,p0,p1,p2,p3){
+    const mt=1-t;
+    return {x:mt*mt*mt*p0.x+3*mt*mt*t*p1.x+3*mt*t*t*p2.x+t*t*t*p3.x,
+            y:mt*mt*mt*p0.y+3*mt*mt*t*p1.y+3*mt*t*t*p2.y+t*t*t*p3.y};
+}
+function findNearestEvolutionWire(x,y,ignoreNodeId){
+    const g=ensureGraph(), {w:NODE_W,h:NODE_H}=getNodeSize(); let best=null;
+    g.edges.forEach(edge=>{
+        if(edge.from===ignoreNodeId||edge.to===ignoreNodeId)return;
+        const a=g.nodes.find(n=>n.id===edge.from),b=g.nodes.find(n=>n.id===edge.to); if(!a||!b)return;
+        const ax=(a.x||0)+NODE_W,ay=(a.y||0)+NODE_H/2,bx=b.x||0,by=(b.y||0)+NODE_H/2,dx=Math.max(30,Math.abs(bx-ax)*.45);
+        let prev={x:ax,y:ay},local=null,steps=28;
+        for(let i=1;i<=steps;i++){
+            const t=i/steps,cur=cubicPoint(t,{x:ax,y:ay},{x:ax+dx,y:ay},{x:bx-dx,y:by},{x:bx,y:by});
+            const hit=pointToSegmentDistance(x,y,prev.x,prev.y,cur.x,cur.y);
+            if(!local||hit.distance<local.distance)local={distance:hit.distance,t:(i-1+hit.t)/steps,x:hit.x,y:hit.y};
+            prev=cur;
+        }
+        const threshold=Math.max(34,NODE_W*.22);
+        if(local&&local.distance<=threshold&&(!best||local.distance<best.distance))best={edge,distance:local.distance,x:local.x,y:local.y};
+    });
+    return best;
+}
+function insertNodeIntoWire(nodeId,hit){
+    const g=ensureGraph(),node=g.nodes.find(n=>n.id===nodeId),edge=hit?.edge;
+    if(!node||!edge||edge.from===nodeId||edge.to===nodeId)return false;
+    const idx=g.edges.indexOf(edge); if(idx<0)return false;
+    const size=getNodeSize();
+    const first={...edge,to:nodeId,fromSide:'right',toSide:'left'};
+    const second={...edge,from:nodeId,to:edge.to,fromSide:'right',toSide:'left'};
+    node.x=Math.max(4,hit.x-size.w/2); node.y=Math.max(4,hit.y-size.h/2);
+    g.edges.splice(idx,1,first,second); return true;
+}
+document.addEventListener('pointerup', () => {
+    if (!drag) return;
+    const id=drag.id; drag=null;
+    const g=ensureGraph(),node=g.nodes.find(n=>n.id===id);
+    if(!node){persistEvolutionGraph();return;}
+    const size=getNodeSize(),hit=findNearestEvolutionWire((node.x||0)+size.w/2,(node.y||0)+size.h/2,id);
+    if(hit&&insertNodeIntoWire(id,hit)){persistEvolutionGraph();renderEvolutionBoard();return;}
+    maybeMergeMethodNode(id);
+});
 
 let handleDrag = null;
 const HANDLE_SNAP_RADIUS = 42;
@@ -527,7 +822,36 @@ function shareSpecialPropertiesWithChild() {
     });
 }
 
-export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, renderEvolutionNodeChooser, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, syncEvolutionOnBasicLoad, persistEvolutionGraph, shareSpecialPropertiesWithChild };
+document.addEventListener('click', e => {
+    const typeOption=e.target.closest('#evolution-method-type-menu .type-dropdown-option');
+    if(typeOption) { setEvolutionMethodType(typeOption.dataset.value || 'custom', typeOption.textContent.trim()); return; }
+    const option=e.target.closest('.evo-method-item-option');
+    if(option) { closeEvolutionMethodItemMenu(); }
+});
+
+document.addEventListener('click', e => {
+    if(!e.target.closest('#evolution-method-type-dropdown')) document.getElementById('evolution-method-type-dropdown')?.classList.remove('open');
+    if(!e.target.closest('.evo-combobox')) closeEvolutionMethodItemMenu();
+});
+
+document.addEventListener('click', e => {
+    if (e.target.closest('#evolution-method-type-trigger')) {
+        e.stopPropagation();
+        toggleEvolutionMethodTypeDropdown();
+    }
+});
+
+const evolutionMethodItemInput = document.getElementById('evolution-method-value');
+if (evolutionMethodItemInput) {
+    evolutionMethodItemInput.addEventListener('focus', () => {
+        populateEvolutionMethodItems(evolutionMethodItemInput.value);
+        openEvolutionMethodItemMenu();
+    });
+    evolutionMethodItemInput.addEventListener('input', () => filterEvolutionMethodItems());
+    evolutionMethodItemInput.addEventListener('blur', () => setTimeout(closeEvolutionMethodItemMenu, 180));
+}
+
+export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, renderEvolutionNodeChooser, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, syncEvolutionOnBasicLoad, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, updateEvolutionMethodForm, saveEvolutionMethod, removeEvolutionMethod, populateEvolutionMethodItems };
 
 // Re-layout the board when the viewport crosses the mobile breakpoint (e.g.
 // on rotation), since node size and spacing depend on window width.

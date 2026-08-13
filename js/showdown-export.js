@@ -69,6 +69,101 @@ import { state, api } from './app.js';
             return '9T';
         }
 
+        function getShowdownEvolutionGraphForFakemon(fakemon) {
+            return fakemon?.evolutionGraph || state.evolutionGraph || null;
+        }
+
+        // Read evolution relationships from the graph itself. A graph can contain
+        // both Fakemon and vanilla Showdown species, so do not restrict either
+        // endpoint to kind === "fakemon".
+        function collectShowdownEvolutionRelations(graph) {
+            if (!graph?.nodes || !graph?.edges) return [];
+            const nodes = graph.nodes;
+            const outgoing = new Map();
+            graph.edges.forEach(e => {
+                if (!outgoing.has(e.from)) outgoing.set(e.from, []);
+                outgoing.get(e.from).push(e.to);
+            });
+            const methods = new Set(nodes.filter(n => n?.kind === 'method').map(n => n.id));
+            const relations = [];
+            const walk = (parent, nodeId, methodList, seen) => {
+                if (seen.has(nodeId)) return;
+                const node = nodes.find(n => n.id === nodeId);
+                if (!node) return;
+                const nextSeen = new Set(seen); nextSeen.add(nodeId);
+                if (!methods.has(nodeId)) {
+                    relations.push({ parent, child: node, methods: [...methodList] });
+                    return;
+                }
+                const nextMethods = [...methodList, node];
+                (outgoing.get(nodeId) || []).forEach(next => walk(parent, next, nextMethods, nextSeen));
+            };
+            nodes.filter(n => n && n.kind !== 'method').forEach(parent => {
+                (outgoing.get(parent.id) || []).forEach(next => walk(parent, next, [], new Set([parent.id])));
+            });
+            const unique = new Map();
+            relations.forEach(r => {
+                const key = `${r.parent.id}->${r.child.id}:${r.methods.map(m => m.id).join('|')}`;
+                if (!unique.has(key)) unique.set(key, r);
+            });
+            return [...unique.values()];
+        }
+
+        function buildShowdownEvolutionContext(fakemonList, graphOverride = null) {
+            const fakemonIds = new Map((fakemonList || []).map((f, i) => [String(f.id), toShowdownId(f.name) || `fakemon${i + 1}`]));
+            const graph = graphOverride || fakemonList?.find(f => f?.evolutionGraph)?.evolutionGraph || state.evolutionGraph || null;
+            if (!graph?.nodes) return { graph: null, speciesByNode: new Map(), relations: [] };
+            const used = new Set(fakemonIds.values());
+            const speciesByNode = new Map();
+            graph.nodes.forEach(n => {
+                if (!n || n.kind === 'method') return;
+                let id = '';
+                if (n.kind === 'fakemon' && n.refId) id = fakemonIds.get(String(n.refId)) || toShowdownId(n.name || n.refId);
+                else id = toShowdownId(n.refId || n.name);
+                if (!id) return;
+                let unique = id, i = 2;
+                while (used.has(unique) && ![...fakemonIds.values()].includes(unique)) unique = `${id}${i++}`;
+                used.add(unique); speciesByNode.set(n.id, unique);
+            });
+            return { graph, speciesByNode, relations: collectShowdownEvolutionRelations(graph) };
+        }
+
+        function applyEvolutionToSpeciesEntries(entries, fakemonList, speciesIds, graphOverride = null) {
+            const ctx = buildShowdownEvolutionContext(fakemonList, graphOverride);
+            if (!ctx.graph) return [];
+            const byId = new Map();
+            entries.forEach((entry, i) => byId.set(speciesIds[i], entry));
+            ctx.speciesByNode.forEach((speciesId, nodeId) => {
+                if (!byId.has(speciesId)) {
+                    const node = ctx.graph.nodes.find(n => n.id === nodeId);
+                    byId.set(speciesId, { name: node?.name || speciesId });
+                }
+            });
+            const notes = [];
+            ctx.relations.forEach(r => {
+                const parentId = ctx.speciesByNode.get(r.parent.id), childId = ctx.speciesByNode.get(r.child.id);
+                if (!parentId || !childId || parentId === childId) return;
+                const parent = byId.get(parentId), child = byId.get(childId);
+                if (!parent || !child) return;
+                parent.evos = [...new Set([...(parent.evos || []), childId])];
+                child.prevo = child.prevo || parentId;
+                const methods = r.methods || [];
+                if (!methods.length) return;
+                const labels = methods.map(m => {
+                    if (m.methodType === 'level') return `Level ${Number(m.value) || 1}`;
+                    if (m.methodType === 'item') return `Use ${m.value || 'an item'}`;
+                    return String(m.description || 'Custom condition');
+                });
+                const first = methods[0];
+                if (first.methodType === 'level') { child.evoType = 'level'; child.evoLevel = Number(first.value) || 1; }
+                else if (first.methodType === 'item' && first.value) { child.evoType = 'useItem'; child.evoItem = toShowdownId(first.value); }
+                else child.evoType = 'other';
+                if (labels.length > 1 || first.methodType === 'custom') child.evoCondition = labels.join(' + ');
+                if (first.methodType === 'custom' || labels.length > 1) notes.push(`${child.name}: ${labels.join(' + ')}`);
+            });
+            return notes;
+        }
+
         function buildSpeciesEntry(fakemon) {
             const num = parseInt(String(fakemon.number || '').replace(/[^0-9]/g, ''), 10) || 0;
             const types = [fakemon.type1, fakemon.type2].filter(Boolean);
@@ -114,17 +209,46 @@ import { state, api } from './app.js';
             });
         }
 
+        function buildEvolutionNotesText(fakemonList) {
+            const lines = [];
+            const seen = new Set();
+            (fakemonList || []).forEach(f => {
+                const graph = getShowdownEvolutionGraphForFakemon(f);
+                if (!graph?.nodes || !graph?.edges) return;
+                const owner = graph.nodes.find(n => n?.kind === 'fakemon' && String(n.refId) === String(f.id));
+                if (!owner) return;
+                (graph.edges || []).filter(e => e.from === owner.id).forEach(edge => {
+                    const methods = [];
+                    const visited = new Set();
+                    let node = graph.nodes.find(n => n.id === edge.to);
+                    while (node && node.kind === 'method' && !visited.has(node.id)) {
+                        visited.add(node.id); methods.push(node);
+                        const next = (graph.edges || []).find(e => e.from === node.id);
+                        node = next ? graph.nodes.find(n => n.id === next.to) : null;
+                    }
+                    if (!node || node.kind !== 'fakemon') return;
+                    const methodText = methods.map(m => m.methodType === 'level' ? `Level ${Number(m.value) || 1}` : m.methodType === 'item' ? `Use ${m.value || 'an item'}` : String(m.description || 'Custom Method')).join(' / ');
+                    const line = `${f.name} -> ${node.name || node.refId}${methodText ? ` (${methodText})` : ''}`;
+                    if (!seen.has(line)) { seen.add(line); lines.push(line); }
+                });
+            });
+            return lines.join('\r\n') + (lines.length ? '\r\n' : '');
+        }
+
         function buildPokedexTs(fakemon, speciesId) {
             const { entry, hasCustomAbility } = buildSpeciesEntry(fakemon);
-
-            return `// Made with Woogidex!
-// Toss this file into your Showdown server's mod folder as pokedex.ts
-// (either an existing mod or a new one you make; see the README).
-${hasCustomAbility ? '//\n// Heads up: this Fakemon has a custom ability on it, and that\'s not\n// something a vanilla Showdown server knows about, so it won\'t actually\n// do anything in battle. If you want it working, you\'ll need to write it\n// up yourself in an abilities.ts file in this same mod folder.\n' : ''}
-export const Pokedex: {[k: string]: Partial<import('../../../sim/dex-species').SpeciesData>} = {
-\t${speciesId}: ${JSON.stringify(entry, null, '\t').replace(/\n/g, '\n\t')},
-};
-`;
+            const graph = getShowdownEvolutionGraphForFakemon(fakemon);
+            const ctx = buildShowdownEvolutionContext([fakemon], graph);
+            const entries = new Map([[speciesId, entry]]);
+            ctx.speciesByNode.forEach((id, nodeId) => {
+                if (!entries.has(id)) {
+                    const node = graph.nodes.find(n => n.id === nodeId);
+                    entries.set(id, { name: node?.name || id });
+                }
+            });
+            applyEvolutionToSpeciesEntries([...entries.values()], [fakemon], [speciesId], graph);
+            const body = [...entries.entries()].map(([id, data]) => `\t${id}: ${JSON.stringify(data, null, '\t').replace(/\n/g, '\n\t')},`).join('\n');
+            return `// Made with Woogidex!\n// Evolution graph data includes vanilla species present on the board.\nexport const Pokedex: {[k: string]: Partial<import('../../../sim/dex-species').SpeciesData>} = {\n${body}\n};\n`;
         }
 
         function buildLearnsetsTs(fakemon, speciesId) {
@@ -240,6 +364,8 @@ A couple things worth knowing:
                 zip.file('pokedex.ts', buildPokedexTs(fakemon, speciesId));
                 zip.file('learnsets.ts', buildLearnsetsTs(fakemon, speciesId));
                 zip.file('README.txt', buildReadmeTxt(fakemon));
+                const evolutionNotes = buildEvolutionNotesText([fakemon]);
+                if (evolutionNotes) zip.file('evolution_notes.txt', evolutionNotes);
 
                 const blob = await zip.generateAsync({ type: 'blob' });
                 const url = URL.createObjectURL(blob);
@@ -258,21 +384,22 @@ A couple things worth knowing:
         }
 
         function buildCollectionPokedexTs(fakemonList, speciesIds) {
+            const entries = new Map();
+            fakemonList.forEach((f, i) => entries.set(speciesIds[i], buildSpeciesEntry(f).entry));
+            const graph = fakemonList.find(f => f?.evolutionGraph)?.evolutionGraph || state.evolutionGraph || null;
+            const ctx = buildShowdownEvolutionContext(fakemonList, graph);
+            ctx.speciesByNode.forEach((id, nodeId) => {
+                if (!entries.has(id)) {
+                    const node = graph.nodes.find(n => n.id === nodeId);
+                    entries.set(id, { name: node?.name || id });
+                }
+            });
+            const entryList = [...entries.values()];
+            const idList = [...entries.keys()];
+            applyEvolutionToSpeciesEntries(entryList, fakemonList, idList, graph);
             const anyCustomAbility = fakemonList.some(f => (f.abilities || []).some(a => a && (a.source === 'custom' || a.custom === true)));
-            const entries = fakemonList.map((f, i) => {
-                const { entry } = buildSpeciesEntry(f);
-                return `\t${speciesIds[i]}: ${JSON.stringify(entry, null, '\t').replace(/\n/g, '\n\t')},`;
-            }).join('\n');
-
-            return `// Made with Woogidex!
-// Your whole collection's species data, ready to drop into
-// data/mods/<modname>/pokedex.ts (this file's already sitting in the mod
-// folder in this ZIP, so you shouldn't need to move it).
-${anyCustomAbility ? '//\n// Heads up: some of these Fakemon have custom abilities on them, and\n// that\'s not something a vanilla Showdown server knows about, so those\n// abilities won\'t actually do anything in battle. If you want them\n// working, you\'ll need to write them up yourself in an abilities.ts file\n// in this same mod folder.\n' : ''}
-export const Pokedex: {[k: string]: Partial<import('../../../sim/dex-species').SpeciesData>} = {
-${entries}
-};
-`;
+            const body = [...entries.entries()].map(([id, data]) => `\t${id}: ${JSON.stringify(data, null, '\t').replace(/\n/g, '\n\t')},`).join('\n');
+            return `// Made with Woogidex!\n// Evolution graph data includes vanilla species present on the board.\n${anyCustomAbility ? '// Some custom abilities are display-only until implemented in the mod.\n' : ''}export const Pokedex: {[k: string]: Partial<import('../../../sim/dex-species').SpeciesData>} = {\n${body}\n};\n`;
         }
 
         function buildCollectionLearnsetsTs(fakemonList, speciesIds) {
@@ -312,6 +439,8 @@ ${entries}
                 const { text: learnsetsText, totalSkipped } = buildCollectionLearnsetsTs(fakemonList, speciesIds);
                 modFolder.file('learnsets.ts', learnsetsText);
                 zip.file('README.txt', buildCollectionReadmeTxt(fakemonList, modId, totalSkipped));
+                const evolutionNotes = buildEvolutionNotesText(fakemonList);
+                if (evolutionNotes) zip.file('evolution_notes.txt', evolutionNotes);
 
                 const blob = await zip.generateAsync({ type: 'blob' });
                 const url = URL.createObjectURL(blob);
