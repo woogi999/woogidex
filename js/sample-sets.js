@@ -504,6 +504,36 @@ import { updatePreview } from './editor-core.js';
             return scores;
         }
 
+        // Hard role feasibility: a role is a claim about the set's strategy, not a
+        // generic label. If the defining tools are absent from the learnset, that role
+        // must never be generated.
+        function sampleRoleIsFeasible(profile, role) {
+            const moves = profile.moves || [];
+            const damaging = moves.filter(sampleIsDamaging);
+            const usefulDamaging = damaging.filter(m => sampleMoveIsActuallyUseful(m, profile, role));
+            const pivot = moves.filter(m => sampleMoveKind(m).pivot);
+            const hazards = moves.filter(m => sampleMoveKind(m).hazard);
+            const setup = moves.filter(m => sampleMoveKind(m).setup && sampleSetupFitsRole(m, profile, role));
+            const recovery = moves.filter(m => sampleMoveKind(m).recovery);
+            const removal = moves.filter(m => sampleMoveKind(m).removal);
+            const utility = moves.filter(m => {
+                const k = sampleMoveKind(m);
+                return k.disruption || k.speedControl || k.screens || k.removal || k.hazard || k.pivot || k.recovery;
+            });
+
+            if (role === 'pivot') return pivot.length > 0;
+            if (role === 'hazard') return hazards.length > 0;
+            if (role === 'screens') return sampleHasScreensGameplan(profile);
+            if (role === 'setupSweeper') return setup.length > 0 && usefulDamaging.length >= 1;
+            if (role === 'physicalSweeper') return usefulDamaging.some(m => m.category === 'Physical' && profile.types.includes(m.type));
+            if (role === 'specialSweeper') return usefulDamaging.some(m => m.category === 'Special' && profile.types.includes(m.type));
+            if (role === 'wallbreaker') return usefulDamaging.length >= 2;
+            if (role === 'bulkyAttacker') return usefulDamaging.length >= 1 && (recovery.length > 0 || profile.stats.hp >= 85 || Math.max(profile.stats.def, profile.stats.spd) >= 90);
+            if (role === 'defensive') return recovery.length > 0 || utility.length >= 2 || removal.length > 0 || hazards.length > 0;
+            if (role === 'support') return utility.length >= 2 || recovery.length > 0;
+            return true;
+        }
+
         function sampleRoleMoveRequirements(role) {
             return {
                 physicalSweeper: { attack: 'Physical', require: 'damaging', preferSetup: true, preferSpeed: true },
@@ -1317,6 +1347,10 @@ import { updatePreview } from './editor-core.js';
         }
 
         function samplePickMoves(profile, role, seed) {
+            // A zero-pivot learnset must never fall through into a generic set merely
+            // because the pivot role happened to rank highly or tie with another role.
+            if (!sampleRoleIsFeasible(profile, role)) return [];
+
             const rng = sampleSetRng(seed);
             const compatible = profile.moves.filter(m =>
                 m.name &&
@@ -1797,11 +1831,39 @@ import { updatePreview } from './editor-core.js';
             });
         }
 
-        function generateSuggestedSampleSets() {
+        // Cache the expensive set-generation result. Opening the modal should never
+        // synchronously rebuild the beam-search on every click. The cache is keyed by
+        // the current Fakemon inputs, so changing the species data automatically causes
+        // a fresh generation pass.
+        let sampleSetSuggestionCache = { key: '', suggestions: null };
+        let sampleSetGenerationInFlight = false;
+
+        function getSampleSetSuggestionCacheKey() {
+            const profile = getSampleSetProfile();
+            return [
+                document.getElementById('fakemon-name')?.value || '',
+                Object.values(profile.stats).join(','),
+                profile.types.join('/'),
+                profile.abilities.join('/'),
+                profile.moves.map(m => `${m.name}:${m.type}:${m.category}:${m.basePower}`).join('|'),
+                state.sdMoveUsefulness ? Object.keys(state.sdMoveUsefulness).length : 0
+            ].join('::');
+        }
+
+        function generateSuggestedSampleSets(force = false) {
+            const cacheKey = getSampleSetSuggestionCacheKey();
+            if (!force && sampleSetSuggestionCache.key === cacheKey && Array.isArray(sampleSetSuggestionCache.suggestions)) {
+                return JSON.parse(JSON.stringify(sampleSetSuggestionCache.suggestions));
+            }
+
             const profile = getSampleSetProfile();
             if (profile.moves.length < 4) return [];
             const roleScores = sampleRoleScores(profile);
-            const rankedRoles = Object.keys(roleScores).sort((a,b) => roleScores[b] - roleScores[a] || a.localeCompare(b));
+            // Infeasible roles are removed before ranking. Missing a defining mechanic
+            // is a hard impossibility, not merely a low score.
+            const rankedRoles = Object.keys(roleScores)
+                .filter(role => sampleRoleIsFeasible(profile, role))
+                .sort((a,b) => roleScores[b] - roleScores[a] || a.localeCompare(b));
             const seedSource = [document.getElementById('fakemon-name')?.value || '', Object.values(profile.stats).join(','), profile.types.join('/'), profile.abilities.join('/'), profile.moves.map(m => `${m.name}:${m.type}:${m.category}:${m.basePower}`).join('|')].join('::');
             const seed = sampleSetHash(seedSource);
             const suggestions = [];
@@ -1841,24 +1903,57 @@ import { updatePreview } from './editor-core.js';
                 });
             });
 
-            return suggestions.slice(0, 3);
+            const result = suggestions.slice(0, 3);
+            sampleSetSuggestionCache = {
+                key: cacheKey,
+                suggestions: JSON.parse(JSON.stringify(result))
+            };
+            return JSON.parse(JSON.stringify(result));
         }
+
         function openSampleSetModal() {
             const modal = document.getElementById('sample-set-modal');
             if (!modal) return;
             modal.classList.add('active');
             const container = document.getElementById('suggested-sample-sets-list');
             const alreadyLoaded = state.sdMoveUsefulness && Object.keys(state.sdMoveUsefulness).length;
-            // Rendering once (after usefulness data is ready) instead of rendering
-            // immediately and then re-rendering when the fetch resolves avoids a
-            // visible "blink" where the suggested sets swap out right after opening.
-            if (alreadyLoaded) {
-                renderSuggestedSampleSets();
-            } else {
-                if (container) container.innerHTML = '<div class="sample-set-empty-message">Loading move data…</div>';
-                loadCompetitiveMoveUsefulness().then(() => {
+            const cacheKey = getSampleSetSuggestionCacheKey();
+            const hasCachedSuggestions = sampleSetSuggestionCache.key === cacheKey && Array.isArray(sampleSetSuggestionCache.suggestions);
+
+            // Never run the expensive generator in the same task that opens the modal.
+            // That used to make the second opening appear to freeze because the browser
+            // could not paint the loading state before the beam search began.
+            if (hasCachedSuggestions) {
+                if (container) container.innerHTML = '<div class="sample-set-empty-message">Loading sample sets…</div>';
+                requestAnimationFrame(() => {
                     if (modal.classList.contains('active')) renderSuggestedSampleSets();
                 });
+                return;
+            }
+
+            if (container) container.innerHTML = '<div class="sample-set-empty-message">Loading move data…</div>';
+
+            const generateWhenReady = () => {
+                if (!modal.classList.contains('active')) return;
+                if (sampleSetGenerationInFlight) return;
+                sampleSetGenerationInFlight = true;
+                // Give the browser a paint opportunity so the loading indicator is
+                // actually visible before the CPU-heavy set search starts.
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        try {
+                            renderSuggestedSampleSets();
+                        } finally {
+                            sampleSetGenerationInFlight = false;
+                        }
+                    }, 0);
+                });
+            };
+
+            if (alreadyLoaded) {
+                generateWhenReady();
+            } else {
+                loadCompetitiveMoveUsefulness().then(generateWhenReady).catch(() => generateWhenReady());
             }
         }
 
