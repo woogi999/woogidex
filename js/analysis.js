@@ -270,22 +270,22 @@ function makeCasualSummary(t, tf, tier, closest, statCombination, roleScore, typ
   let opener=pickRandom(tierOpeners[tierKey]||['okay lets see what this thing is cooking']);
 
   const hooks=[];
-  if(typePct>=85) hooks.push(pickRandom(['that typing is kinda NASTY','that typing is doing WORK','that typing is looking CLEAN']));
-  if(speed>=120) hooks.push(pickRandom(['bro is MOVING','this thing is SPEEDING','good luck outspeeding this thing']));
-  else if(speed>=105) hooks.push(pickRandom(['the Speed is pretty nice','it is quick enough to matter','it is not exactly sitting around']));
+  if(typePct>=85) hooks.push(pickRandom(['that typing is kinda nasty','that typing is doing work','that typing is looking clean']));
+  if(speed>=120) hooks.push(pickRandom(['bro is MOVING','this thing is SPEEDING','yea good luck outspeeding this thing buddy']));
+  else if(speed>=105) hooks.push(pickRandom(['the Speed is pretty nice','it is quick enough to matter','it is not exactly sitting around,,']));
   else if(speed<=55) hooks.push(pickRandom(['it is definitely on the slower side','the Speed is gonna be a headache','yeah this thing is NOT winning races']));
   if(bestStat && Number(bestStat[1])>=130) hooks.push(pickRandom([
-    `${STAT_NAMES[bestStat[0]]} is doing SERIOUS work`,
+    `${STAT_NAMES[bestStat[0]]} is doing some serious work here`,
     `that ${STAT_NAMES[bestStat[0]]} stat is kinda ridiculous`,
-    `the ${STAT_NAMES[bestStat[0]]} stat is carrying HARD`
+    `the ${STAT_NAMES[bestStat[0]]} stat is carrying hard for ts`
   ]));
-  if(tf.recovery && tf.pivot) hooks.push(pickRandom(['the healing and pivoting combo is nasty','recovery plus pivoting is a REALLY good combo','being able to heal and pivot is huge']));
+  if(tf.recovery && tf.pivot) hooks.push(pickRandom(['the healing and pivoting combo is nasty','recovery plus pivoting is a nice thing to have','being able to heal and pivot is huge']));
   else if(tf.recovery) hooks.push(pickRandom(['the healing gives it real staying power','having recovery makes this way harder to wear down','the recovery gives it a lot of breathing room']));
-  else if(tf.pivot) hooks.push(pickRandom(['the pivoting gives it a lot of options','being able to pivot is really nice here','the pivoting is doing some REAL work']));
-  if(tf.typing.resist+tf.typing.immune>=7) hooks.push(pickRandom(['it has a LOT of useful switch-ins','it can come in on a pretty wide range of attacks','the number of useful switch-ins is kinda wild']));
-  if(statCombination>=85) hooks.push(pickRandom(['the stat spread is SERIOUSLY strong','the stats are looking really healthy','the overall stat spread is doing NUMBERS']));
-  if(tf.setup && (tf.offensive||statCombination>=70)) hooks.push(pickRandom(['it can snowball if it gets a free turn','give this thing a setup turn and it gets UGLY','it has the tools to snowball pretty fast']));
-  if(tf.offensive>=125) hooks.push(pickRandom(['it can actually hit pretty hard','the offensive pressure is NO JOKE','it has enough firepower to make switches hurt']));
+  else if(tf.pivot) hooks.push(pickRandom(['the pivoting gives it a lot of options','being able to pivot is really nice here','the pivoting is doing some good work']));
+  if(tf.typing.resist+tf.typing.immune>=7) hooks.push(pickRandom(['it has a lot of useful switch-ins','it can come in on a pretty wide range of attacks','the number of useful switch-ins is kinda wild']));
+  if(statCombination>=85) hooks.push(pickRandom(['the stat spread is VERY strong','the stats are looking really healthy','the overall stat spread is doing the lords work']));
+  if(tf.setup && (tf.offensive||statCombination>=70)) hooks.push(pickRandom(['it can snowball if it gets a free turn','give this thing a setup turn and get ready to close down google chrome','it has the tools to snowball pretty fast']));
+  if(tf.offensive>=125) hooks.push(pickRandom(['it can actually hit pretty hard','the offensive pressure is no joke','it has enough firepower to make switches hurt']));
 
   const roleBits=[];
   if(tf.recovery) roleBits.push('reliable healing');
@@ -297,13 +297,13 @@ function makeCasualSummary(t, tf, tier, closest, statCombination, roleScore, typ
   const roleText=roleBits.slice(0,2).join(' and ') || 'a straightforward game plan';
 
   let sentence=`this is a ${typeText} Pokémon with ${roleText}. `;
-  if(bestStat && Number(bestStat[1])>=110) sentence+=`${STAT_NAMES[bestStat[0]]} is its standout stat. `;
+  if(bestStat && Number(bestStat[1])>=110) sentence+=`${STAT_NAMES[bestStat[0]]} is its good stat. `;
   else if(speed<=60) sentence+='it is definitely on the slower side. ';
   else if(speed>=110) sentence+='it has enough Speed to keep up with a lot of threats. ';
   else sentence+='its stats are fairly balanced. ';
   if(hooks.length) sentence+=hooks.slice(0,2).join(' ')+'. ';
-  if(closestName) sentence+=`it is closest to ${closestName} here, and the model puts it around ${tierText}.`;
-  else sentence+=`overall, the model puts it around ${tierText}.`;
+  if(closestName) sentence+=`it is closest to ${closestName} here, and i'd put it around ${tierText}.`;
+  else sentence+=`overall, i'd put it around ${tierText}.`;
   return `${opener}. ${sentence}`;
 }
 function detailedProfile(mon){

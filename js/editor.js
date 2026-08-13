@@ -394,15 +394,43 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
             ].join('\n');
         }
 
-        function getExportableMovesText() {
-            // Canonical move import/export format:
-            // - one alphabetical list of every move, with custom moves marked by *
-            // - one blank line
-            // - custom move definitions afterward, matching the starred names
-            const entries = state.learnset
-                .filter(move => move && move.name)
-                .slice()
-                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        function sortLearnsetEntries(entries, sortMode = 'name', order = 'asc') {
+            const sorted = (Array.isArray(entries) ? entries : []).filter(move => move && move.name).slice();
+            const sortFn = (a, b) => {
+                if (sortMode === 'type') return (a.type || '').localeCompare(b.type || '', undefined, { sensitivity: 'base' }) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                if (sortMode === 'power') return (Number(a.basePower) || 0) - (Number(b.basePower) || 0) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                if (sortMode === 'category') {
+                    const catOrder = { Physical: 0, Special: 1, Status: 2 };
+                    return (catOrder[a.category] ?? 3) - (catOrder[b.category] ?? 3) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                }
+                if (sortMode === 'default') {
+                    const customA = isCustomMove(a), customB = isCustomMove(b);
+                    if (customA !== customB) return customA ? -1 : 1;
+                    if (customA && customB) return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                    const methodOrder = { level: 0, egg: 1, tm: 2, none: 3 };
+                    const ma = a.learnMethod || 'none', mb = b.learnMethod || 'none';
+                    const md = (methodOrder[ma] ?? 3) - (methodOrder[mb] ?? 3);
+                    if (md !== 0) return md;
+                    if (ma === 'level' && a.level && b.level) return a.level - b.level;
+                    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                }
+                return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+            };
+            sorted.sort(sortFn);
+            if (order === 'desc') sorted.reverse();
+            return sorted;
+        }
+
+        function getMoveSortOptions() {
+            return {
+                sort: document.getElementById('move-import-export-sort')?.value || 'name',
+                order: document.getElementById('move-import-export-order')?.value || 'asc'
+            };
+        }
+
+        function getExportableMovesText(sort, order) {
+            const selected = sort && order ? { sort, order } : getMoveSortOptions();
+            const entries = sortLearnsetEntries(state.learnset, selected.sort, selected.order);
             const names = entries.map(move => `${move.name}${isCustomMove(move) ? '*' : ''}`);
             const customBlocks = entries.filter(isCustomMove).map(formatCustomMoveForImportExport);
             return names.join('\n') + (customBlocks.length ? `\n\n${customBlocks.join('\n\n')}` : '');
@@ -411,7 +439,8 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         function openMoveImportExportModal() {
             const textarea = document.getElementById('move-import-export-text');
             if (!textarea) return;
-            textarea.value = getExportableMovesText();
+            const { sort, order } = getMoveSortOptions();
+            textarea.value = getExportableMovesText(sort, order);
             document.getElementById('move-import-export-modal').classList.add('active');
             setTimeout(() => textarea.focus(), 0);
         }
@@ -419,7 +448,8 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         function exportMovesToText() {
             const textarea = document.getElementById('move-import-export-text');
             if (!textarea) return;
-            textarea.value = getExportableMovesText();
+            const { sort, order } = getMoveSortOptions();
+            textarea.value = getExportableMovesText(sort, order);
             textarea.focus();
             textarea.select();
             const count = state.learnset.filter(m => m && m.name).length;
@@ -551,15 +581,13 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                 return;
             }
 
-            state.learnset = imported;
-            // Do not apply the editor's default custom-first ordering here. The import
-            // format itself defines the order, and the preview/export can alphabetize
-            // independently when needed.
+            const { sort, order: importOrder } = getMoveSortOptions();
+            state.learnset = sortLearnsetEntries(imported, sort, importOrder);
             renderLearnset();
             renderRecommendMovesModal();
             updatePreview();
             api.autoSave();
-            if (textarea) textarea.value = getExportableMovesText();
+            if (textarea) textarea.value = getExportableMovesText(sort, importOrder);
 
             const customCount = imported.filter(isCustomMove).length;
             const standardCount = imported.length - customCount;
@@ -2207,4 +2235,4 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
 
         
 
-export { resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };
+export { sortLearnsetEntries, resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };

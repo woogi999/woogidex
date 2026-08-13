@@ -1,4 +1,5 @@
 import { state, api } from './app.js';
+import { sortLearnsetEntries } from './editor.js';
 
 // ==================== IMPORT / EXPORT ====================
         let pendingCollectionImportFile = null;
@@ -595,7 +596,7 @@ import { state, api } from './app.js';
             return String(value ?? '').replace(/\r?\n/g, '\n');
         }
 
-        function buildPlainTextExport() {
+        function buildPlainTextExport(sort = 'name', order = 'asc') {
             const name = document.getElementById('fakemon-name')?.value.trim() || 'Fakemon';
             const species = document.getElementById('fakemon-species')?.value.trim() || 'Pokemon';
             const type1 = document.getElementById('fakemon-type1')?.value.trim() || '—';
@@ -652,7 +653,7 @@ import { state, api } from './app.js';
             lines.push('');
             lines.push('Learnset:');
 
-            const learnset = Array.isArray(state.learnset) ? state.learnset : [];
+            const learnset = sortLearnsetEntries(state.learnset, sort, order);
             const vanillaMoves = learnset
                 .filter(m => m && m.name && !(m.source === 'custom' || m.custom === true))
                 .map(m => m.name);
@@ -683,9 +684,18 @@ import { state, api } from './app.js';
             return lines.join('\n').replace(/\n{4,}/g, '\n\n\n');
         }
 
+        function refreshPlainTextExport() {
+            const sort = document.getElementById('plain-text-export-sort')?.value || 'name';
+            const order = document.getElementById('plain-text-export-order')?.value || 'asc';
+            const textarea = document.getElementById('plain-text-export-text');
+            if (textarea) textarea.value = buildPlainTextExport(sort, order);
+        }
+
         function openPlainTextExportModal() {
             try {
-                const text = buildPlainTextExport();
+                const sort = document.getElementById('plain-text-export-sort')?.value || 'name';
+                const order = document.getElementById('plain-text-export-order')?.value || 'asc';
+                const text = buildPlainTextExport(sort, order);
                 const textarea = document.getElementById('plain-text-export-text');
                 if (!textarea) return;
                 textarea.value = text;
@@ -758,4 +768,4 @@ import { state, api } from './app.js';
 
         
 
-export { exportCollection, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon };
+export { refreshPlainTextExport, exportCollection, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon };
