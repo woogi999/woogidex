@@ -3594,3 +3594,82 @@
 .board-artwork-left:hover .board-artwork-mode,
 .board-artwork-left:focus-within .board-artwork-mode { opacity:1; transform:translateY(0); pointer-events:auto; }
 .board-artwork-left .board-artwork-shiny-toggle { pointer-events:auto; }
+
+/* Analysis tab: hierarchy and matchup-card refresh */
+.analysis-profile{display:grid;grid-template-columns:minmax(190px,.7fr) minmax(300px,1.5fr) minmax(230px,1fr);gap:20px;align-items:center;margin-bottom:18px;background:linear-gradient(135deg,var(--bg-panel),var(--bg-card));}
+.analysis-profile-main{min-width:0;padding-right:18px;border-right:1px solid var(--border-light)}
+.analysis-profile-tier{font-size:42px;font-weight:800;line-height:1;margin:6px 0 8px;letter-spacing:-.02em}
+.analysis-profile-summary{min-width:0}
+.analysis-profile-note{font-size:11px;line-height:1.55;color:var(--text-muted);padding-left:4px}
+.analysis-strength-row{margin-bottom:18px}
+.analysis-strength-card h3{display:flex;align-items:center;gap:8px}
+.analysis-section-icon{width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.analysis-positive{background:rgba(45,138,62,.12);color:var(--success)}
+.analysis-negative{background:rgba(192,57,43,.12);color:var(--danger)}
+.analysis-strength-card ul{margin:0;padding-left:19px;color:var(--text-secondary);font-size:12px;line-height:1.7}
+.analysis-strength-card li+li{margin-top:5px}
+.analysis-detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin-bottom:18px}
+.analysis-detail-grid>.analysis-card{min-width:0}
+.analysis-matchups-card{padding:20px 22px!important}
+.analysis-matchups-header{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}
+.analysis-matchups-header h3{margin-bottom:4px!important}
+.analysis-matchups-header p{margin:0!important}
+.analysis-matchups-score{min-width:78px;text-align:right;padding:8px 12px;border:1px solid var(--border-light);border-radius:10px;background:var(--bg-input)}
+.analysis-matchups-score span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)}
+.analysis-matchups-score b{font-family:'JetBrains Mono',monospace;font-size:16px}
+.analysis-matchup-columns{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.analysis-matchup-group h4{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary)}
+.analysis-matchup-group.favorable h4>span{color:var(--success)}
+.analysis-matchup-group.unfavorable h4>span{color:var(--danger)}
+.analysis-matchup-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.analysis-matchup-card{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 10px;border:1px solid var(--border-light);border-radius:11px;background:var(--bg-input);transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+.analysis-matchup-card:hover{transform:translateY(-1px);border-color:var(--border);box-shadow:0 5px 14px rgba(0,0,0,.07)}
+.analysis-matchup-icon{width:46px;height:40px;flex:0 0 46px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg-panel);overflow:hidden}
+.analysis-matchup-icon img{width:54px;height:54px;object-fit:contain;image-rendering:auto}
+.analysis-matchup-info{min-width:0;display:flex;flex-direction:column;gap:2px;flex:1}
+.analysis-matchup-info strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.analysis-matchup-info span{font-size:9px;color:var(--text-muted)}
+.analysis-matchup-score{font-family:'JetBrains Mono',monospace;font-size:11px;flex:0 0 auto}
+.analysis-matchup-group.favorable .analysis-matchup-score{color:var(--success)}
+.analysis-matchup-group.unfavorable .analysis-matchup-score{color:var(--danger)}
+@media(max-width:1100px){.analysis-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.analysis-profile{grid-template-columns:1fr 1.5fr}.analysis-profile-note{grid-column:1/-1;padding:0;border-top:1px solid var(--border-light);padding-top:12px}.analysis-matchup-list{grid-template-columns:1fr}}
+@media(max-width:760px){.analysis-profile{grid-template-columns:1fr;gap:14px}.analysis-profile-main{border-right:0;border-bottom:1px solid var(--border-light);padding:0 0 14px}.analysis-profile-note{grid-column:auto}.analysis-detail-grid,.analysis-matchup-columns{grid-template-columns:1fr}.analysis-matchups-header{flex-direction:column}.analysis-matchups-score{align-self:flex-start;text-align:left}}
+
+/* Final Analysis profile sizing */
+.analysis-summary-grid{gap:20px;}
+.analysis-hero{padding:24px 26px;min-height:190px;}
+.analysis-tier-large{font-size:48px;line-height:1.02;margin:8px 0 6px;}
+.analysis-disclaimer{margin-top:18px;padding-top:14px;border-top:1px solid var(--border-light);font-size:11px;line-height:1.55;color:var(--text-muted);}
+@media(max-width:760px){.analysis-tier-large{font-size:40px;}.analysis-hero{padding:20px;}}
+
+
+/* Final analysis profile hierarchy fix */
+.analysis-profile{
+  grid-template-columns:minmax(250px,.72fr) minmax(0,1.8fr);
+  gap:24px;
+  align-items:center;
+  padding:28px 30px !important;
+  min-height:230px;
+}
+.analysis-profile-main{padding-right:24px}
+.analysis-profile-tier{font-size:58px;line-height:.98;font-weight:900;letter-spacing:-.035em;margin:10px 0 12px}
+.analysis-profile-summary{padding:4px 0;min-width:0}
+.analysis-profile-summary .analysis-discord-message{margin:0;padding:0}
+.analysis-profile-summary .analysis-discord-text{font-size:13px;line-height:1.8}
+.analysis-profile-note{
+  grid-column:1/-1;
+  border-top:1px solid var(--border-light);
+  padding:14px 0 0 !important;
+  font-size:12px;
+  line-height:1.55;
+}
+@media(max-width:1100px){
+  .analysis-profile{grid-template-columns:minmax(210px,.75fr) minmax(0,1.4fr);padding:26px 26px !important}
+  .analysis-profile-tier{font-size:50px}
+}
+@media(max-width:760px){
+  .analysis-profile{grid-template-columns:1fr;gap:16px;padding:22px 20px !important;min-height:0}
+  .analysis-profile-main{border-right:0;border-bottom:1px solid var(--border-light);padding:0 0 16px}
+  .analysis-profile-tier{font-size:48px}
+  .analysis-profile-note{grid-column:auto}
+}
