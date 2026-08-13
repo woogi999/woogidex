@@ -861,8 +861,59 @@ import { updatePreview } from './editor-core.js';
             return false;
         }
 
+        // These moves can be legal and occasionally useful on a hand-built set, but
+        // they are poor defaults for an automatically generated competitive sample set.
+        // In particular, two-turn attacks must never be allowed to masquerade as ordinary
+        // coverage just because their displayed BP is high.
+        const SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES = new Set([
+            'Bounce','Fly','Dig','Dive','Phantom Force','Shadow Force',
+            'Skull Bash','Sky Attack','Razor Wind','Belch'
+        ]);
+
+        // Tera Blast is not generic coverage. It is a strategic fallback for offensive
+        // sets whose movepool does not provide meaningful off-type attacks. In particular,
+        // never use it to fill a defensive/support/hazard set's last slot when the Pokemon
+        // already has ordinary utility such as Knock Off, recovery, hazards, removal, etc.
+        const SAMPLE_SET_OFFENSIVE_TERA_ROLES = new Set([
+            'physicalSweeper','specialSweeper','setupSweeper','wallbreaker'
+        ]);
+
+        // Rest is legitimate on some bulky/defensive strategies, but it should not
+        // consume a slot on an offensive sweeper when that slot can provide coverage
+        // or another offensive tool. Sleep Talk can still be used manually.
+        const SAMPLE_SET_OFFENSIVE_NO_REST_ROLES = new Set([
+            'physicalSweeper','specialSweeper','setupSweeper','wallbreaker'
+        ]);
+
+        function sampleHasNaturalCoverageOptions(profile, role) {
+            const options = profile.moves.filter(m => {
+                if (!m?.name || m.name === 'Tera Blast') return false;
+                if (sampleMoveIsBanned(m) || SAMPLE_SET_SELF_KO_MOVES.has(m.name) || SAMPLE_SET_BAD_DEFAULT_MOVES.has(m.name)) return false;
+                if (!sampleIsDamaging(m) || profile.types.includes(m.type)) return false;
+                if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(m.name)) return false;
+                if (sampleIsTwoTurnAttack(m)) return false;
+                if (!sampleMoveCompatibleWithRole(m, profile, role)) return false;
+                return sampleHasGoodCoverage(m, profile, []);
+            });
+            return options;
+        }
+
+        function sampleTeraBlastAllowed(profile, role, chosen = []) {
+            if (!SAMPLE_SET_OFFENSIVE_TERA_ROLES.has(role)) return false;
+            // If the movepool already gives the offensive set meaningful natural coverage,
+            // use that move instead of spending a slot on Tera Blast.
+            const naturalCoverage = sampleHasNaturalCoverageOptions(profile, role);
+            if (naturalCoverage.length > 0) return false;
+            // A Tera Blast already selected should not somehow justify another Tera Blast.
+            if (chosen.some(m => m.name === 'Tera Blast')) return false;
+            return true;
+        }
+
         function sampleHasGoodCoverage(move, profile, chosen) {
             if (!sampleIsDamaging(move) || profile.types.includes(move.type)) return false;
+            // Never let a two-turn attack enter an automatic coverage slot.
+            // Its raw BP is not a meaningful representation of its competitive role.
+            if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name)) return false;
             if (!sampleMoveIsActuallyUseful(move)) return false;
 
             // Trapping damage is not generic coverage. Fire Spin / Whirlpool /
@@ -910,6 +961,9 @@ import { updatePreview } from './editor-core.js';
 
             if (!sampleMoveCompatibleWithRole(move, profile, role)) return -10000;
             if (SAMPLE_SET_BAD_DEFAULT_MOVES.has(move.name)) return -9000;
+            if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name) && move.name === 'Belch') return -9000;
+            if (move.name === 'Rest' && SAMPLE_SET_OFFENSIVE_NO_REST_ROLES.has(role)) return -9000;
+            if (move.name === 'Tera Blast' && !sampleTeraBlastAllowed(profile, role, chosen)) return -9000;
             if (kind.selfKO) return -8500;
 
             // Trapping damage is specialized tech, not generic utility. Do not let
@@ -933,6 +987,14 @@ import { updatePreview } from './editor-core.js';
 
             const usefulness = sampleCompetitiveUsefulness(move);
             score += usefulness * SAMPLE_SET_CONFIG.move.usefulness;
+
+            // Knock Off is unusually valuable utility: it permanently removes an
+            // opponent's item and is useful across offensive, defensive, support,
+            // hazard, and pivot sets. Do not let raw damage/BP or mediocre coverage
+            // scoring push it behind a redundant attack.
+            if (move.name === 'Knock Off') {
+                score += ['defensive','support','hazard','pivot'].includes(role) ? 52 : 38;
+            }
             if (!sampleIsDamaging(move) && !kind.recovery && !kind.hazard && !kind.removal && !kind.pivot && !kind.disruption && !kind.speedControl && !kind.screens && !kind.setup && !kind.defensiveSetup) score -= 40;
 
             if (sampleIsDamaging(move)) {
@@ -1028,7 +1090,8 @@ import { updatePreview } from './editor-core.js';
                 else score += 3;
             }
             if (kind.speedControl) score += ['support','pivot'].includes(role) ? SAMPLE_SET_CONFIG.move.speedControl : 1;
-            if (kind.disruption) score += ['support','defensive','pivot'].includes(role) ? SAMPLE_SET_CONFIG.move.disruption : 2;
+            if (kind.disruption) score += ['support','defensive','pivot'].includes(role) ? SAMPLE_SET_CONFIG.move.disruption : (role === 'setupSweeper' || role === 'physicalSweeper' || role === 'specialSweeper' || role === 'wallbreaker' ? 1 : 2);
+            if (move.name === 'Taunt' && ['setupSweeper','physicalSweeper','specialSweeper','wallbreaker'].includes(role)) score -= 12;
             if (kind.screens) score += role === 'screens' ? 55 : -7000;
             score += sampleAbilityScore(move, profile, role);
 
@@ -1053,133 +1116,401 @@ import { updatePreview } from './editor-core.js';
             return score;
         }
 
-        function samplePickMoves(profile, role, seed) {
-            const rng = sampleSetRng(seed);
-            const compatible = profile.moves.filter(m => m.name && !sampleMoveIsBanned(m) && sampleMoveCompatibleWithRole(m, profile, role));
-            const clean = compatible.filter(m => !SAMPLE_SET_SELF_KO_MOVES.has(m.name) && !SAMPLE_SET_BAD_DEFAULT_MOVES.has(m.name));
-            const usable = clean.length >= 4 ? clean : compatible.filter(m => !SAMPLE_SET_SELF_KO_MOVES.has(m.name));
-            if (usable.length < 4) return [];
-            // A "Hazard Setter/Remover" set with no hazard move, or a "Pivot" set with no
-            // pivot move, is a broken/misleading suggestion. Fail outright instead of
-            // silently falling back to a generic attacking set under the wrong label.
-            if (role === 'hazard' && !usable.some(m => sampleMoveKind(m).hazard)) return [];
-            if (role === 'pivot' && !usable.some(m => sampleMoveKind(m).pivot)) return [];
-            const chosen = [];
-            const pickBest = (pool, mandatory=false) => {
-                const candidates = pool
-                    .filter(m => !chosen.some(c => c.name === m.name))
-                    .map(m => ({move:m,score:sampleMoveScore(m,profile,role,chosen)}))
-                    .sort((a,b)=>b.score-a.score||a.move.name.localeCompare(b.move.name));
-                if (!candidates.length) return null;
-                const pick = candidates[0].move;
-                chosen.push(pick);
-                return pick;
-            };
-            const defensiveRole=['defensive','support','hazard'].includes(role), bulkyRole=role==='bulkyAttacker';
-            const offensiveRole=['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker'].includes(role);
-            const useful=m=>sampleMoveIsActuallyUseful(m,profile,role);
-            // Pivot moves (U-turn, Volt Switch, etc.) are handled exclusively through the
-            // dedicated "pivot" bucket below. Without this exclusion, a second pivot move
-            // of a different type could sneak in through the generic STAB/coverage pools,
-            // producing a set that's loaded with 2+ pivot moves instead of one pivot plus
-            // real attacking/utility moves.
-            const attacks=usable.filter(m=>sampleIsDamaging(m)&&useful(m)&&!sampleMoveKind(m).pivot);
-            const goodStabs=attacks.filter(m=>profile.types.includes(m.type));
-            const goodCoverage=attacks.filter(m=>!profile.types.includes(m.type)&&sampleHasGoodCoverage(m,profile,chosen));
-            const recovery=usable.filter(m=>sampleMoveKind(m).recovery && m.category === 'Status' && !sampleIsDamaging(m));
-            const setup=usable.filter(m=>sampleMoveKind(m).setup&&sampleSetupFitsRole(m,profile,role));
-            const hazards=usable.filter(m=>sampleMoveKind(m).hazard);
-            const removal=usable.filter(m=>sampleMoveKind(m).removal);
-            const pivot=usable.filter(m=>sampleMoveKind(m).pivot);
-            const realUtility=usable.filter(m=>{const k=sampleMoveKind(m);return k.hazard||k.removal||k.pivot||k.disruption||k.speedControl||k.screens;});
-            const passiveDamage=usable.filter(m=>SAMPLE_SET_PASSIVE_DAMAGE_MOVES.has(m.name)&&sampleIsPassiveProfile(profile, role));
+        function sampleIsTwoTurnAttack(move) {
+            if (!sampleIsDamaging(move)) return false;
+            if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name)) return true;
+            const text = `${move.name} ${move.desc || ''}`.toLowerCase();
+            return /charges? on the first turn|charges? up on the first turn|dives? underwater|burrows? underground|becomes? invulnerable.*first turn|disappears?.*first turn|takes? two turns/.test(text);
+        }
+
+        function sampleSetCoherenceScore(profile, role, chosen) {
+            if (!chosen.length) return 0;
+
+            const kinds = chosen.map(sampleMoveKind);
+            const damaging = chosen.filter(sampleIsDamaging);
+            const stabs = damaging.filter(m => profile.types.includes(m.type));
+            const coverage = damaging.filter(m => !profile.types.includes(m.type));
+            const setup = chosen.filter(m => sampleMoveKind(m).setup);
+            const recovery = chosen.filter(m => sampleMoveKind(m).recovery);
+            const hazards = chosen.filter(m => sampleMoveKind(m).hazard);
+            const removal = chosen.filter(m => sampleMoveKind(m).removal);
+            const pivots = chosen.filter(m => sampleMoveKind(m).pivot);
+            const disruption = chosen.filter(m => sampleMoveKind(m).disruption);
+            const speedControl = chosen.filter(m => sampleMoveKind(m).speedControl);
+            const screens = chosen.filter(m => sampleMoveKind(m).screens);
+            const statuses = chosen.filter(m => m.category === 'Status');
+            let score = 0;
+
+            // The set should have a clear identity rather than four individually good moves.
+            if (['physicalSweeper','specialSweeper','setupSweeper'].includes(role)) {
+                if (setup.length) score += 28;
+                if (damaging.length >= 2) score += 22;
+                if (stabs.length) score += 18;
+                if (coverage.length === 1) score += 10;
+                if (coverage.length > 1) score -= (coverage.length - 1) * 10;
+                if (recovery.length && setup.length) score += 8;
+                if (recovery.length && !setup.length) score -= 4;
+                if (statuses.length >= 3) score -= 18;
+            }
+
+            if (role === 'wallbreaker') {
+                if (damaging.length >= 2) score += 24;
+                if (stabs.length) score += 18;
+                if (coverage.length === 1) score += 10;
+                if (coverage.length > 1) score -= (coverage.length - 1) * 9;
+                if (setup.length) score -= 12;
+                if (recovery.length) score -= 6;
+            }
+
+            if (role === 'bulkyAttacker') {
+                if (damaging.length >= 2) score += 20;
+                if (stabs.length) score += 16;
+                if (recovery.length) score += 22;
+                if (coverage.length === 1) score += 8;
+                if (coverage.length > 1) score -= (coverage.length - 1) * 8;
+                if (setup.length) score += 8;
+            }
+
+            if (role === 'defensive') {
+                if (recovery.length) score += 28;
+                if (statuses.length >= 2) score += 10;
+                if (hazards.length) score += 18;
+                if (removal.length) score += 18;
+                if (disruption.length) score += 16;
+                if (pivots.length) score += 8;
+                if (damaging.length >= 1) score += 14;
+                if (damaging.length > 2) score -= (damaging.length - 2) * 10;
+                // Defensive sets should strongly prefer useful utility over an off-type
+                // attack that only looks attractive because of raw power/coverage.
+                const defensiveCoverage = coverage.length;
+                if (defensiveCoverage) score -= defensiveCoverage * 14;
+                if (setup.length) score += 8;
+            }
+
+            if (role === 'support') {
+                if (recovery.length) score += 20;
+                if (disruption.length) score += 18;
+                if (speedControl.length) score += 14;
+                if (pivots.length) score += 12;
+                if (damaging.length === 1) score += 14;
+                if (damaging.length > 2) score -= (damaging.length - 2) * 10;
+            }
+
+            if (role === 'pivot') {
+                if (pivots.length) score += 42;
+                if (damaging.length >= 1) score += 18;
+                if (stabs.length) score += 12;
+                if (coverage.length === 1) score += 8;
+                if (coverage.length > 1) score -= (coverage.length - 1) * 10;
+                if (pivots.length > 1) score -= (pivots.length - 1) * 12;
+            }
+
+            if (role === 'hazard') {
+                if (hazards.length) score += 40;
+                if (removal.length) score += 12;
+                if (recovery.length) score += 18;
+                if (damaging.length >= 1) score += 12;
+                if (damaging.length > 2) score -= (damaging.length - 2) * 10;
+            }
 
             if (role === 'screens') {
-                const screenMoves = usable.filter(m => sampleMoveKind(m).screens && sampleIsScreensMoveAllowed(m, profile, role, chosen));
-                if (screenMoves.length) pickBest(screenMoves, true);
-                if (pivot.length) pickBest(pivot, true);
+                if (screens.length >= 2) score += 60;
+                if (pivots.length) score += 18;
+                if (damaging.length === 1) score += 10;
+                if (damaging.length > 2) score -= (damaging.length - 2) * 12;
             }
 
-            // Defensive sets: recovery is a structural slot, and at least one genuinely
-            // useful attack is preferred. Draining attacks are not recovery for this purpose.
-            if (defensiveRole || bulkyRole) {
-                if (recovery.length) pickBest(recovery, true);
-                if (goodStabs.length) pickBest(goodStabs, true);
-                if (role==='hazard' && hazards.length) pickBest(hazards, true);
-                else if (removal.length) pickBest(removal, true);
-
-                // Defensive utility should actively use momentum tools when available.
-                // For a Corviknight-style profile this naturally becomes Roost + STAB +
-                // Defog + U-turn instead of filling the fourth slot with a random status
-                // move or screens.
-                if (pivot.length && chosen.length < 4) pickBest(pivot, true);
-
-                if (passiveDamage.length && chosen.length < 4) pickBest(passiveDamage);
+            // Knock Off is a high-priority utility slot because it removes items and
+            // remains useful even when the set is not trying to sweep immediately.
+            if (chosen.some(m => m.name === 'Knock Off')) {
+                score += ['defensive','support','hazard','pivot'].includes(role) ? 24 : 12;
             }
-            // Pivot's defining move is mandatory regardless of the defensive/bulky gate
-            // above, since 'pivot' isn't itself a defensive or bulky-attacker role.
-            if (role==='pivot' && pivot.length) pickBest(pivot, true);
-            if (role==='screens') {
-                const screenMoves = usable.filter(m => sampleMoveKind(m).screens && sampleIsScreensMoveAllowed(m, profile, role, chosen));
-                if (screenMoves.length && chosen.filter(m => sampleMoveKind(m).screens).length < 2) pickBest(screenMoves);
-            }
-            if (['physicalSweeper','specialSweeper','setupSweeper'].includes(role) && setup.length) pickBest(setup, true);
-            if ((offensiveRole || role==='pivot') && !chosen.some(sampleIsDamaging)) {
-                if (goodStabs.length) pickBest(goodStabs, true);
-            }
-            // Prefer a second distinct STAB before coverage when it is actually good.
-            const firstStabType = chosen.find(m=>sampleIsDamaging(m)&&profile.types.includes(m.type))?.type;
-            const secondStab = goodStabs.filter(m=>m.type!==firstStabType);
-            if ((offensiveRole || role==='pivot') && secondStab.length && chosen.length<4) pickBest(secondStab);
-            // Coverage is optional: only use a genuinely good coverage move when one exists.
-            if ((offensiveRole || role==='pivot') && goodCoverage.length && chosen.length<4) pickBest(goodCoverage);
 
-            while(chosen.length<4){
-                const remaining=usable.filter(m=>!chosen.some(c=>c.name===m.name));
-                if(!remaining.length) break;
-                const pool = remaining.filter(m => {
-                    const k=sampleMoveKind(m);
-                    if (sampleIsDamaging(m)) {
-                        if (SAMPLE_SET_PASSIVE_DAMAGE_MOVES.has(m.name)) return sampleIsPassiveProfile(profile, role);
-                        if (profile.types.includes(m.type)) return useful(m);
-                        return useful(m) && sampleHasGoodCoverage(m,profile,chosen);
+            // Offensive setup sets should spend their limited slots on the actual win
+            // condition. Taunt can be a legitimate fourth move, but Rest is not a default
+            // partner for a sweeper and should never crowd out natural coverage.
+            if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker'].includes(role)) {
+                if (recovery.length && !['bulkyAttacker'].includes(role)) score -= recovery.length * 16;
+                if (chosen.some(m => m.name === 'Taunt')) score -= 8;
+                if (setup.length && damaging.length >= 2) score += 14;
+                const naturalCoverage = sampleHasNaturalCoverageOptions(profile, role);
+                if (setup.length && naturalCoverage.length && coverage.length === 0) score -= 28;
+                if (setup.length && naturalCoverage.length && coverage.length >= 1) score += 16;
+            }
+
+            // Universal redundancy control: a move is much less valuable when the set
+            // already performs the same job. This is intentionally set-level rather than
+            // a property of the move in isolation.
+            const damagingByType = new Map();
+            damaging.forEach(m => damagingByType.set(m.type, (damagingByType.get(m.type) || 0) + 1));
+            for (const count of damagingByType.values()) {
+                if (count > 1) score -= (count - 1) * 12;
+                if (count > 2) score -= (count - 2) * 28;
+            }
+            if (stabs.length > 2) score -= (stabs.length - 2) * 18;
+
+            // Offensive sets should actively seek real coverage when the movepool has
+            // it. A third move of an existing attacking type is not an acceptable use of
+            // a slot when a useful off-type attack exists.
+            if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role)) {
+                const naturalCoverage = sampleHasNaturalCoverageOptions(profile, role);
+                if (naturalCoverage.length && coverage.length === 0 && damaging.length >= 2) score -= 22;
+                if (naturalCoverage.length && coverage.length >= 1) score += 10;
+            }
+            if (kinds.filter(k => k.setup).length > 1) score -= 30;
+            if (kinds.filter(k => k.recovery).length > 1) score -= 24;
+            if (kinds.filter(k => k.hazard).length > 1) score -= 24;
+            if (kinds.filter(k => k.removal).length > 1) score -= 24;
+
+            return score;
+        }
+
+        function sampleSetPartialViability(profile, role, chosen) {
+            // Hard constraints are checked while the set is being built. This prevents
+            // the search from spending its budget on branches that can never become a
+            // coherent set.
+            const damaging = chosen.filter(sampleIsDamaging);
+            const kinds = chosen.map(sampleMoveKind);
+
+            if (damaging.some(sampleIsTwoTurnAttack)) return false;
+
+            if (role === 'hazard' && chosen.length >= 3 && !kinds.some(k => k.hazard)) return false;
+            if (role === 'pivot' && chosen.length >= 3 && !kinds.some(k => k.pivot)) return false;
+            if (role === 'screens' && chosen.some(m => sampleMoveKind(m).screens) &&
+                !sampleIsScreensMoveAllowed(chosen.find(m => sampleMoveKind(m).screens), profile, role, chosen)) return false;
+
+            // Coverage is optional, but once a set already has one off-type attack,
+            // additional off-type attacks need a very strong reason to remain viable.
+            const coverage = damaging.filter(m => !profile.types.includes(m.type));
+            if (coverage.length > 2) return false;
+
+            // Never allow three attacks of the same type on an automatic set. Two can
+            // be justified (e.g. a primary STAB plus a stronger secondary STAB), but
+            // the third slot should be coverage or useful utility instead.
+            const typeCounts = new Map();
+            damaging.forEach(m => typeCounts.set(m.type, (typeCounts.get(m.type) || 0) + 1));
+            if ([...typeCounts.values()].some(count => count > 2)) return false;
+
+            // When an offensive set has already committed to two attacks and the
+            // movepool contains legitimate natural coverage, preserve a path for that
+            // coverage instead of allowing another same-type attack to dominate the beam.
+            if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role) &&
+                damaging.length >= 2 && coverage.length === 0 &&
+                sampleHasNaturalCoverageOptions(profile, role).length > 0 &&
+                chosen.length >= 3) return false;
+
+            // A setup sweeper must actually be capable of sweeping. Do not allow the
+            // beam to spend two or more slots on non-attacking utility when the movepool
+            // contains good attacks/coverage.
+            if (role === 'setupSweeper' && chosen.length >= 3 && kinds.some(k => k.setup)) {
+                if (damaging.length < 2) return false;
+                if (sampleHasNaturalCoverageOptions(profile, role).length > 0 &&
+                    !damaging.some(m => !profile.types.includes(m.type))) return false;
+            }
+
+            // Never build an offensive set around a status-heavy branch when there are
+            // already enough attacks to perform its intended job.
+            if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker'].includes(role) &&
+                damaging.length >= 2 && chosen.filter(m => m.category === 'Status').length >= 2) return false;
+
+            return true;
+        }
+
+        function samplePickMoves(profile, role, seed) {
+            const rng = sampleSetRng(seed);
+            const compatible = profile.moves.filter(m =>
+                m.name &&
+                !sampleMoveIsBanned(m) &&
+                sampleMoveCompatibleWithRole(m, profile, role)
+            );
+            const clean = compatible.filter(m =>
+                !SAMPLE_SET_SELF_KO_MOVES.has(m.name) &&
+                !SAMPLE_SET_BAD_DEFAULT_MOVES.has(m.name)
+            );
+            const usable = clean.length >= 4
+                ? clean
+                : compatible.filter(m => !SAMPLE_SET_SELF_KO_MOVES.has(m.name));
+
+            if (usable.length < 4) return [];
+
+            // A "Hazard Setter/Remover" set with no hazard move, or a "Pivot" set with no
+            // pivot move, is a broken/misleading suggestion. Fail rather than changing the
+            // set identity just to reach four moves.
+            if (role === 'hazard' && !usable.some(m => sampleMoveKind(m).hazard)) return [];
+            if (role === 'pivot' && !usable.some(m => sampleMoveKind(m).pivot)) return [];
+
+            const useful = m => {
+                if (m.name === 'Tera Blast' && !sampleTeraBlastAllowed(profile, role, [])) return false;
+                if (!sampleMoveIsActuallyUseful(m, profile, role)) return false;
+                if (sampleIsTwoTurnAttack(m)) return false;
+                if (sampleIsDamaging(m) && !profile.types.includes(m.type)) {
+                    return sampleHasGoodCoverage(m, profile, []);
+                }
+                return true;
+            };
+
+            // Beam-search the set instead of greedily choosing each slot independently.
+            // Every branch is scored as a *set in progress*, so the fourth move can
+            // change the value of the first three. This is the key architectural change:
+            // coverage, setup, recovery, pivots, etc. compete for the same four-slot budget.
+            const candidates = usable.filter(useful);
+            if (candidates.length < 4) return [];
+
+            const beamWidth = 24;
+            let beam = [{ moves: [], score: 0 }];
+
+            for (let slot = 0; slot < 4; slot++) {
+                const next = [];
+
+                for (const stateNode of beam) {
+                    const remaining = candidates.filter(m =>
+                        !stateNode.moves.some(chosen => chosen.name === m.name)
+                    );
+
+                    for (const move of remaining) {
+                        const chosen = [...stateNode.moves, move];
+
+                        // Off-type attacks are only allowed after the actual partial set
+                        // can justify them as coverage. This eliminates moves like Bounce
+                        // from winning on raw BP alone.
+                        if (sampleIsDamaging(move) && !profile.types.includes(move.type)) {
+                            if (!sampleHasGoodCoverage(move, profile, stateNode.moves)) continue;
+                            if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name)) continue;
+                        }
+
+                        if (!sampleSetPartialViability(profile, role, chosen)) continue;
+
+                        const moveScore = sampleMoveScore(move, profile, role, stateNode.moves);
+                        if (moveScore <= -6000) continue;
+
+                        let score = stateNode.score + moveScore;
+                        score += sampleSetCoherenceScore(profile, role, chosen);
+
+                        // Keep a mild preference for a distinct offensive type, but let
+                        // the completed-set score decide whether a second STAB or utility
+                        // move is actually better.
+                        const damaging = chosen.filter(sampleIsDamaging);
+                        const duplicateTypes = damaging.filter((m, i) =>
+                            damaging.findIndex(x => x.type === m.type) !== i
+                        ).length;
+                        score -= duplicateTypes * 12;
+                        const typeCounts = new Map();
+                        damaging.forEach(m => typeCounts.set(m.type, (typeCounts.get(m.type) || 0) + 1));
+                        for (const count of typeCounts.values()) {
+                            if (count > 2) score -= 80;
+                        }
+
+                        next.push({
+                            moves: chosen,
+                            score: score + rng() * 0.0001
+                        });
                     }
-                    if (k.screens) return role === 'screens' && sampleIsScreensMoveAllowed(m, profile, role, chosen);
-                    // Only genuinely role-relevant status moves may fill a slot.
-                    // Do not fall back to arbitrary legal utility such as Safeguard.
-                    return k.hazard||k.removal||k.pivot||k.disruption||k.speedControl||k.setup||k.defensiveSetup || (k.recovery && m.category==='Status');
-                });
-                if (!pool.length) break;
-                const candidates=pool.map(m=>{
-                    let score=sampleMoveScore(m,profile,role,chosen);
-                    if (!sampleIsDamaging(m) && !sampleMoveKind(m).recovery && ['physicalSweeper','specialSweeper','wallbreaker','bulkyAttacker'].includes(role)) score-=22;
-                    if (defensiveRole && sampleIsDamaging(m) && chosen.some(c=>sampleIsDamaging(c))) score+=6;
-                    return {move:m,score:score+rng()*0.0001};
-                }).sort((a,b)=>b.score-a.score||a.move.name.localeCompare(b.move.name));
-                if(!candidates.length) break;
-                chosen.push(candidates[0].move);
+                }
+
+                next.sort((a, b) => b.score - a.score ||
+                    a.moves.map(m => m.name).join('|').localeCompare(b.moves.map(m => m.name).join('|')));
+                beam = next.slice(0, beamWidth);
+                if (!beam.length) return [];
             }
-            return chosen.length===4?chosen:[];
+
+            const completed = beam
+                .filter(node => node.moves.length === 4)
+                .map(node => ({
+                    moves: node.moves,
+                    score: node.score + sampleSetCoherenceScore(profile, role, node.moves)
+                }))
+                .filter(node => {
+                    const names = new Set(node.moves.map(m => m.name));
+                    if (role === 'hazard' && !node.moves.some(m => sampleMoveKind(m).hazard)) return false;
+                    if (role === 'pivot' && !node.moves.some(m => sampleMoveKind(m).pivot)) return false;
+                    if (role === 'screens' && node.moves.filter(m => sampleMoveKind(m).screens).length < 2) return false;
+                    if (role === 'setupSweeper') {
+                        const setupPresent = node.moves.some(m => sampleMoveKind(m).setup);
+                        const damagingMoves = node.moves.filter(sampleIsDamaging);
+                        const coverageMoves = damagingMoves.filter(m => !profile.types.includes(m.type));
+                        if (!setupPresent || damagingMoves.length < 2) return false;
+                        if (sampleHasNaturalCoverageOptions(profile, role).length > 0 && coverageMoves.length < 1) return false;
+                    }
+                    return names.size === 4;
+                })
+                .sort((a, b) => b.score - a.score);
+
+            return completed[0]?.moves || [];
         }
 
         function generateParametricSampleSet(profile, seed) {
-            const def=profile.moves.find(m=>['Iron Defense','Cotton Guard','Acid Armor'].includes(m.name));
-            const body=profile.moves.find(m=>m.name==='Body Press');
-            if(!def||!body||profile.stats.def<95) return null;
-            const pool=[def,body];
-            const recovery=profile.moves.filter(m=>!sampleMoveIsBanned(m)&&sampleMoveKind(m).recovery && m.category === 'Status' && !sampleIsDamaging(m));
-            const coverage=profile.moves.filter(m=>!sampleMoveIsBanned(m)&&sampleIsDamaging(m)&&!profile.types.includes(m.type)&&sampleHasGoodCoverage(m,profile,pool));
-            const stab=profile.moves.filter(m=>!sampleMoveIsBanned(m)&&sampleIsDamaging(m)&&profile.types.includes(m.type)&&sampleMoveIsActuallyUseful(m));
-            const utility=profile.moves.filter(m=>!sampleMoveIsBanned(m)&&sampleMoveIsActuallyUseful(m,profile,'defensive')&&(()=>{const k=sampleMoveKind(m);return k.hazard||k.removal||k.disruption||k.pivot;})());
-            const third=recovery[0]||coverage[0]||stab[0]||utility[0]; if(third&&!pool.includes(third)) pool.push(third);
-            const fourth=coverage.find(m=>!pool.includes(m))||stab.find(m=>!pool.includes(m))||utility.find(m=>!pool.includes(m)); if(fourth) pool.push(fourth);
-            if(pool.length!==4) return null;
-            const ability = sampleChooseAbility(profile, 'defensive', pool);
-            return {name:`${def.name} + Body Press`,role:'Defensive Setup',item:'Leftovers',ability,nature:'Bold',evs:{hp:252,atk:0,def:252,spa:0,spd:4,spe:0},ivs:{hp:31,atk:31,def:31,spa:31,spd:31,spe:31},moves:pool.map(m=>m.name),teraType:profile.types.includes('Fighting')?'Fighting':(profile.types[0]||'Fighting'),level:100};
+            const def = profile.moves.find(m => ['Iron Defense','Cotton Guard','Acid Armor'].includes(m.name));
+            const body = profile.moves.find(m => m.name === 'Body Press');
+            if (!def || !body || profile.stats.def < 95) return null;
+
+            // This is a named set idea, so its remaining slots must be selected around
+            // the Iron Defense/Cotton Guard/Acid Armor + Body Press gameplan rather than
+            // by taking the first available recovery/coverage move.
+            const base = [def, body];
+            const candidates = profile.moves.filter(m =>
+                !base.some(x => x.name === m.name) &&
+                !sampleMoveIsBanned(m) &&
+                !SAMPLE_SET_SELF_KO_MOVES.has(m.name) &&
+                !SAMPLE_SET_BAD_DEFAULT_MOVES.has(m.name) &&
+                m.name !== 'Tera Blast' &&
+                !sampleIsTwoTurnAttack(m) &&
+                sampleMoveCompatibleWithRole(m, profile, 'defensive')
+            );
+            if (candidates.length < 2) return null;
+
+            let best = null;
+            for (const a of candidates) {
+                const partial = [...base, a];
+                if (sampleIsDamaging(a) && !profile.types.includes(a.type) && !sampleHasGoodCoverage(a, profile, partial.slice(0, 2))) continue;
+                for (const b of candidates) {
+                    if (a.name === b.name) continue;
+                    const moves = [...base, a, b];
+                    if (sampleIsDamaging(b) && !profile.types.includes(b.type) && !sampleHasGoodCoverage(b, profile, moves.slice(0, 3))) continue;
+                    const ability = sampleChooseAbility(profile, 'defensive', moves);
+                    const item = sampleChooseItem(profile, 'defensive', moves, ability);
+                    const teraType = sampleChooseTera(profile, 'defensive', moves, ability);
+                    let score = sampleSetCoherenceScore(profile, 'defensive', moves);
+                    score += sampleMoveScore(a, profile, 'defensive', [def, body]);
+                    score += sampleMoveScore(b, profile, 'defensive', [def, body, a]);
+                    score += sampleAbilityFitScore(
+                        (profile.abilityDetails || []).find(x => x.name === ability) || {name: ability, desc: ''},
+                        profile,
+                        'defensive',
+                        moves
+                    );
+                    score += sampleItemFitScore(item, profile, 'defensive', moves, ability) * 0.5;
+                    score += sampleTeraFitScore(teraType, profile, 'defensive', moves, ability) * 0.25;
+                    score += sampleSetRng(seed)() * 0.0001;
+                    if (!best || score > best.score) best = { moves, ability, item, teraType, score };
+                }
+            }
+
+            if (!best) return null;
+            return {
+                name: `${def.name} + Body Press`,
+                role: 'Defensive Setup',
+                item: best.item,
+                ability: best.ability,
+                nature: 'Bold',
+                evs: {hp:252,atk:0,def:252,spa:0,spd:4,spe:0},
+                ivs: {hp:31,atk:31,def:31,spa:31,spd:31,spe:31},
+                moves: best.moves.map(m => m.name),
+                teraType: best.teraType,
+                level: 100
+            };
         }
 
-        function sampleChooseNatureEVs(profile, role) {
+        function sampleChooseNatureEVs(profile, role, chosenMoves = []) {
             const s = profile.stats;
+            const moves = chosenMoves || [];
+            const hasCurse = moves.some(m => String(m?.name || '').toLowerCase() === 'curse');
+            const hasSpeedDropSetup = moves.some(m => {
+                if (!m || !m.name) return false;
+                const text = `${m.name} ${m.desc || ''}`.toLowerCase();
+                return /(?:lowers?|drops?).*(?:user|its).*(?:speed)/i.test(text);
+            });
+            const speedIsActuallySetupGoal = !hasCurse && !hasSpeedDropSetup &&
+                moves.some(m => SAMPLE_SET_SETUP_SPEED_BOOST.has(m.name));
             const evs = { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
             const physical = s.atk >= s.spa;
             const fast = s.spe >= 95;
@@ -1187,11 +1518,28 @@ import { updatePreview } from './editor-core.js';
             let nature = 'Hardy';
 
             if (role === 'physicalSweeper' || role === 'setupSweeper') {
-                evs.atk = 252; evs.spe = 252; evs.hp = 4;
-                nature = fast ? 'Jolly' : 'Adamant';
+                evs.atk = 252;
+                if (hasCurse || hasSpeedDropSetup) {
+                    // Curse is not a normal speed-sweeper setup move: it actively lowers
+                    // Speed. Match the EVs to the set we actually generated instead of
+                    // blindly using the role's generic 252 Atk / 252 Spe template.
+                    evs.hp = 252;
+                    evs.def = 4;
+                    nature = 'Adamant';
+                } else {
+                    evs.spe = 252; evs.hp = 4;
+                    nature = speedIsActuallySetupGoal ? (fast ? 'Jolly' : 'Adamant') : (fast ? 'Jolly' : 'Adamant');
+                }
             } else if (role === 'specialSweeper') {
-                evs.spa = 252; evs.spe = 252; evs.hp = 4;
-                nature = fast ? 'Timid' : 'Modest';
+                evs.spa = 252;
+                if (hasSpeedDropSetup) {
+                    evs.hp = 252;
+                    evs.def = 4;
+                    nature = 'Modest';
+                } else {
+                    evs.spe = 252; evs.hp = 4;
+                    nature = fast ? 'Timid' : 'Modest';
+                }
             } else if (role === 'wallbreaker') {
                 const key = physical ? 'atk' : 'spa';
                 evs[key] = 252;
@@ -1249,8 +1597,7 @@ import { updatePreview } from './editor-core.js';
             return mult > 1;
         }
 
-        function sampleChooseItem(profile, role, chosenMoves, chosenAbility = '') {
-            const moves = chosenMoves || profile.moves;
+        function sampleItemFitScore(item, profile, role, moves, ability = '') {
             const kinds = moves.map(sampleMoveKind);
             const hasSetup = kinds.some(k => k.setup);
             const hasRecovery = kinds.some(k => k.recovery);
@@ -1258,60 +1605,154 @@ import { updatePreview } from './editor-core.js';
             const hasHazard = kinds.some(k => k.hazard);
             const hasRemoval = kinds.some(k => k.removal);
             const hasStatus = moves.some(m => m.category === 'Status');
-            const abilityText = (chosenAbility || profile.abilities.join(' ')).toLowerCase();
+            const damaging = moves.filter(sampleIsDamaging);
             const physical = sampleRoleAttackCategory(profile, role) === 'Physical';
-            const fast = profile.stats.spe >= 95;
             const bulky = profile.stats.hp + profile.stats.def + profile.stats.spd >= 265;
+            const fast = profile.stats.spe >= 95;
             const rockWeak = hasHazardWeakness(profile.types);
-            const offensive = ['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role);
+            const attackStat = physical ? profile.stats.atk : profile.stats.spa;
+            const abilityText = String(ability || '').toLowerCase();
+            let score = 0;
 
-            if (/guts/.test(abilityText) && !['defensive','support','hazard'].includes(role)) return 'Flame Orb';
-            if (/magic guard/.test(abilityText) && ['physicalSweeper','specialSweeper','setupSweeper','wallbreaker'].includes(role) && !bulky) return 'Life Orb';
-
-            // Rock weakness, especially 4x weakness, makes Boots the default item for
-            // offensive Pokemon that are expected to switch in repeatedly.
-            if (rockWeak && offensive) return 'Heavy-Duty Boots';
-
-            if (role === 'screens') return 'Light Clay';
-
-            if (role === 'defensive' || role === 'support' || role === 'hazard') {
-                if (hasRecovery) return 'Leftovers';
-                if (hasHazard || hasRemoval) return 'Rocky Helmet';
-                return 'Leftovers';
+            // Item choice is a property of the completed set. These are deliberately
+            // compatibility scores rather than a chain of early returns: a set with
+            // Choice-locking, setup, recovery, etc. should be evaluated as one strategy.
+            if (item === 'Leftovers') {
+                if (hasRecovery) score += 28;
+                if (bulky) score += 18;
+                if (hasSetup && !bulky) score += 5;
+                if (hasStatus) score += 5;
+                if (hasPivot) score += 4;
+            }
+            if (item === 'Heavy-Duty Boots') {
+                if (rockWeak) score += 30;
+                if (hasPivot) score += 18;
+                if (hasRemoval) score += 8;
+                if (offensiveRoleForItem(role)) score += 8;
+            }
+            if (item === 'Life Orb') {
+                if (damaging.length >= 2) score += 20;
+                if (hasSetup) score += 20;
+                if (attackStat >= 110) score += 14;
+                if (!bulky) score += 8;
+                if (hasRecovery) score += 5;
+            }
+            if (item === 'Expert Belt') {
+                const coverage = damaging.filter(m => !profile.types.includes(m.type) && sampleHasGoodCoverage(m, profile, moves));
+                if (coverage.length >= 1) score += 20;
+                if (coverage.length >= 2) score += 10;
+                if (damaging.length >= 3) score += 8;
+                if (fast) score += 5;
+            }
+            if (item === 'Choice Band') {
+                if (role === 'wallbreaker' && physical) score += 30;
+                if (damaging.filter(m => m.category === 'Physical').length >= 2) score += 18;
+                if (attackStat >= 105) score += 12;
+                if (hasSetup) score -= 45;
+                if (hasRecovery || hasStatus) score -= 15;
+            }
+            if (item === 'Choice Specs') {
+                if (role === 'wallbreaker' && !physical) score += 30;
+                if (damaging.filter(m => m.category === 'Special').length >= 2) score += 18;
+                if (attackStat >= 105) score += 12;
+                if (hasSetup) score -= 45;
+                if (hasRecovery || hasStatus) score -= 15;
+            }
+            if (item === 'Assault Vest') {
+                if (damaging.length >= 3) score += 28;
+                if (!hasStatus && !hasSetup) score += 18;
+                if (bulky) score += 10;
+                if (hasRecovery) score -= 35;
+            }
+            if (item === 'Flame Orb') {
+                if (/guts/.test(abilityText)) score += 80;
+                else score -= 80;
+            }
+            if (item === 'Light Clay') {
+                if (role === 'screens' && moves.filter(m => sampleMoveKind(m).screens).length >= 2) score += 100;
+                else score -= 80;
+            }
+            if (item === 'Rocky Helmet') {
+                if (['defensive','support','hazard'].includes(role) && (hasHazard || hasRemoval || bulky)) score += 24;
+                if (hasRecovery) score += 5;
             }
 
-            if (role === 'bulkyAttacker') {
-                if (hasRecovery || bulky) return 'Leftovers';
-                if (!hasStatus && !hasSetup && (physical ? profile.stats.atk : profile.stats.spa) >= 105) return 'Assault Vest';
-                return 'Leftovers';
-            }
+            // Do not reward an item simply because the Pokemon qualifies for it in the
+            // abstract. The final set must actually make use of the item's gameplan.
+            if (item !== 'Flame Orb' && /guts/.test(abilityText)) score -= 25;
+            if (item === 'Heavy-Duty Boots' && role === 'wallbreaker' && !rockWeak && !hasPivot) score -= 8;
+            if ((item === 'Choice Band' || item === 'Choice Specs') && damaging.length < 2) score -= 20;
 
-            if (role === 'pivot') return hasRecovery ? 'Leftovers' : 'Heavy-Duty Boots';
-            if (role === 'wallbreaker') return physical ? 'Choice Band' : 'Choice Specs';
-
-            if (['physicalSweeper','specialSweeper','setupSweeper'].includes(role)) {
-                const goodCoverage = moves.some(m => sampleHasGoodCoverage(m, profile, moves));
-                if (goodCoverage && fast) return 'Expert Belt';
-                if (hasSetup && fast && !bulky && profile.stats[physical ? 'atk' : 'spa'] >= 110) return 'Life Orb';
-                if (hasSetup && bulky) return 'Leftovers';
-                if (hasSetup) return 'Leftovers';
-                return fast ? 'Expert Belt' : 'Leftovers';
-            }
-
-            return 'Leftovers';
+            return score;
         }
 
-        function sampleChooseTera(profile, role, moves) {
-            const stabTypes = profile.types.filter(t => moves.some(m => m.type === t && sampleIsDamaging(m)));
-            if (role === 'physicalSweeper' || role === 'specialSweeper' || role === 'setupSweeper' || role === 'wallbreaker') {
-                if (stabTypes.length) return stabTypes[0];
-                const damage = moves.filter(sampleIsDamaging).sort((a,b) => (b.basePower||0) - (a.basePower||0));
-                if (damage[0]) return damage[0].type;
+        function offensiveRoleForItem(role) {
+            return ['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role);
+        }
+
+        function sampleChooseItem(profile, role, chosenMoves, chosenAbility = '') {
+            const moves = chosenMoves || profile.moves;
+            const candidates = [
+                'Leftovers','Heavy-Duty Boots','Life Orb','Expert Belt',
+                'Choice Band','Choice Specs','Assault Vest','Flame Orb',
+                'Rocky Helmet','Light Clay'
+            ];
+            return candidates
+                .map((item, index) => ({
+                    item,
+                    score: sampleItemFitScore(item, profile, role, moves, chosenAbility) - index * 0.001
+                }))
+                .sort((a,b) => b.score - a.score || a.item.localeCompare(b.item))[0].item;
+        }
+
+        function sampleTeraFitScore(type, profile, role, moves, ability = '') {
+            const damaging = moves.filter(sampleIsDamaging);
+            const hasTeraBlast = moves.some(m => m.name === 'Tera Blast');
+            if (hasTeraBlast && !SAMPLE_SET_OFFENSIVE_TERA_ROLES.has(role)) return -1000;
+            const stab = damaging.filter(m => m.type === type);
+            const originalStab = damaging.filter(m => profile.types.includes(m.type));
+            const coverage = damaging.filter(m => !profile.types.includes(m.type));
+            const hasSetup = moves.some(m => sampleMoveKind(m).setup);
+            const hasRecovery = moves.some(m => sampleMoveKind(m).recovery);
+            let score = 0;
+
+            // Offensive Tera should amplify an actual attack on this exact set.
+            if (stab.length) {
+                score += 34;
+                score += Math.min(18, stab.length * 8);
+                if (hasSetup) score += 14;
+                if (role === 'wallbreaker') score += 10;
             }
-            if (profile.types.includes('Steel')) return 'Steel';
-            if (profile.types.includes('Fairy')) return 'Fairy';
-            if (profile.types.includes('Water')) return 'Water';
-            return profile.types[0] || 'Normal';
+
+            // A coverage Tera is only meaningful when the set actually carries that
+            // attack; never pick a Tera type from the learnset alone.
+            if (coverage.some(m => m.type === type)) score += 20;
+
+            // Defensive Terastallization gets a small, controlled bonus for common
+            // defensive types, but only when the set is actually defensive/bulky.
+            if (['defensive','support','hazard','bulkyAttacker','pivot'].includes(role)) {
+                if (type === 'Steel') score += 16;
+                if (type === 'Fairy') score += 14;
+                if (type === 'Water') score += 12;
+                if (hasRecovery) score += 8;
+            }
+
+            // Preserve the original typing as a fallback, not as an automatic winner.
+            if (profile.types.includes(type)) score += originalStab.some(m => m.type === type) ? 7 : 2;
+            return score;
+        }
+
+        function sampleChooseTera(profile, role, moves, ability = '') {
+            const candidateTypes = [...new Set([
+                ...moves.filter(sampleIsDamaging).map(m => m.type),
+                'Steel','Fairy','Water', ...profile.types
+            ])];
+            return candidateTypes
+                .map((type, index) => ({
+                    type,
+                    score: sampleTeraFitScore(type, profile, role, moves, ability) - index * 0.001
+                }))
+                .sort((a,b) => b.score - a.score || a.type.localeCompare(b.type))[0]?.type || profile.types[0] || 'Normal';
         }
 
         function sampleRoleLabel(role) {
@@ -1384,7 +1825,7 @@ import { updatePreview } from './editor-core.js';
                 if (suggestions.length >= 3) return;
                 const moves = samplePickMoves(profile, role, seed + Math.imul(roleIndex + 1, 2654435761));
                 if (moves.length !== 4) return;
-                const { evs, nature } = sampleChooseNatureEVs(profile, role);
+                const { evs, nature } = sampleChooseNatureEVs(profile, role, moves);
                 const ability = sampleChooseAbility(profile, role, moves);
                 consider({
                     name: sampleRoleLabel(role),
@@ -1395,7 +1836,7 @@ import { updatePreview } from './editor-core.js';
                     evs,
                     ivs: { hp:31, atk:31, def:31, spa:31, spd:31, spe:31 },
                     moves: moves.map(m => m.name),
-                    teraType: sampleChooseTera(profile, role, moves),
+                    teraType: sampleChooseTera(profile, role, moves, ability),
                     level: 100
                 });
             });
