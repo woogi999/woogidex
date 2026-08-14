@@ -912,7 +912,17 @@ function getAnalysisMoves(mon){
 function isRealisticDamageMove(move){
   if(!move || !['Physical','Special'].includes(move.category)) return false;
   const bp=Number(move.basePower)||0;
-  if(bp<=0) return false;
+  const moveName=String(move.name||'').trim();
+  const dynamicPowerMoves=new Set([
+    'Stored Power','Power Trip','Punishment','Rage Fist','Electro Ball',
+    'Gyro Ball','Low Kick','Grass Knot','Heavy Slam','Heat Crash',
+    'Wring Out','Crush Grip','Facade','Hex','Acrobatics','Payback',
+    'Flail','Reversal','Eruption','Water Spout','Dragon Energy',
+    'Last Respects','Weather Ball','Terrain Pulse','Nature Power'
+  ]);
+  const descForPower=String(move.desc||move.description||'').toLowerCase();
+  const dynamicPowerDescription=/(?:power|damage) (?:is|will be|depends|varies|changes|calculated).*?(?:based|depending|number|stat|weight|hp|status|boost|turn|condition)/i.test(descForPower);
+  if(bp<=0 && !dynamicPowerMoves.has(moveName) && !dynamicPowerDescription) return false;
 
   const name=String(move.name||'').toLowerCase().trim();
   const desc=String(move.desc||move.description||'').toLowerCase();
@@ -926,10 +936,7 @@ function isRealisticDamageMove(move){
     'focus punch','shell trap','beak blast',
     'counter','mirror coat','metal burst',
     'endeavor','final gambit','comeuppance',
-    'reversal','flail','eruption','water spout',
-    'crush grip','wring','electro ball','gyro ball',
-    'low kick','grass knot','hex','venoshock',
-    'facade','acrobatics'
+    'venoshock'
   ];
   if(blockedNames.includes(name)) return false;
 
@@ -941,7 +948,6 @@ function isRealisticDamageMove(move){
     /when .* is (?:asleep|poisoned|burned|paralyzed|frozen|confused)/,
     /if the (?:user|target) (?:has|is|was|gets)/,
     /target is asleep|target is poisoned|target is burned|target is paralyzed|target is frozen/,
-    /damage (?:is|will be) based on|power (?:is|will be) based on/,
     /based on (?:the target's|the user's|target's|user's)/,
     /current hp|remaining hp|missing hp/,
     /weight of|user's weight|target's weight/,
@@ -1511,13 +1517,27 @@ function tierComparablePool(pool, tierUsage, assignedTier, officialTiers, cfg){
   const wanted=String(assignedTier||'').toLowerCase()==='uber'?'ubers':String(assignedTier||'').toLowerCase();
   if(!wanted) return {pool:[],usage:{}};
   const usage=tierUsage?.[wanted]||{};
+
+  // IMPORTANT: usage files are not tier lists. They can contain LC/NFE/lower-tier
+  // Pokémon that received a tiny amount of OU usage. Previously, when
+  // officialTierOf() returned null for LC/NFE/Illegal, the fallback below accepted
+  // any Pokémon with usage > 0, which is how Surskit/Haunter could leak into OU.
+  // Only use usage as evidence after an official tier check when a record exists.
   const comparable=pool.filter(p=>{
-    const official=officialTierOf(p?.name||'',officialTiers,cfg);
-    if(official){
+    const name=p?.name||p?.id||'';
+    const ids=[
+      normalizeName(name),
+      normalizeName(String(name).replace(/[- ](alola|galar|hisui|paldea|totem)$/i,''))
+    ];
+    const officialRecord=ids.map(id=>officialTiers?.[id]).find(Boolean);
+    if(officialRecord){
+      const official=officialTierOf(name,officialTiers,cfg);
+      if(!official) return false; // Explicit LC/NFE/Illegal (or otherwise unusable) tier.
       const cls=String(official).toLowerCase()==='uber'?'ubers':String(official).toLowerCase();
-      return cls===wanted && usageOf(p.name,usage)>0;
+      return cls===wanted && usageOf(name,usage)>0;
     }
-    return usageOf(p?.name,usage)>0;
+    // No official record: usage can be used as a last-resort fallback.
+    return usageOf(name,usage)>0;
   });
   return {pool:comparable,usage};
 }
@@ -1859,12 +1879,18 @@ async function runFakemonAnalysis(){
     const targetForTier={...tf,bulkPct,stats:t.stats,name:t.name,primaryRole:choosePrimaryRole(tf)};
     const tier=estimateTier(abilityAdjustedBase,closest,tierUsage,officialTiers,targetForTier,cfg,broadMatchup,roleScore,tf,metagameFit,intrinsic);
     const comparable=tierComparablePool(pool,tierUsage,tier.tier,officialTiers,cfg);
-    const matchupPool=comparable.pool.length>=6?comparable.pool:pool;
-    const matchupUsage=comparable.pool.length>=6?comparable.usage:usage;
+
+    // Never fall back to the entire generation pool while still weighting it with
+    // tier-specific usage. That mixes all legal Pokémon with OU/UU/etc. usage and
+    // can re-introduce LC/NFE/lower-tier Pokémon such as Surskit/Haunter.
+    // If the same-tier sample is small, keep the sample small rather than changing
+    // the population underneath the weights.
+    const matchupPool=comparable.pool;
+    const matchupUsage=comparable.usage;
     const matchup=buildMatchupProfile(target,matchupPool,matchupUsage,tf);
     matchup.comparableTier=tier.tier;
     matchup.comparablePoolSize=comparable.pool.length;
-    matchup.usingComparableTier=comparable.pool.length>=6;
+    matchup.usingComparableTier=true;
     // TEMP DEBUG: exposes the last computed matchup profile to the console so
     // individual matchup rows (score, offense/reverse best move, damage %) can
     // be inspected directly. Safe to remove once the issue is found.

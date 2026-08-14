@@ -738,9 +738,26 @@ import { updatePreview } from './editor-core.js';
             return true;
         }
 
+        // Dynamic-power attacks are often represented by external usefulness data as
+        // zero because their damage is calculated from battle state instead of a fixed
+        // base power. That is not the same thing as being useless.
+        const SAMPLE_SET_DYNAMIC_POWER_MOVES = new Set([
+            'Stored Power','Power Trip','Punishment','Gyro Ball','Electro Ball',
+            'Low Kick','Grass Knot','Heavy Slam','Heat Crash','Wring Out','Crush Grip',
+            'Flail','Reversal','Facade','Hex','Acrobatics','Eruption','Water Spout',
+            'Dragon Energy','Last Respects','Rage Fist','Fury Cutter','Rollout','Ice Ball',
+            'Weather Ball','Terrain Pulse','Nature Power','Magnitude','Spit Up'
+        ]);
+
         function sampleCompetitiveUsefulness(move) {
             const weights = state.sdMoveUsefulness || {};
             const exact = weights[move.name];
+            if (SAMPLE_SET_DYNAMIC_POWER_MOVES.has(move.name)) {
+                // Never let a missing/zero external score mark a dynamic-power move
+                // useless. Its local BP estimate + role/set synergy decide its value.
+                if (exact == null || Number(exact) <= 0) return 1;
+                return Number(exact);
+            }
             if (exact != null) return exact;
             // Custom/Fakemon moves are not in Smogon data. Give them a neutral baseline
             // and let the local role/coverage/ability rules decide their value.
@@ -1545,20 +1562,20 @@ import { updatePreview } from './editor-core.js';
                     if (sampleIsDamaging(b) && !profile.types.includes(b.type) && !sampleHasGoodCoverage(b, profile, moves.slice(0, 3))) continue;
                     const ability = sampleChooseAbility(profile, 'defensive', moves);
                     const item = sampleChooseItem(profile, 'defensive', moves, ability);
-                    const teraType = sampleChooseTera(profile, 'defensive', moves, ability);
-                    let score = sampleSetCoherenceScore(profile, 'defensive', moves);
-                    score += sampleMoveScore(a, profile, 'defensive', [def, body]);
-                    score += sampleMoveScore(b, profile, 'defensive', [def, body, a]);
+                    const repairedMoves = sampleRepairMovesForItem(profile, 'defensive', moves, item, seed);
+                    const teraType = sampleChooseTera(profile, 'defensive', repairedMoves, ability);
+                    let score = sampleSetCoherenceScore(profile, 'defensive', repairedMoves);
+                    score += repairedMoves.reduce((total, move, index) => total + sampleMoveScore(move, profile, 'defensive', repairedMoves.slice(0, index)), 0);
                     score += sampleAbilityFitScore(
                         (profile.abilityDetails || []).find(x => x.name === ability) || {name: ability, desc: ''},
                         profile,
                         'defensive',
-                        moves
+                        repairedMoves
                     );
-                    score += sampleItemFitScore(item, profile, 'defensive', moves, ability) * 0.5;
-                    score += sampleTeraFitScore(teraType, profile, 'defensive', moves, ability) * 0.25;
+                    score += sampleItemFitScore(item, profile, 'defensive', repairedMoves, ability) * 0.5;
+                    score += sampleTeraFitScore(teraType, profile, 'defensive', repairedMoves, ability) * 0.25;
                     score += sampleSetRng(seed)() * 0.0001;
-                    if (!best || score > best.score) best = { moves, ability, item, teraType, score };
+                    if (!best || score > best.score) best = { moves: repairedMoves, ability, item, teraType, score };
                 }
             }
 
@@ -1767,6 +1784,15 @@ import { updatePreview } from './editor-core.js';
             return ['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role);
         }
 
+        function sampleItemIsCompatibleWithMoves(item, moves) {
+            const selected = moves || [];
+            const itemName = String(item || '').trim().toLowerCase();
+            if (itemName === 'assault vest') {
+                return selected.every(m => m && (m.category === 'Physical' || m.category === 'Special'));
+            }
+            return true;
+        }
+
         function sampleChooseItem(profile, role, chosenMoves, chosenAbility = '') {
             const moves = chosenMoves || profile.moves;
             const candidates = [
@@ -1774,12 +1800,51 @@ import { updatePreview } from './editor-core.js';
                 'Choice Band','Choice Specs','Assault Vest','Flame Orb',
                 'Rocky Helmet','Light Clay'
             ];
-            return candidates
+            const ranked = candidates
                 .map((item, index) => ({
                     item,
                     score: sampleItemFitScore(item, profile, role, moves, chosenAbility) - index * 0.001
                 }))
-                .sort((a,b) => b.score - a.score || a.item.localeCompare(b.item))[0].item;
+                .sort((a,b) => b.score - a.score || a.item.localeCompare(b.item));
+
+            // Item-first remains the rule: AV can win even when the draft currently has
+            // Status moves. But after applying the AV repair, the requested role must
+            // still exist. This prevents Pivot -> Chilly Reception -> AV -> remove Chilly
+            // Reception -> publish a fake Pivot with no pivot move.
+            for (const entry of ranked) {
+                const repaired = sampleRepairMovesForItem(profile, role, moves, entry.item);
+                if (repaired.length !== 4) continue;
+                if (role === 'pivot' && !repaired.some(m => sampleMoveKind(m).pivot)) continue;
+                if (role === 'hazard' && !repaired.some(m => sampleMoveKind(m).hazard)) continue;
+                return entry.item;
+            }
+            return ranked[0]?.item || 'Leftovers';
+        }
+
+        function sampleRepairMovesForItem(profile, role, moves, item, seed = 0) {
+            let repaired = [...(moves || [])];
+            if (String(item || '').trim().toLowerCase() !== 'assault vest') return repaired;
+
+            // AV is the constraint: strip Status moves after the item has been chosen.
+            repaired = repaired.filter(m => m && m.category !== 'Status');
+            if (repaired.length >= 4) return repaired.slice(0, 4);
+
+            // Refill removed slots with the best legal damaging moves from the learnset.
+            const chosenNames = new Set(repaired.map(m => m.name));
+            const candidates = (profile.moves || [])
+                .filter(m => m && m.category !== 'Status' && !chosenNames.has(m.name))
+                .filter(m => sampleMoveIsActuallyUseful(m, profile, role))
+                .map((m, index) => ({
+                    move: m,
+                    score: sampleMoveScore(m, profile, role, repaired) - index * 0.001
+                }))
+                .sort((a,b) => b.score - a.score || a.move.name.localeCompare(b.move.name));
+
+            for (const entry of candidates) {
+                if (repaired.length >= 4) break;
+                repaired.push(entry.move);
+            }
+            return repaired.slice(0, 4);
         }
 
         function sampleTeraFitScore(type, profile, role, moves, ability = '') {
@@ -1981,7 +2046,21 @@ import { updatePreview } from './editor-core.js';
                 const { evs, nature } = sampleChooseNatureEVs(profile, role, moves);
                 const ability = sampleChooseAbility(profile, role, moves);
                 const item = sampleChooseItem(profile, role, moves, ability);
-                const teraType = sampleChooseTera(profile, role, moves, ability);
+                const repairedMoves = sampleRepairMovesForItem(profile, role, moves, item, seed);
+                if (repairedMoves.length !== 4) return;
+                if (role === 'pivot' && !repairedMoves.some(m => sampleMoveKind(m).pivot)) {
+                    if (debugTrace) debugTrace.roles[role].rejected = 'item-repair-removed-pivot-move';
+                    return;
+                }
+                if (role === 'hazard' && !repairedMoves.some(m => sampleMoveKind(m).hazard)) {
+                    if (debugTrace) debugTrace.roles[role].rejected = 'item-repair-removed-hazard-move';
+                    return;
+                }
+                const teraType = sampleChooseTera(profile, role, repairedMoves, ability);
+                if (!sampleItemIsCompatibleWithMoves(item, repairedMoves)) {
+                    if (debugTrace) debugTrace.roles[role].rejected = 'item-move-incompatible-after-repair';
+                    return;
+                }
                 const candidate = {
                     name: sampleRoleLabel(role),
                     role: sampleRoleLabel(role),
@@ -1990,7 +2069,7 @@ import { updatePreview } from './editor-core.js';
                     nature,
                     evs,
                     ivs: { hp:31, atk:31, def:31, spa:31, spd:31, spe:31 },
-                    moves: moves.map(m => m.name),
+                    moves: repairedMoves.map(m => m.name),
                     teraType,
                     level: 100
                 };
