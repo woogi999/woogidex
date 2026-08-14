@@ -433,7 +433,7 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
   const merchantThing=pick([`${roleText} merchant`,`${typeText} merchant`,`free-turn merchant`,`setup merchant`,`damage merchant`]);
   const toneSets={
     monster:{open:['oh NAH what is ts','ts gas gng','aw hell nah..','oh my days bruv','jarvis get ts out of here','okay, who let this thing cook','HOLY STALLFEST','this is getting suspiciously silly'],closers:['i would absolutely test this at the top end first','this is the kind of kit i would watch very closely in real games','honestly, i would be a little scared to give this too much free space','if this starts getting free turns, somebody is getting cooked','this thing has no business being this comfortable']},
-    strong:{open:['ts gas gng','oh my days bruv','okay yeah, this one has sauce','oh NAH what is ts','yeah, this one is kinda cooking','aw hell nah.. i see the vision','jarvis get ts out of here','this is a certified problem merchant'],closers:['i would be pretty confident testing this aggressively','this is absolutely worth throwing into serious teams','i would keep an eye on how often it gets free turns','give this one an inch and it is taking the whole kitchen','i would absolutely abuse the good turns here']},
+    strong:{open:['ts gas gng','oh my days bruv','okay yeah, this one has sauce','oh NAH what is ts','yeah, this one is kinda cooking','aw hell nah.. i see the vision','jarvis get ts out of here','this is a certified hood classic'],closers:['i would be pretty confident testing this aggressively','this is absolutely worth throwing into serious teams','i would keep an eye on how often it gets free turns','give this one an inch and it is taking the whole kitchen','i would absolutely abuse the good turns here']},
     solid:{open:['okay, i see the vision','ts gas gng, in moderation','oh my days bruv, there is actually something here','this one has a little sauce','would. next question','okay this is kinda fun','we have a concept here and it is not bad'],closers:['i would start testing it and see what sticks','this feels like a fun one to actually build around','i would give it a few different team shells before judging it too hard','there is enough here to make me curious, which is a win already']},
     niche:{open:['okay, this one is a specialist','i can see the angle here','ts so deep bro','this is definitely a matchup artist','okay, this is a very specific little merchant','oh my days bruv, this has a job and it knows it','we found the niche merchant'],closers:['i would build around its best jobs instead of asking it to do everything','this one could surprise people with the right support','i would test the narrow gameplan first and expand from there','do not make it do eight jobs. let the little merchant have its lane']},
     struggling:{open:['okay, we have a little gremlin to workshop','aw hell nah.. okay, back to the kitchen','jarvis get ts out of here, but wait, there might be a point here','ts so deep bro','oh my days bruv, we have work to do','this one needs the squad holding its hand','okay, somebody find this thing a niche'],closers:['i would start with a very supportive team and see what it can steal','this one needs its good situations to happen on purpose','i would treat this as a project mon and see where it surprises us','the numbers are not doing cartwheels, so let the weirdness carry','give the little guy one job and let it commit']}
@@ -579,11 +579,11 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
       `at ${Math.round(matchupScore)}/100, this is more about choosing the right battle than trying to brute-force every matchup.`
     ]));
     if(good.length && bad.length && power>=55) matchupLines.push(pick([
-      `the fun part is the contrast. ${good[0]?.p?.name||'the good matchups'} gives it room to cook, while ${bad[0]?.p?.name||'the rough matchups'} is where i would have a teammate ready.`,
+      `the fun part is the contrast. going against ${good[0]?.p?.name||'the good matchups'} gives it room to do stuff, while ${bad[0]?.p?.name||'the rough matchups'} is where i would have a teammate ready.`,
       `play into ${good[0]?.p?.name||'the favorable matchups'} when you can, and keep an answer for ${bad[0]?.p?.name||'the nasty ones'}. simple enough.`,
-      `the good games are genuinely nice, and the bad games are exactly why team building exists.`,
+      `the good games could be genuinely nice, and the bad games are exactly why team building exists.`,
       `${good[0]?.p?.name||'the favorable side'} looks like a good time. ${bad[0]?.p?.name||'the rough side'} looks like a problem for somebody else on the team.`,
-      `this has some very real good games and some very real "please send a teammate" games. build accordingly.`,
+      `this has some very real good games and some very real "MAHORAGA SAVE ME" games. build accordingly.`,
       `when ${good[0]?.p?.name||'the good matchup'} shows up, let this thing work. when ${bad[0]?.p?.name||'the bad matchup'} shows up, do not be a hero.`
     ]));
     else if(good.length && power>=60) matchupLines.push(pick([`i really like the games into ${good.map(fmt).join(', ')}. those are the spots where this can look way better than the raw numbers suggest.`,`when ${good[0]?.p?.name||'the favorable matchups'} shows up, i would be very happy to have this thing in the back pocket.`]));
@@ -592,7 +592,7 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
   }
 
   if(defensiveMon) paragraphs.push(pick([
-    `i would build around the turns this thing buys, not around forcing it to deal huge damage. recovery, hazards, status, and good switch-ins are where the value is.`,
+    `i would build around the turns this thing brings, not around forcing it to deal huge damage. recovery, hazards, status, and good switch-ins are where the value is.`,
     `the cleanest set is probably the one that makes its defensive job obvious. give it recovery if it has it, give it useful utility, and let the bulk keep creating turns.`,
     `do not judge this by how many things it can OHKO. judge it by how many things fail to 2HKO it and how much work it can do in the turns that buys.`,
     `the team should take advantage of the free turns this creates. bring it into the hits it is built to absorb, make progress while it is there, then keep it healthy.`,
@@ -615,14 +615,14 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
     `call me Master Oogway, the way i am locking this mon up in Ubers.`,
     `not even Saul Goodman can bail this mon out of Ubers.`,
     `yeah, i have seen enough. Ubers. somebody take the keys away.`,
-    `this one walked into the analysis and immediately got the Ubers sentence.`,
+    `this one walked into the analysis and immediately got the sentence. Ubers.`,
     `Ubers is not even a suggestion here. that is where i am putting this thing.`,
     `i was going to be reasonable about the tiering, then this mon showed up. Ubers.`,
-    `the spreadsheet has spoken, and unfortunately it said Ubers.`,
+    `you're not gamefreak to design mons like these. Ubers.`,
     `okay, pack it up. this thing is going straight to Ubers.`,
     `Ubers feels less like a tier and more like a containment facility for this one.`,
-    `yeahhh, this is an Ubers problem now. i do not make the rules.`,
-    `i tried to find a lower tier for this. the lower tiers declined the application. Ubers.`,
+    `yeahhh..,, this is an Ubers problem now. i do not make the rules.`,
+    `like AI data centers, nobody wants this thing near them. Ubers.`,
     `someone asked where this belongs. apparently the answer is Ubers and i am not arguing.`
   ];
   if(isUbers) paragraphs.push(pick(ubersLines));
