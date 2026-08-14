@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 
 // ==================== SHOWDOWN MOD EXPORT ====================
@@ -378,7 +379,7 @@ A couple things worth knowing:
                 URL.revokeObjectURL(url);
                 api.showToast('Showdown mod exported!', 'success');
             } catch (err) {
-                console.error('[Showdown Mod Export]', err);
+                log.error('SHOWDOWN EXPORT', 'Showdown mod export failed', err);
                 api.showToast('Showdown mod export failed!', 'error');
             }
         }
@@ -453,7 +454,7 @@ ${entries}
                 URL.revokeObjectURL(url);
                 api.showToast('Collection exported as a Showdown mod!', 'success');
             } catch (err) {
-                console.error('[Collection Showdown Mod Export]', err);
+                log.error('SHOWDOWN EXPORT', 'Collection Showdown mod export failed', err);
                 api.showToast('Collection Showdown mod export failed!', 'error');
             }
         }

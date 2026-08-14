@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { POKEMON_TYPES, POKEMON_COLORS } from './data.js';
 import * as data from './data.js';
 import * as editor from './editor.js';
@@ -158,6 +159,7 @@ export const api = {};
         }
 
         function openSettings() {
+            log.debug('SETTINGS', 'Opening settings');
             const modal = document.getElementById('settings-modal');
             if (!modal) return;
             updateSettingsUI();
@@ -189,6 +191,7 @@ export const api = {};
 
 // ==================== TOAST ====================
         function showToast(message, type = 'info') {
+            log.info('TOAST', `${type}: ${message}`);
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
@@ -279,6 +282,8 @@ export const api = {};
     
 
 // ==================== MODULE COORDINATION ====================
+log.setContext({ state, api });
+
 Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
@@ -292,6 +297,8 @@ Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, expor
 Object.assign(window, api);
 
 document.addEventListener('DOMContentLoaded', async () => {
+    const done = log.time('BOOT', 'Application initialization');
+    log.info('BOOT', 'DOMContentLoaded fired');
     api.initTypeSelects();
     api.initColorPicker();
     await api.loadFromStorage();
@@ -301,6 +308,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadSettings();
     if (typeof lucide !== 'undefined') lucide.createIcons();
     api.updateEditorStats();
+    done({ fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
+    log.info('BOOT', 'Application ready', { fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
 });
 
 export { loadDarkMode, toggleDarkMode, updateDarkModeUI, showToast, initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor };

@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 
 // ==================== INDEXEDDB ====================
@@ -7,16 +8,18 @@ import { state, api } from './app.js';
         let idbPromise = null;
 
         function openDB() {
+            log.debug('STORAGE', 'openDB requested', { database: IDB_NAME, version: IDB_VERSION });
             if (idbPromise) return idbPromise;
             idbPromise = new Promise((resolve, reject) => {
                 if (!('indexedDB' in window)) { reject(new Error('IndexedDB not supported')); return; }
                 const req = indexedDB.open(IDB_NAME, IDB_VERSION);
                 req.onupgradeneeded = (e) => {
+                    log.info('STORAGE', 'IndexedDB upgrade', { version: e.newVersion });
                     const db = e.target.result;
                     if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
                 };
-                req.onsuccess = () => resolve(req.result);
-                req.onerror = () => reject(req.error);
+                req.onsuccess = () => { log.info('STORAGE', 'IndexedDB opened'); resolve(req.result); };
+                req.onerror = () => { log.error('STORAGE', 'IndexedDB open failed', req.error); reject(req.error); };
             });
             return idbPromise;
         }
@@ -24,8 +27,8 @@ import { state, api } from './app.js';
             return openDB().then(db => new Promise((resolve, reject) => {
                 const tx = db.transaction(IDB_STORE, 'readonly');
                 const req = tx.objectStore(IDB_STORE).get(key);
-                req.onsuccess = () => resolve(req.result);
-                req.onerror = () => reject(req.error);
+                req.onsuccess = () => { log.info('STORAGE', 'IndexedDB opened'); resolve(req.result); };
+                req.onerror = () => { log.error('STORAGE', 'IndexedDB open failed', req.error); reject(req.error); };
             }));
         }
         function idbSet(key, value) {
@@ -65,6 +68,7 @@ function normalizeCollections() {
 
 
         function autoSave(immediate) {
+            log.debug('STORAGE', 'autoSave requested', { immediate: !!immediate, editingId: state.editingId });
             // Don't auto-save if there's no name yet (silently skip)
             const name = document.getElementById('fakemon-name').value.trim();
             if (!name) {
@@ -75,6 +79,7 @@ function normalizeCollections() {
             if (state.autoSaveTimer) clearTimeout(state.autoSaveTimer);
 
             const doSave = async () => {
+                const done = log.time('STORAGE', 'autoSave commit');
                 const fakemon = buildFakemonObject();
                 if (!fakemon) return;
 
@@ -88,6 +93,8 @@ function normalizeCollections() {
                 normalizeCollections();
 
                 await saveToStorage();
+                done({ id: fakemon.id, name: fakemon.name });
+                log.info('STORAGE', 'Fakemon saved', { id: fakemon.id, name: fakemon.name });
                 state.lastSavedId = fakemon.id;
                 api.onFakemonSaved?.(fakemon.id);
                 updateSaveStatus('saved');
@@ -211,6 +218,8 @@ function normalizeCollections() {
         
 // ==================== STORAGE (IndexedDB) ====================
         async function saveToStorage() {
+            const done = log.time('STORAGE', 'saveToStorage');
+            log.debug('STORAGE', 'Saving collection', { fakemons: state.fakemonDB.length, folders: state.folders.length, customMoves: state.customMoves.length });
             try {
                 normalizeCollections();
                 await idbSet('fakemonDB_v4', state.fakemonDB);
@@ -218,10 +227,14 @@ function normalizeCollections() {
                 await idbSet('woogidexCustomMoves_v1', state.customMoves);
                 await idbSet('woogidexCustomAbilities_v1', state.customAbilities);
                 await idbSet('woogidexCustomItems_v1', state.customItems);
+                done({ fakemons: state.fakemonDB.length });
+                log.info('STORAGE', 'Collection saved');
             }
-            catch (e) { api.showToast('Warning: Storage limit may be reached. Export your collection!', 'error'); }
+            catch (e) { log.error('STORAGE', 'Collection save failed', e); api.showToast('Warning: Storage limit may be reached. Export your collection!', 'error'); }
         }
         async function loadFromStorage() {
+            const done = log.time('STORAGE', 'loadFromStorage');
+            log.info('STORAGE', 'Loading persisted application state');
             try {
                 const data = await idbGet('fakemonDB_v4');
                 if (Array.isArray(data)) {

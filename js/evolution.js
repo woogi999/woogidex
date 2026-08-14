@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 
 // Evolution / forme whiteboard. The graph is persisted with each participating
@@ -295,6 +296,7 @@ function addCurrentNode() {
 }
 
 function renderEvolutionBoard() {
+    log.debug('EVOLUTION', 'Rendering evolution board', { hasGraph: !!state.evolutionGraph });
     const board = document.getElementById('evolution-board');
     if (!board) return;
     const g = ensureGraph();

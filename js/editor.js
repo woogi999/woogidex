@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 
 import { POKEMON_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } from './data.js';
@@ -35,7 +36,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                         }
                     }
                 } catch (err) {
-                    console.warn('[Sample Sets] competitive move weights unavailable from', url, err);
+                    log.warn('SAMPLE SETS', 'Competitive move weights unavailable', { url, error: err });
                 }
             }
             const values = Object.values(state.sdMoveUsefulness);
@@ -48,9 +49,11 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         }
 
         async function fetchShowdownData() {
+            const done = log.time('SHOWDOWN', 'fetchShowdownData');
+            log.info('SHOWDOWN', 'Fetching Showdown datasets');
             const statusEl = document.getElementById('api-status');
             if (statusEl) statusEl.style.display = 'none';
-            console.log('[Showdown] Loading data...');
+            log.debug('SHOWDOWN', 'Requesting moves, abilities, items, pokedex, and learnsets');
 
             try {
                 const [movesRes, abilitiesRes, itemsRes, pokedexRes, learnsetsRes] = await Promise.all([
@@ -166,15 +169,17 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                 }
 
                 state.sdLoaded = true;
+                done({ moves: Object.keys(state.sdMoves).length, abilities: Object.keys(state.sdAbilities).length, items: Object.keys(state.sdItems).length, pokedex: Object.keys(state.sdPokedex).length });
+                log.info('SHOWDOWN', 'Showdown datasets loaded', { moves: Object.keys(state.sdMoves).length, abilities: Object.keys(state.sdAbilities).length, items: Object.keys(state.sdItems).length, pokedex: Object.keys(state.sdPokedex).length });
                 // A Fakemon may have been loaded before the async Showdown fetch
                 // completed. Rehydrate its minimal saved learnset now that the
                 // authoritative vanilla move data is available.
                 rehydrateCurrentLearnsetFromShowdown();
-                console.log(`[Showdown] Data loaded (${Object.keys(state.sdMoves).length} moves, ${Object.keys(state.sdPokedex).length} species, ${Object.keys(state.sdAbilities).length} abilities, ${Object.keys(state.sdItems).length} items)`);
+                log.info('SHOWDOWN', 'Data loaded', { moves: Object.keys(state.sdMoves).length, species: Object.keys(state.sdPokedex).length, abilities: Object.keys(state.sdAbilities).length, items: Object.keys(state.sdItems).length });
                 api.showToast('Showdown data loaded!', 'success');
                 updateBulkComparison();
             } catch (err) {
-                console.error('[Showdown] data error:', err);
+                log.error('SHOWDOWN', 'Data loading failed', err);
                 state.sdLoaded = false;
                 api.showToast('Showdown data unavailable. Using custom entry only.', 'error');
             }
@@ -521,6 +526,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         }
 
         function importMovesFromText() {
+            log.info('MOVE IMPORT', 'Starting move text import');
             if (!state.sdLoaded) {
                 api.showToast('Showdown move data is still loading. Try again shortly.', 'error');
                 return;
@@ -576,6 +582,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
 
             invalid += customKeys.size;
             const imported = order.map(key => importedByKey.get(key)).filter(Boolean);
+            log.debug('MOVE IMPORT', 'Parsed move import', { imported: imported.length, invalid, corrected });
 
             if (!imported.length) {
                 api.showToast('No valid moves were found in the import text.', 'error');
@@ -584,6 +591,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
 
             const { sort, order: importOrder } = getMoveSortOptions();
             state.learnset = sortLearnsetEntries(imported, sort, importOrder);
+            log.info('MOVE IMPORT', 'Applied imported moves to learnset', { count: state.learnset.length });
             renderLearnset();
             renderRecommendMovesModal();
             updatePreview();
@@ -1015,6 +1023,7 @@ function handleMoveKey(e) {
             });
         }
         function renderLearnset() {
+            log.debug('LEARNSET', 'Rendering learnset', { count: state.learnset.length });
             const container = document.getElementById('learnset-list');
             const searchEl = document.getElementById('learnset-search');
             const sortEl = document.getElementById('learnset-sort');
@@ -1795,6 +1804,7 @@ function handleMoveKey(e) {
         }
 
         function showMoveDetail(name) {
+            log.debug('MOVE INFO', 'Opening move detail', { name });
             const move = state.learnset.find(m => m.name === name);
             if (!move) return;
             const sdEntry = Object.entries(state.sdMoves).find(([k,v]) => v.name === name);
@@ -1817,6 +1827,7 @@ function handleMoveKey(e) {
                     : (sdEntry ? (sdEntry[1].flags || {}) : (move.flags || {}))
             });
             const flagLabels = getFlagLabels(flags, move.category);
+            log.debug('MOVE INFO', 'Resolved move flags', { name: move.name, multihit: !!flags.multihit, pivot: !!flags.pivot, labels: flagLabels });
             let flagsHtml = '';
             if (flagLabels.length) {
                 flagsHtml = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0;padding:12px 0;border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light);">' +
@@ -2103,6 +2114,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
         }
 
         function openCustomMoveModal(index) {
+        log.debug('CUSTOM MOVE', 'Opening custom move modal', { index });
             const menu = document.getElementById('custom-move-type-menu');
             if (menu && !menu.innerHTML) {
                 menu.innerHTML = buildTypeMenuOptions(t => `selectCustomMoveType('${t}')`, false, '');
@@ -2153,6 +2165,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
         }
 
         function saveCustomMove() {
+        log.info('CUSTOM MOVE', 'Saving custom move');
             const name = document.getElementById('custom-move-name').value.trim();
             if (!name) { api.showToast('Please enter a move name!', 'error'); return; }
             const category = document.getElementById('custom-move-category').value;

@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 
 import { POKEMON_TYPES, TYPE_EFFECTIVENESS } from './data.js';
@@ -65,6 +66,7 @@ function resetEditor() {
         }
 
         function loadFakemonIntoEditor(fakemon) {
+            log.info('EDITOR', 'Loading Fakemon into editor', { id: fakemon?.id, name: fakemon?.name, moves: fakemon?.learnset?.length || 0 });
             document.getElementById('fakemon-name').value = fakemon.name || '';
             document.getElementById('fakemon-species').value = fakemon.species || '';
             selectType('type1', fakemon.type1 || '');
@@ -842,6 +844,7 @@ function togglePreviewArtworkMode(event) {
 }
 
 function updatePreview() {
+    log.debug('PREVIEW', 'Updating Fakemon preview', { name: document.getElementById('fakemon-name')?.value || '', moves: state.learnset.length });
             renderTypeEffectiveness();
             const name = document.getElementById('fakemon-name').value || 'Unnamed Pokemon';
             const speciesRaw = document.getElementById('fakemon-species').value.trim();

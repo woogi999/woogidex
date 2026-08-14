@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 import { sortLearnsetEntries } from './editor.js';
 
@@ -17,6 +18,7 @@ import { sortLearnsetEntries } from './editor.js';
         }
 
         function exportCollection() {
+            log.info('EXPORT', 'Exporting collection', { fakemons: state.fakemonDB.length });
             const hasAnything = state.fakemonDB.length || (state.customMoves || []).length || (state.customAbilities || []).length || (state.customItems || []).length;
             if (!hasAnything) { api.showToast('Nothing to export!', 'error'); return; }
 
@@ -81,6 +83,8 @@ import { sortLearnsetEntries } from './editor.js';
         }
 
         async function importCollection(mode) {
+            const done = log.time('IMPORT', `importCollection:${mode}`);
+            log.info('IMPORT', 'Starting collection import', { mode, file: pendingCollectionImportFile?.name });
             if (!pendingCollectionImportFile) {
                 api.showToast('Choose an import file first.', 'error');
                 return;
@@ -88,6 +92,7 @@ import { sortLearnsetEntries } from './editor.js';
             try {
                 const file = pendingCollectionImportFile;
                 const text = await file.text();
+                log.debug('IMPORT', 'Import file read', { bytes: text.length, type: file.type, name: file.name });
                 let parsed;
                 if (file.name.toLowerCase().endsWith('.json') || file.type.includes('json')) {
                     parsed = JSON.parse(text);
@@ -209,7 +214,7 @@ import { sortLearnsetEntries } from './editor.js';
                 const importedBits = [`${incoming.length} Fakemon${incoming.length === 1 ? '' : 's'}`, ...libraryBits].join(' and ');
                 api.showToast(`${mode === 'replace' ? 'Replaced with' : 'Added'} ${importedBits}!`, 'success');
             } catch (err) {
-                console.error('[Collection Import]', err);
+                log.error('IMPORT', 'Collection import failed', err);
                 api.showToast(`Import failed: ${err.message || 'invalid file'}`, 'error');
             } finally {
                 pendingCollectionImportFile = null;
@@ -264,7 +269,7 @@ import { sortLearnsetEntries } from './editor.js';
                 URL.revokeObjectURL(url);
                 api.showToast('JSON exported!', 'success');
             } catch (err) {
-                console.error('[JSON Export]', err);
+                log.error('EXPORT', 'JSON export failed', err);
                 api.showToast('JSON export failed!', 'error');
             }
         }
@@ -283,7 +288,7 @@ import { sortLearnsetEntries } from './editor.js';
                 api.updatePreview?.();
                 await callback(fakemon);
             } catch (err) {
-                console.error('[Collection Fakemon Export]', err);
+                log.error('EXPORT', 'Collection Fakemon export failed', err);
                 api.showToast(`Export failed: ${err.message || 'unknown error'}`, 'error');
             }
         }
@@ -585,7 +590,7 @@ import { sortLearnsetEntries } from './editor.js';
                     api.showToast('Imported into the new Fakemon editor. Save it to add it to your collection.', 'success');
                 }
             } catch (err) {
-                console.error('[Fakemon Import]', err);
+                log.error('IMPORT', 'Fakemon import failed', err);
                 api.showToast(`Import failed: ${err.message || 'invalid file'}`, 'error');
             } finally {
                 event.target.value = '';
@@ -702,7 +707,7 @@ import { sortLearnsetEntries } from './editor.js';
                 document.getElementById('plain-text-export-modal')?.classList.add('active');
                 setTimeout(() => { textarea.focus(); textarea.select(); }, 0);
             } catch (err) {
-                console.error('[Plain Text Export]', err);
+                log.error('EXPORT', 'Plain text export failed', err);
                 api.showToast('Plain text export failed!', 'error');
             }
         }

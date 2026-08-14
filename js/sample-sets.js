@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 
 import { NATURE_DATA, NATURES, STAT_NAMES } from './data.js';
@@ -194,6 +195,18 @@ import { updatePreview } from './editor-core.js';
             'Headlong Rush','Contrary Boost Move'
         ]);
 
+        // Generation-local memoization. The beam search evaluates the same partial
+        // move combinations many times across roles; cache those pure scoring checks
+        // so debug/investigation support never becomes part of the hot path.
+        let sampleGenerationMemo = null;
+        function sampleMemoKey(role, chosen) {
+            const names = (chosen || []).map(m => m?.name || '').sort();
+            return `${role || ''}|${names.join('\x1f')}`;
+        }
+        function sampleMoveMemoKey(role, move, chosen) {
+            return `${role || ''}|${move?.name || ''}|${(chosen || []).map(m => m?.name || '').sort().join('\x1f')}`;
+        }
+
         function sampleSetHash(value) {
             let h = 2166136261 >>> 0;
             const s = String(value);
@@ -249,6 +262,9 @@ import { updatePreview } from './editor-core.js';
         }
 
         function sampleMoveKind(move) {
+            if (!move) return {};
+            const cache = sampleGenerationMemo?.moveKind;
+            if (cache?.has(move)) return cache.get(move);
             const name = move.name;
             const lower = `${name} ${move.desc || ''}`.toLowerCase();
             const kinds = {
@@ -271,6 +287,7 @@ import { updatePreview } from './editor-core.js';
             kinds.hazard ||= /stealth rock|spikes|toxic spikes|sticky web/.test(lower);
             kinds.removal ||= /remove.*hazard|clear.*hazard|defog|rapid spin/.test(lower);
             kinds.pivot ||= /switch.*out|user.*switches|switches out/.test(lower) && move.category === 'Status';
+            if (cache) cache.set(move, kinds);
             return kinds;
         }
 
@@ -316,7 +333,9 @@ import { updatePreview } from './editor-core.js';
         // competitively since it bypasses Speed entirely), multi-hit averages, and
         // guaranteed drain, without relying on any external usage-stats fetch.
         function sampleMoveIntrinsicScore(move) {
-            if (!sampleIsDamaging(move)) return 0;
+            const cache = sampleGenerationMemo?.intrinsic;
+            if (cache?.has(move)) return cache.get(move);
+            if (!sampleIsDamaging(move)) { if (cache) cache.set(move, 0); return 0; }
             const bp = sampleEffectiveBasePower(move);
             if (!bp) return 0;
             const accRaw = move.accuracy;
@@ -330,6 +349,7 @@ import { updatePreview } from './editor-core.js';
             const desc = (move.desc || '').toLowerCase();
             if (/flinch|paraly|burn|freeze|poison|lowers? the target|lower(s)? its target/.test(desc)) score += 6;
             if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name)) score += 20;
+            if (cache) cache.set(move, score);
             return score;
         }
 
@@ -916,6 +936,9 @@ import { updatePreview } from './editor-core.js';
         ]);
 
         function sampleHasNaturalCoverageOptions(profile, role) {
+            const cache = sampleGenerationMemo?.naturalCoverage;
+            const key = role || '';
+            if (cache?.has(key)) return cache.get(key);
             const options = profile.moves.filter(m => {
                 if (!m?.name || m.name === 'Tera Blast') return false;
                 if (sampleMoveIsBanned(m) || SAMPLE_SET_SELF_KO_MOVES.has(m.name) || SAMPLE_SET_BAD_DEFAULT_MOVES.has(m.name)) return false;
@@ -925,6 +948,7 @@ import { updatePreview } from './editor-core.js';
                 if (!sampleMoveCompatibleWithRole(m, profile, role)) return false;
                 return sampleHasGoodCoverage(m, profile, []);
             });
+            if (cache) cache.set(key, options);
             return options;
         }
 
@@ -940,21 +964,25 @@ import { updatePreview } from './editor-core.js';
         }
 
         function sampleHasGoodCoverage(move, profile, chosen) {
-            if (!sampleIsDamaging(move) || profile.types.includes(move.type)) return false;
+            const cache = sampleGenerationMemo?.goodCoverage;
+            const key = `${move?.name || ''}|${(chosen || []).map(m => m?.name || '').sort().join('\x1f')}`;
+            if (cache?.has(key)) return cache.get(key);
+            const finish = value => { if (cache) cache.set(key, value); return value; };
+            if (!sampleIsDamaging(move) || profile.types.includes(move.type)) return finish(false);
             // Never let a two-turn attack enter an automatic coverage slot.
             // Its raw BP is not a meaningful representation of its competitive role.
-            if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name)) return false;
-            if (!sampleMoveIsActuallyUseful(move)) return false;
+            if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name)) return finish(false);
+            if (!sampleMoveIsActuallyUseful(move)) return finish(false);
 
             // Trapping damage is not generic coverage. Fire Spin / Whirlpool /
             // Magma Storm / etc. need an actual trapping plan.
             if (SAMPLE_SET_TRAPPING_DAMAGE_MOVES.has(move.name) && !sampleHasTrappingGameplan(profile, chosen)) {
-                return false;
+                return finish(false);
             }
 
             // Conditional/weather/terrain attacks should not be treated as normal
             // coverage without the condition that makes them worthwhile.
-            if (!sampleHasConditionalCoverageSupport(move, profile, chosen)) return false;
+            if (!sampleHasConditionalCoverageSupport(move, profile, chosen)) return finish(false);
 
             const bp = sampleEffectiveBasePower(move);
 
@@ -962,11 +990,11 @@ import { updatePreview } from './editor-core.js';
             // "useful" attacks. Weak attacks should not occupy an offensive coverage
             // slot merely because they happen to hit something super-effectively.
             const premiumCoverage = SAMPLE_SET_PREMIUM_ATTACKS.has(move.name);
-            if (bp < 80 && !(premiumCoverage && bp >= 70)) return false;
+            if (bp < 80 && !(premiumCoverage && bp >= 70)) return finish(false);
 
             // Air Slash is perfectly legitimate as STAB, but should not be treated as
             // strong off-type coverage merely because it is a legal damaging move.
-            if (move.name === 'Air Slash' && !profile.types.includes(move.type)) return false;
+            if (move.name === 'Air Slash' && !profile.types.includes(move.type)) return finish(false);
 
             const chosenGood = chosen.filter(sampleMoveIsActuallyUseful);
             const stabTypes = profile.types;
@@ -978,9 +1006,9 @@ import { updatePreview } from './editor-core.js';
                 if (stabBest < 2 && cov >= 2) best = Math.max(best, cov);
             }
 
-            if (best < 2) return false;
-            if (chosenGood.some(m => !profile.types.includes(m.type) && m.type === move.type)) return false;
-            return true;
+            if (best < 2) return finish(false);
+            if (chosenGood.some(m => !profile.types.includes(m.type) && m.type === move.type)) return finish(false);
+            return finish(true);
         }
 
         function sampleMoveScore(move, profile, role, chosen) {
@@ -1155,6 +1183,9 @@ import { updatePreview } from './editor-core.js';
 
         function sampleSetCoherenceScore(profile, role, chosen) {
             if (!chosen.length) return 0;
+            const cache = sampleGenerationMemo?.coherence;
+            const key = sampleMemoKey(role, chosen);
+            if (cache?.has(key)) return cache.get(key);
 
             const kinds = chosen.map(sampleMoveKind);
             const damaging = chosen.filter(sampleIsDamaging);
@@ -1292,34 +1323,39 @@ import { updatePreview } from './editor-core.js';
             if (kinds.filter(k => k.hazard).length > 1) score -= 24;
             if (kinds.filter(k => k.removal).length > 1) score -= 24;
 
+            if (cache) cache.set(key, score);
             return score;
         }
 
         function sampleSetPartialViability(profile, role, chosen) {
+            const cache = sampleGenerationMemo?.partialViability;
+            const key = sampleMemoKey(role, chosen);
+            if (cache?.has(key)) return cache.get(key);
+            const finish = value => { if (cache) cache.set(key, value); return value; };
             // Hard constraints are checked while the set is being built. This prevents
             // the search from spending its budget on branches that can never become a
             // coherent set.
             const damaging = chosen.filter(sampleIsDamaging);
             const kinds = chosen.map(sampleMoveKind);
 
-            if (damaging.some(sampleIsTwoTurnAttack)) return false;
+            if (damaging.some(sampleIsTwoTurnAttack)) return finish(false);
 
-            if (role === 'hazard' && chosen.length >= 3 && !kinds.some(k => k.hazard)) return false;
-            if (role === 'pivot' && chosen.length >= 3 && !kinds.some(k => k.pivot)) return false;
+            if (role === 'hazard' && chosen.length >= 3 && !kinds.some(k => k.hazard)) return finish(false);
+            if (role === 'pivot' && chosen.length >= 3 && !kinds.some(k => k.pivot)) return finish(false);
             if (role === 'screens' && chosen.some(m => sampleMoveKind(m).screens) &&
-                !sampleIsScreensMoveAllowed(chosen.find(m => sampleMoveKind(m).screens), profile, role, chosen)) return false;
+                !sampleIsScreensMoveAllowed(chosen.find(m => sampleMoveKind(m).screens), profile, role, chosen)) return finish(false);
 
             // Coverage is optional, but once a set already has one off-type attack,
             // additional off-type attacks need a very strong reason to remain viable.
             const coverage = damaging.filter(m => !profile.types.includes(m.type));
-            if (coverage.length > 2) return false;
+            if (coverage.length > 2) return finish(false);
 
             // Never allow three attacks of the same type on an automatic set. Two can
             // be justified (e.g. a primary STAB plus a stronger secondary STAB), but
             // the third slot should be coverage or useful utility instead.
             const typeCounts = new Map();
             damaging.forEach(m => typeCounts.set(m.type, (typeCounts.get(m.type) || 0) + 1));
-            if ([...typeCounts.values()].some(count => count > 2)) return false;
+            if ([...typeCounts.values()].some(count => count > 2)) return finish(false);
 
             // When an offensive set has already committed to two attacks and the
             // movepool contains legitimate natural coverage, preserve a path for that
@@ -1327,23 +1363,23 @@ import { updatePreview } from './editor-core.js';
             if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role) &&
                 damaging.length >= 2 && coverage.length === 0 &&
                 sampleHasNaturalCoverageOptions(profile, role).length > 0 &&
-                chosen.length >= 3) return false;
+                chosen.length >= 3) return finish(false);
 
             // A setup sweeper must actually be capable of sweeping. Do not allow the
             // beam to spend two or more slots on non-attacking utility when the movepool
             // contains good attacks/coverage.
             if (role === 'setupSweeper' && chosen.length >= 3 && kinds.some(k => k.setup)) {
-                if (damaging.length < 2) return false;
+                if (damaging.length < 2) return finish(false);
                 if (sampleHasNaturalCoverageOptions(profile, role).length > 0 &&
-                    !damaging.some(m => !profile.types.includes(m.type))) return false;
+                    !damaging.some(m => !profile.types.includes(m.type))) return finish(false);
             }
 
             // Never build an offensive set around a status-heavy branch when there are
             // already enough attacks to perform its intended job.
             if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker'].includes(role) &&
-                damaging.length >= 2 && chosen.filter(m => m.category === 'Status').length >= 2) return false;
+                damaging.length >= 2 && chosen.filter(m => m.category === 'Status').length >= 2) return finish(false);
 
-            return true;
+            return finish(true);
         }
 
         function samplePickMoves(profile, role, seed) {
@@ -1414,7 +1450,14 @@ import { updatePreview } from './editor-core.js';
 
                         if (!sampleSetPartialViability(profile, role, chosen)) continue;
 
-                        const moveScore = sampleMoveScore(move, profile, role, stateNode.moves);
+                        const scoreCache = sampleGenerationMemo?.moveScore;
+                        const scoreKey = sampleMoveMemoKey(role, move, stateNode.moves);
+                        let moveScore;
+                        if (scoreCache?.has(scoreKey)) moveScore = scoreCache.get(scoreKey);
+                        else {
+                            moveScore = sampleMoveScore(move, profile, role, stateNode.moves);
+                            if (scoreCache) scoreCache.set(scoreKey, moveScore);
+                        }
                         if (moveScore <= -6000) continue;
 
                         let score = stateNode.score + moveScore;
@@ -1850,34 +1893,78 @@ import { updatePreview } from './editor-core.js';
             ].join('::');
         }
 
+        function sampleDebugSet(set) {
+            if (!set) return null;
+            return {
+                name: set.name, role: set.role, item: set.item, ability: set.ability,
+                nature: set.nature, teraType: set.teraType, level: set.level,
+                moves: Array.isArray(set.moves) ? [...set.moves] : [],
+                evs: { ...(set.evs || {}) },
+                ivs: { ...(set.ivs || {}) }
+            };
+        }
+
         function generateSuggestedSampleSets(force = false) {
             const cacheKey = getSampleSetSuggestionCacheKey();
             if (!force && sampleSetSuggestionCache.key === cacheKey && Array.isArray(sampleSetSuggestionCache.suggestions)) {
-                return JSON.parse(JSON.stringify(sampleSetSuggestionCache.suggestions));
+                return sampleSetSuggestionCache.suggestions;
             }
 
             const profile = getSampleSetProfile();
-            if (profile.moves.length < 4) return [];
+            if (profile.moves.length < 4) { sampleGenerationMemo = null; return []; }
+            sampleGenerationMemo = {
+                moveKind: new WeakMap(),
+                intrinsic: new WeakMap(),
+                naturalCoverage: new Map(),
+                goodCoverage: new Map(),
+                coherence: new Map(),
+                partialViability: new Map(),
+                moveScore: new Map()
+            };
             const roleScores = sampleRoleScores(profile);
+            const debugSample = typeof window !== 'undefined' && window.__sampleSetDebug === true;
+            // Debug tracing must never materially change generation cost. Keep only the
+            // small, diagnostic fields we need and avoid JSON cloning inside the hot loop.
+            const debugProfile = debugSample ? {
+                name: profile.name,
+                stats: { ...(profile.stats || {}) },
+                types: [...(profile.types || [])],
+                abilities: [...(profile.abilities || [])],
+                moves: (profile.moves || []).map(m => ({ name: m.name, type: m.type, category: m.category, basePower: m.basePower }))
+            } : null;
+            const debugTrace = debugSample ? { startedAt:new Date().toISOString(), cacheKey, profile:debugProfile, roleScores:{ ...roleScores }, roles:{}, suggestions:[] } : null;
+            if (debugSample) window.__lastSampleSetGeneration = debugTrace;
             // Infeasible roles are removed before ranking. Missing a defining mechanic
             // is a hard impossibility, not merely a low score.
-            const rankedRoles = Object.keys(roleScores)
-                .filter(role => sampleRoleIsFeasible(profile, role))
-                .sort((a,b) => roleScores[b] - roleScores[a] || a.localeCompare(b));
+            const feasibleRoles = Object.keys(roleScores).filter(role => sampleRoleIsFeasible(profile, role));
+            const rankedRoles = feasibleRoles.sort((a,b) => roleScores[b] - roleScores[a] || a.localeCompare(b));
+            if (debugTrace) {
+                debugTrace.feasibleRoles = [...feasibleRoles];
+                debugTrace.rankedRoles = [...rankedRoles];
+                rankedRoles.forEach(role => { debugTrace.roles[role] = { score:roleScores[role], feasible:true }; });
+                Object.keys(roleScores).filter(role => !feasibleRoles.includes(role)).forEach(role => { debugTrace.roles[role] = { score:roleScores[role], feasible:false }; });
+            }
             const seedSource = [document.getElementById('fakemon-name')?.value || '', Object.values(profile.stats).join(','), profile.types.join('/'), profile.abilities.join('/'), profile.moves.map(m => `${m.name}:${m.type}:${m.category}:${m.basePower}`).join('|')].join('::');
             const seed = sampleSetHash(seedSource);
             const suggestions = [];
 
-            const consider = set => {
-                if (!set || !Array.isArray(set.moves) || set.moves.length !== 4) return false;
-                if (sampleSetIdeaIsTooSimilar(set, suggestions)) return false;
+            const consider = (set, source='unknown') => {
+                if (!set || !Array.isArray(set.moves) || set.moves.length !== 4) {
+                    if (debugTrace) debugTrace.suggestions.push({source,accepted:false,reason:'invalid-set',set});
+                    return false;
+                }
+                if (sampleSetIdeaIsTooSimilar(set, suggestions)) {
+                    if (debugTrace) debugTrace.suggestions.push({source,accepted:false,reason:'too-similar',set:sampleDebugSet(set)});
+                    return false;
+                }
                 suggestions.push(set);
+                if (debugTrace) debugTrace.suggestions.push({source,accepted:true,set:sampleDebugSet(set),index:suggestions.length-1});
                 return true;
             };
 
             // Parametric sets (e.g. Iron Defense + Body Press) are first-class ideas,
             // but they do not automatically crowd out unrelated roles anymore.
-            consider(generateParametricSampleSet(profile, seed ^ 0x9e3779b9));
+            consider(generateParametricSampleSet(profile, seed ^ 0x9e3779b9), 'parametric');
 
             // Walk the entire role ranking. We intentionally do not stop after three
             // attempts: several top-scoring roles can collapse to the same four moves.
@@ -1886,32 +1973,52 @@ import { updatePreview } from './editor-core.js';
             rankedRoles.forEach((role, roleIndex) => {
                 if (suggestions.length >= 3) return;
                 const moves = samplePickMoves(profile, role, seed + Math.imul(roleIndex + 1, 2654435761));
-                if (moves.length !== 4) return;
+                if (debugTrace) debugTrace.roles[role].pickedMoves = moves.map(m => m.name);
+                if (moves.length !== 4) {
+                    if (debugTrace) debugTrace.roles[role].rejected = 'move-picker-returned-fewer-than-four';
+                    return;
+                }
                 const { evs, nature } = sampleChooseNatureEVs(profile, role, moves);
                 const ability = sampleChooseAbility(profile, role, moves);
-                consider({
+                const item = sampleChooseItem(profile, role, moves, ability);
+                const teraType = sampleChooseTera(profile, role, moves, ability);
+                const candidate = {
                     name: sampleRoleLabel(role),
                     role: sampleRoleLabel(role),
-                    item: sampleChooseItem(profile, role, moves, ability),
+                    item,
                     ability,
                     nature,
                     evs,
                     ivs: { hp:31, atk:31, def:31, spa:31, spd:31, spe:31 },
                     moves: moves.map(m => m.name),
-                    teraType: sampleChooseTera(profile, role, moves, ability),
+                    teraType,
                     level: 100
-                });
+                };
+                if (debugTrace) debugTrace.roles[role].candidate = sampleDebugSet(candidate);
+                consider(candidate, `role:${role}`);
             });
 
             const result = suggestions.slice(0, 3);
+            if (debugTrace) {
+                debugTrace.finishedAt = new Date().toISOString();
+                debugTrace.result = result.map(sampleDebugSet);
+                debugTrace.suggestionCount = suggestions.length;
+                debugTrace.selectedCount = result.length;
+                log.debug('SAMPLE SETS','Published sample-set debug snapshot',{snapshot:'window.__lastSampleSetGeneration',roles:rankedRoles.length,results:result.length});
+                // Tracing is intentionally one-shot so leaving the inspector enabled
+                // cannot accidentally make every subsequent generation slower.
+                window.__sampleSetDebug = false;
+            }
             sampleSetSuggestionCache = {
                 key: cacheKey,
-                suggestions: JSON.parse(JSON.stringify(result))
+                suggestions: result
             };
-            return JSON.parse(JSON.stringify(result));
+            sampleGenerationMemo = null;
+            return result;
         }
 
         function openSampleSetModal() {
+        log.debug('SAMPLE SETS', 'Opening sample set modal');
             const modal = document.getElementById('sample-set-modal');
             if (!modal) return;
             modal.classList.add('active');
@@ -2005,7 +2112,7 @@ import { updatePreview } from './editor-core.js';
             if (!container) return;
             let suggestions = [];
             try { suggestions = generateSuggestedSampleSets(); }
-            catch (err) { console.error('[Sample Sets] generator error:', err); }
+            catch (err) { log.error('SAMPLE SETS', 'Generator error', err); }
             if (!suggestions.length) {
                 container.innerHTML = '<div class="sample-set-empty-message">oh nah no sample sets for u unc</div>';
                 return;
@@ -2692,5 +2799,11 @@ function updateStatDisplay(setIndex, statKey, evVal, ivVal) {
         }
 
         
+
+if (typeof window !== 'undefined') {
+    window.__generateSuggestedSampleSets = (force = false) => generateSuggestedSampleSets(force);
+    window.__getSampleSetProfile = () => getSampleSetProfile();
+    window.__getSampleRoleScores = profile => sampleRoleScores(profile || getSampleSetProfile());
+}
 
 export { updateSampleSet, updateSampleSetItem, hideSampleSetDropdownDelayed, filterSampleSetItem, filterSampleSetMove, removeSampleSet, copySampleSet, copySampleSetText, generateShowdownExport, openSampleSetModal, closeSampleSetModal, addBlankSampleSet, addSampleSet, applySuggestedSampleSet, renderSuggestedSampleSets, getNatureBoostLabel, calcStat, getAllAbilities, updateSampleSetEV, guessEVSpread, setNatureBoost, renderNatureStats, updateStatDisplay, renderSampleSets, showDetailPopup, sampleMoveIsActuallyUseful };

@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state } from './app.js';
 import { sampleMoveIsActuallyUseful } from './sample-sets.js';
 import { POKEMON_TYPES, TYPE_EFFECTIVENESS, STAT_NAMES } from './data.js';
@@ -252,6 +253,7 @@ function extractUsageTable(raw){
   return out;
 }
 async function loadUsage(format){
+    log.info('ANALYSIS', 'Loading usage data', { format });
   if(usageCache[format]) return usageCache[format];
   if(usagePromise[format]) return usagePromise[format];
   usagePromise[format]=fetch(`https://pkmn.github.io/smogon/data/stats/${format}.json`,{cache:'no-cache'})
@@ -262,11 +264,11 @@ async function loadUsage(format){
     .then(raw=>{
       const out=extractUsageTable(raw);
       usageCache[format]=out;
-      console.info(`[Analysis] Loaded ${Object.keys(out).length} usage entries for ${format}`);
+      log.info('ANALYSIS', 'Loaded usage entries', { format, count: Object.keys(out).length });
       return out;
     })
     .catch(err=>{
-      console.warn(`[Analysis] Usage stats unavailable for ${format}`,err);
+      log.warn('ANALYSIS', 'Usage stats unavailable', { format, error: err });
       usageCache[format]={};
       return usageCache[format];
     });
@@ -316,10 +318,10 @@ async function loadOfficialTierData(cfg){
     }
     flush();
     tierDataCache[key]=out;
-    console.info(`[Analysis] Loaded ${Object.keys(out).length} official tier records`);
+    log.info('ANALYSIS', 'Loaded official tier records', { count: Object.keys(out).length });
     return out;
   }).catch(err=>{
-    console.warn('[Analysis] Official tier data unavailable',err);
+    log.warn('ANALYSIS', 'Official tier data unavailable', err);
     tierDataCache[key]={};
     return tierDataCache[key];
   });
@@ -1833,6 +1835,29 @@ async function runFakemonAnalysis(){
     // individual matchup rows (score, offense/reverse best move, damage %) can
     // be inspected directly. Safe to remove once the issue is found.
     window.__lastMatchup=matchup;
+    window.__lastAnalysis={
+      timestamp:new Date().toISOString(),
+      config:JSON.parse(JSON.stringify(cfg)),
+      selectedFormat,
+      target:JSON.parse(JSON.stringify(t)),
+      targetProfile:JSON.parse(JSON.stringify(tf)),
+      statPct:JSON.parse(JSON.stringify(statPct)),
+      metagameStatPct:JSON.parse(JSON.stringify(metagameStatPct)),
+      statCombination,metagameStatCombination,bulkPct,speedPct,offPct,typePct,bstPct,
+      metagameBulkPct,metagameSpeedPct,metagameOffPct,metagameTypePct,
+      primaryRole,secondaryRole,roleFit,offensiveSynergy,defensiveSynergy,coherence,roleScore,
+      metagameFit,base,abilityInfo:JSON.parse(JSON.stringify(abilityInfo)),
+      intrinsic:JSON.parse(JSON.stringify(intrinsic)),
+      tier:JSON.parse(JSON.stringify(tier)),
+      matchup:window.__lastMatchup,
+      usageFormats:Object.fromEntries(Object.entries(tierUsage).map(([k,v])=>[k,Object.keys(v||{}).length])),
+      poolSize:pool.length,metagameEntries:metagameEntries.length,
+      comparablePoolSize:comparable.pool.length,usingComparableTier:comparable.pool.length>=6
+    };
+    log.debug('ANALYSIS','Published analysis debug snapshot',{
+      format:selectedFormat,role:primaryRole,score:tier.score,matchup:matchup.weightedScore,
+      rows:matchup.rows.length, snapshot:'window.__lastAnalysis'
+    });
     const strengths=[],weaknesses=[];
     Object.entries(statPct).sort((a,b)=>b[1]-a[1]).slice(0,2).filter(x=>x[1]>=70).forEach(([k,v])=>strengths.push(`${STAT_NAMES[k]} is ${Math.round(v)}th percentile`));
     Object.entries(statPct).sort((a,b)=>a[1]-b[1]).slice(0,2).filter(x=>x[1]<=35).forEach(([k,v])=>weaknesses.push(`${STAT_NAMES[k]} is ${Math.round(v)}th percentile`));
@@ -1911,7 +1936,7 @@ async function runFakemonAnalysis(){
     status.innerHTML=`<span class="analysis-ok">✓</span><span>Analysis updated · ${pool.length} comparison Pokémon · ${metagameEntries.length} usage-weighted in ${esc(selectedFormat)} · ${loadedUsageCount} usage records loaded</span>`;
     if(typeof lucide!=='undefined')lucide.createIcons();
   }catch(e){
-    console.error('[Analysis]',e);
+    log.error('ANALYSIS', 'Analysis failed', e);
     status.innerHTML='<span class="analysis-error">Analysis failed</span>';
     results.innerHTML=`<div class="analysis-error panel-lite">${esc(e.message||'Analysis failed.')}</div>`;
   }finally{analysisBusy=false;}

@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 import { POKEMON_COLORS } from './data.js';
 
@@ -257,7 +258,7 @@ import { POKEMON_COLORS } from './data.js';
                         }
                     }
                 } catch (formErr) {
-                    console.warn('[PokeAPI] Pokemon lookup fallback:', formErr);
+                    log.warn('POKEAPI', 'Pokemon lookup fallback', formErr);
                 }
 
                 if (!species) {
@@ -289,7 +290,7 @@ import { POKEMON_COLORS } from './data.js';
                 state.pokeApiSpeciesCache[cacheKey] = result;
                 return result;
             } catch (err) {
-                console.warn('[PokeAPI] Could not load species data for template:', template?.name, err);
+                log.warn('POKEAPI', 'Could not load species data for template', { template: template?.name, error: err });
                 return null;
             }
         }
@@ -360,6 +361,7 @@ import { POKEMON_COLORS } from './data.js';
         }
 
         function editFakemon(id) {
+            log.info('COLLECTION', 'Editing Fakemon', { id });
             api.autoSave(true); // Save current before switching
             const fakemon = state.fakemonDB.find(f => f.id === id);
             if (!fakemon) return;
@@ -888,6 +890,7 @@ import { POKEMON_COLORS } from './data.js';
         }
 
         function renderCollection() {
+        log.debug('COLLECTION', 'Rendering collection', { count: state.fakemonDB.length, folders: state.folders.length });
             renderBreadcrumb();
             const grid = document.getElementById('collection-grid');
             const empty = document.getElementById('empty-collection');

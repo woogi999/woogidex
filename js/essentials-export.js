@@ -1,3 +1,4 @@
+import { log } from './log.js';
 import { state, api } from './app.js';
 
 // ==================== POKEMON ESSENTIALS EXPORT ====================
@@ -360,7 +361,7 @@ A couple things worth knowing:
                 URL.revokeObjectURL(url);
                 api.showToast('Essentials files exported!', 'success');
             } catch (err) {
-                console.error('[Essentials Export]', err);
+                log.error('ESSENTIALS EXPORT', 'Essentials export failed', err);
                 api.showToast('Essentials export failed!', 'error');
             }
         }
@@ -412,7 +413,7 @@ A couple things worth knowing:
                 URL.revokeObjectURL(url);
                 api.showToast('Collection exported for Essentials!', 'success');
             } catch (err) {
-                console.error('[Collection Essentials Export]', err);
+                log.error('ESSENTIALS EXPORT', 'Collection Essentials export failed', err);
                 api.showToast('Collection Essentials export failed!', 'error');
             }
         }
