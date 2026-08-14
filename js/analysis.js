@@ -350,11 +350,22 @@ async function loadOfficialTierData(cfg){
   });
   return tierDataPromise[key];
 }
+// Showdown's formats-data.ts only carries a tier entry for the *base* forme of
+// species whose formes are all mechanically identical for legality purposes
+// (e.g. "arceus", not "arceusbug"/"arceusfire"/etc - same for Silvally's
+// memory formes). Without this, normalizeName("Arceus-Bug") -> "arceusbug"
+// never matches the "arceus" key, officialTierOf() silently returns null, and
+// the mon falls through to the matchup-estimate path - which grades it on its
+// (much weaker) off-type matchups instead of recognizing it as Uber-banned.
+const FORME_SHARES_BASE_TIER=/^(arceus|silvally)-/i;
 function officialTierOf(name,tierData,cfg){
   const candidates=[
     normalizeName(name),
     normalizeName(String(name||'').replace(/[- ](alola|galar|hisui|paldea|totem)$/i,'')),
   ];
+  if(FORME_SHARES_BASE_TIER.test(String(name||'').trim())){
+    candidates.push(normalizeName(String(name).trim().split(/[- ]/)[0]));
+  }
   for(const id of candidates){
     const rec=tierData?.[id];
     if(!rec) continue;
@@ -778,11 +789,60 @@ function detailedProfile(mon){
     !strongDefensiveBuild &&
     !(defensiveSetupCount>=1 && defensiveBuild) &&
     !(recovery>=1 && capDefensive && defensiveTools>=2);
+  const abilityList=abilityNames(mon.abilities);
+  const hasPrankster=abilityList.some(a=>/prankster/i.test(String(a||'')));
+  const hasCorrosion=abilityList.some(a=>/corrosion/i.test(String(a||'')));
+  const hasToxic=unique.some(m=>/^toxic$/i.test(String(m.name||'').trim()));
+  const hasWillOWisp=unique.some(m=>/will-o-wisp/i.test(String(m.name||'')));
+  const hasThunderWave=unique.some(m=>/thunder wave|glare|stun spore|nuzzle/i.test(String(m.name||'')));
+  // "Can this mon stall?" is a distinct question from raw bulk: it needs a way
+  // to outlast the opponent's damage (reliable recovery), and a way to actually
+  // win the war of attrition (Toxic/burn/paralysis chipping the opponent down
+  // over time) rather than just sitting there. Corrosion is a genuine stall
+  // enabler because it lets Toxic punish Poison/Steel-types that would
+  // otherwise just shrug the status off and wall the stall plan entirely.
+  const hasReliableRecovery=recovery>=1;
+  const stallDamageTools=(hasToxic?1:0)+(hasWillOWisp?1:0)+(hasThunderWave?1:0);
+  const stallScore=clamp(
+    (hasReliableRecovery?recoveryQuality*0.42:6) +
+    clamp(((physicalBulk+specialBulk)/2-110)*0.55) +
+    (hasToxic?16:0) + (hasWillOWisp?12:0) + (hasThunderWave?6:0) +
+    (hasCorrosion && hasToxic?10:0) +
+    Math.min(8,statusUtility*1.5) +
+    (pivot?4:0) -
+    (hasReliableRecovery?0:Math.min(20,stallDamageTools*8))
+  );
+  // Knowing Reflect/Light Screen/Aurora Veil is necessary but not sufficient to
+  // be a good screens setter - the screen has to actually go up before the
+  // opponent breaks through. Prankster guarantees that regardless of Speed;
+  // otherwise the mon needs to be fast in its own right (spe>=100, a notch
+  // above the general "fastEnough" bar) or the screens rarely get set on a
+  // useful turn.
+  const goodScreensSetter=hasPrankster || spe>=100;
   const roleSignals={
-    physicalSweeper: physicalReady*18 + Math.max(0,atk-100)*0.45 + physical.length*5 + (fastEnough?10:0) + (setupSweeperEligible&&atk>=spa?8:0),
-    specialSweeper: specialReady*18 + Math.max(0,spa-100)*0.45 + special.length*5 + (fastEnough?10:0) + (setupSweeperEligible&&spa>atk?8:0),
-    wallbreaker: Math.max(0,offensiveStat-105)*0.75 + usefulDamaging.filter(m=>(Number(m.basePower)||0)>=90).length*7 + (coverageTypes.length>=2?8:0) + (spe<85?8:0),
-    bulkyAttacker: Math.max(0,bulk-235)*0.24 + Math.max(0,offensiveStat-90)*0.35 + recoveryQuality*0.14 + usefulDamaging.length*2,
+    // physical.length/fastEnough bonuses used to apply unconditionally, so a mon
+    // with plenty of (weak) physical moves and okay Speed but mediocre Attack
+    // (e.g. ~62 Atk) could still rack up enough points here to top the role
+    // ranking and get called a "physical sweeper". Gate everything on
+    // physicalReady/specialReady (which already require atk/spa>=95) so the
+    // signal is zero unless the mon's offensive stat is actually sweeper-tier.
+    physicalSweeper: physicalReady ? (physicalReady*18 + Math.max(0,atk-100)*0.45 + physical.length*5 + (fastEnough?10:0) + (setupSweeperEligible&&atk>=spa?8:0)) : 0,
+    specialSweeper: specialReady ? (specialReady*18 + Math.max(0,spa-100)*0.45 + special.length*5 + (fastEnough?10:0) + (setupSweeperEligible&&spa>atk?8:0)) : 0,
+    // wallbreaker used to score purely off move-count/coverage/low-Speed bonuses
+    // with no floor on the attacking stat itself, so a bulky mon carrying just
+    // one strong STAB move (Corviknight's Brave Bird, for example) and being
+    // slow (which defensive mons usually are too) could rack up enough points
+    // to get called a "wallbreaker" despite having an unremarkable Atk/SpA and
+    // no real wallbreaking toolkit. Require the offensive stat to actually be
+    // wallbreaker-caliber before any of those bonuses apply.
+    wallbreaker: offensiveStat>=100 ? (Math.max(0,offensiveStat-105)*0.75 + usefulDamaging.filter(m=>(Number(m.basePower)||0)>=90).length*7 + (coverageTypes.length>=2?8:0) + (spe<85?8:0)) : 0,
+    // Same issue as wallbreaker: recoveryQuality/move-count bonuses applied
+    // unconditionally, so a purely defensive mon with reliable recovery and a
+    // handful of damaging moves (Corviknight, e.g.) could rack up "bulky
+    // attacker" points despite having no real offensive stat behind it. A
+    // bulky attacker still needs to actually attack - require the offensive
+    // stat to clear a real threshold first.
+    bulkyAttacker: offensiveStat>=100 ? (Math.max(0,bulk-235)*0.24 + Math.max(0,offensiveStat-90)*0.35 + recoveryQuality*0.14 + usefulDamaging.length*2) : 0,
     defensive:
       Math.max(0,physicalBulk-145)*0.44 +
       Math.max(0,specialBulk-145)*0.44 +
@@ -796,7 +856,7 @@ function detailedProfile(mon){
     pivot: pivot*28 + (spe>=70?8:0) + Math.min(8,statusUtility*2) + (usefulDamaging.length>=2?4:0),
     setupSweeper: setupSweeperEligible ? offensiveSetup*12 + (fastEnough?10:0) + usefulDamaging.length*3 + Math.max(0,offensiveStat-115)*0.3 : 0,
     hazard: hazards*40 + removal*8 + Math.min(6,statusUtility*2),
-    screens: unique.some(m=>/reflect|light screen|aurora veil/i.test(String(m.name||''))) ? 50 + (pivot?15:0) + (spe>=90?10:0) : 0
+    screens: (goodScreensSetter && unique.some(m=>/reflect|light screen|aurora veil/i.test(String(m.name||'')))) ? 50 + (pivot?15:0) + (hasPrankster?15:0) + (spe>=90?10:0) : 0
   };
   const learn=learnsetRecord(mon);
   const moveDepth=mon.fake?unique.length:Math.max(unique.length,Object.keys(learn||{}).length);
@@ -810,6 +870,7 @@ function detailedProfile(mon){
     maxOffensiveStat:Math.max(atk,spa),
     roleEligible:{setupSweeper:setupSweeperEligible,physicalSweeper:physicalReady,specialSweeper:specialReady},
     abilities:abilityNames(mon.abilities),bst:hp+atk+def+spa+spd+spe,
+    stall:{score:stallScore,hasToxic,hasWillOWisp,hasThunderWave,hasCorrosion,hasReliableRecovery},
     primaryRole:choosePrimaryRole({hp,atk,def,spa,spd,spe,bulk,physicalBulk,specialBulk,
       recoveryMoves:recoveryMoves.length,defensiveTools,defensiveSetupCount,offensiveSetup,
       maxOffensiveStat:Math.max(atk,spa),usefulMoves:useful,roleSignals})
@@ -965,10 +1026,18 @@ function getAnalysisMoves(mon){
 
   // Do not let matchup scoring cherry-pick a physically categorized move for
   // a special attacker (or vice versa) merely because it produces the largest
-  // number against this particular defender. That is an in-vacuum artifact,
-  // not how a non-mixed Pokemon is normally evaluated.
+  // number against this particular defender in a vacuum, when the damage is
+  // otherwise neutral/resisted. But a hard category filter went too far: it
+  // silently dropped genuinely super-effective off-category coverage (a real
+  // Dark-type physical move on a mon the category-lock guessed as "special
+  // leaning", for example), leaving only a weak neutral filler from the
+  // "allowed" category as the reported best move against that target - e.g.
+  // "Lokix's best tool is Air Slash" when it actually has SE Dark coverage.
+  // Tag off-category moves instead of dropping them; bestDamageOutput only
+  // lets them through when they're genuinely super effective against the
+  // specific defender being evaluated.
   const allowedCategories=getMatchupAttackCategories(mon,pool);
-  return pool.filter(m=>allowedCategories.has(m.category));
+  return pool.map(m=>allowedCategories.has(m.category)?m:{...m,_offCategory:true});
 }
 
 function isRealisticDamageMove(move){
@@ -1231,7 +1300,8 @@ function strategicallyRelevantMoves(candidates){
 function bestDamageOutput(attacker, defender, generation=9){
   const candidates=getAnalysisMoves(attacker)
     .map(m=>damageRange(attacker,defender,m,generation))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter(x=>!x.move?._offCategory || Number(x.typeMult)>1);
   if(!candidates.length)return {best:null,all:[],topMoves:[],hasAttack:false,bestSuperEffective:null,bestNeutral:null,bestResisted:null};
 
   const relevant=strategicallyRelevantMoves(candidates);
@@ -1268,11 +1338,42 @@ function matchupDetails(attacker, defender, generation=9){
   // Use the strongest coverage attack first, but also inspect the next several
   // strategically distinct attacks. This prevents a single awkward move from
   // deciding the entire matchup.
-  const pressure=offense.best?.expected||0;
-  const enemyPressure=reverse.best?.expected||0;
-  const myHits=pressure>0?Math.ceil(defenderHP/pressure):Infinity;
-  const enemyHits=enemyPressure>0?Math.ceil(attackerHP/enemyPressure):Infinity;
-  const firstStrike=aSpeed>dSpeed?'attacker':dSpeed>aSpeed?'defender':'tie';
+  const pressure0=offense.best?.expected||0;
+  const enemyPressure0=reverse.best?.expected||0;
+  // Priority moves (Sucker Punch, Quick Attack, Extreme Speed, etc.) bypass
+  // Speed entirely. Previously firstStrike was pure Speed comparison, so a
+  // slower mon's Sucker Punch was invisible to the race - e.g. a mono-Ghost
+  // attacker with only a weak neutral/SE coverage move could be scored as
+  // "good into Kingambit" because Kingambit's raw Speed looked irrelevant,
+  // even though Kingambit's Sucker Punch would very plausibly hit first and
+  // threaten a KO regardless of who's faster. Find each side's best priority
+  // move (if any) and let priority tier decide first strike before falling
+  // back to Speed within the same bracket.
+  const bestPriorityMove=(topMoves)=>{
+    const withPriority=(topMoves||[]).filter(x=>Number(x?.move?.priority)>0 && Number(x?.expected)>0);
+    if(!withPriority.length) return null;
+    return withPriority.reduce((a,b)=>Number(b.move.priority)>Number(a.move.priority)?b:a);
+  };
+  const myPriorityMove=bestPriorityMove(offense.topMoves);
+  const enemyPriorityMove=bestPriorityMove(reverse.topMoves);
+  const myPriorityTier=Number(myPriorityMove?.move?.priority)||0;
+  const enemyPriorityTier=Number(enemyPriorityMove?.move?.priority)||0;
+  const firstStrike=myPriorityTier!==enemyPriorityTier
+    ? (myPriorityTier>enemyPriorityTier?'attacker':'defender')
+    : (aSpeed>dSpeed?'attacker':dSpeed>aSpeed?'defender':'tie');
+
+  // When a side's priority move is what actually wins them first strike, that
+  // move - not necessarily whatever "best expected damage" move was picked -
+  // is what determines whether the other side gets to act at all. Use it for
+  // the damage race whenever it hits harder than the non-priority pick would
+  // matter, i.e. it's the reason this side is going first.
+  const effectivePressure=(myPriorityMove && firstStrike==='attacker' && myPriorityTier>0)
+    ? Math.max(pressure0,Number(myPriorityMove.expected)||0) : pressure0;
+  const effectiveEnemyPressure=(enemyPriorityMove && firstStrike==='defender' && enemyPriorityTier>0)
+    ? Math.max(enemyPressure0,Number(enemyPriorityMove.expected)||0) : enemyPressure0;
+
+  const myHits=effectivePressure>0?Math.ceil(defenderHP/effectivePressure):Infinity;
+  const enemyHits=effectiveEnemyPressure>0?Math.ceil(attackerHP/effectiveEnemyPressure):Infinity;
   const attackerWinsRace=Number.isFinite(myHits)&&(!Number.isFinite(enemyHits)||myHits<enemyHits||(myHits===enemyHits&&firstStrike!=='defender'));
   const defenderWinsRace=Number.isFinite(enemyHits)&&(!Number.isFinite(myHits)||enemyHits<myHits||(enemyHits===myHits&&firstStrike!=='attacker'));
 
@@ -1295,15 +1396,16 @@ function matchupDetails(attacker, defender, generation=9){
   // side can still be favored when the damage exchange is materially better.
   if(raceScore===50){
     const ratio=(myCoveragePct+0.001)/(enemyCoveragePct+0.001);
-    raceScore=clamp(50+Math.log(ratio)*35+(aSpeed>dSpeed?8:dSpeed>aSpeed?-8:0));
+    raceScore=clamp(50+Math.log(ratio)*35+(firstStrike==='attacker'?8:firstStrike==='defender'?-8:0));
   }
 
   return {
     offense,reverse,speed,
     attackerSpeed:aSpeed,defenderSpeed:dSpeed,
     attackerOutspeeds:aSpeed>dSpeed,defenderOutspeeds:dSpeed>aSpeed,
-    pressure,enemyPressure,myHits,enemyHits,firstStrike,raceScore,
+    pressure:effectivePressure,enemyPressure:effectiveEnemyPressure,myHits,enemyHits,firstStrike,raceScore,
     attackerWinsRace,defenderWinsRace,
+    myPriorityMove,enemyPriorityMove,
     attackerMoves:offense.topMoves||[],defenderMoves:reverse.topMoves||[],
     attackerBestSE:offense.bestSuperEffective,defenderBestSE:reverse.bestSuperEffective,
     myCoveragePressure,enemyCoveragePressure,myCoveragePct,enemyCoveragePct
@@ -1678,6 +1780,18 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
     const hasRecovery=targetRecovery>0;
     const recoverySustain=(hasRecovery && incomingExpectedPct<0.50) ? 12 : 0;
     const raceScore=details.raceScore;
+    // Stall leverage: can the target actually win a war of attrition against
+    // this specific opponent? That needs reliable recovery to outlast it AND
+    // a status tool that actually lands - Toxic does nothing to a Poison or
+    // Steel-type opponent unless the target has Corrosion, and Will-O-Wisp
+    // does nothing to a Fire-type. Only count it when the incoming damage is
+    // survivable enough to actually get turns in.
+    const targetStall=targetTf?.stall||{};
+    const oppTypes=(p?.types||[]).map(x=>String(x||'').toLowerCase());
+    const toxicBlocked=oppTypes.includes('poison')||oppTypes.includes('steel');
+    const canToxicThis=Boolean(targetStall.hasToxic) && (!toxicBlocked || targetStall.hasCorrosion);
+    const canWispThis=Boolean(targetStall.hasWillOWisp) && !oppTypes.includes('fire');
+    const stallLeverage=(hasRecovery && (canToxicThis||canWispThis) && incomingExpectedPct<0.45) ? 8 : 0;
     // Damage balance is an explicit part of the matchup.  A mon should not be
     // called favorable merely because it has a theoretical OHKO if it is taking
     // substantially more damage in return.  Normalize both sides by their own HP
@@ -1710,7 +1824,20 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
     const hitMargin=(Number.isFinite(details.myHits)&&Number.isFinite(details.enemyHits))
       ? Math.abs(details.myHits-details.enemyHits) : Infinity;
     const bothThreaten=myPct>=0.4 && theirPct>=0.4;
-    const closeCall=hitMargin<=1 && bothThreaten;
+    // Mutual parity: both sides deal roughly the same, genuinely meaningful
+    // damage to each other, AND the resulting KO race is actually close (not
+    // just the raw percentages being loosely similar - two mons can have
+    // "close" percentages that still translate into a very different number
+    // of hits to KO, which is not a real trade). This was previously catching
+    // too much: a wide 20%-relative gap and a low 15%-of-HP floor meant plenty
+    // of genuinely lopsided matchups (e.g. a clean 2HKO vs. a 4HKO) got
+    // swallowed into "too close to call" even though one side clearly wins
+    // the exchange. Require both a tighter percentage gap and a real KO-race
+    // proximity before calling it a wash.
+    const higherPct=Math.max(myPct,theirPct);
+    const damageGap=Math.abs(myPct-theirPct);
+    const mutualParity=higherPct>=0.30 && damageGap<=higherPct*0.12 && hitMargin<=1;
+    const closeCall=(hitMargin<=1 && bothThreaten) || mutualParity;
 
     // The KO race is the primary gate.  Damage balance is the second gate.
     // Recovery/bulk can improve a genuinely winnable wall matchup, but it cannot
@@ -1720,15 +1847,24 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
       damagePressureScore*.23 +
       survivalScore*.10 +
       breakability*.05 +
-      (hasRecovery && !damageDisadvantage && incomingExpectedPct<0.50 ? 5 : 0)
+      (hasRecovery && !damageDisadvantage && incomingExpectedPct<0.50 ? 5 : 0) +
+      stallLeverage
     );
-    const score=clamp(
+    // defensiveScore was being computed and then thrown away - every mon,
+    // including genuine walls, was scored with the generic formula below,
+    // which barely credits recovery-based attrition (a flat +4/-8 nudge) and
+    // leans on switchBalance instead. That's why a mon like Galarian Glowking
+    // (which wins the war of attrition on Dondozo via Psychic Noise chip, and
+    // is a clean special wall into Raging Bolt) or Corviknight (which can just
+    // Roost-loop Samurott-Hisui/Landorus-Therian) could still get called
+    // "rough into" something its actual gameplan handles fine. Use the
+    // recovery/stall-aware defensiveScore for defensive targets.
+    const score=clamp(targetDefensive ? defensiveScore : (
       raceScore*.50 +
       damagePressureScore*.27 +
       survivalScore*.08 +
       switchBalance*.15
-      + (targetDefensive ? (damageDisadvantage ? -8 : 4) : 0)
-    );
+    ));
     return {
       p,usage:u,score,targetScore:score,enemyScore:fastMatchupScore(p,target),
       matchup:details,
@@ -1739,11 +1875,13 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
       enemySwitchInScore,
       defensiveEvaluation:targetDefensive,
       closeCall,
+      mutualParity,
       defensiveMetrics:{
         capPT:Number(targetCap?.PT)||0,capST:Number(targetCap?.ST)||0,
         expectedIncomingPct:incomingExpectedPct,maxIncomingPct:incomingMaxPct,
         survivalScore,breakability,hasRecovery,raceScore,damageBalance,damageDisadvantage,
         switchInScore,enemySwitchInScore,switchBalance,
+        canToxicThis,canWispThis,stallLeverage,
         myHits:details.myHits,enemyHits:details.enemyHits
       }
     };
@@ -2106,6 +2244,8 @@ async function runFakemonAnalysis(){
     if(metagameStatCombination!=null && metagameStatCombination>=70)strengths.push(`Stat profile is ${ordinal(metagameStatCombination)}-percentile quality among usage-weighted ${esc(selectedFormat)} Pokémon`);
      if(tf.typing.resist+tf.typing.immune>=6)strengths.push(`${tf.typing.resist} resistances and ${tf.typing.immune} immunities provide strong switch-in potential`);
     if(tf.recoveryMoves>=1)strengths.push('Reliable recovery is available');
+    if(tf.stall?.score>=65)strengths.push(`Stall potential is high (${Math.round(tf.stall.score)}/100)${tf.stall.hasCorrosion&&tf.stall.hasToxic?' — Corrosion lets Toxic punish Poison/Steel switch-ins that would normally shrug it off':''}`);
+    else if(tf.stall?.score<=25 && (tf.stall?.hasToxic||tf.stall?.hasWillOWisp||tf.stall?.hasThunderWave) && !tf.stall?.hasReliableRecovery)weaknesses.push('Has status/chip tools but no reliable recovery, so it cannot actually win a war of attrition');
     if(tf.pivot)strengths.push('Pivoting adds role compression');
     if(tf.hazards||tf.removal)strengths.push('Hazard utility adds team value');
     if(tf.setup)strengths.push('Setup options increase its ceiling');
