@@ -68,6 +68,13 @@ function normalizeCollections() {
 
 
         function autoSave(immediate) {
+            // Shared-link previews are read-only. Loading a shared Fakemon into the
+            // editor is only for rendering/rehydration and must never create or
+            // overwrite a collection entry through the normal autosave pipeline.
+            if (state.isShareRoute) {
+                log.debug('STORAGE', 'autoSave skipped during shared preview');
+                return;
+            }
             log.debug('STORAGE', 'autoSave requested', { immediate: !!immediate, editingId: state.editingId });
             // Don't auto-save if there's no name yet (silently skip)
             const name = document.getElementById('fakemon-name').value.trim();
@@ -76,9 +83,13 @@ function normalizeCollections() {
                 return;
             }
 
-            if (state.autoSaveTimer) clearTimeout(state.autoSaveTimer);
+            if (state.autoSaveTimer) {
+                clearTimeout(state.autoSaveTimer);
+                state.autoSaveTimer = null;
+            }
 
             const doSave = async () => {
+                state.autoSaveTimer = null;
                 const done = log.time('STORAGE', 'autoSave commit');
                 const fakemon = buildFakemonObject();
                 if (!fakemon) return;

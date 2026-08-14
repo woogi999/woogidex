@@ -4,7 +4,12 @@ import { POKEMON_COLORS } from './data.js';
 
 // ==================== NAVIGATION ====================
         function showCollection() {
-            api.autoSave(true); // Force immediate save before leaving
+            // Leaving a shared-link preview is a navigation action, not an editor
+            // save. The shared Fakemon must remain read-only unless the user
+            // explicitly chooses "Import to My Collection".
+            const wasShareRoute = !!state.isShareRoute;
+            api.exitShareRoute?.();
+            if (!wasShareRoute) api.autoSave(true); // Force immediate save before leaving
             document.getElementById('editor-view').style.display = 'none';
             document.getElementById('collection-view').style.display = 'block';
             document.getElementById('save-status').style.display = 'none';

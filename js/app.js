@@ -41,7 +41,8 @@ export const state = {
     collectionShinyPreview: localStorage.getItem('woogidex-collection-shiny-preview') === 'true',
     autoSaveTimer: null,
     lastSavedId: null,
-    evolutionGraph: null
+    evolutionGraph: null,
+    isShareRoute: false
 };
 
 export const api = {};
@@ -302,8 +303,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     api.initTypeSelects();
     api.initColorPicker();
     await api.loadFromStorage();
-    api.renderCollection();
-    api.fetchShowdownData();
+    // Load Showdown's authoritative move/ability data before rendering a shared
+    // Fakemon so its preview is fully rehydrated on the first render.
+    await api.fetchShowdownData?.();
+    const isShareRoute = await api.initShareRoute?.();
+    if (!isShareRoute) api.renderCollection();
     loadDarkMode();
     loadSettings();
     if (typeof lucide !== 'undefined') lucide.createIcons();

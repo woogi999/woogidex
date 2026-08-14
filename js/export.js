@@ -767,10 +767,278 @@ import { sortLearnsetEntries } from './editor.js';
             if (menu) menu.style.display = 'none';
         }
 
+        // ==================== FAKEMON SHARING ====================
+        // Shared Fakemon data lives in the URL hash, so links are self-contained
+        // and do not require a server/database. Gzip is used when the browser
+        // supports CompressionStream; a plain base64 fallback keeps older browsers
+        // working as well.
+        const SHARE_HASH_PREFIX = '#share=';
+
+        function bytesToBase64Url(bytes) {
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        }
+
+        function base64UrlToBytes(value) {
+            const raw = String(value || '');
+            const padded = raw.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((raw.length + 3) % 4);
+            const binary = atob(padded);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+        }
+
+        async function gzipBytes(bytes) {
+            if (typeof CompressionStream === 'undefined') return null;
+            const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+            return new Uint8Array(await new Response(stream).arrayBuffer());
+        }
+
+        async function gunzipBytes(bytes) {
+            if (typeof DecompressionStream === 'undefined') return null;
+            const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+            return new Uint8Array(await new Response(stream).arrayBuffer());
+        }
+
+        async function encodeSharedFakemon(fakemon) {
+            const json = JSON.stringify({ format: 'woogidex-share', version: 1, fakemon });
+            const raw = new TextEncoder().encode(json);
+            const compressed = await gzipBytes(raw);
+            return (compressed ? 'g.' : 'j.') + bytesToBase64Url(compressed || raw);
+        }
+
+        async function decodeSharedFakemon(payload) {
+            const text = String(payload || '');
+            const mode = text.slice(0, 2);
+            const bytes = base64UrlToBytes(text.slice(2));
+            let jsonBytes = bytes;
+            if (mode === 'g.') {
+                jsonBytes = await gunzipBytes(bytes);
+                if (!jsonBytes) throw new Error('This browser cannot decompress shared Fakemon links.');
+            } else if (mode !== 'j.') {
+                throw new Error('Invalid shared Fakemon link.');
+            }
+            const parsed = JSON.parse(new TextDecoder().decode(jsonBytes));
+            if (parsed?.format !== 'woogidex-share' || parsed?.version !== 1 || !parsed?.fakemon?.name) {
+                throw new Error('The shared link does not contain valid Fakemon data.');
+            }
+            return parsed.fakemon;
+        }
+
+        function getSharePayloadFromLocation() {
+            const hash = window.location.hash || '';
+            return hash.startsWith(SHARE_HASH_PREFIX) ? hash.slice(SHARE_HASH_PREFIX.length) : '';
+        }
+
+        async function shareFakemon() {
+            try {
+                // Sharing is a read-only operation. Cancel any pending debounced
+                // autosave so clicking Share cannot accidentally commit the editor
+                // state as another collection entry.
+                if (state.autoSaveTimer) {
+                    clearTimeout(state.autoSaveTimer);
+                    state.autoSaveTimer = null;
+                }
+                const fakemon = getCurrentFakemonForExport();
+                if (!fakemon || !String(fakemon.name || '').trim()) {
+                    api.showToast('Please enter a Pokemon name before sharing!', 'error');
+                    return;
+                }
+                const shared = JSON.parse(JSON.stringify(fakemon));
+                delete shared.id;
+                delete shared.folderId;
+                delete shared.pinned;
+                delete shared.createdAt;
+                delete shared.updatedAt;
+                const payload = await encodeSharedFakemon(shared);
+                const shareUrl = window.location.href.split('#')[0] + SHARE_HASH_PREFIX + payload;
+                try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    api.showToast('Share link copied to clipboard!', 'success');
+                } catch (_) {
+                    window.prompt('Copy this Fakemon share link:', shareUrl);
+                }
+            } catch (err) {
+                log.error('SHARE', 'Fakemon share failed', err);
+                api.showToast(`Could not create share link: ${err.message || 'unknown error'}`, 'error');
+            }
+        }
+
+        function cloneForCollectionImport(fakemon) {
+            const copy = JSON.parse(JSON.stringify(fakemon));
+            copy.id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            copy.folderId = null;
+            copy.pinned = false;
+            copy.createdAt = Date.now();
+            copy.updatedAt = Date.now();
+            return copy;
+        }
+
+        let sharedImportInProgress = false;
+
+        function cancelPendingAutoSave() {
+            if (state.autoSaveTimer) {
+                clearTimeout(state.autoSaveTimer);
+                state.autoSaveTimer = null;
+            }
+        }
+
+        function getSharedImportFingerprint(fakemon) {
+            // Build a deterministic fingerprint from the actual shared content, not
+            // the generated collection metadata. This lets us recognize an import
+            // even if the operation is retried or the page is refreshed.
+            const normalized = JSON.parse(JSON.stringify(fakemon || {}));
+            delete normalized.id;
+            delete normalized.folderId;
+            delete normalized.pinned;
+            delete normalized.createdAt;
+            delete normalized.updatedAt;
+            delete normalized.sharedImportKey;
+            return JSON.stringify(normalized);
+        }
+
+        async function importSharedFakemon() {
+            if (sharedImportInProgress) return;
+            const fakemon = window.__woogidexSharedFakemon;
+            if (!fakemon) { api.showToast('No shared Fakemon is loaded.', 'error'); return; }
+            try {
+                sharedImportInProgress = true;
+                // A timer may have been scheduled before this shared preview opened.
+                // Cancel it before leaving the read-only route so it cannot save the
+                // rehydrated shared Fakemon as a second collection entry.
+                cancelPendingAutoSave();
+                state.fakemonDB = Array.isArray(state.fakemonDB) ? state.fakemonDB : [];
+
+                const fingerprint = getSharedImportFingerprint(fakemon);
+                const existing = state.fakemonDB.find(f => {
+                    if (f?.sharedImportKey === fingerprint) return true;
+                    return getSharedImportFingerprint(f) === fingerprint;
+                });
+
+                if (existing) {
+                    // The same shared Fakemon has already been imported. Do not create
+                    // another collection entry, even if an older build imported it
+                    // without storing a marker.
+                    cancelPendingAutoSave();
+                    // showCollection() handles leaving the share route itself. Do not
+                    // call exitShareRoute() first, because that would clear the
+                    // share-route flag and cause showCollection() to autosave the
+                    // rehydrated shared Fakemon as a second collection entry.
+                    api.showCollection?.();
+                    api.showToast(`${existing.name || fakemon.name} is already in your collection.`, 'info');
+                    return;
+                }
+
+                const copy = cloneForCollectionImport(fakemon);
+                copy.sharedImportKey = fingerprint;
+                state.fakemonDB.push(copy);
+                await api.saveToStorage();
+                cancelPendingAutoSave();
+                // showCollection() will exit the share route and, because it sees
+                // that we came from a share route, will skip its normal editor
+                // autosave. Calling exitShareRoute() first would clear that flag
+                // and re-save the shared editor state as a duplicate.
+                api.showCollection?.();
+                api.showToast(`${copy.name} imported into your collection!`, 'success');
+            } catch (err) {
+                log.error('SHARE', 'Shared Fakemon import failed', err);
+                api.showToast(`Import failed: ${err.message || 'unknown error'}`, 'error');
+            } finally {
+                sharedImportInProgress = false;
+            }
+        }
+
+        function exportSharedFakemon() {
+            // Compatibility alias for older shared-page buttons.
+            return exportAsJSON();
+        }
+
+        function toggleShareExportMenu(event) {
+            if (event) event.stopPropagation();
+            const menu = document.getElementById('share-export-as-menu');
+            if (!menu) return;
+            menu.style.display = menu.style.display === 'none' || !menu.style.display ? 'block' : 'none';
+        }
+
+        function closeShareExportMenu() {
+            const menu = document.getElementById('share-export-as-menu');
+            if (menu) menu.style.display = 'none';
+        }
+
+        function exitShareRoute() {
+            const shareView = document.getElementById('share-view');
+            const mainContent = document.getElementById('main-content');
+            if (window.location.hash.startsWith(SHARE_HASH_PREFIX)) {
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+            window.__woogidexSharedFakemon = null;
+            state.isShareRoute = false;
+            if (shareView) shareView.style.display = 'none';
+            if (mainContent) mainContent.classList.remove('share-only-mode');
+            document.title = 'Woogidex';
+            closeShareExportMenu();
+        }
+
+        async function initShareRoute() {
+            const payload = getSharePayloadFromLocation();
+            if (!payload) {
+                state.isShareRoute = false;
+                return false;
+            }
+            // Shared URLs are strictly read-only until the user explicitly imports.
+            // Cancel any editor autosave that may have been queued before navigation.
+            cancelPendingAutoSave();
+            state.isShareRoute = true;
+            const editor = document.getElementById('editor-view');
+            const collection = document.getElementById('collection-view');
+            const shareView = document.getElementById('share-view');
+            const header = document.querySelector('.header');
+            const mainContent = document.getElementById('main-content');
+            if (!shareView) return false;
+            try {
+                const fakemon = await decodeSharedFakemon(decodeURIComponent(payload));
+                window.__woogidexSharedFakemon = fakemon;
+                state.editingId = null;
+                api.loadFakemonIntoEditor(fakemon);
+                api.updatePreview?.();
+                const source = document.getElementById('pokedex-board-container');
+                const target = document.getElementById('share-view-board');
+                if (!source || !target) throw new Error('Preview renderer is unavailable.');
+                target.innerHTML = source.innerHTML.replace(/id="pokedex-board-export"/g, 'id="pokedex-board-shared"');
+                if (editor) editor.style.display = 'none';
+                if (collection) collection.style.display = 'none';
+                if (mainContent) mainContent.classList.add('share-only-mode');
+                shareView.style.display = 'block';
+                document.getElementById('share-view-title').textContent = fakemon.name || 'Fakemon';
+                document.getElementById('share-view-subtitle').textContent = 'Shared from Woogidex';
+                document.title = `${fakemon.name || 'Fakemon'} · Woogidex`;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                return true;
+            } catch (err) {
+                log.error('SHARE', 'Shared Fakemon link failed to load', err);
+                if (editor) editor.style.display = 'none';
+                if (collection) collection.style.display = 'none';
+                if (mainContent) mainContent.classList.add('share-only-mode');
+                shareView.style.display = 'block';
+                document.getElementById('share-view-title').textContent = 'Invalid Share Link';
+                document.getElementById('share-view-subtitle').textContent = 'This Fakemon link could not be decoded.';
+                document.getElementById('share-view-board').innerHTML = '<div class="share-error">The shared Fakemon data is missing, invalid, or was created by an incompatible version of Woogidex.</div>';
+                return true;
+            }
+        }
+
         document.addEventListener('click', (event) => {
-            if (!event.target.closest('.export-as-wrap')) { closeExportMenu(); closeCollectionExportMenu(); }
+            if (!event.target.closest('.export-as-wrap')) {
+                closeExportMenu();
+                closeCollectionExportMenu();
+                closeShareExportMenu();
+            }
         });
 
         
 
-export { refreshPlainTextExport, exportCollection, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon };
+export { refreshPlainTextExport, exportCollection, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon, shareFakemon, importSharedFakemon, exportSharedFakemon, toggleShareExportMenu, closeShareExportMenu, exitShareRoute, initShareRoute };

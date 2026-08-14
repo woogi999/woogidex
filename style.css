@@ -93,6 +93,19 @@
         .btn-info { background: var(--info); color: white; }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
         .btn-icon { width: 36px; height: 36px; padding: 0; justify-content: center; font-size: 16px; }
+        .share-only-mode { width: 100%; }
+        .share-view-shell { width: 100%; max-width: none; margin: 0; padding: 0 0 48px; }
+        .share-view-header { display:flex; justify-content:space-between; align-items:flex-end; gap:20px; margin-bottom:20px; padding-bottom:18px; border-bottom:2px solid var(--border); }
+        .share-view-kicker { font-size:11px; font-weight:800; letter-spacing:1.5px; color:var(--text-muted); margin-bottom:4px; }
+        .share-view-header h2 { font-size:30px; line-height:1.1; margin:0; }
+        .share-view-header p { margin-top:5px; color:var(--text-secondary); font-size:13px; }
+        .share-view-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+        #share-view-board { width: 100%; }
+        #share-view-board .pokedex-board { width: 100%; max-width: none; margin: 0; }
+        .share-view-status { min-height:20px; margin-top:12px; text-align:center; color:var(--success); font-size:13px; font-weight:600; }
+        .share-error { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center; color:var(--text-secondary); }
+        @media (max-width: 700px) { .share-view-header { align-items:flex-start; flex-direction:column; } .share-view-actions { justify-content:flex-start; } .share-view-shell { padding-top:12px; } }
+
         .main-layout { display: grid; grid-template-columns: 1fr; gap: 30px; align-items: start; }
         @media (max-width: 1200px) { .main-layout { grid-template-columns: 1fr; } }
         .panel {

@@ -10,18 +10,6 @@
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-
-<base target="_blank">
 </head>
 <body>
     <div class="app-container">
@@ -39,12 +27,41 @@
         </header>
 
         <div id="main-content">
+            <!-- Shared Fakemon View -->
+            <div id="share-view" style="display:none;">
+                <div class="share-view-shell">
+                    <div class="share-view-header">
+                        <div>
+                            <div class="share-view-kicker">SHARED FAKEMON</div>
+                            <h2 id="share-view-title">Fakemon</h2>
+                            <p id="share-view-subtitle">Preview shared from Woogidex</p>
+                        </div>
+                        <div class="share-view-actions">
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="importSharedFakemon()">Import to My Collection</button>
+                            <div class="export-as-wrap" style="position:relative;display:inline-block;">
+                                <button class="btn btn-primary btn-sm" type="button" onclick="toggleShareExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
+                                <div id="share-export-as-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeShareExportMenu();">Export as PNG</button>
+                                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeShareExportMenu();">Export as Plain Text</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeShareExportMenu();">Export as JSON</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportShowdownMod(); closeShareExportMenu();">Export as Showdown Mod</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportEssentialsMod(); closeShareExportMenu();">Export as Essentials Mod</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="share-view-board"></div>
+                    <div id="share-view-status" class="share-view-status" aria-live="polite"></div>
+                </div>
+            </div>
+
             <!-- Editor View -->
             <div id="editor-view" style="display: none;">
                 <div class="main-layout">
                     <div>
                         <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px;">
                             <div style="display:flex;gap:8px;align-items:center;">
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="shareFakemon()">Share</button>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
                                 <div class="export-as-wrap" style="position:relative;display:inline-block;">
                                 <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
