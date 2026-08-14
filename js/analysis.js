@@ -101,10 +101,14 @@ const STRONG_ABILITIES=new Set([
   'Serene Grace','Skill Link','Triage','Orichalcum Pulse','Desolate Land','Primordial Sea',
   'Tinted Lens','Sand Force','Solar Power'
 ]);
+// Only abilities with a genuine, mechanical downside belong here (skipped turns,
+// halved stats, forced disadvantage, etc.). Purely flavorful/situational abilities
+// (Forecast, Pickup, Damp, Run Away, Honey Gather, Illuminate, Own Tempo, Justified,
+// Anger Point, ...) are competitively "do nothing" rather than "actively bad", so
+// they don't belong here - a mon running one of those isn't worse off than a mon
+// with a genuinely neutral/unlisted ability.
 const WEAK_ABILITIES=new Set([
-  'Truant','Slow Start','Defeatist','Normalize','Klutz','Stall','Justified','Anger Point',
-  'Illuminate','Run Away','Honey Gather','Pickup','Damp','Own Tempo','Wimp Out',
-  'Emergency Exit','Slow Start','Stall','Forecast'
+  'Truant','Slow Start','Defeatist','Normalize','Klutz','Stall','Wimp Out','Emergency Exit'
 ]);
 function abilityQuality(names){
   // Best-case ability chosen (competitively, a mon is built around its best ability).
@@ -112,12 +116,21 @@ function abilityQuality(names){
   // defining) plus which name mattered. Elite outranks strong outranks weak,
   // regardless of set order, so a mon with both an elite and a strong ability
   // is credited for the elite one.
+  //
+  // A weak ability only drags the score down when it's the mon's *only* option -
+  // if it also has any other ability (even an unlisted/neutral one), a real
+  // teambuilder just runs the other one and the weak ability is never chosen,
+  // so it's ignored rather than penalized.
   let best={score:0,name:null};
+  let weak=null;
+  let allWeak=true;
   for(const n of names||[]){
     if(ELITE_ABILITIES.has(n) && best.score<2) best={score:2,name:n};
     else if(STRONG_ABILITIES.has(n) && best.score<1) best={score:1,name:n};
-    else if(WEAK_ABILITIES.has(n) && best.score===0) best={score:-1,name:n};
+    else if(WEAK_ABILITIES.has(n)){ if(!weak) weak=n; }
+    else allWeak=false;
   }
+  if(best.score===0 && weak && allWeak) return {score:-1,name:weak};
   return best;
 }
 function uniqueDex(){
@@ -1316,12 +1329,20 @@ function intrinsicPowerProfile(tf, abilityInfo){
   // cannot be hidden by a crude matchup approximation.
   const bulkPower=clamp((cap.PT*.55+cap.ST*.45)/1.55);
   const offensePower=clamp((cap.PS*.6+cap.SS*.4)/1.55);
+  // Lacking a dedicated recovery move is only a real liability if the kit has
+  // nothing else to fall back on. A specialist utility kit (hazard removal,
+  // a safe pivot move, and real status control) lets a wall keep functioning
+  // and keep making progress without ever needing to heal off damage itself -
+  // Parting Shot into a fresh attacker or Mortal Spin clearing hazards does a
+  // lot of the same job Recover/Roost would. Only apply the full "no recovery"
+  // penalty when the mon doesn't have that kind of specialist toolkit to lean on.
+  const noRecoveryPenalty=recovery?0:(defensiveTools>=4?1:5);
   const counterplay=clamp(
     50 +
     (spe<60?9:spe<80?4:spe>=110?-7:0) +
     (tf.typing.weak>=5?7:tf.typing.weak>=3?3:-3) +
     (tf.typing.severe>=1?6:0) +
-    (recovery? -8:5) +
+    (recovery? -8:noRecoveryPenalty) +
     (setup? -5:0) +
     (recovery&&setup ? -8:0) +
     (defensiveTools<=1?5:0)
@@ -1370,7 +1391,7 @@ function intrinsicPowerProfile(tf, abilityInfo){
     Math.min(8,Math.min(3,Number(tf.statusUtility)||0)*3) +
     Math.min(6,(Number(tf.hazards)||0)*6) +
     ((Number(tf.defensiveTools)||0)>=4?6:(Number(tf.defensiveTools)||0)>=2?3:0)
-  ,0,32):0;
+  ,0,36):0;
 
   // An elite, format-defining ability (Wonder Guard, Neutralizing Gas, Good As
   // Gold, etc.) or a strong one should meaningfully move a Fakemon's own tier
@@ -1397,7 +1418,13 @@ function intrinsicPowerProfile(tf, abilityInfo){
 
   // Preserve a 0-100 intrinsic scale, but let CAP's nonlinear BSR do the
   // heavy lifting instead of a pile of arbitrary stat bonuses.
-  const score=clamp(statPower*.68+Math.min(18,synergy)+Math.min(8,extremeStatCount*2)+moveQuality*.4+defensiveUtility*.4+abilityBonus);
+  // defensiveUtility is weighted a bit higher than moveQuality: CAP's BSR is
+  // built around offensive stat architecture, so it structurally has nothing
+  // to say about a mon whose entire competitive job is pivoting, clearing
+  // hazards, and spreading status. Without a stronger multiplier here, a real
+  // defensive specialist (good bulk + full utility kit, no big offensive
+  // stats) was scoring like an unremarkable mon instead of like the wall it is.
+  const score=clamp(statPower*.68+Math.min(18,synergy)+Math.min(8,extremeStatCount*2)+moveQuality*.4+defensiveUtility*.55+abilityBonus);
 
   return {
     score,
@@ -1631,12 +1658,19 @@ function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic){
   // CAP stat architecture is the primary pillar of the prediction. Matchups are
   // contextual evidence rather than the dominant driver. that tells us how much raw stat architecture can support
   // the kit. It is never converted directly into a tier.
+  // utility (role-fit: defensive/support/pivot/hazard signals) was previously
+  // underweighted relative to statPower. Raw CAP stat architecture (statPower)
+  // is built around offensive output and structurally can't see a mon whose
+  // real value is pivoting, removing hazards, and spreading status - so a
+  // defensive specialist with a genuinely strong utility kit but unremarkable
+  // offensive stats was getting graded almost entirely on the part of its kit
+  // that isn't its job. Shift a little weight from statPower to utility.
   const core=clamp(
     m*.22 +
     top*.05 +
     clamp(metagameFit??50)*.10 +
-    utility*.08 +
-    statPower*.38 +
+    utility*.11 +
+    statPower*.35 +
     kitPower*.17
   );
 
