@@ -35,6 +35,16 @@ function matchupSpriteHtml(p){
 }
 const clamp=(n,a=0,b=100)=>Math.max(a,Math.min(b,n));
 const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+function ordinal(n){
+  const v=Math.round(Number(n)||0);
+  const mod100=((v%100)+100)%100;
+  const mod10=((v%10)+10)%10;
+  if(mod100>=11&&mod100<=13)return `${v}th`;
+  if(mod10===1)return `${v}st`;
+  if(mod10===2)return `${v}nd`;
+  if(mod10===3)return `${v}rd`;
+  return `${v}th`;
+}
 const normalizeName=v=>String(v||'').toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9]/g,'');
 
 // TYPE_EFFECTIVENESS is keyed by exact capitalized type names ('Ground', not
@@ -981,7 +991,7 @@ function battleStatsFromBase(stats={}){
   };
 }
 
-function damageRange(attacker, defender, move){
+function damageRange(attacker, defender, move, generation=9){
   if(!move || !['Physical','Special'].includes(move.category)) return null;
   const bp=Number(move.basePower)||0;
   if(bp<=0) return null;
@@ -997,6 +1007,12 @@ function damageRange(attacker, defender, move){
   const defenderAbilities=abilityNames(defender?.abilities).map(normalizeName);
   const attackerAbilities=abilityNames(attacker?.abilities).map(normalizeName);
   const bypassesAbility=attackerAbilities.some(a=>['moldbreaker','teravolt','turboblaze','myceliummight'].includes(a));
+  const hasParentalBond=attackerAbilities.includes('parentalbond');
+  const gen=Number(generation)||9;
+  const parentalBondSecondMultiplier=gen===6?0.5:(gen>=7?0.25:0);
+  const moveTextForParentalBond=`${String(move.name||'')} ${String(move.desc||move.description||'')}`.toLowerCase();
+  const parentalBondBlocked=/\b(?:hits?|strikes?)\s+(?:2|2-5|2 to 5|2–5|three|four|five)\s+times\b|\b(?:2-5|2 to 5|2–5)\s+times\b|one-hit knockout|\bself-destruct\b|\bexplosion\b|\bfinal gambit\b|\bendeavor\b|\buproar\b|\brollout\b|\bice ball\b|\bfling\b/.test(moveTextForParentalBond);
+  const parentalBondApplies=hasParentalBond && parentalBondSecondMultiplier>0 && !parentalBondBlocked;
   const abilityImmunity={
     water:['waterabsorb','stormdrain','dryskin'],
     electric:['voltabsorb','motordrive','lightningrod'],
@@ -1063,8 +1079,33 @@ function damageRange(attacker, defender, move){
   const expectedRaw=damages.reduce((a,b)=>a+b,0)/damages.length;
   const expected=expectedRaw*(accuracy/100);
   const hp=battleStatsFromBase(defender?.stats||{}).hp;
-  const koRolls=damages.filter(x=>x>=hp).length;
-  const ohkoChance=(accuracy/100)*(koRolls/16);
+
+  // Parental Bond: the second strike is 50% damage in Gen VI and 25% from
+  // Gen VII onward. The two strikes have independent damage rolls, but share
+  // one accuracy check. Use combined damage for matchup/KO calculations.
+  let totalDamageMin=damageMin;
+  let totalDamageMax=damageMax;
+  let totalExpected=expected;
+  let totalKoChance=0;
+  let parentalBondSecondMin=0;
+  let parentalBondSecondMax=0;
+  if(parentalBondApplies){
+    const secondDamages=rolls.map(r=>Math.floor(base*modifier*parentalBondSecondMultiplier*r));
+    parentalBondSecondMin=Math.min(...secondDamages);
+    parentalBondSecondMax=Math.max(...secondDamages);
+    const secondExpected=secondDamages.reduce((a,b)=>a+b,0)/secondDamages.length;
+    totalDamageMin=damageMin+parentalBondSecondMin;
+    totalDamageMax=damageMax+parentalBondSecondMax;
+    totalExpected=(expectedRaw+secondExpected)*(accuracy/100);
+    let koRolls=0;
+    for(const first of damages) for(const second of secondDamages){
+      if(first+second>=hp)koRolls++;
+    }
+    totalKoChance=(accuracy/100)*(koRolls/256);
+  }else{
+    totalKoChance=(accuracy/100)*(damages.filter(x=>x>=hp).length/16);
+  }
+
   return {
     move,
     category:move.category,
@@ -1074,9 +1115,14 @@ function damageRange(attacker, defender, move){
     attack,defense,hp,
     typeMult,stab,accuracy,
     damageMin,damageMax,expected,
-    possibleOHKO:damageMax>=hp,
-    guaranteedOHKO:damageMin>=hp,
-    ohkoChance
+    totalDamageMin,totalDamageMax,totalExpected,
+    possibleOHKO:totalDamageMax>=hp,
+    guaranteedOHKO:totalDamageMin>=hp,
+    ohkoChance:totalKoChance,
+    parentalBond:parentalBondApplies,
+    parentalBondSecondMultiplier:parentalBondApplies?parentalBondSecondMultiplier:0,
+    parentalBondSecondMin,
+    parentalBondSecondMax
   };
 }
 
@@ -1130,9 +1176,9 @@ function strategicallyRelevantMoves(candidates){
   return selected.slice(0,10);
 }
 
-function bestDamageOutput(attacker, defender){
+function bestDamageOutput(attacker, defender, generation=9){
   const candidates=getAnalysisMoves(attacker)
-    .map(m=>damageRange(attacker,defender,m))
+    .map(m=>damageRange(attacker,defender,m,generation))
     .filter(Boolean);
   if(!candidates.length)return {best:null,all:[],topMoves:[],hasAttack:false,bestSuperEffective:null,bestNeutral:null,bestResisted:null};
 
@@ -1158,9 +1204,9 @@ function speedRelation(attacker, defender){
   return 'speed tie';
 }
 
-function matchupDetails(attacker, defender){
-  const offense=bestDamageOutput(attacker,defender);
-  const reverse=bestDamageOutput(defender,attacker);
+function matchupDetails(attacker, defender, generation=9){
+  const offense=bestDamageOutput(attacker,defender,generation);
+  const reverse=bestDamageOutput(defender,attacker,generation);
   const aSpeed=Number(attacker?.stats?.spe)||0;
   const dSpeed=Number(defender?.stats?.spe)||0;
   const speed=speedRelation(attacker,defender);
@@ -1542,7 +1588,7 @@ function tierComparablePool(pool, tierUsage, assignedTier, officialTiers, cfg){
   return {pool:comparable,usage};
 }
 
-function buildMatchupProfile(target,pool,usage,targetProfile){
+function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
   // A defensive role must not be judged by the same one-hit damage race as a
   // sweeper. CAP's PT/ST ratings give us an independent read on whether the
   // stat architecture is actually built to absorb hits.
@@ -1563,7 +1609,7 @@ function buildMatchupProfile(target,pool,usage,targetProfile){
 
   const rows=pool.filter(p=>p?.stats&&usageOf(p.name,usage)>0).map(p=>{
     const u=usageOf(p.name,usage);
-    const details=matchupDetails(target,p);
+    const details=matchupDetails(target,p,generation);
     const enemy=details.reverse;
     const mine=details.offense;
     const myBest=mine.best || mine.bestSuperEffective;
@@ -1594,6 +1640,14 @@ function buildMatchupProfile(target,pool,usage,targetProfile){
     const survivalScore=clamp(100-incomingExpectedPct*100);
     const breakability=details.enemyHits===Infinity ? 100 : details.enemyHits>=4 ? 82 : details.enemyHits===3 ? 68 : details.enemyHits===2 ? 38 : 5;
 
+    // Switching matters especially for defensive Pokémon. Score how safely each
+    // side can come in on the other's strongest relevant attacks. This is based
+    // on expected damage, not just typing, so a resistance is less useful if the
+    // attacker still has a very strong coverage move.
+    const switchInScore=clamp(100-(Number(details.enemyCoveragePct||0)*100));
+    const enemySwitchInScore=clamp(100-(Number(details.myCoveragePct||0)*100));
+    const switchBalance=clamp(50+(switchInScore-enemySwitchInScore)*0.5);
+
     // A "close call": the KO race is won by exactly one hit's margin (e.g. a
     // 1HKO vs. a 2HKO) while the losing side is still landing real, meaningful
     // damage (not just chip). The final score can come out as a confident
@@ -1617,9 +1671,10 @@ function buildMatchupProfile(target,pool,usage,targetProfile){
       (hasRecovery && !damageDisadvantage && incomingExpectedPct<0.50 ? 5 : 0)
     );
     const score=clamp(
-      raceScore*.58 +
-      damagePressureScore*.32 +
-      survivalScore*.10
+      raceScore*.50 +
+      damagePressureScore*.27 +
+      survivalScore*.08 +
+      switchBalance*.15
       + (targetDefensive ? (damageDisadvantage ? -8 : 4) : 0)
     );
     return {
@@ -1628,12 +1683,15 @@ function buildMatchupProfile(target,pool,usage,targetProfile){
       bestMove:mine.best,
       enemyBestMove:enemy.best,
       speed:details.speed,
+      switchInScore,
+      enemySwitchInScore,
       defensiveEvaluation:targetDefensive,
       closeCall,
       defensiveMetrics:{
         capPT:Number(targetCap?.PT)||0,capST:Number(targetCap?.ST)||0,
         expectedIncomingPct:incomingExpectedPct,maxIncomingPct:incomingMaxPct,
         survivalScore,breakability,hasRecovery,raceScore,damageBalance,damageDisadvantage,
+        switchInScore,enemySwitchInScore,switchBalance,
         myHits:details.myHits,enemyHits:details.enemyHits
       }
     };
@@ -1737,6 +1795,78 @@ function estimateTier(base,closest,tierUsage,officialTiers,targetProfile,cfg,mat
     intrinsic:intrinsic?.score??50,counterplay:intrinsic?.counterplay??50
   };
 }
+function pick(arr){
+  if(!Array.isArray(arr)||!arr.length)return '';
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function matchupScenario(row){
+  const score=Number(row?.score);
+  const m=row?.matchup||{};
+  const name=String(row?.p?.name||'the opponent');
+  const relation=m.speed==='outspeeds'?'You are faster.':m.speed==='underspeeds'?`${name} is faster.`:'Speed is about even.';
+  const myHits=Number.isFinite(m.myHits)?`${m.myHits}HKO`:'no reliable KO';
+  const enemyHits=Number.isFinite(m.enemyHits)?`${m.enemyHits}HKO`:'no reliable KO';
+  const myPct=Math.round((Number(m.myCoveragePct)||0)*100);
+  const enemyPct=Math.round((Number(m.enemyCoveragePct)||0)*100);
+  const myMove=row?.bestMove?.move?.name||'your best move';
+  const enemyMove=row?.enemyBestMove?.move?.name||'their best move';
+  const switchIn=Math.round((Number(row?.switchInScore)||0));
+  const enemySwitchIn=Math.round((Number(row?.enemySwitchInScore)||0));
+  const pb=row?.bestMove?.parentalBond
+    ? ` Parental Bond gives ${myMove} a second hit for extra damage.`
+    : '';
+
+  const openers=[
+    `This looks good. ${relation}`,
+    `You have the edge here. ${relation}`,
+    `This is a nice matchup. ${relation}`,
+    `You should be pretty comfortable here. ${relation}`,
+    `This matchup leans your way. ${relation}`
+  ];
+  const middles=[
+    `You can deal about ${myPct}% per turn, while ${name} deals about ${enemyPct}%.`,
+    `Your damage race is ${myHits} versus ${enemyHits}.`,
+    `${myMove} is your main way to pressure it, while ${enemyMove} is their biggest threat.`,
+    `You have a better chance to force it out than it has to force you out.`,
+    `You can usually make progress without giving it too many free turns.`
+  ];
+  const badOpeners=[
+    `This one looks rough. ${relation}`,
+    `You probably do not want to stay in here. ${relation}`,
+    `${name} has the upper hand here. ${relation}`,
+    `This matchup is awkward. ${relation}`,
+    `Be careful with this one. ${relation}`
+  ];
+  const badMiddles=[
+    `${name} deals about ${enemyPct}% per turn, while you deal about ${myPct}%.`,
+    `The damage race is ${myHits} for you versus ${enemyHits} for ${name}.`,
+    `${enemyMove} puts you under more pressure than ${myMove} puts on it.`,
+    `It is hard to trade hits safely here.`,
+    `You may need a teammate to handle this one.`
+  ];
+  const mixedOpeners=[
+    `This matchup is pretty even. ${relation}`,
+    `This one can go either way. ${relation}`,
+    `Neither side has an easy win here. ${relation}`,
+    `This is more about positioning than raw damage. ${relation}`,
+    `It is a close matchup. ${relation}`
+  ];
+  const switchText = switchIn || enemySwitchIn
+    ? ` Switch-in score: you can take its attacks ${switchIn}/100; it can take yours ${enemySwitchIn}/100.`
+    : '';
+  const good = score>=60;
+  const bad = score<=40;
+  const open = pick(good?openers:bad?badOpeners:mixedOpeners);
+  const middle = pick(good?middles:bad?badMiddles:[
+    `The damage race is ${myHits} versus ${enemyHits}.`,
+    `Your expected damage is about ${myPct}% per turn, compared with ${enemyPct}% from ${name}.`,
+    `Who gets the better entry matters a lot here.`,
+    `A safe switch can matter more than simply attacking.`
+  ]);
+  return `${open} ${middle}${switchText}${pb}`;
+}
+
 function renderBars(obj){return Object.entries(obj).map(([k,v])=>`<div class="analysis-stat-row"><span>${esc(STAT_NAMES[k]||k)}</span><div class="analysis-bar"><i style="width:${clamp(v)}%"></i></div><b>${Math.round(v)}%</b></div>`).join('');}
 function getCfg(){return {pool:document.getElementById('analysis-pool')?.value||'generation',gen:Number(document.getElementById('analysis-gen')?.value||9),natdex:!!document.getElementById('analysis-natdex')?.checked,folder:document.getElementById('analysis-folder')?.value||'',comparePokemon:document.getElementById('analysis-pokemon')?.value||''};}
 function analysisPoolChanged(){
@@ -1874,7 +2004,7 @@ async function runFakemonAnalysis(){
     // tier is known, the displayed matchup set is rebuilt from comparable-tier
     // Pokémon so the cards answer the useful question: "how does this stack up
     // against the mons it would actually be sharing a tier with?"
-    const broadMatchup=buildMatchupProfile(target,pool,usage,tf);
+    const broadMatchup=buildMatchupProfile(target,pool,usage,tf,cfg.gen);
     const closest=cheap.map(x=>({p:x.p,score:similarity(target,x.p,tf,x.f,0)})).sort((a,b)=>b.score-a.score).slice(0,8);
     const targetForTier={...tf,bulkPct,stats:t.stats,name:t.name,primaryRole:choosePrimaryRole(tf)};
     const tier=estimateTier(abilityAdjustedBase,closest,tierUsage,officialTiers,targetForTier,cfg,broadMatchup,roleScore,tf,metagameFit,intrinsic);
@@ -1887,7 +2017,7 @@ async function runFakemonAnalysis(){
     // the population underneath the weights.
     const matchupPool=comparable.pool;
     const matchupUsage=comparable.usage;
-    const matchup=buildMatchupProfile(target,matchupPool,matchupUsage,tf);
+    const matchup=buildMatchupProfile(target,matchupPool,matchupUsage,tf,cfg.gen);
     matchup.comparableTier=tier.tier;
     matchup.comparablePoolSize=comparable.pool.length;
     matchup.usingComparableTier=true;
@@ -1919,9 +2049,9 @@ async function runFakemonAnalysis(){
       rows:matchup.rows.length, snapshot:'window.__lastAnalysis'
     });
     const strengths=[],weaknesses=[];
-    Object.entries(statPct).sort((a,b)=>b[1]-a[1]).slice(0,2).filter(x=>x[1]>=70).forEach(([k,v])=>strengths.push(`${STAT_NAMES[k]} is ${Math.round(v)}th percentile`));
-    Object.entries(statPct).sort((a,b)=>a[1]-b[1]).slice(0,2).filter(x=>x[1]<=35).forEach(([k,v])=>weaknesses.push(`${STAT_NAMES[k]} is ${Math.round(v)}th percentile`));
-    if(metagameStatCombination!=null && metagameStatCombination>=70)strengths.push(`Stat profile is ${Math.round(metagameStatCombination)}th-percentile quality among usage-weighted ${esc(selectedFormat)} Pokémon`);
+    Object.entries(statPct).sort((a,b)=>b[1]-a[1]).slice(0,2).filter(x=>x[1]>=70).forEach(([k,v])=>strengths.push(`${STAT_NAMES[k]} is ${ordinal(v)} percentile`));
+    Object.entries(statPct).sort((a,b)=>a[1]-b[1]).slice(0,2).filter(x=>x[1]<=35).forEach(([k,v])=>weaknesses.push(`${STAT_NAMES[k]} is ${ordinal(v)} percentile`));
+    if(metagameStatCombination!=null && metagameStatCombination>=70)strengths.push(`Stat profile is ${ordinal(metagameStatCombination)}-percentile quality among usage-weighted ${esc(selectedFormat)} Pokémon`);
      if(tf.typing.resist+tf.typing.immune>=6)strengths.push(`${tf.typing.resist} resistances and ${tf.typing.immune} immunities provide strong switch-in potential`);
     if(tf.recoveryMoves>=1)strengths.push('Reliable recovery is available');
     if(tf.pivot)strengths.push('Pivoting adds role compression');
@@ -1970,11 +2100,11 @@ async function runFakemonAnalysis(){
       </div>
 
       <div class="analysis-detail-grid">
-        <div class="analysis-card panel-lite"><h3>Typing & role</h3><div class="analysis-big">${Math.round(typePct)}th</div><p><span class="analysis-type-list">${analysisTypePills(t.types)||'<span>None</span>'}</span> · ${tf.typing.weak} weaknesses · ${tf.typing.resist} resistances · ${tf.typing.immune} immunities</p><p>${tf.recoveryMoves?'Recovery · ':''}${tf.pivot?'Pivot · ':''}${tf.hazards?'Hazards · ':''}${tf.removal?'Removal · ':''}${tf.setup?'Setup · ':''}${tf.statusUtility?'Status utility':''}</p><div class="analysis-role-score">Role value <b>${Math.round(roleScore)}/100</b></div></div>
+        <div class="analysis-card panel-lite"><h3>Typing & role</h3><div class="analysis-big">${ordinal(typePct)}</div><p><span class="analysis-type-list">${analysisTypePills(t.types)||'<span>None</span>'}</span> · ${tf.typing.weak} weaknesses · ${tf.typing.resist} resistances · ${tf.typing.immune} immunities</p><p>${tf.recoveryMoves?'Recovery · ':''}${tf.pivot?'Pivot · ':''}${tf.hazards?'Hazards · ':''}${tf.removal?'Removal · ':''}${tf.setup?'Setup · ':''}${tf.statusUtility?'Status utility':''}</p><div class="analysis-role-score">Role value <b>${Math.round(roleScore)}/100</b></div></div>
 
-        <div class="analysis-card panel-lite"><h3>Stat combination</h3><div class="analysis-big">${Math.round(statCombination)}/100</div><p>Overall quality of the stat spread relative to the selected pool.</p><div class="analysis-stat-combo"><div><span>Bulk</span><b>${Math.round(bulkPct)}th</b></div><div><span>Offense</span><b>${Math.round(offPct)}th</b></div><div><span>Speed</span><b>${Math.round(speedPct)}th</b></div><div><span>BST</span><b>${Math.round(bstPct)}th</b></div></div></div>
+        <div class="analysis-card panel-lite"><h3>Stat combination</h3><div class="analysis-big">${Math.round(statCombination)}/100</div><p>Overall quality of the stat spread relative to the selected pool.</p><div class="analysis-stat-combo"><div><span>Bulk</span><b>${ordinal(bulkPct)}</b></div><div><span>Offense</span><b>${ordinal(offPct)}</b></div><div><span>Speed</span><b>${ordinal(speedPct)}</b></div><div><span>BST</span><b>${ordinal(bstPct)}</b></div></div></div>
 
-        <div class="analysis-card panel-lite"><h3>Selected environment</h3><p><strong>${esc(selectedFormat)}</strong></p><p>${metagameEntries.length} usage-weighted Pokémon represented</p><div class="analysis-stat-combo"><div><span>Stat profile</span><b>${metagameStatCombination==null?'-':Math.round(metagameStatCombination)+'/100'}</b></div><div><span>Bulk</span><b>${metagameBulkPct==null?'-':Math.round(metagameBulkPct)+'th'}</b></div><div><span>Offense</span><b>${metagameOffPct==null?'-':Math.round(metagameOffPct)+'th'}</b></div><div><span>Speed</span><b>${metagameSpeedPct==null?'-':Math.round(metagameSpeedPct)+'th'}</b></div><div><span>Matchups</span><b>${matchup.weightedScore==null?'-':Math.round(matchup.weightedScore)+'/100'}</b></div></div></div>
+        <div class="analysis-card panel-lite"><h3>Selected environment</h3><p><strong>${esc(selectedFormat)}</strong></p><p>${metagameEntries.length} usage-weighted Pokémon represented</p><div class="analysis-stat-combo"><div><span>Stat profile</span><b>${metagameStatCombination==null?'-':Math.round(metagameStatCombination)+'/100'}</b></div><div><span>Bulk</span><b>${metagameBulkPct==null?'-':ordinal(metagameBulkPct)}</b></div><div><span>Offense</span><b>${metagameOffPct==null?'-':ordinal(metagameOffPct)}</b></div><div><span>Speed</span><b>${metagameSpeedPct==null?'-':ordinal(metagameSpeedPct)}</b></div><div><span>Matchups</span><b>${matchup.weightedScore==null?'-':Math.round(matchup.weightedScore)+'/100'}</b></div></div></div>
 
         <div class="analysis-card panel-lite"><h3>CAP stat rating</h3><div class="analysis-big">${Math.round(intrinsic.cap.BSR)}</div><p>${esc(intrinsic.cap.category)} · CAP's nonlinear stat rating. This is a stat-power measure, not an automatic tier.</p><div class="analysis-stat-combo"><div><span>PT</span><b>${Math.round(intrinsic.cap.PT)}</b></div><div><span>ST</span><b>${Math.round(intrinsic.cap.ST)}</b></div><div><span>PS</span><b>${Math.round(intrinsic.cap.PS)}</b></div><div><span>SS</span><b>${Math.round(intrinsic.cap.SS)}</b></div><div><span>ODB</span><b>${intrinsic.cap.ODB.toFixed(1)}</b></div><div><span>PSB</span><b>${intrinsic.cap.PSB.toFixed(1)}</b></div></div><p>Kit ceiling <b>${Math.round(intrinsic.score)}/100</b> · Matchups <b>${Math.round(matchup.weightedScore||50)}/100</b></p></div>
       </div>
@@ -1983,10 +2113,10 @@ async function runFakemonAnalysis(){
         <div class="analysis-matchups-header"><div><h3>Metagame matchups</h3><p>${matchup.usingComparableTier?`Usage-weighted matchups against ${esc(tier.tier)} Pokémon.`:'Using the selected environment because there were not enough same-tier Pokémon to make a useful sample.'}</p></div><div class="analysis-matchups-score"><span>Overall</span><b>${matchup.weightedScore==null?'-':Math.round(matchup.weightedScore)+'/100'}</b></div></div>
         <div class="analysis-matchup-columns">
           <div class="analysis-matchup-group favorable"><h4><span>✓</span> Looks good into</h4>
-            <div class="analysis-matchup-list">${(matchup.good||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>Matchup score reflects speed internally</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear favorable matchups.</div>'}</div>
+            <div class="analysis-matchup-list">${(matchup.good||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>${esc(matchupScenario(x))}</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear favorable matchups.</div>'}</div>
           </div>
           <div class="analysis-matchup-group unfavorable"><h4><span>×</span> Looks rough into</h4>
-            <div class="analysis-matchup-list">${(matchup.bad||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>Matchup score reflects speed internally</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear unfavorable matchups.</div>'}</div>
+            <div class="analysis-matchup-list">${(matchup.bad||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>${esc(matchupScenario(x))}</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear unfavorable matchups.</div>'}</div>
           </div>
         </div>
       </div>
