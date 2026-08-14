@@ -909,6 +909,52 @@ function normalizeForForme(move, mon){
   else type='Grass';
   return type===move.type ? move : {...move,type};
 }
+function getMatchupAttackCategories(mon, moves){
+  // Matchup damage should model the kind of attacker the Pokemon is actually
+  // built to be, rather than letting every move compete on raw damage.
+  //
+  // A special attacker with a stray physical coverage move should not suddenly
+  // become a physical attacker just because that one move happens to hit the
+  // target harder in a vacuum. Both categories are allowed only when the
+  // Pokemon has a genuinely mixed offensive profile: both attacking stats are
+  // meaningful and reasonably close, and both categories are represented in
+  // its realistic damaging movepool.
+  const s=mon?.stats||{};
+  const atk=Math.max(0,Number(s.atk)||0);
+  const spa=Math.max(0,Number(s.spa ?? s.SpA)||0);
+  const physicalMoves=(moves||[]).some(m=>m.category==='Physical');
+  const specialMoves=(moves||[]).some(m=>m.category==='Special');
+
+  if(!physicalMoves && !specialMoves) return new Set();
+
+  const stronger=Math.max(atk,spa);
+  const weaker=Math.min(atk,spa);
+  const mixed =
+    physicalMoves &&
+    specialMoves &&
+    weaker>=95 &&
+    stronger>0 &&
+    weaker/stronger>=0.75;
+
+  if(mixed) return new Set(['Physical','Special']);
+  if(atk>spa && physicalMoves) return new Set(['Physical']);
+  if(spa>atk && specialMoves) return new Set(['Special']);
+
+  // Equal/near-equal stats are only treated as mixed when both sides have
+  // enough offensive stat investment to plausibly use both categories.
+  if(atk===spa && atk>=95 && physicalMoves && specialMoves){
+    return new Set(['Physical','Special']);
+  }
+
+  // If one category has no viable move, use the category that actually exists.
+  if(physicalMoves && !specialMoves) return new Set(['Physical']);
+  if(specialMoves && !physicalMoves) return new Set(['Special']);
+
+  // If the stats are tied below the mixed threshold, prefer the category
+  // represented by the stronger stat rather than a target-dependent choice.
+  return new Set([atk>=spa?'Physical':'Special']);
+}
+
 function getAnalysisMoves(mon){
   const moves=(mon?.fake ? mon.learnset||[] : learnsetMoves(mon)).map(moveData).filter(Boolean).map(m=>normalizeForForme(m,mon));
   const unique=[...new Map(moves.map(m=>[normalizeName(m.name),m])).values()];
@@ -916,7 +962,13 @@ function getAnalysisMoves(mon){
     try{return sampleMoveIsActuallyUseful(m,{stats:mon?.stats||{},types:mon?.types||[],abilities:abilityNames(mon?.abilities),moves:unique},null);}catch{return false;}
   });
   const pool=(useful.length>=4?useful:unique).filter(m=>isRealisticDamageMove(m));
-  return pool;
+
+  // Do not let matchup scoring cherry-pick a physically categorized move for
+  // a special attacker (or vice versa) merely because it produces the largest
+  // number against this particular defender. That is an in-vacuum artifact,
+  // not how a non-mixed Pokemon is normally evaluated.
+  const allowedCategories=getMatchupAttackCategories(mon,pool);
+  return pool.filter(m=>allowedCategories.has(m.category));
 }
 
 function isRealisticDamageMove(move){
@@ -2110,7 +2162,7 @@ async function runFakemonAnalysis(){
       </div>
 
       <div class="analysis-card panel-lite analysis-matchups-card">
-        <div class="analysis-matchups-header"><div><h3>Metagame matchups</h3><p>${matchup.usingComparableTier?`Usage-weighted matchups against ${esc(tier.tier)} Pokémon.`:'Using the selected environment because there were not enough same-tier Pokémon to make a useful sample.'}</p></div><div class="analysis-matchups-score"><span>Overall</span><b>${matchup.weightedScore==null?'-':Math.round(matchup.weightedScore)+'/100'}</b></div></div>
+        <div class="analysis-matchups-header"><div><h3>Metagame matchups</h3><p>${matchup.usingComparableTier?`Weighted matchups against ${esc(tier.tier)} Pokémon. It's not a perfect tool. Use common sense.`:'Using the selected environment because there were not enough same-tier Pokémon to make a useful sample.'}</p></div><div class="analysis-matchups-score"><span>Overall</span><b>${matchup.weightedScore==null?'-':Math.round(matchup.weightedScore)+'/100'}</b></div></div>
         <div class="analysis-matchup-columns">
           <div class="analysis-matchup-group favorable"><h4><span>✓</span> Looks good into</h4>
             <div class="analysis-matchup-list">${(matchup.good||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>${esc(matchupScenario(x))}</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear favorable matchups.</div>'}</div>
