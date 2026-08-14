@@ -14,6 +14,24 @@ let analysisBusy = false;
 let lastAnalysisKey = '';
 
 const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+// Matchup cards previously built their own sprite URLs with a hardcoded
+// 'gen5ani' directory and a crude id slug, so they never reacted to the
+// "Use 2D sprites" setting and mishandled forme suffixes (e.g. Ogerpon
+// masks). getPokemonTemplateSprite (pokedex.js) is the app's real sprite
+// helper - it reads the actual toggle and slugs formes correctly - but it
+// can't be imported directly here (pokedex.js -> app.js -> analysis.js
+// would be circular). By the time any matchup card is rendered, app.js has
+// already attached every module's exports to `window`, so calling it off
+// `window` is safe and keeps this in sync with the rest of the app.
+function matchupSpriteHtml(p){
+  const id=String(p?.id||p?.name||'missingno').toLowerCase().replace(/[^a-z0-9-]+/g,'-');
+  if(typeof window!=='undefined' && typeof window.getPokemonTemplateSprite==='function'){
+    const url=window.getPokemonTemplateSprite(p);
+    return `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://play.pokemonshowdown.com/sprites/gen5/${id}.png';">`;
+  }
+  const spriteDir=(typeof window!=='undefined' && typeof window.getUse2DSprites==='function' && window.getUse2DSprites()) ? 'gen5ani' : 'ani';
+  return `<img src="https://play.pokemonshowdown.com/sprites/${spriteDir}/${id}.gif" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://play.pokemonshowdown.com/sprites/gen5/${id}.png';">`;
+}
 const clamp=(n,a=0,b=100)=>Math.max(a,Math.min(b,n));
 const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
 const normalizeName=v=>String(v||'').toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9]/g,'');
@@ -64,13 +82,23 @@ function abilityNames(raw){
 // (Speed Boost, Huge Power, weather setters, etc.) nudges the score the same
 // direction a real teambuilder would react, and an obviously crippling one
 // (Truant, Slow Start, etc.) pulls it back down instead of being ignored.
+// A small set of abilities are so competitively defining (format-warping, not
+// just "good") that they deserve a tier above STRONG_ABILITIES rather than
+// being bucketed alongside Intimidate/Regenerator. Wonder Guard, Neutralizing
+// Gas, and Good As Gold were previously entirely absent from either list, so
+// a Fakemon running one of them scored as if its ability were neutral.
+const ELITE_ABILITIES=new Set([
+  'Wonder Guard','Neutralizing Gas','Good As Gold','Magic Guard','Imposter',
+  'Parental Bond','Water Bubble','Huge Power','Pure Power','Speed Boost'
+]);
 const STRONG_ABILITIES=new Set([
-  'Speed Boost','Huge Power','Pure Power','Drought','Drizzle','Sand Stream','Snow Warning',
+  'Drought','Drizzle','Sand Stream','Snow Warning',
   'Intimidate','Regenerator','Prankster','Magic Bounce','Levitate','Tough Claws','Adaptability',
   'Protean','Libero','Water Absorb','Volt Absorb','Flash Fire','Guts','Moxie','Sheer Force',
   'Technician','Unaware','Multiscale','Poison Heal','Contrary','Simple','Beast Boost',
   'Mold Breaker','Download','Grassy Surge','Electric Surge','Psychic Surge','Stakeout',
-  'Serene Grace','Skill Link','Triage'
+  'Serene Grace','Skill Link','Triage','Orichalcum Pulse','Desolate Land','Primordial Sea',
+  'Tinted Lens','Sand Force','Solar Power'
 ]);
 const WEAK_ABILITIES=new Set([
   'Truant','Slow Start','Defeatist','Normalize','Klutz','Stall','Justified','Anger Point',
@@ -78,11 +106,15 @@ const WEAK_ABILITIES=new Set([
   'Emergency Exit','Slow Start','Stall','Forecast'
 ]);
 function abilityQuality(names){
-  // Best-case ability chosen (competitively, a mon is built around its best ability),
-  // returns -1 (crippling), 0 (neutral/unknown), or 1 (strong) plus which name mattered.
+  // Best-case ability chosen (competitively, a mon is built around its best ability).
+  // Returns -1 (crippling), 0 (neutral/unknown), 1 (strong), or 2 (elite/format-
+  // defining) plus which name mattered. Elite outranks strong outranks weak,
+  // regardless of set order, so a mon with both an elite and a strong ability
+  // is credited for the elite one.
   let best={score:0,name:null};
   for(const n of names||[]){
-    if(STRONG_ABILITIES.has(n) && best.score<1) best={score:1,name:n};
+    if(ELITE_ABILITIES.has(n) && best.score<2) best={score:2,name:n};
+    else if(STRONG_ABILITIES.has(n) && best.score<1) best={score:1,name:n};
     else if(WEAK_ABILITIES.has(n) && best.score===0) best={score:-1,name:n};
   }
   return best;
@@ -432,15 +464,15 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
   const monName=String(t.name||t.species||'this thing');
   const merchantThing=pick([`${roleText} merchant`,`${typeText} merchant`,`free-turn merchant`,`setup merchant`,`damage merchant`]);
   const toneSets={
-    monster:{open:['oh NAH what is ts','ts gas gng','aw hell nah..','oh my days bruv','jarvis get ts out of here','okay, who let this thing cook','HOLY STALLFEST','this is getting suspiciously silly'],closers:['i would absolutely test this at the top end first','this is the kind of kit i would watch very closely in real games','honestly, i would be a little scared to give this too much free space','if this starts getting free turns, somebody is getting cooked','this thing has no business being this comfortable']},
-    strong:{open:['ts gas gng','oh my days bruv','okay yeah, this one has sauce','oh NAH what is ts','yeah, this one is kinda cooking','aw hell nah.. i see the vision','jarvis get ts out of here','this is a certified hood classic'],closers:['i would be pretty confident testing this aggressively','this is absolutely worth throwing into serious teams','i would keep an eye on how often it gets free turns','give this one an inch and it is taking the whole kitchen','i would absolutely abuse the good turns here']},
-    solid:{open:['okay, i see the vision','ts gas gng, in moderation','oh my days bruv, there is actually something here','this one has a little sauce','would. next question','okay this is kinda fun','we have a concept here and it is not bad'],closers:['i would start testing it and see what sticks','this feels like a fun one to actually build around','i would give it a few different team shells before judging it too hard','there is enough here to make me curious, which is a win already']},
-    niche:{open:['okay, this one is a specialist','i can see the angle here','ts so deep bro','this is definitely a matchup artist','okay, this is a very specific little merchant','oh my days bruv, this has a job and it knows it','we found the niche merchant'],closers:['i would build around its best jobs instead of asking it to do everything','this one could surprise people with the right support','i would test the narrow gameplan first and expand from there','do not make it do eight jobs. let the little merchant have its lane']},
-    struggling:{open:['okay, we have a little gremlin to workshop','aw hell nah.. okay, back to the kitchen','jarvis get ts out of here, but wait, there might be a point here','ts so deep bro','oh my days bruv, we have work to do','this one needs the squad holding its hand','okay, somebody find this thing a niche'],closers:['i would start with a very supportive team and see what it can steal','this one needs its good situations to happen on purpose','i would treat this as a project mon and see where it surprises us','the numbers are not doing cartwheels, so let the weirdness carry','give the little guy one job and let it commit']}
+    monster:{open:['oh NAH what is ts','ts gas gng','aw hell nah..','oh my days bruv','jarvis get ts out of here','okay, who let this thing cook','HOLY STALLFEST','this is getting suspiciously silly','bro cooked and then some','nah this is actually diabolical','somebody call the tier police'],closers:['i would absolutely test this at the top end first','this is the kind of kit i would watch very closely in real games','honestly, i would be a little scared to give this too much free space','if this starts getting free turns, somebody is getting cooked','this thing has no business being this comfortable','i would not be shocked if this gets a suspect test eventually','respectfully, this might need a leash']},
+    strong:{open:['ts gas gng','oh my days bruv','okay yeah, this one has sauce','oh NAH what is ts','yeah, this one is kinda cooking','aw hell nah.. i see the vision','jarvis get ts out of here','this is a certified hood classic','okay this one actually has bars','we might have a top-tier merchant here'],closers:['i would be pretty confident testing this aggressively','this is absolutely worth throwing into serious teams','i would keep an eye on how often it gets free turns','give this one an inch and it is taking the whole kitchen','i would absolutely abuse the good turns here','this is the kind of mon that quietly wins games','solid pick, would not overthink it']},
+    solid:{open:['okay, i see the vision','ts gas gng, in moderation','oh my days bruv, there is actually something here','this one has a little sauce','would. next question','okay this is kinda fun','we have a concept here and it is not bad','this one is a solid little rotation piece','okay, respectable. respectable.'],closers:['i would start testing it and see what sticks','this feels like a fun one to actually build around','i would give it a few different team shells before judging it too hard','there is enough here to make me curious, which is a win already','not flashy, but i would not be mad running it','a perfectly fine Tuesday-night teammate']},
+    niche:{open:['okay, this one is a specialist','i can see the angle here','ts so deep bro','this is definitely a matchup artist','okay, this is a very specific little merchant','oh my days bruv, this has a job and it knows it','we found the niche merchant','okay, this is a one-trick pony, but the trick is decent'],closers:['i would build around its best jobs instead of asking it to do everything','this one could surprise people with the right support','i would test the narrow gameplan first and expand from there','do not make it do eight jobs. let the little merchant have its lane','respect the lane, respect the merchant']},
+    struggling:{open:['okay, we have a little gremlin to workshop','aw hell nah.. okay, back to the kitchen','jarvis get ts out of here, but wait, there might be a point here','ts so deep bro','oh my days bruv, we have work to do','this one needs the squad holding its hand','okay, somebody find this thing a niche','we are so back? no, not yet'],closers:['i would start with a very supportive team and see what it can steal','this one needs its good situations to happen on purpose','i would treat this as a project mon and see where it surprises us','the numbers are not doing cartwheels, so let the weirdness carry','give the little guy one job and let it commit','this is a lower-tier legend in the making, maybe']}
   };
   const paragraphs=[];
   const chaoticBits=[
-    `${merchantThing} detected. i am not elaborating.`,
+    `${merchantThing}. i am not elaborating.`,
     `${pick(['ts so deep bro','jarvis get ts out of here','HOLY STALLFEST','would. next question'])}`,
     `${pick(['this thing is kinda suspicious','i fear the kitchen may be open','somebody is going to click this move and immediately regret it','this has the energy of a set that starts as a joke and ends up on three teams'])}`,
     `${pick(['okay, somebody let this thing cook','yeah, i am keeping an eye on this one','this is exactly the kind of set that gets out of hand fast','i have questions. mostly about who approved this'])}`
@@ -465,7 +497,7 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
     `${recovery.join(', ')} gives this thing real staying power. if it gets free turns, it can keep coming back for more.`,
     `the recovery is a big deal here. ${recovery.join(', ')} means chip damage is not automatically solving the problem.`,
     `having ${recovery.join(', ')} changes how you have to approach this. you cannot just assume one round of chip is enough.`,
-    `${recovery.join(', ')} is doing exactly what a good recovery move should do: making every good turn matter a little more.`
+    `${recovery.join(', ')} is doing exactly what a good recovery move should do, which is making every good turn matter a little more.`
   ]));
   if(pivots.length) topicPool.push(pick([
     `${pivots.join(', ')} gives it a clean way to keep momentum. get in, make something happen, then keep the pace moving.`,
@@ -579,11 +611,11 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
       `at ${Math.round(matchupScore)}/100, this is more about choosing the right battle than trying to brute-force every matchup.`
     ]));
     if(good.length && bad.length && power>=55) matchupLines.push(pick([
-      `the fun part is the contrast. going against ${good[0]?.p?.name||'the good matchups'} gives it room to do stuff, while ${bad[0]?.p?.name||'the rough matchups'} is where i would have a teammate ready.`,
+      `the fun part is the contrast. ${good[0]?.p?.name||'the good matchups'} gives it room to cook, while ${bad[0]?.p?.name||'the rough matchups'} is where i would have a teammate ready.`,
       `play into ${good[0]?.p?.name||'the favorable matchups'} when you can, and keep an answer for ${bad[0]?.p?.name||'the nasty ones'}. simple enough.`,
-      `the good games could be genuinely nice, and the bad games are exactly why team building exists.`,
+      `the good games are genuinely nice, and the bad games are exactly why team building exists.`,
       `${good[0]?.p?.name||'the favorable side'} looks like a good time. ${bad[0]?.p?.name||'the rough side'} looks like a problem for somebody else on the team.`,
-      `this has some very real good games and some very real "MAHORAGA SAVE ME" games. build accordingly.`,
+      `this has some very real good games and some very real "please send a teammate" games. build accordingly.`,
       `when ${good[0]?.p?.name||'the good matchup'} shows up, let this thing work. when ${bad[0]?.p?.name||'the bad matchup'} shows up, do not be a hero.`
     ]));
     else if(good.length && power>=60) matchupLines.push(pick([`i really like the games into ${good.map(fmt).join(', ')}. those are the spots where this can look way better than the raw numbers suggest.`,`when ${good[0]?.p?.name||'the favorable matchups'} shows up, i would be very happy to have this thing in the back pocket.`]));
@@ -605,7 +637,7 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
   if((rng.value>>>0)%100 < 42) paragraphs.push(pick([
     `${merchantThing}. that is the whole review.`,
     `${pick(['oh NAH what is ts','ts gas gng','would. next question','jarvis get ts out of here'])} i have seen enough.`,
-    `${monName} is giving ${pick(['problem','gremlin','merchant','certified nonsense'])} energy. respectfully.`,
+    `${monName} is a ${pick(['good gal','gremlin','merchant','certified nonsense'])}. respectfully.`,
     `i am putting this one in the ${pick(['do not give it free turns','someone test this immediately','why is this working','back to the kitchen'])} folder.`
   ]));
   const isUbers=/^ubers$/i.test(String(tierText));
@@ -615,13 +647,13 @@ function makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,role
     `call me Master Oogway, the way i am locking this mon up in Ubers.`,
     `not even Saul Goodman can bail this mon out of Ubers.`,
     `yeah, i have seen enough. Ubers. somebody take the keys away.`,
-    `this one walked into the analysis and immediately got the sentence. Ubers.`,
+    `this one walked into the analysis and immediately got the Ubers sentence.`,
     `Ubers is not even a suggestion here. that is where i am putting this thing.`,
     `i was going to be reasonable about the tiering, then this mon showed up. Ubers.`,
-    `you're not gamefreak to design mons like these. Ubers.`,
+    `the spreadsheet has spoken, and unfortunately it said Ubers.`,
     `okay, pack it up. this thing is going straight to Ubers.`,
     `Ubers feels less like a tier and more like a containment facility for this one.`,
-    `yeahhh..,, this is an Ubers problem now. i do not make the rules.`,
+    `yeahhh, this is an Ubers problem now. i do not make the rules.`,
     `like AI data centers, nobody wants this thing near them. Ubers.`,
     `someone asked where this belongs. apparently the answer is Ubers and i am not arguing.`
   ];
@@ -958,10 +990,52 @@ function damageRange(attacker, defender, move){
   const stab=(attacker?.types||[]).includes(move.type)?1.5:1;
   const accuracyRaw=Number(move.accuracy);
   const accuracy=Number.isFinite(accuracyRaw)?Math.max(0,Math.min(100,accuracyRaw)):100;
-  const base=Math.floor(Math.floor(Math.floor((2*100/5+2)*bp*attack/defense)/50)+2);
-  // No weather/item/ability/crit/terrain information is available to this analysis,
-  // so those modifiers are deliberately omitted instead of being guessed.
-  const modifier=stab*typeMult;
+
+  // Ability modifiers. No external team/turn state is tracked, so only
+  // abilities whose effect is fully determined by the attacker's own kit are
+  // modeled - self-sufficient weather setters (a Pokemon with Drought always
+  // has sun up while it's out, so its own boosted moves are a real, reliable
+  // part of its damage output), flat attack multipliers, and STAB/power
+  // modifiers. Field effects that depend on a teammate or the opponent (e.g.
+  // an ally's Drought, Electric Terrain from something else) are still
+  // deliberately omitted, since assuming them would be guessing team context
+  // this tool doesn't have.
+  const moveTypeNorm=normalizeName(move.type);
+  const moveText=`${String(move.name||'')} ${String(move.desc||move.description||'')}`.toLowerCase();
+  const hasSecondaryEffect=/chance to|10% chance|20% chance|30% chance|100% chance to (?:lower|raise|confuse|flinch|burn|paralyze|poison|freeze)/.test(moveText);
+  const selfWeather=
+    attackerAbilities.includes('drought')||attackerAbilities.includes('orichalcumpulse')||attackerAbilities.includes('desolateland') ? 'sun' :
+    attackerAbilities.includes('drizzle')||attackerAbilities.includes('primordialsea') ? 'rain' :
+    attackerAbilities.includes('sandstream') ? 'sand' :
+    attackerAbilities.includes('snowwarning') ? 'snow' : null;
+  let abilityAttackMult=1, abilityPowerMult=1, abilityStabMult=1;
+  if(attackerAbilities.includes('hugepower')||attackerAbilities.includes('purepower')){
+    if(move.category==='Physical') abilityAttackMult*=2;
+  }
+  if(attackerAbilities.includes('adaptability')) abilityStabMult=(stab>1?2:1)/stab; // turns 1.5x STAB into 2x
+  if(attackerAbilities.includes('technician') && bp<=60) abilityPowerMult*=1.5;
+  if(attackerAbilities.includes('sheerforce') && hasSecondaryEffect) abilityPowerMult*=1.3;
+  if(selfWeather==='sun'){
+    if(moveTypeNorm==='fire') abilityPowerMult*=1.5;
+    else if(moveTypeNorm==='water') abilityPowerMult*=0.5;
+    // Orichalcum Pulse (Koraidon) is an Atk boost on top of sun's Fire boost,
+    // not a Fire-type-exclusive effect - it applies to any physical attack.
+    if(attackerAbilities.includes('orichalcumpulse') && move.category==='Physical') abilityAttackMult*=1.33;
+    if(attackerAbilities.includes('solarpower') && move.category==='Special') abilityAttackMult*=1.5;
+  } else if(selfWeather==='rain'){
+    if(moveTypeNorm==='water') abilityPowerMult*=1.5;
+    else if(moveTypeNorm==='fire') abilityPowerMult*=0.5;
+  } else if(selfWeather==='sand'){
+    // Sand Force boosts Rock/Ground/Steel moves; only meaningful when the
+    // attacker is also its own sand setter under this self-sufficient model.
+    if(attackerAbilities.includes('sandforce') && ['rock','ground','steel'].includes(moveTypeNorm)) abilityPowerMult*=1.3;
+  }
+  if(attackerAbilities.includes('tintedlens') && typeMult<1) abilityPowerMult*=2;
+
+  const base=Math.floor(Math.floor(Math.floor((2*100/5+2)*bp*attack*abilityAttackMult/defense)/50)+2);
+  // Crit/item/terrain information is still unavailable, so those remain
+  // deliberately omitted - only the ability effects above are modeled.
+  const modifier=stab*abilityStabMult*typeMult*abilityPowerMult;
   const rolls=Array.from({length:16},(_,i)=>(85+i)/100);
   const damages=rolls.map(r=>Math.floor(base*modifier*r));
   const damageMin=Math.min(...damages),damageMax=Math.max(...damages);
@@ -1259,6 +1333,50 @@ function intrinsicPowerProfile(tf, abilityInfo){
   const setupExtremeSynergy=setup>=1 && cap.BSR>=900 ? 12 : 0;
   const roleCompression=(recovery&&tf.pivot?5:0)+(tf.statusUtility>=2&&recovery?4:0)+(tf.hazards&&tf.removal?4:0);
 
+  // Move quality was previously uncredited here entirely - a mon's tier score
+  // was driven almost purely by raw stat architecture (BSR) plus a few narrow
+  // setup/recovery combos, so two Pokemon with identical stats scored
+  // identically regardless of whether one had genuinely strong STAB/coverage
+  // and the other had a mediocre movepool. This rewards strong STAB power,
+  // real coverage breadth, and a healthy offensive toolkit directly, capped so
+  // it can meaningfully lift a well-equipped unique mon without letting move
+  // count alone fake its way to a high score.
+  const moveQuality=clamp(
+    Math.max(0,(Number(tf.stabPower)||0)-80)*.28 +
+    Math.max(0,(Number(tf.bestPower)||0)-80)*.16 +
+    Math.min(16,(Number(tf.coverageTypes)||0)*4) +
+    Math.min(10,Math.max(0,(Number(tf.offensiveTools)||0)-3)*2.5)
+  ,0,32);
+
+  // Symmetrically, a specialized defensive/utility kit was uncredited too. CAP's
+  // BSR formula multiplies physical and special bulk together, so a mon that
+  // specializes hard into one side of bulk (a very common real wall pattern -
+  // e.g. strong Special Defense with only middling Defense) posts a lower BSR
+  // than a mon with the same total bulk spread evenly, even when a genuinely
+  // excellent utility kit (recovery + hazard/status control + a safe pivot
+  // move) is exactly what makes that kind of specialist actually good. This
+  // credits that kit directly rather than trying to rebalance the BSR formula
+  // itself (which is meant to mirror CAP's own math). Gated to mons with at
+  // least moderate bulk on one side, so it rewards a genuine specialist wall
+  // rather than inflating an unrelated frail utility mon.
+  const isBulkySide=cap.PT>=110 || cap.ST>=140;
+  const recoveryTerm=(Number(tf.recoveryQuality)||0)>=70?12:(Number(tf.recoveryQuality)||0)>0?6:0;
+  const defensiveUtility=isBulkySide?clamp(
+    recoveryTerm +
+    Math.min(10,(Number(tf.removal)||0)*10) +
+    Math.min(8,(Number(tf.pivot)||0)*8) +
+    Math.min(8,Math.min(3,Number(tf.statusUtility)||0)*3) +
+    Math.min(6,(Number(tf.hazards)||0)*6) +
+    ((Number(tf.defensiveTools)||0)>=4?6:(Number(tf.defensiveTools)||0)>=2?3:0)
+  ,0,32):0;
+
+  // An elite, format-defining ability (Wonder Guard, Neutralizing Gas, Good As
+  // Gold, etc.) or a strong one should meaningfully move a Fakemon's own tier
+  // estimate, not just show up as a text bullet. abilityInfo.score is -1/0/1/2
+  // from abilityQuality(); scale it into the same 0-100 space as the rest of
+  // this profile.
+  const abilityBonus=abilityInfo?.score>=2?16:abilityInfo?.score===1?7:abilityInfo?.score===-1?-10:0;
+
   const extremeStatCount=[
     Number(tf.hp)>=140?1:0,
     Number(tf.def)>=160?1:0,
@@ -1277,7 +1395,7 @@ function intrinsicPowerProfile(tf, abilityInfo){
 
   // Preserve a 0-100 intrinsic scale, but let CAP's nonlinear BSR do the
   // heavy lifting instead of a pile of arbitrary stat bonuses.
-  const score=clamp(statPower*.68+Math.min(18,synergy)+Math.min(8,extremeStatCount*2));
+  const score=clamp(statPower*.68+Math.min(18,synergy)+Math.min(8,extremeStatCount*2)+moveQuality*.4+defensiveUtility*.4+abilityBonus);
 
   return {
     score,
@@ -1285,6 +1403,9 @@ function intrinsicPowerProfile(tf, abilityInfo){
     bulkPower,
     offensePower,
     counterplay,
+    moveQuality,
+    defensiveUtility,
+    abilityBonus,
     cap,
     brokenKit,
     brokenDefensiveSetup,
@@ -1300,7 +1421,10 @@ function intrinsicPowerProfile(tf, abilityInfo){
       ODB:cap.ODB,
       PSB:cap.PSB,
       synergy,
-      counterplay
+      counterplay,
+      moveQuality,
+      defensiveUtility,
+      abilityBonus
     }
   };
 }
@@ -1421,6 +1545,18 @@ function buildMatchupProfile(target,pool,usage,targetProfile){
     const survivalScore=clamp(100-incomingExpectedPct*100);
     const breakability=details.enemyHits===Infinity ? 100 : details.enemyHits>=4 ? 82 : details.enemyHits===3 ? 68 : details.enemyHits===2 ? 38 : 5;
 
+    // A "close call": the KO race is won by exactly one hit's margin (e.g. a
+    // 1HKO vs. a 2HKO) while the losing side is still landing real, meaningful
+    // damage (not just chip). The final score can come out as a confident
+    // 100/0 in these cases (whoever needs fewer hits wins the race outright),
+    // but the actual battle is genuinely close - decided by speed ties, roll
+    // variance, crits, or which mon happens to be on the field first - so it
+    // shouldn't be presented as a clean, confident "good"/"bad" verdict.
+    const hitMargin=(Number.isFinite(details.myHits)&&Number.isFinite(details.enemyHits))
+      ? Math.abs(details.myHits-details.enemyHits) : Infinity;
+    const bothThreaten=myPct>=0.4 && theirPct>=0.4;
+    const closeCall=hitMargin<=1 && bothThreaten;
+
     // The KO race is the primary gate.  Damage balance is the second gate.
     // Recovery/bulk can improve a genuinely winnable wall matchup, but it cannot
     // turn a matchup around when the opponent gets the KO first.
@@ -1444,6 +1580,7 @@ function buildMatchupProfile(target,pool,usage,targetProfile){
       enemyBestMove:enemy.best,
       speed:details.speed,
       defensiveEvaluation:targetDefensive,
+      closeCall,
       defensiveMetrics:{
         capPT:Number(targetCap?.PT)||0,capST:Number(targetCap?.ST)||0,
         expectedIncomingPct:incomingExpectedPct,maxIncomingPct:incomingMaxPct,
@@ -1456,13 +1593,24 @@ function buildMatchupProfile(target,pool,usage,targetProfile){
   const total=rows.reduce((s,x)=>s+x.usage,0);
   const weightedRaw=total?rows.reduce((s,x)=>s+x.score*x.usage,0)/total:50;
   // Pull sparse/rough matchup estimates toward neutral instead of treating every
-  // imperfect approximation as a real loss. This prevents unique kits from being
-  // systematically pushed downward.
-  const coverageFactor=Math.min(1,rows.length/24);
-  const weightedScore=50+(weightedRaw-50)*(.55+.45*coverageFactor);
+  // imperfect approximation as a real loss. This is meant to protect noisy small
+  // samples from looking artificially bad - but a symmetric pull toward 50 also
+  // drags DOWN a genuinely strong performance just as hard as it props up a weak
+  // one. A unique typing/kit is exactly what ends up with a smaller comparable
+  // pool (fewer close peers to test against), so under a heavy pull this
+  // "protection" was instead the main way unique Pokémon got undervalued: their
+  // real, earned favorable matchups were being diluted toward mediocre. Keep the
+  // safeguard, but make it much lighter - full weight is restored by a modest
+  // pool size (12, not 24), and even at zero coverage the raw signal keeps most
+  // of its weight instead of being cut nearly in half.
+  const coverageFactor=Math.min(1,rows.length/12);
+  const weightedScore=50+(weightedRaw-50)*(.80+.20*coverageFactor);
   const sortedByImpact=[...rows].sort((a,b)=>b.usage*Math.abs(b.score-50)-a.usage*Math.abs(a.score-50));
-  const good=[...rows].sort((a,b)=>b.usage*(b.score-50)-a.usage*(a.score-50)).filter(x=>x.score>=60).slice(0,6);
-  const bad=[...rows].sort((a,b)=>a.usage*(a.score-50)-b.usage*(b.score-50)).filter(x=>x.score<=40).slice(0,6);
+  // Close calls are excluded from the good/bad display slots specifically -
+  // they're real matchups and still count toward weightedScore/wins/losses/
+  // coverage above, just not confident enough to present as a clean verdict.
+  const good=[...rows].sort((a,b)=>b.usage*(b.score-50)-a.usage*(a.score-50)).filter(x=>x.score>=60 && !x.closeCall).slice(0,6);
+  const bad=[...rows].sort((a,b)=>a.usage*(a.score-50)-b.usage*(b.score-50)).filter(x=>x.score<=40 && !x.closeCall).slice(0,6);
   const top=rows.slice(0,Math.min(20,rows.length));
   const topWeighted=top.length?top.reduce((s,x)=>s+x.score*x.usage,0)/Math.max(1,top.reduce((s,x)=>s+x.usage,0)):50;
   const favorableShare=rows.length?rows.filter(x=>x.score>=58).length/rows.length:0;
@@ -1705,7 +1853,17 @@ async function runFakemonAnalysis(){
      if(intrinsic.brokenKit)strengths.push('The stat / recovery / setup combination has a very high competitive ceiling');
      if(intrinsic.counterplay>=65)weaknesses.push(`There are meaningful counterplay hooks (${Math.round(intrinsic.counterplay)}/100)`);
     if(tf.typing.weak>=5)weaknesses.push(`${tf.typing.weak} attacking types hit it super effectively`);
-    if(tf.speed<70)weaknesses.push('Low Speed can leave it vulnerable to offensive pressure');
+    // Low Speed alone isn't a weakness for a defensive/pivot kit - a slow pivot
+    // (U-turn/Volt Switch/Teleport/etc. while under 70 Speed) is a deliberate,
+    // desirable combination: it lets the mon eat a hit, then safely bring in
+    // the check that actually wants to be on the field, without giving the
+    // opponent a free turn to punish the switch. Only call it a weakness when
+    // there's no pivot option to fall back on.
+    if(tf.speed<70 && !tf.pivot){
+      weaknesses.push('Low Speed can leave it vulnerable to offensive pressure');
+    } else if(tf.speed<70 && tf.pivot){
+      strengths.push('Low Speed pairs with pivot moves for safe, controlled switches (slow pivoting)');
+    }
     if(matchup?.weightedScore<=42)weaknesses.push(`Usage-weighted matchup profile is only ${Math.round(matchup.weightedScore)}/100`);
     if(abilityInfo.score<0)weaknesses.push(`${abilityInfo.name} is a genuinely crippling ability`);
     results.innerHTML=`
@@ -1740,10 +1898,10 @@ async function runFakemonAnalysis(){
         <div class="analysis-matchups-header"><div><h3>Metagame matchups</h3><p>${matchup.usingComparableTier?`Usage-weighted matchups against ${esc(tier.tier)} Pokémon.`:'Using the selected environment because there were not enough same-tier Pokémon to make a useful sample.'}</p></div><div class="analysis-matchups-score"><span>Overall</span><b>${matchup.weightedScore==null?'-':Math.round(matchup.weightedScore)+'/100'}</b></div></div>
         <div class="analysis-matchup-columns">
           <div class="analysis-matchup-group favorable"><h4><span>✓</span> Looks good into</h4>
-            <div class="analysis-matchup-list">${(matchup.good||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon"><img src="https://play.pokemonshowdown.com/sprites/gen5ani/${String(x.p?.id||x.p?.name||'missingno').toLowerCase().replace(/[^a-z0-9-]+/g,'-')}.gif" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://play.pokemonshowdown.com/sprites/gen5/${String(x.p?.id||x.p?.name||'missingno').toLowerCase().replace(/[^a-z0-9-]+/g,'-')}.png';"></div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>Matchup score reflects speed internally</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear favorable matchups.</div>'}</div>
+            <div class="analysis-matchup-list">${(matchup.good||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>Matchup score reflects speed internally</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear favorable matchups.</div>'}</div>
           </div>
           <div class="analysis-matchup-group unfavorable"><h4><span>×</span> Looks rough into</h4>
-            <div class="analysis-matchup-list">${(matchup.bad||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon"><img src="https://play.pokemonshowdown.com/sprites/gen5ani/${String(x.p?.id||x.p?.name||'missingno').toLowerCase().replace(/[^a-z0-9-]+/g,'-')}.gif" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://play.pokemonshowdown.com/sprites/gen5/${String(x.p?.id||x.p?.name||'missingno').toLowerCase().replace(/[^a-z0-9-]+/g,'-')}.png';"></div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>Matchup score reflects speed internally</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear unfavorable matchups.</div>'}</div>
+            <div class="analysis-matchup-list">${(matchup.bad||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>Matchup score reflects speed internally</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear unfavorable matchups.</div>'}</div>
           </div>
         </div>
       </div>
