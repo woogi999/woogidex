@@ -493,7 +493,8 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                         'pulse': 'pulse', 'recharge': 'recharge', 'charge': 'charge', 'heal': 'heal',
                         'authentic': 'authentic', 'powder': 'powder', 'bullet': 'bullet', 'slicing': 'slicing',
                         'wind': 'wind', 'dance': 'dance', 'mental': 'mental', 'defrost': 'defrost',
-                        'thaws': 'thawing', 'thawsuser': 'thawing', 'thawing': 'thawing'
+                        'thaws': 'thawing', 'thawsuser': 'thawing', 'thawing': 'thawing',
+                        'multihit': 'multihit', 'pivot': 'pivot'
                     };
                     if (known[key]) flags[known[key]] = 1;
                 });
@@ -863,6 +864,31 @@ function handleMoveKey(e) {
             return Object.values(state.sdMoves).find(v => v.name === name) || null;
         }
 
+        // Showdown has no dedicated pivot flag, so detect standard switch-out moves
+        // by name/description. Custom moves can opt into the explicit `pivot` flag.
+        const PIVOT_MOVE_NAMES = new Set([
+            'U-turn', 'Volt Switch', 'Flip Turn', 'Parting Shot',
+            'Chilly Reception', 'Teleport', 'Shed Tail'
+        ]);
+        function isPivotMove(move) {
+            if (!move) return false;
+            if (move.flags?.pivot) return true;
+            if (PIVOT_MOVE_NAMES.has(move.name)) return true;
+            const text = `${move.name || ''} ${move.desc || ''}`.toLowerCase();
+            return /(?:the user|user)\s+(?:switches|switches out)|switch(?:es)? out the user/.test(text);
+        }
+
+        function getMoveEditorFlags(move) {
+            const flags = isCustomMove(move)
+                ? { ...(move.flags || {}) }
+                : convertShowdownFlagsToEditorFlags({
+                    ...(move?.flags || {}),
+                    multihit: move?.multihit
+                }, move?.category);
+            if (isPivotMove(move)) flags.pivot = true;
+            return flags;
+        }
+
         // Showdown's move flags describe what a move IS affected by: `protect`,
         // `reflectable`, and `snatch` mean the move is protectable/reflectable/snatchable.
         // Our Fakemon editor uses the opposite convention for these three flags: the
@@ -877,7 +903,8 @@ function handleMoveKey(e) {
                 reflectable: isStatus ? !source.reflectable : false,
                 snatch: isStatus ? !source.snatch : false,
                 bypasssub: !!source.bypasssub,
-                thawing: !!source.defrost
+                thawing: !!source.defrost,
+                multihit: !!source.multihit
             };
         }
 
@@ -905,7 +932,13 @@ function handleMoveKey(e) {
                 pp: md ? (md.pp ?? 0) : (entry.pp ?? 0),
                 priority: md ? (md.priority ?? 0) : (entry.priority ?? 0),
                 desc: (md && md.desc) || entry.desc || '',
-                flags: md ? convertShowdownFlagsToEditorFlags(md.flags, md.category || entry.category) : (entry.flags || {}),
+                flags: md ? getMoveEditorFlags({
+                    name: md.name || entry.name,
+                    desc: md.desc || entry.desc || '',
+                    category: md.category || entry.category,
+                    multihit: md.multihit,
+                    flags: md.flags || {}
+                }) : getMoveEditorFlags({ ...entry, flags: entry.flags || {} }),
                 learnMethod: entry.learnMethod || 'none',
                 level: entry.level || null
             };
@@ -1063,6 +1096,8 @@ function handleMoveKey(e) {
                 const typeClass = `type-${(m.type || 'normal').toLowerCase()}`;
                 const accText = m.accuracy === true || m.accuracy === undefined ? '—' : (m.accuracy === false ? '—' : `${m.accuracy}%`);
                 const levelDisplay = m.learnMethod === 'level' ? 'inline-block' : 'none';
+                // Multi-hit/Pivot are metadata shown in move info, not on the learnset nodes.
+                const moveTagHtml = '';
                 const clickAction = custom ? `openCustomMoveModal(${i})` : `showMoveDetail('${String(m.name || '').replace(/'/g, "\\'")}')`;
 
                 return `
@@ -1073,6 +1108,7 @@ function handleMoveKey(e) {
                                 <span class="type-pill ${typeClass}">${m.type || 'Normal'}</span>
                                 <span class="cat-pill ${catClass}">${getCategoryIcon(m.category || 'Status', 14)}</span>
                                 <span class="power-text">${m.basePower || '—'} BP / ${accText}</span>
+                                ${moveTagHtml}
                             </div>
                             <div class="move-method-row">
                                 <select class="method-select-inline" onchange="updateMoveMethod(${i}, this.value); event.stopPropagation();" onclick="event.stopPropagation();">
@@ -1768,9 +1804,18 @@ function handleMoveKey(e) {
             // Build flag tidbits using the editor's normalized convention.
             // Vanilla Showdown flags are inverted here, and Status-only tags are
             // suppressed for damaging moves.
-            const flags = isCustomMove(move)
-                ? (move.flags || {})
-                : convertShowdownFlagsToEditorFlags(sdEntry ? (sdEntry[1].flags || {}) : (move.flags || {}), move.category);
+            const flags = getMoveEditorFlags({
+                ...move,
+                // Showdown stores multi-hit as the top-level `multihit` property,
+                // not inside `flags`. Pass it through explicitly so Move Info can
+                // render the same Multi-hit badge as the learnset data.
+                multihit: isCustomMove(move)
+                    ? move.multihit
+                    : (sdEntry ? sdEntry[1].multihit : move.multihit),
+                flags: isCustomMove(move)
+                    ? (move.flags || {})
+                    : (sdEntry ? (sdEntry[1].flags || {}) : (move.flags || {}))
+            });
             const flagLabels = getFlagLabels(flags, move.category);
             let flagsHtml = '';
             if (flagLabels.length) {

@@ -702,6 +702,7 @@ function getGenderRatioValue() {
             if (flags.ohko) labels.push('OHKO');
             if (flags.priority) labels.push('Priority');
             if (flags.multihit) labels.push('Multi-hit');
+            if (flags.pivot) labels.push('Pivot');
             if (flags.protect) labels.push('Bypass Protect');
             if (flags.bypasssub) labels.push('Bypass Substitute');
             if (isStatus && flags.reflectable) labels.push('Cannot be Bounced');

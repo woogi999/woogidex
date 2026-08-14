@@ -424,6 +424,8 @@
         .learnset-item:hover { background: var(--bg-panel); transform: translateX(4px); }
         .learnset-item .move-name { flex: 1; font-weight: 600; font-size: 14px; }
         .learnset-item .move-meta { display: flex; gap: 8px; align-items: center; }
+        .learnset-item .move-flag-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+        .learnset-item .move-flag-badges .flag-tidbit { font-size: 9px; padding: 2px 6px; }
         .learnset-item .cat-pill {
             font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 700; text-transform: uppercase;
         }
