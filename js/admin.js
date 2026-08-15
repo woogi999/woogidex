@@ -2,16 +2,21 @@
 // Deliberately standalone: does NOT import app.js/auth.js/community.js,
 // since those are wired to index.html's specific DOM and to each other in
 // ways that assume the main site's page structure. This file keeps its own
-// tiny Supabase client instead.
+// tiny Supabase client and its own tiny sign-in form instead.
 //
 // SECURITY NOTE: every check in this file is a UX convenience, not the real
-// gate. The real gate is Postgres RLS + the admin_set_user_role() RPC
-// (see ADMIN_PANEL_SETUP.sql), which independently re-verify staff status
+// gate. The real gate is Postgres RLS + the admin_* SECURITY DEFINER RPCs
+// (see BADGES_UNIFIED_SETUP.sql), which independently re-verify staff status
 // and rank on every request no matter what this client-side code does or
 // doesn't check. Treat this file as "hide the panel from people who
 // shouldn't see it", not "the thing standing between users and the data".
-
-import { BADGES, renderBadgeRow } from './data.js';
+//
+// MODEL: roles and badges are merged. A "badge" is a row in the `badges`
+// table carrying label/icon/color/description/rank/permissions. A user can
+// hold any number of badges (profile_badges). Their effective permissions
+// are the union of every badge they hold; their effective rank is the max
+// rank among them. There's no more separate role dropdown — a user's badge
+// multi-select IS their role.
 
 const SUPABASE_URL = 'https://qstbascfeolkyxtrqqwv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_B4jEJ--w0XFsgXDmQeJREA_xH1GRBsf';
@@ -27,22 +32,22 @@ async function getClient() {
 }
 
 const state = {
-    me: null,          // { id, role }
-    results: [],        // last search results, each with .role and .badges attached
-    roles: [],          // live rows from the `roles` table, sorted by rank
+    me: null,        // { id, name, badgeKeys:[], rank, canManageBadges, canDeleteAny }
+    results: [],      // last user search results, each with .badgeKeys attached
+    badges: [],       // live rows from the `badges` table, sorted rank desc
 };
 
-function rolesByKey() {
+function badgesByKey() {
     const map = {};
-    state.roles.forEach(r => { map[r.key] = r; });
+    state.badges.forEach(b => { map[b.key] = b; });
     return map;
 }
 
-async function loadRoles() {
+async function loadBadges() {
     const client = await getClient();
-    const { data, error } = await client.from('roles').select('*').order('rank', { ascending: true });
-    if (error) { showToast('Could not load roles: ' + error.message, 'error'); return; }
-    state.roles = data || [];
+    const { data, error } = await client.from('badges').select('*').order('rank', { ascending: false });
+    if (error) { showToast('Could not load badges: ' + error.message, 'error'); return; }
+    state.badges = data || [];
 }
 
 function $(id) { return document.getElementById(id); }
@@ -57,6 +62,43 @@ function showToast(msg, kind) {
     showToast._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
 }
 
+function icons() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
+
+// ==================== SIGN IN / OUT ====================
+async function signIn(identifier, password) {
+    const client = await getClient();
+    let email = identifier.trim();
+    if (!email.includes('@')) {
+        const { data: resolvedEmail, error: rpcError } = await client.rpc('email_for_username', { input_username: email });
+        if (rpcError || !resolvedEmail) throw new Error('Invalid username or password.');
+        email = resolvedEmail;
+    }
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw new Error('Invalid username or password.');
+}
+
+async function handleSignInSubmit(e) {
+    e.preventDefault();
+    const errorEl = $('admin-signin-error');
+    const btn = $('admin-signin-btn');
+    errorEl.textContent = '';
+    btn.disabled = true;
+    try {
+        await signIn($('admin-signin-identifier').value, $('admin-signin-password').value);
+        await init();
+    } catch (err) {
+        errorEl.textContent = err.message || 'Sign in failed.';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function signOut() {
+    const client = await getClient();
+    await client.auth.signOut();
+    renderGate('signedOut');
+}
+
 // ==================== GATE ====================
 async function init() {
     const client = await getClient();
@@ -67,22 +109,30 @@ async function init() {
         return;
     }
 
-    const { data: profile, error } = await client
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
-        .maybeSingle();
+    await loadBadges();
 
-    if (error || !profile || !['moderator', 'admin', 'developer'].includes(profile.role)) {
+    const { data: myProfile } = await client.from('profiles').select('username').eq('id', session.user.id).maybeSingle();
+    const { data: myBadgeRows } = await client.from('profile_badges').select('badge_key').eq('user_id', session.user.id);
+    const myKeys = (myBadgeRows || []).map(r => r.badge_key);
+    const mine = state.badges.filter(b => myKeys.includes(b.key));
+    const rank = mine.reduce((m, b) => Math.max(m, b.rank), 0);
+    const canManageBadges = mine.some(b => b.can_manage_badges);
+    const canDeleteAny = mine.some(b => b.can_delete_any);
+
+    if (!canManageBadges && !canDeleteAny) {
         renderGate('forbidden');
         return;
     }
 
-    state.me = { id: session.user.id, role: profile.role };
+    state.me = {
+        id: session.user.id,
+        name: myProfile?.username || session.user.email,
+        badgeKeys: myKeys, rank, canManageBadges, canDeleteAny,
+    };
+
+    $('admin-whoami-name').textContent = state.me.name;
     renderGate('ok');
-    await loadRoles();
-    renderRolesPanel();
-    buildBadgeCheckboxTemplate();
+    renderBadgesPanel();
     $('admin-search-form').addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
     // Show a starting page of users so the panel isn't empty on load.
     runSearch();
@@ -92,16 +142,147 @@ function renderGate(mode) {
     $('admin-gate-signedout').style.display = mode === 'signedOut' ? 'block' : 'none';
     $('admin-gate-forbidden').style.display = mode === 'forbidden' ? 'block' : 'none';
     $('admin-panel').style.display = mode === 'ok' ? 'block' : 'none';
+    $('admin-signed-out-actions').style.display = mode === 'ok' ? 'none' : 'block';
+    $('admin-signed-in-actions').style.display = mode === 'ok' ? 'flex' : 'none';
+    icons();
 }
 
-// ==================== SEARCH ====================
+// ==================== BADGES PANEL ====================
+function renderBadgesPanel() {
+    const section = $('admin-badges-section');
+    if (!state.me.canManageBadges) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+
+    const cards = state.badges.map(b => {
+        const perms = [
+            `<span class="admin-perm-pill ${b.can_delete_any ? 'on' : ''}" style="${b.can_delete_any ? `background:${b.color};` : ''}">Moderate</span>`,
+            `<span class="admin-perm-pill ${b.can_manage_badges ? 'on' : ''}" style="${b.can_manage_badges ? `background:${b.color};` : ''}">Manage</span>`,
+        ].join('');
+        const locked = b.rank >= state.me.rank;
+        return `
+            <div class="admin-badge-card">
+                <div class="admin-badge-card-top">
+                    <div class="admin-badge-icon-chip" style="background:${escapeHtml(b.color)}22;color:${escapeHtml(b.color)};">
+                        <i data-lucide="${escapeHtml(b.icon || 'star')}"></i>
+                    </div>
+                    <div>
+                        <div class="admin-badge-card-title">${escapeHtml(b.label)}</div>
+                        <div class="admin-badge-card-rank">Rank ${b.rank}</div>
+                    </div>
+                </div>
+                ${b.description ? `<div class="admin-badge-card-desc">${escapeHtml(b.description)}</div>` : ''}
+                <div class="admin-badge-card-perms">${perms}</div>
+                <div class="admin-badge-card-actions">
+                    <button type="button" onclick="window.adminEditBadge('${b.key}')" ${locked ? 'disabled title="Rank too high to edit"' : ''}>
+                        <i data-lucide="pencil"></i> Edit
+                    </button>
+                </div>
+            </div>`;
+    }).join('');
+
+    $('admin-badges-grid').innerHTML = cards + `
+        <button type="button" class="admin-add-badge-card" onclick="window.adminAddBadge()">
+            <i data-lucide="plus-circle"></i> Add badge
+        </button>`;
+    icons();
+}
+
+function openBadgeForm(existingKey) {
+    const b = existingKey ? badgesByKey()[existingKey] : null;
+    $('admin-badge-form-title').textContent = b ? `Edit "${b.label}"` : 'Add a badge';
+    $('admin-badge-key').value = b ? b.key : '';
+    $('admin-badge-key').disabled = !!b; // key is the primary key — don't allow renaming it
+    $('admin-badge-label').value = b ? b.label : '';
+    $('admin-badge-icon').value = b ? b.icon : 'star';
+    $('admin-badge-color').value = b ? b.color : '#6b7280';
+    $('admin-badge-description').value = b ? (b.description || '') : '';
+    $('admin-badge-rank').value = b ? b.rank : 0;
+    $('admin-badge-can-delete').checked = b ? b.can_delete_any : false;
+    $('admin-badge-can-manage').checked = b ? b.can_manage_badges : false;
+    $('admin-badge-delete-btn').style.display = b ? 'flex' : 'none';
+    $('admin-badge-form-modal').dataset.editingKey = existingKey || '';
+    previewBadgeIcon();
+    $('admin-badge-form-modal').classList.add('active');
+}
+
+function closeBadgeForm() {
+    $('admin-badge-form-modal').classList.remove('active');
+}
+
+function previewBadgeIcon() {
+    const i = $('admin-badge-icon-preview-i');
+    const wrap = $('admin-badge-icon-preview');
+    const name = $('admin-badge-icon').value.trim() || 'star';
+    const color = $('admin-badge-color').value;
+    i.setAttribute('data-lucide', name);
+    wrap.style.background = color + '22';
+    wrap.style.color = color;
+    icons();
+}
+
+async function submitBadgeForm(event) {
+    event.preventDefault();
+    const client = await getClient();
+    const key = $('admin-badge-key').value.trim().toLowerCase();
+    if (!/^[a-z0-9_]{2,24}$/.test(key)) {
+        showToast('Badge key must be 2-24 lowercase letters/numbers/underscores.', 'error');
+        return;
+    }
+    const rank = parseInt($('admin-badge-rank').value, 10) || 0;
+    if (rank >= state.me.rank) {
+        showToast(`Rank must be lower than your own rank (${state.me.rank}).`, 'error');
+        return;
+    }
+    const payload = {
+        p_key: key,
+        p_label: $('admin-badge-label').value.trim() || key,
+        p_icon: $('admin-badge-icon').value.trim() || 'star',
+        p_color: $('admin-badge-color').value,
+        p_description: $('admin-badge-description').value.trim(),
+        p_rank: rank,
+        p_can_delete_any: $('admin-badge-can-delete').checked,
+        p_can_manage_badges: $('admin-badge-can-manage').checked,
+    };
+    // admin_upsert_badge is a SECURITY DEFINER RPC (see BADGES_UNIFIED_SETUP.sql)
+    // — re-checks can_manage_badges + rank server-side regardless of what
+    // this form lets you type.
+    const { error } = await client.rpc('admin_upsert_badge', payload);
+    if (error) {
+        showToast('Could not save badge: ' + error.message, 'error');
+        return;
+    }
+    showToast('Badge saved', 'success');
+    closeBadgeForm();
+    await loadBadges();
+    renderBadgesPanel();
+    renderResults(); // badge checkboxes/labels elsewhere may need the new data
+}
+
+async function deleteBadge() {
+    const key = $('admin-badge-form-modal').dataset.editingKey;
+    if (!key) return;
+    if (!confirm(`Delete the "${badgesByKey()[key]?.label || key}" badge? This removes it from every user who has it.`)) return;
+    const client = await getClient();
+    const { error } = await client.rpc('admin_delete_badge', { p_key: key });
+    if (error) {
+        showToast('Could not delete: ' + error.message, 'error');
+        return;
+    }
+    showToast('Badge deleted', 'success');
+    closeBadgeForm();
+    await loadBadges();
+    renderBadgesPanel();
+    runSearch();
+}
+
+// ==================== SEARCH / USERS ====================
 async function runSearch() {
     const client = await getClient();
     const q = $('admin-search-input').value.trim();
     const resultsEl = $('admin-results');
     resultsEl.innerHTML = '<div class="admin-empty">Loading…</div>';
 
-    // admin_search_users is a SECURITY DEFINER RPC (see BADGES_EVERYWHERE_SETUP.sql)
+    // admin_search_users is a SECURITY DEFINER RPC (see BADGES_UNIFIED_SETUP.sql)
     // — it's the only way to get email/account data, since auth.users is never
     // client-readable directly, even for staff.
     const { data: users, error } = await client.rpc('admin_search_users', { search_query: q });
@@ -122,7 +303,7 @@ async function runSearch() {
         (badgesByUser[row.user_id] ||= []).push(row.badge_key);
     });
 
-    state.results = users.map(u => ({ ...u, badges: badgesByUser[u.id] || [] }));
+    state.results = users.map(u => ({ ...u, badgeKeys: badgesByUser[u.id] || [] }));
     renderResults();
 }
 
@@ -131,36 +312,48 @@ function fmtDate(iso) {
     return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function userRank(badgeKeys) {
+    const map = badgesByKey();
+    return badgeKeys.reduce((m, k) => Math.max(m, map[k]?.rank ?? 0), 0);
+}
+
 function renderResults() {
     const resultsEl = $('admin-results');
-    const rolesMap = rolesByKey();
-    const myRank = rolesMap[state.me.role]?.rank ?? 0;
-    const canManageRoles = !!rolesMap[state.me.role]?.can_manage_roles;
 
     resultsEl.innerHTML = state.results.map(u => {
-        const targetRank = rolesMap[u.role]?.rank ?? 0;
         const isSelf = u.id === state.me.id;
-        const roleLocked = !canManageRoles || targetRank > myRank || isSelf;
-        const roleOptions = state.roles
-            .filter(r => r.rank <= myRank)
-            .map(r => `<option value="${r.key}" ${r.key === u.role ? 'selected' : ''}>${escapeHtml(r.label)}</option>`)
-            .join('');
+        const targetRank = userRank(u.badgeKeys);
+        // Self-editing is allowed (see admin_set_user_badges) — only other
+        // users of equal/higher rank stay locked.
+        const rowLocked = !state.me.canManageBadges || (!isSelf && targetRank >= state.me.rank);
 
-        const badgeChecks = Object.entries(BADGES).map(([key, b]) => {
-            const checked = u.badges.includes(key) ? 'checked' : '';
+        const rowBadges = u.badgeKeys.map(k => {
+            const b = badgesByKey()[k];
+            if (!b) return '';
+            return b.rank > 0
+                ? `<span class="role-tag" style="color:${escapeHtml(b.color)};border-color:${escapeHtml(b.color)};">${escapeHtml(b.label)}</span>`
+                : `<i data-lucide="${escapeHtml(b.icon || 'star')}" class="profile-badge" title="${escapeHtml(b.label)}" style="width:14px;height:14px;color:${escapeHtml(b.color)};"></i>`;
+        }).join('');
+
+        const badgeChecks = state.badges.map(b => {
+            const checked = u.badgeKeys.includes(b.key) ? 'checked' : '';
+            // A badge can only be assigned by someone whose own rank is
+            // strictly higher than that badge's rank (mirrors the server check).
+            const disabled = rowLocked || b.rank >= state.me.rank;
             return `
-                <label class="admin-badge-check" title="${escapeHtml(b.tooltip)}">
-                    <input type="checkbox" data-user="${u.id}" data-badge="${key}" ${checked}
-                        onchange="window.adminToggleBadge(this)">
-                    <span>${b.label}</span>
+                <label class="admin-badge-check ${disabled ? 'locked' : ''}" title="${escapeHtml(b.description || b.label)}">
+                    <input type="checkbox" data-badge="${b.key}" ${checked} ${disabled ? 'disabled' : ''}
+                        onchange="window.adminBadgeCheckboxChanged('${u.id}')">
+                    <i data-lucide="${escapeHtml(b.icon || 'star')}" style="color:${escapeHtml(b.color)};"></i>
+                    <span>${escapeHtml(b.label)}</span>
                 </label>`;
         }).join('');
 
         return `
-            <div class="admin-user-row">
+            <div class="admin-user-row" id="admin-user-row-${u.id}">
                 <div class="admin-user-head">
                     <strong>${escapeHtml(u.username || '(no username)')}</strong>
-                    ${renderBadgeRow(u.badges, 14)}
+                    ${rowBadges}
                     ${isSelf ? '<span class="admin-you-tag">you</span>' : ''}
                 </div>
                 <div class="admin-user-meta">
@@ -169,14 +362,12 @@ function renderResults() {
                     <span>Last seen ${fmtDate(u.last_sign_in_at)}</span>
                     <span>${u.published_count ?? 0} published</span>
                 </div>
-                <div class="admin-user-controls">
-                    <label class="admin-field-label">Role
-                        <select data-user="${u.id}" data-prev-role="${u.role}" ${roleLocked ? 'disabled' : ''}
-                            onchange="window.adminChangeRole(this)">
-                            ${roleOptions}
-                        </select>
-                    </label>
-                    <div class="admin-badge-grid">${badgeChecks}</div>
+                <div>
+                    <span class="admin-badge-select-label">Badges</span>
+                    <div class="admin-badge-select-grid" data-user="${u.id}">${badgeChecks}</div>
+                    ${!rowLocked ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px;display:none;" id="admin-save-badges-${u.id}" onclick="window.adminSaveBadges('${u.id}')">
+                        <i data-lucide="check" style="width:14px;height:14px;"></i> Save badges
+                    </button>` : ''}
                 </div>
                 ${u.published_count > 0 ? `
                 <div class="admin-mons-toggle">
@@ -187,18 +378,49 @@ function renderResults() {
                 </div>` : ''}
             </div>`;
     }).join('');
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    icons();
 }
 
+function badgeCheckboxChanged(userId) {
+    const btn = $('admin-save-badges-' + userId);
+    if (btn) btn.style.display = 'inline-flex';
+}
+
+async function saveBadges(userId) {
+    const client = await getClient();
+    const grid = document.querySelector(`.admin-badge-select-grid[data-user="${userId}"]`);
+    const btn = $('admin-save-badges-' + userId);
+    const checked = [...grid.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.dataset.badge);
+
+    if (btn) { btn.disabled = true; }
+
+    // admin_set_user_badges is a SECURITY DEFINER RPC (see
+    // BADGES_UNIFIED_SETUP.sql) — re-checks can_manage_badges and rank
+    // hierarchy server-side regardless of what this form lets you check.
+    const { error } = await client.rpc('admin_set_user_badges', { target_user_id: userId, new_badge_keys: checked });
+
+    if (error) {
+        showToast('Could not update badges: ' + error.message, 'error');
+        if (btn) btn.disabled = false;
+        return;
+    }
+    showToast('Badges updated', 'success');
+    const entry = state.results.find(u => u.id === userId);
+    if (entry) entry.badgeKeys = checked;
+    if (btn) btn.style.display = 'none';
+    renderResults();
+}
+
+// ==================== PUBLISHED MONS ====================
 async function toggleMonsList(btn, userId) {
     const listEl = $('admin-mons-' + userId);
     const icon = btn.querySelector('i');
-    const isOpen = listEl.style.display !== 'none';
+    const isOpen = listEl.style.display === 'block';
 
     if (isOpen) {
         listEl.style.display = 'none';
         if (icon) icon.setAttribute('data-lucide', 'chevron-right');
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        icons();
         return;
     }
 
@@ -219,7 +441,7 @@ async function toggleMonsList(btn, userId) {
     }
     if (!mons || !mons.length) {
         listEl.innerHTML = '<div class="admin-empty">No published mons.</div>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        icons();
         return;
     }
 
@@ -232,14 +454,14 @@ async function toggleMonsList(btn, userId) {
             </button>
         </div>
     `).join('');
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    icons();
 }
 
 async function deleteMon(monId, userId) {
     if (!confirm('Remove this published Fakemon from the Community Hub? This cannot be undone.')) return;
     const client = await getClient();
     // admin_delete_published_mon is a SECURITY DEFINER RPC (see
-    // BADGES_EVERYWHERE_SETUP.sql) — real enforcement is still the
+    // BADGES_UNIFIED_SETUP.sql) — real enforcement is still the
     // published_mons DELETE RLS policy staff already satisfy directly.
     const { error } = await client.rpc('admin_delete_published_mon', { mon_id: monId });
     if (error) {
@@ -254,139 +476,23 @@ async function deleteMon(monId, userId) {
     if (userEntry) userEntry.published_count = Math.max(0, (userEntry.published_count || 1) - 1);
 }
 
-function buildBadgeCheckboxTemplate() {
-    // no-op placeholder kept for clarity/extensibility; badges are built
-    // per-row in renderResults() since availability depends on the row.
-}
-
-// ==================== ROLE MANAGEMENT ====================
-function renderRolesPanel() {
-    const section = $('admin-roles-section');
-    const canManageRoles = !!rolesByKey()[state.me.role]?.can_manage_roles;
-    if (!canManageRoles) { section.style.display = 'none'; return; }
-    section.style.display = 'block';
-
-    $('admin-roles-list').innerHTML = state.roles.map(r => `
-        <div class="admin-role-row">
-            <span class="role-tag" style="color:${escapeHtml(r.color)};border-color:${escapeHtml(r.color)};">${escapeHtml(r.label)}</span>
-            <span class="admin-role-meta">
-                rank ${r.rank}${r.can_delete_any ? ' · moderates content' : ''}${r.can_manage_roles ? ' · manages roles' : ''}${r.can_manage_badges ? ' · manages badges' : ''}
-            </span>
-            <button type="button" onclick="window.adminEditRole('${r.key}')">
-                <i data-lucide="pencil"></i> Edit
-            </button>
-        </div>
-    `).join('');
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-}
-
-function openRoleForm(existingKey) {
-    const r = existingKey ? rolesByKey()[existingKey] : null;
-    $('admin-role-form-title').textContent = r ? `Edit "${r.label}"` : 'Add a new role';
-    $('admin-role-key').value = r ? r.key : '';
-    $('admin-role-key').disabled = !!r; // key is the primary key — don't allow renaming it, only its label/etc.
-    $('admin-role-label').value = r ? r.label : '';
-    $('admin-role-color').value = r ? r.color : '#6b7280';
-    $('admin-role-rank').value = r ? r.rank : (Math.max(0, ...state.roles.map(x => x.rank)) + 1);
-    $('admin-role-can-delete').checked = r ? r.can_delete_any : false;
-    $('admin-role-can-manage-roles').checked = r ? r.can_manage_roles : false;
-    $('admin-role-can-manage-badges').checked = r ? r.can_manage_badges : false;
-    $('admin-role-form-modal').style.display = 'flex';
-}
-
-function closeRoleForm() {
-    $('admin-role-form-modal').style.display = 'none';
-}
-
-async function submitRoleForm(event) {
-    event.preventDefault();
-    const client = await getClient();
-    const key = $('admin-role-key').value.trim().toLowerCase();
-    if (!/^[a-z0-9_]{2,20}$/.test(key)) {
-        showToast('Role key must be 2-20 lowercase letters/numbers/underscores.', 'error');
-        return;
-    }
-    const payload = {
-        p_key: key,
-        p_label: $('admin-role-label').value.trim() || key,
-        p_color: $('admin-role-color').value,
-        p_rank: parseInt($('admin-role-rank').value, 10) || 0,
-        p_can_delete_any: $('admin-role-can-delete').checked,
-        p_can_manage_roles: $('admin-role-can-manage-roles').checked,
-        p_can_manage_badges: $('admin-role-can-manage-badges').checked,
-    };
-    // admin_upsert_role is a SECURITY DEFINER RPC (see
-    // LIVE_PROFILES_AND_ROLES_SETUP.sql) — re-checks can_manage_roles
-    // server-side regardless of what this form lets you type.
-    const { error } = await client.rpc('admin_upsert_role', payload);
-    if (error) {
-        showToast('Could not save role: ' + error.message, 'error');
-        return;
-    }
-    showToast('Role saved', 'success');
-    closeRoleForm();
-    await loadRoles();
-    renderRolesPanel();
-    renderResults(); // role dropdowns/labels elsewhere may need the new data
-}
-
-// ==================== ACTIONS ====================
-async function adminChangeRole(selectEl) {
-    const client = await getClient();
-    const targetId = selectEl.dataset.user;
-    const prevRole = selectEl.dataset.prevRole;
-    const newRole = selectEl.value;
-    selectEl.disabled = true;
-
-    const { error } = await client.rpc('admin_set_user_role', { target_user_id: targetId, new_role: newRole });
-
-    if (error) {
-        showToast('Could not change role: ' + error.message, 'error');
-        selectEl.value = prevRole; // revert visually
-    } else {
-        selectEl.dataset.prevRole = newRole;
-        showToast('Role updated to ' + (rolesByKey()[newRole]?.label || newRole), 'success');
-    }
-    selectEl.disabled = false;
-}
-
-async function adminToggleBadge(checkboxEl) {
-    const client = await getClient();
-    const targetId = checkboxEl.dataset.user;
-    const badgeKey = checkboxEl.dataset.badge;
-    checkboxEl.disabled = true;
-
-    let error;
-    if (checkboxEl.checked) {
-        ({ error } = await client.from('profile_badges').insert({
-            user_id: targetId, badge_key: badgeKey, granted_by: state.me.id
-        }));
-    } else {
-        ({ error } = await client.from('profile_badges').delete().eq('user_id', targetId).eq('badge_key', badgeKey));
-    }
-
-    if (error) {
-        showToast('Could not update badge: ' + error.message, 'error');
-        checkboxEl.checked = !checkboxEl.checked; // revert
-    } else {
-        showToast(checkboxEl.checked ? 'Badge granted' : 'Badge removed', 'success');
-    }
-    checkboxEl.disabled = false;
-}
-
 function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 
 // Exposed for inline onclick/onchange handlers (matches the rest of the site's pattern).
-window.adminChangeRole = adminChangeRole;
-window.adminToggleBadge = adminToggleBadge;
+window.adminBadgeCheckboxChanged = badgeCheckboxChanged;
+window.adminSaveBadges = saveBadges;
 window.adminToggleMonsList = toggleMonsList;
 window.adminDeleteMon = deleteMon;
 window.adminRunSearch = runSearch;
-window.adminEditRole = (key) => openRoleForm(key);
-window.adminAddRole = () => openRoleForm(null);
-window.adminCloseRoleForm = closeRoleForm;
-window.adminSubmitRoleForm = submitRoleForm;
+window.adminEditBadge = (key) => openBadgeForm(key);
+window.adminAddBadge = () => openBadgeForm(null);
+window.adminCloseBadgeForm = closeBadgeForm;
+window.adminSubmitBadgeForm = submitBadgeForm;
+window.adminDeleteBadge = deleteBadge;
+window.adminPreviewBadgeIcon = previewBadgeIcon;
+window.adminSignOut = signOut;
 
+$('admin-signin-form').addEventListener('submit', handleSignInSubmit);
 init();

@@ -7,226 +7,272 @@
      a security measure by itself (see admin.js's note on that) — it just
      stops the page from showing up in a Google search. -->
 <meta name="robots" content="noindex, nofollow">
-<title>Staff Panel</title>
+<title>Staff Panel · Woogidex</title>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <style>
-    :root {
-        --bg-dark: #f5f5f7; --bg-card: #ffffff; --bg-panel: #f0f0f2; --bg-input: #ffffff;
-        --accent: #333333; --text-primary: #1a1a1a; --text-secondary: #555555; --text-muted: #888888;
-        --border: #d0d0d5; --border-light: #e8e8ec;
-        --success: #2d8a3e; --danger: #c0392b; --info: #2c5aa0;
-    }
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --bg-dark: #0f0f12; --bg-card: #1a1a20; --bg-panel: #23232a; --bg-input: #1e1e24;
-            --accent: #e0e0e5; --text-primary: #e8e8ec; --text-secondary: #a0a0a8; --text-muted: #6b6b75;
-            --border: #3a3a42; --border-light: #2a2a30;
-            --success: #3dbb52; --danger: #e74c3c; --info: #5b8ee0;
-        }
-    }
-    * { box-sizing: border-box; }
-    body {
-        margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: var(--bg-dark); color: var(--text-primary); min-height: 100vh;
-    }
-    .admin-shell { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
-    .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-    .admin-header h1 { font-size: 22px; margin: 0; }
-    .admin-header .admin-header-sub { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+    /* Admin-only additions — everything else (colors, .btn, .panel, .modal,
+       .form-group, .role-tag, .profile-badge) comes from style.css so this
+       page stays visually identical to the rest of the site. */
+    .admin-shell { max-width: 900px; margin: 0 auto; padding: 0 20px 80px; }
 
-    .admin-gate-msg {
-        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-        padding: 40px 24px; text-align: center; color: var(--text-secondary);
-    }
-    .admin-gate-msg strong { display: block; font-size: 18px; color: var(--text-primary); margin-bottom: 8px; }
-    .admin-gate-msg a { color: var(--info); }
+    .admin-gate-wrap { max-width: 380px; margin: 60px auto; }
+    .admin-gate-msg { text-align: center; padding: 8px 4px 20px; }
+    .admin-gate-msg i { width: 34px; height: 34px; color: var(--text-muted); margin-bottom: 10px; }
+    .admin-gate-msg strong { display: block; font-size: 18px; margin-bottom: 6px; }
+    .admin-gate-msg p { color: var(--text-secondary); font-size: 13.5px; line-height: 1.5; }
 
     #admin-panel { display: none; }
+    .admin-topbar { display: flex; align-items: center; justify-content: space-between; margin: 24px 0; flex-wrap: wrap; gap: 10px; }
+    .admin-topbar h2 { font-size: 22px; }
+    .admin-whoami { font-size: 12.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 
-    .admin-search-bar { display: flex; gap: 8px; margin-bottom: 20px; }
-    .admin-search-bar input {
-        flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
-        background: var(--bg-input); color: var(--text-primary); font-size: 14px;
-    }
-    .admin-search-bar button {
-        padding: 10px 18px; border-radius: 8px; border: none; background: var(--accent);
-        color: var(--bg-dark); font-weight: 600; cursor: pointer;
-    }
+    .admin-section { margin-bottom: 36px; }
+    .admin-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; }
+    .admin-section-head h3 { font-size: 16px; display: flex; align-items: center; gap: 8px; }
+    .admin-section-head h3 i { width: 17px; height: 17px; color: var(--text-secondary); }
+    .admin-section-sub { color: var(--text-muted); font-size: 12.5px; margin: -8px 0 14px; }
 
-    .admin-empty { color: var(--text-muted); padding: 20px 0; }
+    .admin-empty { color: var(--text-muted); padding: 18px 4px; font-size: 13.5px; }
     .admin-error { color: var(--danger); }
 
+    /* --- badges grid --- */
+    .admin-badges-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+    .admin-badge-card {
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+        padding: 14px; display: flex; flex-direction: column; gap: 8px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .admin-badge-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    .admin-badge-card-top { display: flex; align-items: center; gap: 10px; }
+    .admin-badge-icon-chip {
+        width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        flex: 0 0 auto;
+    }
+    .admin-badge-icon-chip i { width: 18px; height: 18px; }
+    .admin-badge-card-title { font-weight: 700; font-size: 14.5px; line-height: 1.2; }
+    .admin-badge-card-rank { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+    .admin-badge-card-desc { font-size: 12.5px; color: var(--text-secondary); line-height: 1.4; flex: 1; }
+    .admin-badge-card-perms { display: flex; flex-wrap: wrap; gap: 5px; }
+    .admin-perm-pill {
+        font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+        padding: 2px 8px; border-radius: 999px; background: var(--bg-panel); color: var(--text-secondary); border: 1px solid var(--border-light);
+    }
+    .admin-perm-pill.on { color: #fff; border-color: transparent; }
+    .admin-badge-card-actions { display: flex; gap: 6px; margin-top: 2px; }
+    .admin-badge-card-actions button {
+        flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+        background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+        padding: 6px 8px; font-size: 12px; color: var(--text-primary); cursor: pointer; font-family: inherit;
+    }
+    .admin-badge-card-actions button:hover { background: var(--border-light); }
+    .admin-badge-card-actions button.danger { color: var(--danger); }
+    .admin-badge-card-actions button i { width: 13px; height: 13px; }
+    .admin-add-badge-card {
+        border: 1.5px dashed var(--border); border-radius: 14px; display: flex; align-items: center;
+        justify-content: center; flex-direction: column; gap: 6px; color: var(--text-muted);
+        cursor: pointer; padding: 14px; min-height: 118px; background: none; font-family: inherit; font-size: 13px;
+    }
+    .admin-add-badge-card:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+    .admin-add-badge-card i { width: 22px; height: 22px; }
+
+    /* --- users --- */
+    .admin-search-bar { display: flex; gap: 8px; margin-bottom: 18px; }
+    .admin-search-bar input { flex: 1; }
+
     .admin-user-row {
-        background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 10px;
-        padding: 14px 16px; margin-bottom: 10px;
+        background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px;
+        padding: 16px 18px; margin-bottom: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.03);
     }
-    .admin-user-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 15px; }
-    .admin-user-meta {
-        display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-muted);
-        margin-bottom: 10px;
-    }
+    .admin-user-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 15px; flex-wrap: wrap; }
+    .admin-user-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
     .admin-you-tag {
         font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted);
         border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px;
     }
-    .admin-user-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
-    .admin-field-label {
-        display: flex; flex-direction: column; gap: 4px; font-size: 11px;
-        color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em;
-    }
-    .admin-field-label select {
-        padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
-        background: var(--bg-input); color: var(--text-primary); font-size: 13px; min-width: 130px;
-    }
-    .admin-field-label select:disabled { opacity: .5; cursor: not-allowed; }
-
-    .admin-badge-grid { display: flex; flex-wrap: wrap; gap: 8px 14px; max-width: 480px; }
-    .admin-badge-check {
-        display: flex; align-items: center; gap: 5px; font-size: 12px;
-        color: var(--text-secondary); cursor: pointer; user-select: none;
-    }
-    .admin-badge-check input { cursor: pointer; }
+    .admin-badge-select-label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 8px; }
+    .admin-badge-select-grid { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .admin-badge-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; user-select: none; }
+    .admin-badge-check input { cursor: pointer; accent-color: var(--accent); }
+    .admin-badge-check.locked { opacity: .45; cursor: not-allowed; }
+    .admin-badge-check i { width: 13px; height: 13px; }
 
     .admin-mons-toggle { margin-top: 12px; border-top: 1px solid var(--border-light); padding-top: 10px; }
     .admin-mons-toggle > button {
         background: none; border: none; color: var(--text-secondary); font-size: 12px;
-        cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0;
+        cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; font-family: inherit;
     }
     .admin-mons-toggle > button i { width: 14px; height: 14px; }
     .admin-mons-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-    .admin-mon-row {
-        display: flex; align-items: center; gap: 10px; font-size: 13px;
-        background: var(--bg-panel); border-radius: 6px; padding: 6px 10px;
-    }
+    .admin-mon-row { display: flex; align-items: center; gap: 10px; font-size: 13px; background: var(--bg-panel); border-radius: 8px; padding: 6px 10px; }
     .admin-mon-row span:first-child { flex: 1; }
     .admin-mon-date { color: var(--text-muted); font-size: 11px; }
-    .admin-mon-delete {
-        background: none; border: none; color: var(--danger); cursor: pointer;
-        display: flex; align-items: center; padding: 2px;
-    }
+    .admin-mon-delete { background: none; border: none; color: var(--danger); cursor: pointer; display: flex; align-items: center; padding: 2px; }
     .admin-mon-delete i { width: 15px; height: 15px; }
 
-    .admin-section-head { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 12px; }
-    .admin-section-head h2 { font-size: 16px; margin: 0; }
-    .admin-add-role-btn {
-        display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px;
-        border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-primary);
-        font-size: 12px; cursor: pointer;
-    }
-    .admin-add-role-btn i { width: 14px; height: 14px; }
-
-    .admin-roles-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-    .admin-role-row {
-        display: flex; align-items: center; gap: 12px; background: var(--bg-card);
-        border: 1px solid var(--border-light); border-radius: 8px; padding: 10px 14px; font-size: 13px;
-    }
-    .admin-role-meta { color: var(--text-muted); font-size: 11px; flex: 1; }
-    .admin-role-row button {
-        display: flex; align-items: center; gap: 4px; background: none; border: 1px solid var(--border);
-        border-radius: 6px; padding: 4px 10px; color: var(--text-secondary); font-size: 12px; cursor: pointer;
-    }
-    .admin-role-row button i { width: 13px; height: 13px; }
-
-    .admin-modal-backdrop {
-        position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200;
-        display: flex; align-items: center; justify-content: center; padding: 20px;
-    }
-    .admin-modal {
-        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-        padding: 22px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px;
-    }
-    .admin-modal h3 { margin: 0 0 4px; font-size: 16px; }
-    .admin-modal input[type="text"], .admin-modal input[type="number"] {
-        padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
-        background: var(--bg-input); color: var(--text-primary); font-size: 13px; width: 100%;
-    }
-    .admin-modal input[type="color"] { width: 100%; height: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 2px; background: var(--bg-input); }
     .admin-modal-row { display: flex; gap: 12px; }
-    .admin-modal-row .admin-field-label { flex: 1; }
-    .admin-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
-    .admin-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
-    .admin-modal-cancel { background: none; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 7px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
-    .admin-modal-save { background: var(--accent); color: var(--bg-dark); border: none; border-radius: 7px; padding: 8px 16px; font-weight: 600; cursor: pointer; font-size: 13px; }
+    .admin-modal-row .form-group { flex: 1; }
+    .admin-icon-color-row { display: flex; gap: 12px; align-items: flex-end; }
+    .admin-icon-preview {
+        width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        flex: 0 0 auto; border: 1px solid var(--border);
+    }
+    .admin-icon-preview i { width: 20px; height: 20px; }
+    input[type="color"] { padding: 3px !important; height: 40px; cursor: pointer; }
+    .admin-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-secondary); cursor: pointer; margin: 10px 0; }
+    .admin-checkbox-row input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+    .admin-modal-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
 
     .admin-toast {
         display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-        padding: 10px 18px; border-radius: 8px; background: var(--bg-panel); border: 1px solid var(--border);
-        color: var(--text-primary); font-size: 13px; z-index: 100;
+        padding: 10px 18px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border);
+        color: var(--text-primary); font-size: 13px; z-index: 1100; box-shadow: 0 6px 24px rgba(0,0,0,0.12);
     }
     .admin-toast-success { border-color: var(--success); }
     .admin-toast-error { border-color: var(--danger); }
 </style>
 </head>
 <body>
-<div class="admin-shell">
-    <div class="admin-header">
-        <div>
-            <h1>Staff Panel</h1>
-            <div class="admin-header-sub">Manage roles &amp; badges</div>
-        </div>
-    </div>
-
-    <div id="admin-gate-signedout" class="admin-gate-msg" style="display:none;">
-        <strong>Sign in required</strong>
-        Sign in on the main site first, then reload this page.
-    </div>
-
-    <div id="admin-gate-forbidden" class="admin-gate-msg" style="display:none;">
-        <strong>Access denied</strong>
-        Your account doesn't have staff permissions.
-    </div>
-
-    <div id="admin-panel">
-        <div id="admin-roles-section" style="display:none;">
-            <div class="admin-section-head">
-                <h2>Roles</h2>
-                <button type="button" class="admin-add-role-btn" onclick="window.adminAddRole()">
-                    <i data-lucide="plus"></i> Add role
-                </button>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-left" style="display:flex;align-items:center;gap:14px;">
+                <a href="index.html" class="logo logo-button" style="text-decoration:none;">
+                    <img src="woogidex_icon.png" alt="Woogidex" style="height:50px;width:auto;object-fit:contain;">
+                </a>
+                <div>
+                    <h1 style="font-size:20px;">Staff Panel</h1>
+                    <span style="font-size:12px;color:var(--text-muted);">Roles, badges &amp; moderation</span>
+                </div>
             </div>
-            <div id="admin-roles-list" class="admin-roles-list"></div>
-        </div>
+            <div class="header-actions">
+                <div id="admin-signed-out-actions" style="display:none;">
+                    <a href="index.html" class="btn btn-secondary btn-sm">Back to site</a>
+                </div>
+                <div id="admin-signed-in-actions" class="auth-signed-in" style="display:none;align-items:center;gap:8px;">
+                    <span class="auth-user-email" id="admin-whoami-name"></span>
+                    <a href="index.html" class="btn btn-secondary btn-sm">Back to site</a>
+                    <button class="btn btn-secondary btn-sm" onclick="window.adminSignOut()">Sign Out</button>
+                </div>
+            </div>
+        </header>
 
-        <div class="admin-section-head">
-            <h2>Users</h2>
+        <div class="admin-shell">
+
+            <!-- ===== signed out ===== -->
+            <div id="admin-gate-signedout" class="admin-gate-wrap" style="display:none;">
+                <div class="panel">
+                    <div class="admin-gate-msg">
+                        <i data-lucide="lock"></i>
+                        <strong>Staff sign in</strong>
+                        <p>Sign in with your staff account to continue.</p>
+                    </div>
+                    <p class="auth-modal-error" id="admin-signin-error"></p>
+                    <form id="admin-signin-form">
+                        <div class="form-group">
+                            <label for="admin-signin-identifier">Username or email</label>
+                            <input type="text" id="admin-signin-identifier" autocomplete="username" placeholder="your username or email">
+                        </div>
+                        <div class="form-group">
+                            <label for="admin-signin-password">Password</label>
+                            <input type="password" id="admin-signin-password" autocomplete="current-password" placeholder="••••••••">
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="admin-signin-btn" style="width:100%;justify-content:center;">
+                            <i data-lucide="log-in" style="width:16px;height:16px;"></i> Sign In
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ===== forbidden ===== -->
+            <div id="admin-gate-forbidden" class="admin-gate-wrap" style="display:none;">
+                <div class="panel">
+                    <div class="admin-gate-msg">
+                        <i data-lucide="shield-x"></i>
+                        <strong>Access denied</strong>
+                        <p>You're signed in, but your account doesn't hold a staff badge.</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="window.adminSignOut()" style="width:100%;justify-content:center;">Sign out</button>
+                </div>
+            </div>
+
+            <!-- ===== panel ===== -->
+            <div id="admin-panel">
+
+                <div id="admin-badges-section" class="admin-section" style="display:none;">
+                    <div class="admin-section-head">
+                        <h3><i data-lucide="badge-check"></i> Badges &amp; Roles</h3>
+                    </div>
+                    <p class="admin-section-sub">Badges and roles are the same thing now. A user can hold several; permissions are the union of every badge they hold, and their rank (used for staff hierarchy) is the highest rank among them. Rank 0 badges are purely cosmetic.</p>
+                    <div id="admin-badges-grid" class="admin-badges-grid"></div>
+                </div>
+
+                <div class="admin-section">
+                    <div class="admin-section-head">
+                        <h3><i data-lucide="users"></i> Users</h3>
+                    </div>
+                    <form id="admin-search-form" class="admin-search-bar">
+                        <input id="admin-search-input" type="text" placeholder="Search by username or email…" autocomplete="off">
+                        <button type="submit" class="btn btn-primary">Search</button>
+                    </form>
+                    <div id="admin-results"></div>
+                </div>
+            </div>
         </div>
-        <form id="admin-search-form" class="admin-search-bar">
-            <input id="admin-search-input" type="text" placeholder="Search by username or email…" autocomplete="off">
-            <button type="submit">Search</button>
-        </form>
-        <div id="admin-results"></div>
     </div>
-</div>
 
-<div id="admin-role-form-modal" class="admin-modal-backdrop" style="display:none;">
-    <form class="admin-modal" onsubmit="window.adminSubmitRoleForm(event)">
-        <h3 id="admin-role-form-title">Add a new role</h3>
-        <label class="admin-field-label">Key (used internally, can't be changed later)
-            <input id="admin-role-key" type="text" placeholder="e.g. artist_lead" required>
-        </label>
-        <label class="admin-field-label">Display label
-            <input id="admin-role-label" type="text" placeholder="e.g. Artist Lead" required>
-        </label>
-        <div class="admin-modal-row">
-            <label class="admin-field-label">Color
-                <input id="admin-role-color" type="color" value="#6b7280">
-            </label>
-            <label class="admin-field-label">Rank (higher = more senior)
-                <input id="admin-role-rank" type="number" min="0" step="1" required>
-            </label>
+    <!-- ===== badge editor modal ===== -->
+    <div id="admin-badge-form-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="admin-badge-form-title">Add a badge</h3>
+                <button class="modal-close" type="button" onclick="window.adminCloseBadgeForm()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <form onsubmit="window.adminSubmitBadgeForm(event)">
+                <div class="form-group">
+                    <label for="admin-badge-key">Key (internal id, can't be changed later)</label>
+                    <input id="admin-badge-key" type="text" placeholder="e.g. artist_lead" required>
+                </div>
+                <div class="form-group">
+                    <label for="admin-badge-label">Display label</label>
+                    <input id="admin-badge-label" type="text" placeholder="e.g. Artist Lead" required>
+                </div>
+                <div class="admin-icon-color-row">
+                    <div class="admin-icon-preview" id="admin-badge-icon-preview"><i data-lucide="star" id="admin-badge-icon-preview-i"></i></div>
+                    <div class="form-group" style="flex:1;">
+                        <label for="admin-badge-icon">Icon (lucide.dev name)</label>
+                        <input id="admin-badge-icon" type="text" placeholder="e.g. shield-check" oninput="window.adminPreviewBadgeIcon()">
+                    </div>
+                    <div class="form-group" style="width:70px;">
+                        <label for="admin-badge-color">Color</label>
+                        <input id="admin-badge-color" type="color" value="#6b7280" oninput="window.adminPreviewBadgeIcon()">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="admin-badge-description">Description / tooltip</label>
+                    <textarea id="admin-badge-description" rows="2" placeholder="Shown on hover"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="admin-badge-rank">Rank (0 = cosmetic only, higher = more senior staff)</label>
+                    <input id="admin-badge-rank" type="number" min="0" step="1" required>
+                </div>
+                <label class="admin-checkbox-row"><input id="admin-badge-can-delete" type="checkbox"> Can delete any content (moderation)</label>
+                <label class="admin-checkbox-row"><input id="admin-badge-can-manage" type="checkbox"> Can manage badges &amp; users</label>
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-secondary" id="admin-badge-delete-btn" style="display:none;" onclick="window.adminDeleteBadge()">
+                        <i data-lucide="trash-2" style="width:15px;height:15px;"></i> Delete
+                    </button>
+                    <div style="display:flex;gap:8px;margin-left:auto;">
+                        <button type="button" class="btn btn-secondary" onclick="window.adminCloseBadgeForm()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save badge</button>
+                    </div>
+                </div>
+            </form>
         </div>
-        <label class="admin-checkbox-row"><input id="admin-role-can-delete" type="checkbox"> Can delete any content (moderation)</label>
-        <label class="admin-checkbox-row"><input id="admin-role-can-manage-roles" type="checkbox"> Can manage roles</label>
-        <label class="admin-checkbox-row"><input id="admin-role-can-manage-badges" type="checkbox"> Can grant/revoke badges</label>
-        <div class="admin-modal-actions">
-            <button type="button" class="admin-modal-cancel" onclick="window.adminCloseRoleForm()">Cancel</button>
-            <button type="submit" class="admin-modal-save">Save role</button>
-        </div>
-    </form>
-</div>
+    </div>
 
-<div id="admin-toast" class="admin-toast"></div>
+    <div id="admin-toast" class="admin-toast"></div>
 
-<script type="module" src="js/admin.js"></script>
+    <script type="module" src="js/admin.js"></script>
 </body>
 </html>
