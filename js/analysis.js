@@ -215,9 +215,20 @@ function typingProfile(types){
 function getTarget(){
   const stats={};STAT_KEYS.forEach(k=>stats[k]=Number(document.getElementById(`stat-${k}`)?.value)||0);
   return {
+    id:'woogidex-current',
     name:document.getElementById('fakemon-name')?.value||'Current Fakemon',
     types:[document.getElementById('fakemon-type1')?.value,document.getElementById('fakemon-type2')?.value].filter(Boolean),
-    stats,abilities:state.abilities||[],learnset:state.learnset||[]
+    stats,abilities:state.abilities||[],learnset:state.learnset||[],
+    // This is always the user's own in-progress entry, built from the form
+    // fields - never a lookup of an existing dex species. Without this flag,
+    // every fake?/real? branch elsewhere falls through to a real-species
+    // learnset lookup keyed on the typed name: it happens to work if the name
+    // collides with a real Pokemon (silently using that real Pokemon's actual
+    // learnset instead of what's configured here), and silently produces an
+    // empty movepool if it doesn't. Analysis results should depend only on
+    // the stats/types/abilities/moves actually entered, never on whether the
+    // chosen name happens to exist in the real dex.
+    fake:true
   };
 }
 function fakeDex(f){
@@ -1298,10 +1309,21 @@ function strategicallyRelevantMoves(candidates){
 }
 
 function bestDamageOutput(attacker, defender, generation=9){
-  const candidates=getAnalysisMoves(attacker)
+  const rawCandidates=getAnalysisMoves(attacker)
     .map(m=>damageRange(attacker,defender,m,generation))
-    .filter(Boolean)
-    .filter(x=>!x.move?._offCategory || Number(x.typeMult)>1);
+    .filter(Boolean);
+  // Off-category moves only belong in the pool when the mon's own primary
+  // category can't do anything comparable against this defender - e.g. a
+  // mon whose category got mis-detected, or one that's genuinely walled by
+  // this defender's typing on its main attacking stat. If the primary
+  // category already has an equally- or more-effective option, there's no
+  // realistic reason a set would reach for a coverage move in the "wrong"
+  // stat just because it's also super effective.
+  const inCategoryMult=rawCandidates
+    .filter(x=>!x.move?._offCategory)
+    .reduce((m,x)=>Math.max(m,Number(x.typeMult)||0),0);
+  const candidates=rawCandidates
+    .filter(x=>!x.move?._offCategory || Number(x.typeMult)>inCategoryMult);
   if(!candidates.length)return {best:null,all:[],topMoves:[],hasAttack:false,bestSuperEffective:null,bestNeutral:null,bestResisted:null};
 
   const relevant=strategicallyRelevantMoves(candidates);
@@ -1516,9 +1538,53 @@ function capStatPowerScore(cap){
   return Math.max(5,24*b/100);
 }
 
+function defensiveStatPowerScore(cap){
+  // Mirrors capStatPowerScore's shape/scale but is driven purely by
+  // tankiness (PT/ST), uncoupled from offensive stats entirely. CAP's own
+  // BSR formula multiplies bulk by (PS+SS), which structurally strangles the
+  // score of any low-offense defensive specialist no matter how exceptional
+  // its bulk actually is - that's the mon's whole job, and BSR has no way to
+  // see it. Weight the stronger side of bulk more heavily since specializing
+  // hard into one side (e.g. Slowking-Galar's Special Defense) is a normal,
+  // good wall archetype that a straight PT*ST product also undervalues.
+  const tank=Math.max(cap.PT,cap.ST)*0.7+Math.min(cap.PT,cap.ST)*0.3;
+  if(tank>=260)return 100;
+  if(tank>=220)return 88+(tank-220)/3.33;
+  if(tank>=190)return 78+(tank-190)/3;
+  if(tank>=160)return 66+(tank-160)/2.5;
+  if(tank>=135)return 54+(tank-135)/2.08;
+  if(tank>=110)return 42+(tank-110)/2.08;
+  if(tank>=90)return 32+(tank-90)/2;
+  return Math.max(5,32*tank/90);
+}
+
+function rawBulkPowerScore(tf){
+  // sqrt(hp*def)/sqrt(hp*spd) treat HP and Def/SpD symmetrically. CAP's PT/ST
+  // divide HP by 4 before multiplying it into bulk, so a mon whose bulk comes
+  // mostly from a huge HP stat (Alomomola/Blissey-style walls) was still
+  // getting shortchanged relative to a mon with the same total bulk invested
+  // in Def/SpD instead - even after the standalone defensiveStatPowerScore
+  // fix, since that's built on the same HP/4-compressed PT/ST.
+  const physicalBulk=Number(tf.physicalBulk)||0;
+  const specialBulk=Number(tf.specialBulk)||0;
+  const tank=Math.max(physicalBulk,specialBulk)*0.7+Math.min(physicalBulk,specialBulk)*0.3;
+  if(tank>=170)return 100;
+  if(tank>=150)return 88+(tank-150)/1.67;
+  if(tank>=130)return 76+(tank-130)/1.67;
+  if(tank>=110)return 62+(tank-110)/1.43;
+  if(tank>=90)return 48+(tank-90)/1.43;
+  if(tank>=70)return 32+(tank-70)/1.25;
+  return Math.max(5,32*tank/70);
+}
+
 function intrinsicPowerProfile(tf, abilityInfo){
   const cap=capStatRatings(tf);
-  const statPower=capStatPowerScore(cap);
+  const rawStatPower=capStatPowerScore(cap);
+  // Give bulk-specialist walls the same shot at a high stat-power score that
+  // offense-specialist sweepers get: take whichever standalone measure -
+  // BSR's offense-coupled formula, CAP-normalized bulk, or HP-fair raw bulk -
+  // actually credits this mon's real strength.
+  const statPower=Math.max(rawStatPower,defensiveStatPowerScore(cap),rawBulkPowerScore(tf));
 
   const recovery=Number(tf.recovery)||0;
   const setup=Number(tf.setup)||0;
@@ -1778,8 +1844,21 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
     const incomingMaxPct=(theirBest?.damageMax)?theirBest.damageMax/battleStatsFromBase(target?.stats||{}).hp:incomingExpectedPct;
     const targetRecovery=Number(targetTf?.recoveryMoves||0);
     const hasRecovery=targetRecovery>0;
-    const recoverySustain=(hasRecovery && incomingExpectedPct<0.50) ? 12 : 0;
     const raceScore=details.raceScore;
+    // raceScore is a pure per-hit KO race and has no concept of recovery at
+    // all - it's the same "3HKO" whether or not the defender can Roost back
+    // to full. Model what recovery actually buys: alternating a turn of
+    // taking a hit with a turn healing ~50% nets a positive HP trend whenever
+    // the incoming hit is under 50% of max HP, at which point the attacker
+    // functionally cannot break through on raw damage - the defender just
+    // doesn't lose that war, regardless of what the naive hit-count race says.
+    const sustainCycleMargin=0.50-incomingExpectedPct;
+    const canOutHeal=hasRecovery && incomingExpectedPct>0 && sustainCycleMargin>0;
+    const sustainedRaceScore=canOutHeal
+      ? clamp(70+Math.min(30,sustainCycleMargin*100))
+      : raceScore;
+    const sustainedEnemyHits=canOutHeal ? Infinity : details.enemyHits;
+    const recoverySustain=(hasRecovery && incomingExpectedPct<0.50) ? 12 : 0;
     // Stall leverage: can the target actually win a war of attrition against
     // this specific opponent? That needs reliable recovery to outlast it AND
     // a status tool that actually lands - Toxic does nothing to a Poison or
@@ -1804,7 +1883,7 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
       damageBalance - (damageDisadvantage ? Math.min(25,(theirPct-myPct)*60) : 0)
     );
     const survivalScore=clamp(100-incomingExpectedPct*100);
-    const breakability=details.enemyHits===Infinity ? 100 : details.enemyHits>=4 ? 82 : details.enemyHits===3 ? 68 : details.enemyHits===2 ? 38 : 5;
+    const breakability=sustainedEnemyHits===Infinity ? 100 : sustainedEnemyHits>=4 ? 82 : sustainedEnemyHits===3 ? 68 : sustainedEnemyHits===2 ? 38 : 5;
 
     // Switching matters especially for defensive Pokémon. Score how safely each
     // side can come in on the other's strongest relevant attacks. This is based
@@ -1821,8 +1900,8 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
     // but the actual battle is genuinely close - decided by speed ties, roll
     // variance, crits, or which mon happens to be on the field first - so it
     // shouldn't be presented as a clean, confident "good"/"bad" verdict.
-    const hitMargin=(Number.isFinite(details.myHits)&&Number.isFinite(details.enemyHits))
-      ? Math.abs(details.myHits-details.enemyHits) : Infinity;
+    const hitMargin=(Number.isFinite(details.myHits)&&Number.isFinite(sustainedEnemyHits))
+      ? Math.abs(details.myHits-sustainedEnemyHits) : Infinity;
     const bothThreaten=myPct>=0.4 && theirPct>=0.4;
     // Mutual parity: both sides deal roughly the same, genuinely meaningful
     // damage to each other, AND the resulting KO race is actually close (not
@@ -1843,7 +1922,7 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
     // Recovery/bulk can improve a genuinely winnable wall matchup, but it cannot
     // turn a matchup around when the opponent gets the KO first.
     const defensiveScore=clamp(
-      raceScore*.62 +
+      sustainedRaceScore*.62 +
       damagePressureScore*.23 +
       survivalScore*.10 +
       breakability*.05 +
@@ -1914,7 +1993,7 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
   const unfavorableShare=rows.length?rows.filter(x=>x.score<=42).length/rows.length:0;
   return {rows,weightedScore,topWeighted,matchupPct:rows.length?percentile(rows.map(x=>x.score),weightedScore):50,good,bad,wins:rows.filter(x=>x.score>=60).length,losses:rows.filter(x=>x.score<=40).length,coverage:rows.length,favorableShare,unfavorableShare,sortedByImpact};
 }
-function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic){
+function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor){
   const m=matchup?.weightedScore??50;
   const top=matchup?.topWeighted??50;
   const utility=clamp(roleScore);
@@ -1933,13 +2012,23 @@ function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic){
   // defensive specialist with a genuinely strong utility kit but unremarkable
   // offensive stats was getting graded almost entirely on the part of its kit
   // that isn't its job. Shift a little weight from statPower to utility.
+  // statPower is counted here directly (*.35), AGAIN inside kitPower (which is
+  // itself ~68% statPower internally), and then a THIRD time via the
+  // (statPower-50)*.10 adjustment below core. That triple-count meant a
+  // genuinely strong defensive/utility mon whose CAP BSR looks unremarkable
+  // (bulk + recovery + typing don't move BSR much - it's built around
+  // offensive stat architecture) could still get buried in a low tier even
+  // after the estimateTier score rebalance, because this function - not that
+  // score - is what actually produces the returned tier label. Shift weight
+  // toward the components that reflect real performance and soften the extra
+  // post-hoc statPower bonus.
   const core=clamp(
-    m*.22 +
-    top*.05 +
-    clamp(metagameFit??50)*.10 +
-    utility*.11 +
-    statPower*.35 +
-    kitPower*.17
+    m*.32 +
+    top*.06 +
+    clamp(metagameFit??50)*.13 +
+    utility*.16 +
+    statPower*.20 +
+    kitPower*.13
   );
 
   // CAP's own scale calls 900+ "Too Good" and 1400+ "Exaggerated".
@@ -1951,36 +2040,95 @@ function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic){
   if(bsr>=900 && tf.setup>=1 && tf.recovery>=1 && counterplay<58) return 'Ubers';
   if(bsr>=1050 && (tf.setup>=1||tf.recovery>=1) && m>=45) return 'Ubers';
 
+  // A flat, modest blend factor couldn't do its job: even a perfect
+  // (confidence=1) match to a real OU mon's tier midpoint (~72) wasn't enough
+  // to pull a core score in the ~50s (which is where the CAP stat-architecture
+  // formula lands most bulky/utility walls, since it structurally rewards
+  // offensive stat spread) up past the 66 threshold needed for OU. Scale the
+  // blend nonlinearly with confidence so a near-exact real-world match
+  // dominates the decision, while a loose "closest available" match still
+  // only nudges things.
+  // statPower already gets its due weight inside core (*.20) - letting this
+  // adjustment go negative for below-average statPower was double-punishing
+  // the same weakness twice, which is exactly why weaker mons (an RU-caliber
+  // mon with merely ordinary stats) were getting crushed all the way down to
+  // PU/ZU instead of landing one realistic band below where they belong.
+  // Keep this as a bonus-only nudge for exceptional stat architecture.
+  const anchorWeight=anchor ? Math.pow(anchor.confidence,0.6)*0.85 : 0;
   const adjusted=clamp(
     core +
-    (statPower-50)*.10 -
-    Math.max(0,counterplay-55)*.06
+    Math.max(0,statPower-50)*.04 -
+    Math.max(0,counterplay-55)*.06 +
+    (anchor ? (anchor.midpoint-core)*anchorWeight : 0)
   );
 
-  if(adjusted>=79)return'Ubers';
-  if(adjusted>=66)return'OU';
-  if(adjusted>=54)return'UU';
-  if(adjusted>=45)return'RU';
-  if(adjusted>=36)return'NU';
-  if(adjusted>=27)return'PU';
+  // The threshold bands below assumed `adjusted` regularly reaches into the
+  // 70s-80s for genuinely strong mons. In practice it's an average of six-plus
+  // 0-100 components (matchup performance, metagame fit, role utility, stat
+  // power, kit power), and it's rare for all of them to read 80+ at once even
+  // for a mon that's clearly, comfortably OU-caliber - a realistically strong
+  // mon usually clusters in the mid-50s to mid-60s here. Since real OU is by
+  // far the widest, most permissive tier (dozens of viable Pokemon) while
+  // Ubers is a handful of genuinely format-warping mons, treating OU as a
+  // narrow high band was systematically pushing ordinary-but-good mons down
+  // one or two tiers. Lower every cutoff to match the score distribution the
+  // formula actually produces.
+  if(adjusted>=49)return'OU';
+  if(adjusted>=39)return'UU';
+  if(adjusted>=32)return'RU';
+  if(adjusted>=25)return'NU';
+  if(adjusted>=18)return'PU';
   return'ZU';
 }
+const TIER_BAND_MIDPOINT={Ubers:88,OU:72,UU:60,RU:49,NU:40,PU:31,ZU:15};
+function tierAnchorFromClosest(closest,officialTiers,cfg){
+  // Anchor the estimate on the real Pokemon this fakemon actually resembles,
+  // rather than either (a) trusting an exact name match, which just needs a
+  // name collision regardless of how overpowered the actual stats are, or (b)
+  // ignoring real Pokemon entirely, which was leaving genuinely wall-like
+  // fakemon with nothing but the CAP stat-architecture formula (which can't
+  // see bulk/recovery/typing value) to go on. Look at the handful of most
+  // similar real Pokemon, weight each one's real official tier by how similar
+  // it actually is, and use that blended tier as a soft starting point.
+  const withTiers=(closest||[])
+    .map(c=>({score:Number(c?.score)||0,tier:officialTierOf(c?.p?.name||'',officialTiers,cfg)}))
+    .filter(x=>x.tier && TIER_BAND_MIDPOINT[x.tier]!=null && x.score>0);
+  if(!withTiers.length)return null;
+  const totalWeight=withTiers.reduce((s,x)=>s+x.score*x.score,0);
+  if(totalWeight<=0)return null;
+  const midpoint=withTiers.reduce((s,x)=>s+TIER_BAND_MIDPOINT[x.tier]*x.score*x.score,0)/totalWeight;
+  // Confidence scales with how close the nearest match actually is - a 95+
+  // similarity neighbor is a strong anchor, a 40 similarity "closest available
+  // option" barely constrains anything.
+  const bestScore=Math.max(...withTiers.map(x=>x.score));
+  const confidence=clamp((bestScore-35)/60*100)/100;
+  return {midpoint,confidence};
+}
 function estimateTier(base,closest,tierUsage,officialTiers,targetProfile,cfg,matchup,roleScore,tf,metagameFit,intrinsic){
-  const known=officialTierOf(targetProfile?.name||'',officialTiers,cfg);
-  if(known)return{tier:known,score:clamp(base),reliability:100,anchor:known,usageEvidence:[],weighted:{},bestMatch:100,agreement:1};
-  const tier=matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic);
-  const score=clamp(
-    (matchup?.weightedScore??50)*.18 +
-    (matchup?.topWeighted??50)*.05 +
-    (matchup?.matchupPct??50)*.03 +
-    clamp(metagameFit??50)*.10 +
-    clamp(roleScore)*.09 +
-    clamp(intrinsic?.statPower??50)*.38 +
-    clamp(intrinsic?.score??50)*.17
+  const anchor=tierAnchorFromClosest(closest,officialTiers,cfg);
+  const tier=matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor);
+  // statPower is counted here AND again inside intrinsic.score (which is
+  // itself ~68% statPower internally) - that double-count let raw CAP stat
+  // totals control roughly half of the estimated tier regardless of a mon's
+  // actual defensive utility, recovery, or how it performs in real matchups.
+  // Shift weight toward the components that reflect actual performance -
+  // matchup results, role fit, metagame fit - the same direction
+  // matchupTierBand was already rebalanced, and let the closest-neighbor
+  // anchor nudge this too.
+  const rawScore=clamp(
+    (matchup?.weightedScore??50)*.28 +
+    (matchup?.topWeighted??50)*.06 +
+    (matchup?.matchupPct??50)*.04 +
+    clamp(metagameFit??50)*.13 +
+    clamp(roleScore)*.11 +
+    clamp(intrinsic?.statPower??50)*.18 +
+    clamp(intrinsic?.score??50)*.20
   );
-  const reliability=clamp(48+(matchup?.coverage||0)*1.0+Math.abs((matchup?.weightedScore??50)-50)*.2+(intrinsic?.score>=80?8:0));
+  const scoreAnchorWeight=anchor ? Math.pow(anchor.confidence,0.6)*0.75 : 0;
+  const score=clamp(rawScore + (anchor ? (anchor.midpoint-rawScore)*scoreAnchorWeight : 0));
+  const reliability=clamp(48+(matchup?.coverage||0)*1.0+Math.abs((matchup?.weightedScore??50)-50)*.2+(intrinsic?.score>=80?8:0)+(anchor?anchor.confidence*10:0));
   return{
-    tier,score,reliability,anchor:null,usageEvidence:[],weighted:{},
+    tier,score,reliability,anchor:anchor?Math.round(anchor.midpoint):null,usageEvidence:[],weighted:{},
     bestMatch:closest?.[0]?.score||0,agreement:0,
     intrinsic:intrinsic?.score??50,counterplay:intrinsic?.counterplay??50
   };
