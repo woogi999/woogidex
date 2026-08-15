@@ -131,6 +131,7 @@
     }
     .admin-toast-success { border-color: var(--success); }
     .admin-toast-error { border-color: var(--danger); }
+.admin-contest-event{border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--bg-panel)} .admin-contest-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border-top:1px solid var(--border);padding:12px 0}.admin-voter-line{display:grid;grid-template-columns:1.2fr 1fr 2fr auto;gap:8px;padding:7px 0;border-top:1px solid var(--border);font-size:11px}.admin-voter-line small{color:var(--text-muted)}
 </style>
 </head>
 <body>
@@ -207,6 +208,15 @@
                     <div id="admin-badges-grid" class="admin-badges-grid"></div>
                 </div>
 
+                <div class="admin-section" id="admin-contests-section">
+                    <div class="admin-section-head">
+                        <h3><i data-lucide="trophy"></i> Events &amp; Contests</h3>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="window.adminAddEvent()"><i data-lucide="plus"></i> New Event</button>
+                    </div>
+                    <p class="admin-section-sub">Create events, add contests, control the current phase, set deadlines, and inspect who has voted.</p>
+                    <div id="admin-events-list"></div>
+                </div>
+
                 <div class="admin-section">
                     <div class="admin-section-head">
                         <h3><i data-lucide="users"></i> Users</h3>
@@ -218,6 +228,42 @@
                     <div id="admin-results"></div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="admin-event-form-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header"><h3 id="admin-event-form-title">Create Event</h3><button class="modal-close" type="button" onclick="window.adminCloseEventForm()"><i data-lucide="x"></i></button></div>
+            <form onsubmit="window.adminSubmitEventForm(event)">
+                <input type="hidden" id="admin-event-id">
+                <div class="form-group"><label>Title</label><input id="admin-event-title" required></div>
+                <div class="form-group"><label>Description</label><textarea id="admin-event-description" rows="3"></textarea></div>
+                <div class="admin-icon-color-row"><div class="form-group" style="flex:1"><label>Starts</label><input id="admin-event-starts" type="datetime-local"></div><div class="form-group" style="flex:1"><label>Ends</label><input id="admin-event-ends" type="datetime-local"></div></div>
+                <div class="admin-modal-actions"><button type="button" class="btn btn-secondary" onclick="window.adminCloseEventForm()">Cancel</button><button type="submit" class="btn btn-primary">Save event</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="admin-voters-modal" class="modal-overlay">
+        <div class="modal admin-voters-modal">
+            <div class="modal-header"><h3 id="admin-voters-modal-title">Contest Voters</h3><button class="modal-close" type="button" onclick="window.adminCloseVotersModal()"><i data-lucide="x"></i></button></div>
+            <div class="admin-voters-toolbar"><span id="admin-voters-summary">Loading…</span><button type="button" class="btn btn-secondary btn-sm" onclick="window.adminExportVotersJson()"><i data-lucide="download"></i> Export JSON</button></div>
+            <div id="admin-voters-modal-list" class="admin-voters-modal-list"></div>
+        </div>
+    </div>
+
+    <div id="admin-contest-form-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header"><h3 id="admin-contest-form-title">Create Contest</h3><button class="modal-close" type="button" onclick="window.adminCloseContestForm()"><i data-lucide="x"></i></button></div>
+            <form onsubmit="window.adminSubmitContestForm(event)">
+                <input type="hidden" id="admin-contest-id">
+                <div class="form-group"><label>Event</label><select id="admin-contest-event-id" required></select></div>
+                <div class="form-group"><label>Contest title</label><input id="admin-contest-title" required></div>
+                <div class="form-group"><label>Description</label><textarea id="admin-contest-description" rows="3"></textarea></div>
+                <div class="admin-icon-color-row"><div class="form-group" style="flex:1"><label>Submission deadline</label><input id="admin-contest-submission-deadline" type="datetime-local"></div><div class="form-group" style="flex:1"><label>Voting starts</label><input id="admin-contest-voting-start" type="datetime-local"></div></div>
+                <div class="admin-icon-color-row"><div class="form-group" style="flex:1"><label>Voting deadline</label><input id="admin-contest-voting-deadline" type="datetime-local"></div><div class="form-group" style="flex:1"><label>Results time</label><input id="admin-contest-results-at" type="datetime-local"></div></div>
+                <div class="form-group"><label>Phase</label><select id="admin-contest-phase"><option value="draft">Draft</option><option value="submission">Submission</option><option value="voting">Voting</option><option value="results">Results</option><option value="closed">Closed</option></select></div>
+                <div class="admin-modal-actions"><button type="button" class="btn btn-secondary" onclick="window.adminCloseContestForm()">Cancel</button><button type="submit" class="btn btn-primary">Save contest</button></div>
+            </form>
         </div>
     </div>
 
@@ -275,4 +321,6 @@
 
     <script type="module" src="js/admin.js"></script>
 </body>
-</html>
+</html><style>
+.admin-voters-modal{max-width:760px;width:min(92vw,760px)}.admin-voters-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;color:var(--text-muted);font-size:12px}.admin-voters-modal-list{max-height:60vh;overflow:auto}.admin-voter-card{width:100%;display:grid;grid-template-columns:38px minmax(0,1fr) 20px;align-items:center;gap:10px;padding:11px 8px;border:0;border-top:1px solid var(--border);background:transparent;color:var(--text-primary);text-align:left;cursor:pointer}.admin-voter-card:hover{background:var(--bg-panel)}.admin-voter-card span:nth-child(2){min-width:0}.admin-voter-card small,.admin-voter-detail-head small{display:block;color:var(--text-muted);font-size:11px;margin-top:2px}.admin-voter-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:800}.admin-voter-detail-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}.admin-response-row{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:9px;background:var(--bg-panel)}.admin-response-row>div:first-child{display:flex;justify-content:space-between;gap:12px}.admin-response-row p{margin:9px 0 0;color:var(--text-secondary);white-space:pre-wrap}.admin-response-scores{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.admin-response-scores span{padding:4px 8px;border-radius:8px;background:var(--bg-card);font-size:11px;color:var(--text-muted)}
+</style>

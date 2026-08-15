@@ -253,6 +253,167 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
             }
         }
                 
+// ==================== ADVANCED MOVE BROWSER ====================
+        // Filter panel is parameter-driven: name text, type/category/priority
+        // selects, min BP/Acc/PP thresholds, and toggleable flag chips (AND'd
+        // together) - all read straight from the modal's form controls.
+        const MOVE_FLAG_KEYWORDS = {
+            contact: 'contact', punch: 'punch', slicing: 'slicing', sound: 'sound',
+            bite: 'bite', bullet: 'bullet', pulse: 'pulse', wind: 'wind', dance: 'dance',
+            powder: 'powder', heal: 'heal', thawing: 'thawing',
+            charge: 'charge', recharge: 'recharge', highcrit: 'highcrit',
+            ohko: 'ohko', priority: 'priority', multihit: 'multihit', pivot: 'pivot',
+            protect: 'protect', bypasssub: 'bypasssub', reflectable: 'reflectable', snatch: 'snatch'
+        };
+        const activeMoveBrowserFlags = new Set();
+
+        function getAllBrowsableMoves() {
+            const sd = Object.entries(state.sdMoves).map(([k, v]) => ({ key: k, ...v }));
+            const custom = (state.customMoves || []).map(m => ({ key: 'custom:' + m.name, ...m, custom: true }));
+            const seen = new Set();
+            return [...sd, ...custom].filter(m => {
+                if (!m.name || seen.has(m.name.toLowerCase())) return false;
+                seen.add(m.name.toLowerCase());
+                return true;
+            });
+        }
+
+        function populateMoveBrowserTypeOptions() {
+            const select = document.getElementById('mb-filter-type');
+            if (!select || select.options.length > 1) return;
+            POKEMON_TYPES.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                select.appendChild(opt);
+            });
+        }
+
+        function renderMoveBrowserFlagChips() {
+            const container = document.getElementById('mb-filter-flags');
+            if (!container || container.children.length) return;
+            container.innerHTML = Object.keys(MOVE_FLAG_KEYWORDS).map(key => {
+                const label = key.charAt(0).toUpperCase() + key.slice(1);
+                return `<span class="mb-flag-chip" data-flag="${key}" onclick="toggleMoveBrowserFlag('${key}')">${label}</span>`;
+            }).join('');
+        }
+
+        function toggleMoveBrowserFlag(flag) {
+            if (activeMoveBrowserFlags.has(flag)) activeMoveBrowserFlags.delete(flag);
+            else activeMoveBrowserFlags.add(flag);
+            document.querySelectorAll('#mb-filter-flags .mb-flag-chip').forEach(chip => {
+                chip.classList.toggle('active', activeMoveBrowserFlags.has(chip.dataset.flag));
+            });
+            filterMoveBrowser();
+        }
+
+        function clearMoveBrowserFilters() {
+            document.getElementById('mb-filter-name').value = '';
+            document.getElementById('mb-filter-type').value = '';
+            document.getElementById('mb-filter-category').value = '';
+            document.getElementById('mb-filter-priority').value = '';
+            document.getElementById('mb-filter-bp-min').value = '';
+            document.getElementById('mb-filter-acc-min').value = '';
+            document.getElementById('mb-filter-pp-min').value = '';
+            activeMoveBrowserFlags.clear();
+            document.querySelectorAll('#mb-filter-flags .mb-flag-chip').forEach(chip => chip.classList.remove('active'));
+            filterMoveBrowser();
+        }
+
+        function openMoveBrowserModal() {
+            populateMoveBrowserTypeOptions();
+            renderMoveBrowserFlagChips();
+            clearMoveBrowserFilters();
+            document.getElementById('move-browser-modal')?.classList.add('active');
+            setTimeout(() => document.getElementById('mb-filter-name')?.focus(), 0);
+        }
+
+        function moveMatchesBrowserFilters(move) {
+            const name = document.getElementById('mb-filter-name')?.value.trim().toLowerCase() || '';
+            const type = document.getElementById('mb-filter-type')?.value || '';
+            const category = document.getElementById('mb-filter-category')?.value || '';
+            const priority = document.getElementById('mb-filter-priority')?.value || '';
+            const bpMin = parseInt(document.getElementById('mb-filter-bp-min')?.value, 10);
+            const accMin = parseInt(document.getElementById('mb-filter-acc-min')?.value, 10);
+            const ppMin = parseInt(document.getElementById('mb-filter-pp-min')?.value, 10);
+
+            if (name && !(move.name || '').toLowerCase().includes(name)) return false;
+            if (type && move.type !== type) return false;
+            if (category && move.category !== category) return false;
+
+            const moveIsPriority = Number(move.priority) || 0;
+            if (priority === 'positive' && !(moveIsPriority > 0)) return false;
+            if (priority === 'negative' && !(moveIsPriority < 0)) return false;
+            if (priority === 'zero' && moveIsPriority !== 0) return false;
+
+            if (Number.isFinite(bpMin) && (Number(move.basePower) || 0) < bpMin) return false;
+            if (Number.isFinite(accMin)) {
+                const acc = (move.accuracy === true || move.accuracy === undefined) ? 100 : (move.accuracy === false ? 0 : Number(move.accuracy) || 0);
+                if (acc < accMin) return false;
+            }
+            if (Number.isFinite(ppMin) && (Number(move.pp) || 0) < ppMin) return false;
+
+            if (activeMoveBrowserFlags.size) {
+                const flags = getMoveEditorFlags(move);
+                for (const flag of activeMoveBrowserFlags) {
+                    if (!flags[MOVE_FLAG_KEYWORDS[flag]]) return false;
+                }
+            }
+            return true;
+        }
+
+        function filterMoveBrowser() {
+            const list = document.getElementById('move-browser-results');
+            const countEl = document.getElementById('move-browser-count');
+            if (!list) return;
+            const matches = getAllBrowsableMoves().filter(moveMatchesBrowserFilters).sort((a, b) => a.name.localeCompare(b.name));
+            if (countEl) countEl.textContent = `${matches.length} move${matches.length === 1 ? '' : 's'}`;
+            if (!matches.length) {
+                list.innerHTML = '<div class="move-browser-empty">No moves match those filters.</div>';
+                return;
+            }
+            const alreadyAdded = new Set(state.learnset.filter(m => m && m.name).map(m => m.name.toLowerCase()));
+            list.innerHTML = matches.map(m => {
+                const typeClass = `type-${(m.type || 'normal').toLowerCase()}`;
+                const acc = (m.accuracy === true || m.accuracy === undefined) ? '-' : (m.accuracy === false ? '-' : `${m.accuracy}%`);
+                const added = alreadyAdded.has(m.name.toLowerCase());
+                const catClass = m.category === 'Physical' ? 'cat-physical' : m.category === 'Special' ? 'cat-special' : 'cat-status';
+                return `<div class="move-browser-card${added ? ' added' : ''}" data-move-key="${escapeHtml(m.key)}" onclick="addMoveFromBrowser('${escapeHtml(m.key).replace(/'/g, "\\'")}')" title="${added ? 'Already in learnset' : 'Click to add to learnset'}">
+                    <div class="move-browser-card-top">
+                        <span class="type-pill ${typeClass}">${m.type || '?'}</span>
+                        <span class="cat-pill ${catClass}">${getCategoryIcon(m.category, 12)} ${m.category || 'Status'}</span>
+                        ${added ? '<span class="move-browser-added-badge">Added</span>' : ''}
+                    </div>
+                    <div class="move-browser-card-name">${escapeHtml(m.name)}</div>
+                    <div class="move-browser-card-stats">BP ${m.basePower || '-'} &nbsp;·&nbsp; Acc ${acc} &nbsp;·&nbsp; PP ${m.pp || '-'}${m.priority ? ` &nbsp;·&nbsp; Prio ${m.priority > 0 ? '+' : ''}${m.priority}` : ''}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function addMoveFromBrowser(key) {
+            const move = getAllBrowsableMoves().find(m => m.key === key);
+            if (!move) return;
+            const method = document.getElementById('move-method')?.value || 'none';
+            const level = method === 'level' ? document.getElementById('move-level')?.value : null;
+            if (move.custom) {
+                const exists = state.learnset.some(x => x.name === move.name && isCustomMove(x));
+                if (!exists) state.learnset.push({ ...move, source: 'custom', custom: true, learnMethod: method, level: method === 'level' ? (level || null) : null, flags: move.flags || {} });
+                sortLearnset();
+                renderLearnset();
+                updatePreview();
+                api.autoSave();
+            } else {
+                addLearnsetMove(move, method, level);
+            }
+            filterMoveBrowser();
+        }
+
+        window.openMoveBrowserModal = openMoveBrowserModal;
+        window.filterMoveBrowser = filterMoveBrowser;
+        window.addMoveFromBrowser = addMoveFromBrowser;
+        window.toggleMoveBrowserFlag = toggleMoveBrowserFlag;
+        window.clearMoveBrowserFilters = clearMoveBrowserFilters;
+
 // ==================== MOVE LOOKUP ====================
         function findClosestMove(query) {
             if (!query.trim()) return null;
@@ -1772,15 +1933,20 @@ function handleMoveKey(e) {
             // Weave into the existing state.learnset: reuse-in-place if already present,
             // otherwise add as a new entry.
             let woven = 0, added = 0;
+            const addedMoves = [];
+            const wovenMoves = [];
             placements.forEach(({ move, learnMethod, level }) => {
                 const existing = state.learnset.find(m => m.name === move.name);
                 if (existing) {
+                    const changed = existing.learnMethod !== learnMethod || existing.level !== level;
                     existing.learnMethod = learnMethod;
                     existing.level = level;
                     woven++;
+                    if (changed) wovenMoves.push({ move, learnMethod, level });
                 } else {
                     state.learnset.push(hydrateLearnsetEntry({ name: move.name, learnMethod, level }));
                     added++;
+                    addedMoves.push({ move, learnMethod, level });
                 }
             });
 
@@ -1791,6 +1957,49 @@ function handleMoveKey(e) {
             autoSave();
             const sampleSimilar = pools.similar.slice(0, 3).join(', ');
             api.showToast(`Generated from Pokémon like ${sampleSimilar}: ${added} added, ${woven} woven in.`, 'success');
+            closeModal('recommend-moves-modal');
+            showGeneratedLearnsetSummary(addedMoves, wovenMoves, sampleSimilar);
+        }
+
+        function formatLearnMethodLabel(learnMethod, level) {
+            if (learnMethod === 'level') return `Lv.${level ?? '?'}`;
+            if (learnMethod === 'tm') return 'TM';
+            if (learnMethod === 'egg') return 'Egg';
+            return learnMethod || '-';
+        }
+
+        function showGeneratedLearnsetSummary(addedMoves, wovenMoves, sampleSimilar) {
+            if (!addedMoves.length && !wovenMoves.length) return;
+            const renderMoveCard = ({ move, learnMethod, level }) => {
+                const typeClass = `type-${(move.type || 'normal').toLowerCase()}`;
+                const catClass = move.category === 'Physical' ? 'cat-physical' : move.category === 'Special' ? 'cat-special' : 'cat-status';
+                return `<div class="gl-item" onclick="showMoveDetail('${move.name.replace(/'/g, "\\'")}')">
+                    <span class="type-pill ${typeClass}">${move.type}</span>
+                    <span class="move-name">${escapeHtml(move.name)}</span>
+                    <div class="move-meta">
+                        <span class="cat-pill ${catClass}">${getCategoryIcon(move.category, 12)}</span>
+                        <span class="method-text">${formatLearnMethodLabel(learnMethod, level)}</span>
+                    </div>
+                </div>`;
+            };
+            const sortByLevelThenName = (a, b) => {
+                if (a.learnMethod === 'level' && b.learnMethod === 'level') return (a.level || 0) - (b.level || 0);
+                return a.move.name.localeCompare(b.move.name);
+            };
+            const subtitle = document.getElementById('generated-learnset-subtitle');
+            if (subtitle) subtitle.textContent = `Based on Pokémon like ${sampleSimilar}.`;
+            let content = '';
+            if (addedMoves.length) {
+                content += `<div class="gl-section-label">Added (${addedMoves.length})</div>` +
+                    `<div class="gl-grid">${[...addedMoves].sort(sortByLevelThenName).map(renderMoveCard).join('')}</div>`;
+            }
+            if (wovenMoves.length) {
+                content += `<div class="gl-section-label">Updated Existing Moves (${wovenMoves.length})</div>` +
+                    `<div class="gl-grid">${[...wovenMoves].sort(sortByLevelThenName).map(renderMoveCard).join('')}</div>`;
+            }
+            const body = document.getElementById('generated-learnset-body');
+            if (body) body.innerHTML = content;
+            document.getElementById('generated-learnset-modal')?.classList.add('active');
         }
 
         function clearMoveset() {
@@ -2293,4 +2502,4 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
 
         
 
-export { sortLearnsetEntries, resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };
+export { sortLearnsetEntries, resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, openMoveBrowserModal, filterMoveBrowser, addMoveFromBrowser, toggleMoveBrowserFlag, clearMoveBrowserFilters, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, formatLearnMethodLabel, showGeneratedLearnsetSummary, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };

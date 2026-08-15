@@ -537,7 +537,7 @@ async function showProfileView(userId = null, options = {}) {
     }
     state.isCommunityPreview = false;
     api.exitCommunityRoute?.();
-    ['editor-view','collection-view','community-view','community-detail-view'].forEach(id => {
+    ['editor-view','collection-view','community-view','community-detail-view','events-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });

@@ -14,6 +14,13 @@ import * as analysis from './analysis.js';
 import * as auth from './auth.js';
 import * as community from './community.js';
 import * as notifications from './notifications.js';
+import * as events from './events.js';
+
+// ==================== FEATURE FLAGS ====================
+// TODO: remove this flag (and the sidebar-events-btn hidden attribute in
+// index.html) once the Events/Contests feature is finished - this just
+// hides the entry point without touching any of the underlying code.
+export const FEATURE_EVENTS_ENABLED = false;
 
 // ==================== SHARED STATE ====================
 export const state = {
@@ -40,6 +47,7 @@ export const state = {
     artworkData: null,
     shinyArtworkData: null,
     cryData: null,
+    artCredit: null,
     artworkMode: 'normal',
     previewArtworkMode: 'normal',
     collectionShinyPreview: localStorage.getItem('woogidex-collection-shiny-preview') === 'true',
@@ -322,7 +330,7 @@ function closeSidebar() {
 // ==================== MODULE COORDINATION ====================
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, toggleSidebar, closeSidebar, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
@@ -334,11 +342,46 @@ Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, expor
 // Preserve the original inline event-handler contract.
 Object.assign(window, api);
 
+// Dynamic edge-to-edge header: retracts on downward scroll and reveals again
+// when scrolling up or when the pointer reaches the very top of the screen.
+let lastScrollY = 0;
+let headerScrollTick = false;
+let headerHoverRevealTimer = null;
+function showDynamicHeader() {
+    const header = document.querySelector('.header');
+    if (!header) return;
+    header.classList.remove('header-retracted');
+}
+function updateDynamicHeader() {
+    const header = document.querySelector('.header');
+    if (!header) return;
+    const y = window.scrollY || 0;
+    const delta = y - lastScrollY;
+    if (y <= 8) showDynamicHeader();
+    else if (delta > 5) header.classList.add('header-retracted');
+    else if (delta < -5) showDynamicHeader();
+    lastScrollY = y;
+    headerScrollTick = false;
+}
+window.addEventListener('scroll', () => {
+    if (!headerScrollTick) { headerScrollTick = true; requestAnimationFrame(updateDynamicHeader); }
+}, { passive: true });
+window.addEventListener('mousemove', (event) => {
+    if (event.clientY <= 14) {
+        clearTimeout(headerHoverRevealTimer);
+        headerHoverRevealTimer = setTimeout(showDynamicHeader, 40);
+    }
+}, { passive: true });
+window.addEventListener('touchstart', (event) => {
+    if (event.touches?.[0]?.clientY <= 18) showDynamicHeader();
+}, { passive: true });
+
 document.addEventListener('DOMContentLoaded', async () => {
     const done = log.time('BOOT', 'Application initialization');
     log.info('BOOT', 'DOMContentLoaded fired');
     api.initTypeSelects();
     api.initColorPicker();
+    document.getElementById('sidebar-events-btn')?.toggleAttribute('hidden', !FEATURE_EVENTS_ENABLED);
     await api.initAuth();
     await api.loadFromStorage();
     // Load Showdown's authoritative move/ability data before rendering a shared

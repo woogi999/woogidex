@@ -136,6 +136,7 @@ async function init() {
     $('admin-search-form').addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
     // Show a starting page of users so the panel isn't empty on load.
     runSearch();
+    loadContestAdmin();
 }
 
 function renderGate(mode) {
@@ -476,6 +477,109 @@ async function deleteMon(monId, userId) {
     if (userEntry) userEntry.published_count = Math.max(0, (userEntry.published_count || 1) - 1);
 }
 
+// ==================== EVENTS / CONTESTS ====================
+const contestAdmin = { events: [], contests: [] };
+const toInputDate = v => v ? new Date(v).toISOString().slice(0,16) : '';
+const fromInputDate = id => { const v=$(id)?.value; return v ? new Date(v).toISOString() : null; };
+async function loadContestAdmin() {
+    const client=await getClient();
+    const [{data:events,error:e1},{data:contests,error:e2}] = await Promise.all([
+        client.from('contest_events').select('*').order('starts_at',{ascending:false}),
+        client.from('contests').select('*').order('created_at',{ascending:false})
+    ]);
+    if(e1||e2){ showToast((e1||e2).message,'error'); return; }
+    contestAdmin.events=events||[]; contestAdmin.contests=contests||[]; renderContestAdmin();
+}
+function renderContestAdmin(){
+    const el=$('admin-events-list'); if(!el) return;
+    el.innerHTML = contestAdmin.events.length ? contestAdmin.events.map(e=>`<div class="admin-contest-event"><div class="admin-section-head"><div><strong>${escapeHtml(e.title)}</strong><div class="admin-section-sub">${escapeHtml(e.description||'')} · ${fmtDate(e.starts_at)} → ${fmtDate(e.ends_at)}</div></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="window.adminEditEvent('${e.id}')">Edit</button><button class="btn btn-primary btn-sm" onclick="window.adminAddContest('${e.id}')">Add contest</button><button class="btn btn-danger btn-sm" onclick="window.adminDeleteEvent('${e.id}')">Delete event</button></div></div><div>${contestAdmin.contests.filter(c=>c.event_id===e.id).map(renderContestAdminRow).join('')||'<div class="admin-empty">No contests yet.</div>'}</div></div>`).join('') : '<div class="admin-empty">No events yet.</div>';
+    icons();
+}
+function renderContestAdminRow(c){
+    return `<div class="admin-contest-row"><div><strong>${escapeHtml(c.title)}</strong><div class="admin-section-sub">Phase: ${escapeHtml(c.phase)} · submissions ${fmtDate(c.submission_deadline)} · voting ${fmtDate(c.voting_start)} → ${fmtDate(c.voting_deadline)}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" onclick="window.adminEditContest('${c.id}')">Edit</button><button class="btn btn-secondary btn-sm" onclick="window.adminViewContestVotes('${c.id}')">View voters</button><button class="btn btn-danger btn-sm" onclick="window.adminDeleteContest('${c.id}')">Delete contest</button></div><div id="admin-voters-${c.id}" class="admin-empty" style="display:none;grid-column:1/-1;"></div></div>`;
+}
+function openEventForm(id){ const e=id?contestAdmin.events.find(x=>x.id===id):null; $('admin-event-form-title').textContent=e?'Edit Event':'Create Event'; $('admin-event-id').value=e?.id||''; $('admin-event-title').value=e?.title||''; $('admin-event-description').value=e?.description||''; $('admin-event-starts').value=toInputDate(e?.starts_at); $('admin-event-ends').value=toInputDate(e?.ends_at); $('admin-event-form-modal').classList.add('active'); }
+function closeEventForm(){ $('admin-event-form-modal')?.classList.remove('active'); }
+async function deleteEvent(id){
+    const eventRow=contestAdmin.events.find(e=>e.id===id);
+    if(!eventRow || !confirm(`Delete event “${eventRow.title}” and all contests inside it? This cannot be undone.`)) return;
+    const client=await getClient();
+    const child=contestAdmin.contests.filter(c=>c.event_id===id);
+    for(const c of child){
+        const {error:v}=await client.from('contest_votes').delete().eq('contest_id',c.id);
+        if(v){ showToast(v.message,'error'); return; }
+        const {error:s}=await client.from('contest_submissions').delete().eq('contest_id',c.id);
+        if(s){ showToast(s.message,'error'); return; }
+        const {error:cErr}=await client.from('contests').delete().eq('id',c.id);
+        if(cErr){ showToast(cErr.message,'error'); return; }
+    }
+    const {error}=await client.from('contest_events').delete().eq('id',id);
+    if(error){ showToast(error.message,'error'); return; }
+    showToast('Event deleted','success');
+    await loadContestAdmin();
+}
+
+async function deleteContest(id){
+    const contestRow=contestAdmin.contests.find(c=>c.id===id);
+    if(!contestRow || !confirm(`Delete contest “${contestRow.title}” and all submissions/votes? This cannot be undone.`)) return;
+    const client=await getClient();
+    let r=await client.from('contest_votes').delete().eq('contest_id',id);
+    if(r.error){ showToast(r.error.message,'error'); return; }
+    r=await client.from('contest_submissions').delete().eq('contest_id',id);
+    if(r.error){ showToast(r.error.message,'error'); return; }
+    r=await client.from('contests').delete().eq('id',id);
+    if(r.error){ showToast(r.error.message,'error'); return; }
+    showToast('Contest deleted','success');
+    await loadContestAdmin();
+}
+
+async function submitEventForm(ev){ ev.preventDefault(); const client=await getClient(); const id=$('admin-event-id').value; const payload={title:$('admin-event-title').value.trim(),description:$('admin-event-description').value.trim(),starts_at:fromInputDate('admin-event-starts'),ends_at:fromInputDate('admin-event-ends'),created_by:state.me.id}; const {error}=id?await client.from('contest_events').update(payload).eq('id',id):await client.from('contest_events').insert(payload); if(error)return showToast(error.message,'error'); closeEventForm(); await loadContestAdmin(); showToast('Event saved','success'); }
+function openContestForm(id,eventId){ const c=id?contestAdmin.contests.find(x=>x.id===id):null; $('admin-contest-form-title').textContent=c?'Edit Contest':'Create Contest'; $('admin-contest-id').value=c?.id||''; $('admin-contest-event-id').innerHTML=contestAdmin.events.map(e=>`<option value="${e.id}">${escapeHtml(e.title)}</option>`).join(''); $('admin-contest-event-id').value=c?.event_id||eventId||''; $('admin-contest-title').value=c?.title||''; $('admin-contest-description').value=c?.description||''; $('admin-contest-submission-deadline').value=toInputDate(c?.submission_deadline); $('admin-contest-voting-start').value=toInputDate(c?.voting_start); $('admin-contest-voting-deadline').value=toInputDate(c?.voting_deadline); $('admin-contest-results-at').value=toInputDate(c?.results_at); $('admin-contest-phase').value=c?.phase||'draft'; $('admin-contest-form-modal').classList.add('active'); }
+function closeContestForm(){ $('admin-contest-form-modal')?.classList.remove('active'); }
+async function submitContestForm(ev){ ev.preventDefault(); const client=await getClient(); const id=$('admin-contest-id').value; const payload={event_id:$('admin-contest-event-id').value,title:$('admin-contest-title').value.trim(),description:$('admin-contest-description').value.trim(),created_by:state.me.id,submission_deadline:fromInputDate('admin-contest-submission-deadline'),voting_start:fromInputDate('admin-contest-voting-start'),voting_deadline:fromInputDate('admin-contest-voting-deadline'),results_at:fromInputDate('admin-contest-results-at'),phase:$('admin-contest-phase').value}; const {error}=id?await client.from('contests').update(payload).eq('id',id):await client.from('contests').insert(payload); if(error)return showToast(error.message,'error'); closeContestForm(); await loadContestAdmin(); showToast('Contest saved','success'); }
+let adminVotersState = { contestId:null, contestTitle:'', voters:[] };
+async function viewContestVotes(contestId){
+    const contest = contestAdmin.contests.find(c=>c.id===contestId);
+    const modal=$('admin-voters-modal'); if(!modal)return;
+    adminVotersState={contestId,contestTitle:contest?.title||'Contest',voters:[]};
+    $('admin-voters-modal-title').textContent=`Voters — ${contest?.title||'Contest'}`;
+    $('admin-voters-summary').textContent='Loading…'; $('admin-voters-modal-list').innerHTML='<div class="admin-empty">Loading voter responses…</div>';
+    modal.classList.add('active');
+    try{
+        const client=await getClient();
+        const {data:sessions,error:se}=await client.from('contest_vote_sessions').select('id,voter_id,submitted_at').eq('contest_id',contestId).order('submitted_at',{ascending:false});
+        if(se)throw se;
+        const ids=(sessions||[]).map(x=>x.voter_id);
+        const {data:profiles,error:pe}=ids.length?await client.from('profiles').select('id,username,display_name').in('id',ids):{data:[],error:null};
+        if(pe)throw pe;
+        const pm=Object.fromEntries((profiles||[]).map(p=>[p.id,p]));
+        const {data:votes,error:ve}=ids.length?await client.from('contest_votes').select('id,voter_id,submission_id,competitive_score,design_score,remarks,created_at').eq('contest_id',contestId).order('created_at',{ascending:true}):{data:[],error:null};
+        if(ve)throw ve;
+        const vm={}; (votes||[]).forEach(v=>(vm[v.voter_id]??=[]).push(v));
+        adminVotersState.voters=(sessions||[]).map(s=>({voter_id:s.voter_id,submitted_at:s.submitted_at,profile:pm[s.voter_id]||null,responses:vm[s.voter_id]||[]}));
+        $('admin-voters-summary').textContent=`${adminVotersState.voters.length} completed voter${adminVotersState.voters.length===1?'':'s'}`;
+        $('admin-voters-modal-list').innerHTML=adminVotersState.voters.length?adminVotersState.voters.map((v,i)=>`<button type="button" class="admin-voter-card" onclick="window.adminOpenVoterResponse(${i})"><span class="admin-voter-avatar">${escapeHtml((v.profile?.display_name||v.profile?.username||'?').slice(0,1).toUpperCase())}</span><span><strong>${escapeHtml(v.profile?.display_name||v.profile?.username||v.voter_id)}</strong><small>@${escapeHtml(v.profile?.username||'unknown')} · submitted ${fmtDate(v.submitted_at)}</small></span><i data-lucide="chevron-right"></i></button>`).join(''):'<div class="admin-empty">No completed ballots yet.</div>';
+        if(typeof lucide!=='undefined')lucide.createIcons();
+    }catch(e){$('admin-voters-summary').textContent='Could not load voters';$('admin-voters-modal-list').innerHTML=`<div class="admin-empty">${escapeHtml(e.message||e)}</div>`;}
+}
+function closeVotersModal(){ $('admin-voters-modal')?.classList.remove('active'); }
+function openVoterResponse(index){
+    const v=adminVotersState.voters[index]; if(!v)return;
+    const list=$('admin-voters-modal-list');
+    const name=v.profile?.display_name||v.profile?.username||v.voter_id;
+    list.innerHTML=`<div class="admin-voter-detail-head"><button class="btn btn-secondary btn-sm" onclick="window.adminRenderVoterList()"><i data-lucide="arrow-left"></i> Back</button><div><strong>${escapeHtml(name)}</strong><small>@${escapeHtml(v.profile?.username||'unknown')} · ${fmtDate(v.submitted_at)}</small></div></div><div class="admin-response-list">${v.responses.map((r,i)=>`<div class="admin-response-row"><div><strong>Response ${i+1}</strong><small>${escapeHtml(r.submission_id)}</small></div><div class="admin-response-scores"><span>Competitive <b>${r.competitive_score}/10</b></span><span>Design <b>${r.design_score}/10</b></span></div><p>${escapeHtml(r.remarks||'No remarks')}</p></div>`).join('')}</div>`;
+    if(typeof lucide!=='undefined')lucide.createIcons();
+}
+function renderVoterList(){
+    const list=$('admin-voters-modal-list');
+    list.innerHTML=adminVotersState.voters.map((v,i)=>`<button type="button" class="admin-voter-card" onclick="window.adminOpenVoterResponse(${i})"><span class="admin-voter-avatar">${escapeHtml((v.profile?.display_name||v.profile?.username||'?').slice(0,1).toUpperCase())}</span><span><strong>${escapeHtml(v.profile?.display_name||v.profile?.username||v.voter_id)}</strong><small>@${escapeHtml(v.profile?.username||'unknown')} · submitted ${fmtDate(v.submitted_at)}</small></span><i data-lucide="chevron-right"></i></button>`).join('')||'<div class="admin-empty">No completed ballots yet.</div>';
+    if(typeof lucide!=='undefined')lucide.createIcons();
+}
+function exportVotersJson(){
+    const payload={contest_id:adminVotersState.contestId,contest_title:adminVotersState.contestTitle,exported_at:new Date().toISOString(),voters:adminVotersState.voters.map(v=>({voter_id:v.voter_id,username:v.profile?.username||null,display_name:v.profile?.display_name||null,submitted_at:v.submitted_at,responses:v.responses.map(r=>({submission_id:r.submission_id,competitive_score:r.competitive_score,design_score:r.design_score,remarks:r.remarks||'',created_at:r.created_at}))}))};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`contest-${adminVotersState.contestId}-voters.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
 function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
@@ -493,6 +597,21 @@ window.adminSubmitBadgeForm = submitBadgeForm;
 window.adminDeleteBadge = deleteBadge;
 window.adminPreviewBadgeIcon = previewBadgeIcon;
 window.adminSignOut = signOut;
+window.adminAddEvent = () => openEventForm(null);
+window.adminEditEvent = openEventForm;
+window.adminCloseEventForm = closeEventForm;
+window.adminSubmitEventForm = submitEventForm;
+window.adminAddContest = (eventId) => openContestForm(null,eventId);
+window.adminEditContest = (id) => openContestForm(id);
+window.adminCloseContestForm = closeContestForm;
+window.adminSubmitContestForm = submitContestForm;
+window.adminViewContestVotes = viewContestVotes;
+window.adminCloseVotersModal = closeVotersModal;
+window.adminOpenVoterResponse = openVoterResponse;
+window.adminRenderVoterList = renderVoterList;
+window.adminExportVotersJson = exportVotersJson;
+window.adminDeleteEvent = deleteEvent;
+window.adminDeleteContest = deleteContest;
 
 $('admin-signin-form').addEventListener('submit', handleSignInSubmit);
 init();

@@ -52,6 +52,9 @@ function resetEditor() {
             state.artworkData = null;
             state.shinyArtworkData = null;
             state.cryData = null;
+            state.artCredit = null;
+            const artCreditResetInput = document.getElementById('art-credit-input');
+            if (artCreditResetInput) artCreditResetInput.value = '';
             state.artworkMode = 'normal';
             state.previewArtworkMode = 'normal';
             updateArtworkModeUI();
@@ -173,6 +176,9 @@ function resetEditor() {
             state.artworkData = fakemon.artwork || null;
             state.shinyArtworkData = fakemon.shinyArtwork || null;
             state.cryData = fakemon.cry || null;
+            state.artCredit = fakemon.artCredit || null;
+            const artCreditLoadInput = document.getElementById('art-credit-input');
+            if (artCreditLoadInput) artCreditLoadInput.value = state.artCredit || '';
             state.artworkMode = 'normal';
             state.previewArtworkMode = 'normal';
             updateArtworkModeUI();
@@ -567,6 +573,43 @@ window.togglePreviewArtworkMode = togglePreviewArtworkMode;
         window.removePokemonCry = removePokemonCry;
         window.handlePokemonCryUpload = handlePokemonCryUpload;
         window.playPokemonCry = playPokemonCry;
+
+// ==================== ART CREDIT ====================
+        function handleArtCreditInput(event) {
+            const value = (event?.target?.value || '').trim();
+            state.artCredit = value || null;
+            updatePreview();
+            autoSave(true);
+        }
+
+        // Renders the credit text as safe HTML, auto-linking a leading/trailing URL
+        // (e.g. "Art by @user - https://twitter.com/user") without allowing raw HTML injection.
+        function formatArtCreditHtml(credit) {
+            const escape = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+            const urlMatch = String(credit).match(/(https?:\/\/[^\s]+)/i);
+            if (!urlMatch) return escape(credit);
+            const url = urlMatch[1];
+            const label = escape(credit.replace(url, '').trim()) || 'link';
+            return `${escape(credit.slice(0, urlMatch.index))}<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">${label || url}</a>`;
+        }
+
+        function showArtCredit(event) {
+            event?.preventDefault();
+            event?.stopPropagation();
+            const popover = document.getElementById('board-artwork-credit-popover');
+            if (!popover) return;
+            const willShow = !popover.classList.contains('active');
+            document.querySelectorAll('.board-artwork-credit-popover.active').forEach(el => el.classList.remove('active'));
+            if (willShow) popover.classList.add('active');
+        }
+
+        function hideArtCreditDelayed() {
+            setTimeout(() => document.querySelectorAll('.board-artwork-credit-popover.active').forEach(el => el.classList.remove('active')), 150);
+        }
+
+        window.handleArtCreditInput = handleArtCreditInput;
+        window.showArtCredit = showArtCredit;
+        window.hideArtCreditDelayed = hideArtCreditDelayed;
 
         
 // ==================== EGG GROUPS ====================
@@ -1062,10 +1105,12 @@ function updatePreview() {
                     <!-- Top Row: Art (left) | Data + Dex Entries (right, side by side) -->
                     <div class="board-top-row">
                         <div class="board-artwork-left">
-                            ${(state.shinyArtworkData || state.cryData) ? `<div class="board-artwork-mode" aria-label="Preview controls">
+                            ${(state.shinyArtworkData || state.cryData || state.artCredit) ? `<div class="board-artwork-mode" aria-label="Preview controls">
                                 ${state.shinyArtworkData ? `<button type="button" class="collection-shiny-toggle board-artwork-shiny-toggle" id="board-artwork-shiny-toggle" onclick="togglePreviewArtworkMode(event)" title="Show shiny artwork" aria-label="Show shiny artwork" aria-pressed="false"><i data-lucide="sparkles" aria-hidden="true"></i></button>` : ''}
                                 ${state.cryData ? `<button type="button" class="collection-shiny-toggle board-artwork-cry-toggle" onclick="playPokemonCry(event)" title="Play Pokemon cry" aria-label="Play Pokemon cry"><i data-lucide="volume-2" aria-hidden="true"></i></button>` : ''}
+                                ${state.artCredit ? `<button type="button" class="collection-shiny-toggle board-artwork-credit-toggle" onclick="showArtCredit(event)" onblur="hideArtCreditDelayed()" title="Art credit" aria-label="Show art credit"><i data-lucide="badge-check" aria-hidden="true"></i></button>` : ''}
                             </div>` : ''}
+                            ${state.artCredit ? `<div class="board-artwork-credit-popover" id="board-artwork-credit-popover">${formatArtCreditHtml(state.artCredit)}</div>` : ''}
                             <div id="board-artwork-image"></div>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">

@@ -2854,7 +2854,7 @@ function updateStatDisplay(setIndex, statKey, evVal, ivVal) {
             const popup = document.createElement('div');
             popup.className = 'move-detail-popup';
             popup.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;position:sticky;top:0;background:var(--bg-card);padding-bottom:4px;">
                     <h3>${title}</h3>
                     <button class="modal-close" type="button">&times;</button>
                 </div>

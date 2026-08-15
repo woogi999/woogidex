@@ -15,6 +15,7 @@ import { POKEMON_COLORS } from './data.js';
             api.exitCommunityRoute?.();
             api.exitProfileRoute?.();
             document.getElementById('community-detail-view') && (document.getElementById('community-detail-view').style.display = 'none');
+            document.getElementById('events-view') && (document.getElementById('events-view').style.display = 'none');
             document.getElementById('community-view') && (document.getElementById('community-view').style.display = 'none');
             if (!wasCommunityPreview && document.getElementById('editor-view')?.style.display !== 'none') {
                 await api.autoSave(true); // Force immediate save before leaving
@@ -53,6 +54,7 @@ import { POKEMON_COLORS } from './data.js';
             api.resetEditor();
             document.getElementById('fakemon-name').value = name;
             document.getElementById('collection-view').style.display = 'none';
+            document.getElementById('events-view') && (document.getElementById('events-view').style.display = 'none');
             document.getElementById('editor-view').style.display = 'block';
             document.getElementById('save-status').style.display = '';
             switchTab(document.querySelector('.tab'), 'basic');
@@ -387,6 +389,7 @@ import { POKEMON_COLORS } from './data.js';
             api.exitCommunityRoute?.();
             api.exitProfileRoute?.();
             document.getElementById('collection-view').style.display = 'none';
+            document.getElementById('events-view') && (document.getElementById('events-view').style.display = 'none');
             document.getElementById('editor-view').style.display = 'block';
             document.getElementById('save-status').style.display = '';
             switchTab(document.querySelector('.tab'), 'basic');
