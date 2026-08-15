@@ -23,6 +23,18 @@
                 <button class="btn btn-secondary" onclick="toggleDarkMode()" id="dark-mode-btn" title="Toggle Dark Mode" aria-label="Toggle Dark Mode"><i data-lucide="sun" style="width:18px;height:18px;"></i></button>
                 <button class="btn btn-secondary btn-icon" onclick="openSettings()" id="settings-btn" title="Settings" aria-label="Settings"><i data-lucide="settings" style="width:18px;height:18px;"></i></button>
                 <button class="btn btn-secondary" onclick="showCollection()">My Collection</button>
+                <button class="btn btn-secondary" onclick="openCommunityHub()"><i data-lucide="users" style="width:16px;height:16px;"></i> Community</button>
+                <div id="auth-signed-out" style="display:flex;">
+                    <button class="btn btn-secondary" onclick="openAuthModal('signin')" id="auth-signin-btn"><i data-lucide="user" style="width:16px;height:16px;"></i> Sign In</button>
+                </div>
+                <div id="auth-signed-in" class="auth-signed-in" style="display:none;align-items:center;gap:8px;">
+                    <button class="auth-avatar-btn" onclick="openProfileModal()" title="Edit Profile">
+                        <img id="auth-avatar-img" class="auth-avatar-img" style="display:none;" alt="">
+                        <span id="auth-avatar-fallback" class="auth-avatar-fallback"></span>
+                    </button>
+                    <span class="auth-user-email" id="auth-user-name"></span>
+                    <button class="btn btn-secondary btn-sm" onclick="handleSignOutClick()">Sign Out</button>
+                </div>
             </div>
         </header>
 
@@ -61,7 +73,13 @@
                     <div>
                         <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px;">
                             <div style="display:flex;gap:8px;align-items:center;">
-                                <button class="btn btn-secondary btn-sm" type="button" onclick="shareFakemon()">Share</button>
+                                <div class="export-as-wrap" style="position:relative;display:inline-block;">
+                                    <button class="btn btn-secondary btn-sm" type="button" onclick="toggleShareMenu(event)">Share <span style="font-size:10px;">▼</span></button>
+                                    <div id="share-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:210px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
+                                        <button class="export-as-menu-item" type="button" onclick="shareFakemon(); closeShareMenu();">Copy Share Link</button>
+                                        <button class="export-as-menu-item" type="button" onclick="publishCurrentEditorFakemon(); closeShareMenu();">Publish to Community</button>
+                                    </div>
+                                </div>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
                                 <div class="export-as-wrap" style="position:relative;display:inline-block;">
                                 <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
@@ -158,6 +176,18 @@
                             <input type="file" id="artwork-upload" accept="image/*" onchange="handleArtworkUpload(event)">
                             <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span id="artwork-upload-label">Click or drag artwork here</span></div>
                             <button type="button" class="artwork-remove-btn" id="artwork-remove-btn" onclick="removeCurrentArtwork(event)" hidden>Remove artwork</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Pokemon Cry</label>
+                                <div class="cry-upload-zone" id="cry-upload-zone" onclick="if (!event.target.closest('button')) document.getElementById('cry-upload').click()" title="Click to upload a Pokemon cry (max 2 MB)">
+                                    <input type="file" id="cry-upload" accept="audio/*" onchange="handlePokemonCryUpload(event)">
+                                    <div class="cry-upload-content">
+                                        <i data-lucide="volume-2" style="width:18px;height:18px;"></i>
+                                        <span id="cry-upload-label">Click to upload a Pokemon cry</span>
+                                        <small>Audio only · Max 2 MB</small>
+                                    </div>
+                                    <button type="button" class="artwork-remove-btn cry-remove-btn" id="cry-remove-btn" onclick="removePokemonCry(event)" hidden>Remove cry</button>
                                 </div>
                             </div>
                         
@@ -288,7 +318,7 @@
                                         <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill hp" id="editor-bar-hp" style="width:0%"></div></div>
                                         <input type="number" id="stat-hp" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
                                     </div>
-                                    <span class="editor-stat-calc" id="calc-hp">—</span>
+                                    <span class="editor-stat-calc" id="calc-hp">-</span>
                                 </div>
                                 <div class="editor-stat-row" data-stat="atk">
                                     <span class="editor-stat-label">ATK</span>
@@ -296,7 +326,7 @@
                                         <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill atk" id="editor-bar-atk" style="width:0%"></div></div>
                                         <input type="number" id="stat-atk" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
                                     </div>
-                                    <span class="editor-stat-calc" id="calc-atk">—</span>
+                                    <span class="editor-stat-calc" id="calc-atk">-</span>
                                 </div>
                                 <div class="editor-stat-row" data-stat="def">
                                     <span class="editor-stat-label">DEF</span>
@@ -304,7 +334,7 @@
                                         <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill def" id="editor-bar-def" style="width:0%"></div></div>
                                         <input type="number" id="stat-def" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
                                     </div>
-                                    <span class="editor-stat-calc" id="calc-def">—</span>
+                                    <span class="editor-stat-calc" id="calc-def">-</span>
                                 </div>
                                 <div class="editor-stat-row" data-stat="spa">
                                     <span class="editor-stat-label">SPA</span>
@@ -312,7 +342,7 @@
                                         <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spa" id="editor-bar-spa" style="width:0%"></div></div>
                                         <input type="number" id="stat-spa" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
                                     </div>
-                                    <span class="editor-stat-calc" id="calc-spa">—</span>
+                                    <span class="editor-stat-calc" id="calc-spa">-</span>
                                 </div>
                                 <div class="editor-stat-row" data-stat="spd">
                                     <span class="editor-stat-label">SPD</span>
@@ -320,7 +350,7 @@
                                         <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spd" id="editor-bar-spd" style="width:0%"></div></div>
                                         <input type="number" id="stat-spd" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
                                     </div>
-                                    <span class="editor-stat-calc" id="calc-spd">—</span>
+                                    <span class="editor-stat-calc" id="calc-spd">-</span>
                                 </div>
                                 <div class="editor-stat-row" data-stat="spe">
                                     <span class="editor-stat-label">SPE</span>
@@ -328,7 +358,7 @@
                                         <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spe" id="editor-bar-spe" style="width:0%"></div></div>
                                         <input type="number" id="stat-spe" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
                                     </div>
-                                    <span class="editor-stat-calc" id="calc-spe">—</span>
+                                    <span class="editor-stat-calc" id="calc-spe">-</span>
                                 </div>
                             </div>
                             <div class="bst-display">
@@ -415,7 +445,7 @@
                                         <div class="autocomplete-dropdown" id="move-dropdown"></div>
                                     </div>
                                     <select id="move-method" style="width:90px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="toggleLevelInput()">
-                                        <option value="none">—</option>
+                                        <option value="none">-</option>
                                         <option value="level">Level</option>
                                         <option value="tm">TM</option>
                                         <option value="egg">Egg</option>
@@ -483,15 +513,16 @@
                     </div>
                     <div class="search-bar">
                         <input type="text" id="search-input" placeholder="Search your Fakemon..." oninput="filterCollection()">
-                        <select id="collection-sort" onchange="renderCollection()" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;background:var(--bg-input);color:var(--text-primary);">
-                            <option value="newest">Newest First</option>
-                            <option value="oldest">Oldest First</option>
-                            <option value="name-asc">Name (A-Z)</option>
-                            <option value="name-desc">Name (Z-A)</option>
-                            <option value="number-asc">Pokédex Number</option>
-                            <option value="bst-desc">BST (High-Low)</option>
-                            <option value="bst-asc">BST (Low-High)</option>
-                            <option value="updated">Recently Updated</option>
+                        <select id="collection-sort-by" onchange="changeCollectionSort()" aria-label="Sort collection by" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;background:var(--bg-input);color:var(--text-primary);">
+                            <option value="created">Date Added</option>
+                            <option value="name">Name</option>
+                            <option value="number">Pokédex Number</option>
+                            <option value="bst">BST</option>
+                            <option value="updated">Last Updated</option>
+                        </select>
+                        <select id="collection-sort-order" onchange="changeCollectionSort()" aria-label="Sort direction" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;background:var(--bg-input);color:var(--text-primary);">
+                            <option value="desc">Descending</option>
+                            <option value="asc">Ascending</option>
                         </select>
                         <div class="export-as-wrap" style="position:relative;display:inline-block;">
                             <button class="btn btn-primary" type="button" onclick="toggleCreateMenu(event)">Create <span style="font-size:10px;">▼</span></button>
@@ -514,6 +545,73 @@
                 </div>
             </div>
 
+            <!-- Community Hub View -->
+            <div id="community-view" style="display:none;">
+                <div class="panel">
+                    <div class="collection-title-row" id="community-header-row">
+                        <div class="collection-title-left">
+                            <h2 class="collection-heading">Community Hub</h2>
+                        </div>
+                        <button class="btn btn-secondary" onclick="closeCommunityHub()"><i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Back to Collection</button>
+                    </div>
+                    <div class="search-bar community-controls">
+                        <input type="text" id="community-search-input" placeholder="Search Community Hub..." oninput="filterCommunity()" aria-label="Search Community Hub">
+                        <select id="community-sort-by" onchange="changeCommunitySort()" aria-label="Sort Community Hub by" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;background:var(--bg-input);color:var(--text-primary);">
+                            <option value="published">Date Published</option>
+                            <option value="name">Name</option>
+                            <option value="author">Creator</option>
+                            <option value="number">Pokédex Number</option>
+                        </select>
+                        <select id="community-sort-order" onchange="changeCommunitySort()" aria-label="Community sort direction" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;background:var(--bg-input);color:var(--text-primary);">
+                            <option value="desc">Descending</option>
+                            <option value="asc">Ascending</option>
+                        </select>
+                    </div>
+                    <div id="community-grid" class="collection-grid"></div>
+                </div>
+            </div>
+
+            <!-- Community Fakemon Detail View ("warp" page, mirrors Share View) -->
+            <div id="community-detail-view" style="display:none;">
+                <div class="share-view-shell">
+                    <div class="share-view-header">
+                        <div>
+                            <div class="share-view-kicker">COMMUNITY FAKEMON</div>
+                            <h2 id="community-detail-title">Fakemon</h2>
+                            <div class="community-card-author" id="community-detail-author"></div>
+                        </div>
+                        <div class="share-view-actions">
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="closeMonDetail()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="shareFakemon()">Copy Share Link</button>
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="importCommunityMonToCollection()">Import to My Collection</button>
+                            <button class="btn btn-secondary btn-sm community-unpublish-inline" id="community-detail-unpublish-btn" type="button" onclick="unpublishOpenCommunityMon()" style="display:none;">Unpublish</button>
+                            <div class="export-as-wrap" style="position:relative;display:inline-block;">
+                                <button class="btn btn-primary btn-sm" type="button" onclick="toggleCommunityExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
+                                <div id="community-export-as-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeCommunityExportMenu();">Export as PNG</button>
+                                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeCommunityExportMenu();">Export as Plain Text</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeCommunityExportMenu();">Export as JSON</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportShowdownMod(); closeCommunityExportMenu();">Export as Showdown Mod</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportEssentialsMod(); closeCommunityExportMenu();">Export as Essentials Mod</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="community-detail-board"></div>
+
+                    <div class="section-divider"></div>
+                    <h4 class="mon-detail-comments-heading">Comments</h4>
+                    <div id="mon-detail-comments" class="mon-detail-comments"></div>
+                    <div id="mon-detail-comment-box" class="mon-detail-comment-box" style="display:none;">
+                        <textarea id="mon-detail-comment-input" placeholder="Say something nice…" maxlength="1000"></textarea>
+                        <button class="btn btn-primary" onclick="submitMonComment()">Post</button>
+                    </div>
+                    <p id="mon-detail-comment-signin-hint" class="mon-detail-signin-hint" style="display:none;">
+                        <a href="#" onclick="openAuthModal('signin'); return false;">Sign in</a> to leave a comment.
+                    </p>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -527,6 +625,159 @@
                 <input id="evolution-node-search" type="text" placeholder="Search Pokemon by name..." autocomplete="off" oninput="renderEvolutionNodeChooser()">
             </div>
             <div id="evolution-node-list" class="evolution-node-list"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="auth-modal" data-mode="signin">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Sign In</h3>
+                <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-error" id="auth-modal-error"></p>
+                <div class="form-group">
+                    <label for="auth-identifier" id="auth-identifier-label">Username</label>
+                    <input type="text" id="auth-identifier" placeholder="your username or email">
+                </div>
+                <div class="form-group" id="auth-email-optional-row" style="display:none;">
+                    <label for="auth-email-optional">Email (optional - for account recovery)</label>
+                    <input type="email" id="auth-email-optional" autocomplete="email" placeholder="you@example.com">
+                </div>
+                <div class="auth-signup-note" id="auth-signup-note" style="display:none;">
+                    <strong>No account is required to use Woogidex.</strong> You only need an account if you want to use Community features such as uploading, publishing, and interacting with other users.
+                </div>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <div class="auth-terms-row" id="auth-terms-row" style="display:none;">
+                    <label class="auth-terms-check">
+                        <input type="checkbox" id="auth-terms-checkbox">
+                        <span>I agree to the <button type="button" class="inline-link-btn" onclick="openTermsModal(); event.preventDefault(); event.stopPropagation();">Terms of Service</button>.</span>
+                    </label>
+                </div>
+                <button class="btn btn-primary auth-submit-btn" id="auth-submit-btn" onclick="submitAuthForm()">Sign In</button>
+                <a href="#" class="auth-switch-link" id="auth-switch-link" onclick="toggleAuthMode(); return false;">Don't have an account? Sign up</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="profile-modal">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3>Edit Profile</h3>
+                <button class="modal-close" onclick="closeProfileModal()" aria-label="Close">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-error" id="profile-modal-error"></p>
+
+                <div class="profile-avatar-row">
+                    <label for="profile-avatar-file" class="profile-avatar-picker" title="Change picture">
+                        <img id="profile-avatar-preview" class="profile-avatar-preview" style="display:none;" alt="">
+                        <span id="profile-avatar-placeholder" class="profile-avatar-placeholder">
+                            <i data-lucide="camera" style="width:20px;height:20px;"></i>
+                        </span>
+                    </label>
+                    <input type="file" id="profile-avatar-file" accept="image/*" style="display:none;" onchange="onProfileAvatarFileChosen(this)">
+                    <div class="profile-avatar-hint">JPG, PNG, or GIF. Max 2MB.</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="profile-display-name">Display Name</label>
+                    <input type="text" id="profile-display-name" maxlength="40" placeholder="e.g., AshK">
+                </div>
+                <button class="btn btn-primary auth-submit-btn" id="profile-submit-btn" onclick="submitProfileForm()">Save Profile</button>
+
+                <div class="section-divider"></div>
+
+                <div class="form-group">
+                    <label for="profile-username">Username</label>
+                    <input type="text" id="profile-username" maxlength="20" placeholder="letters, numbers, underscore only">
+                    <div class="profile-field-hint" id="profile-username-hint"></div>
+                </div>
+                <p class="auth-modal-error" id="profile-username-error"></p>
+                <button class="btn btn-secondary auth-submit-btn" id="profile-username-submit-btn" onclick="submitUsernameForm()">Save Username</button>
+
+                <div class="section-divider"></div>
+
+                <div class="form-group">
+                    <label for="profile-email">Account Email</label>
+                    <input type="email" id="profile-email" placeholder="you@example.com">
+                </div>
+                <p class="auth-modal-error" id="profile-email-error"></p>
+                <div class="profile-email-actions">
+                    <button type="button" class="btn btn-secondary profile-email-save-btn" id="profile-email-submit-btn" onclick="submitEmailForm()">Save Email</button>
+                    <button type="button" class="btn btn-danger profile-email-remove-btn" id="profile-email-remove-btn" style="display:none;" onclick="submitRemoveEmail()">Remove Email</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal-overlay" id="terms-modal" onclick="if(event.target===this) closeTermsModal()">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <div class="policy-kicker">Woogidex</div>
+                    <h3>Terms of Service</h3>
+                </div>
+                <button class="modal-close" onclick="closeTermsModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>Welcome to Woogidex. By creating an account, you agree to use the site responsibly and follow these simple rules.</p>
+                <ul>
+                    <li>Do not use Woogidex to post illegal, harmful, abusive, or sexually explicit content.</li>
+                    <li>Do not spam, scam, harass, threaten, or disrupt the service.</li>
+                    <li>Do not impersonate another person, creator, staff member, or organization.</li>
+                    <li>Only upload content you are allowed to share.</li>
+                    <li>Follow the Community Rules whenever you use the Community Hub.</li>
+                </ul>
+                <p>We may remove content, suspend accounts, terminate accounts, or permanently ban users who break these rules or abuse the service.</p>
+                <p>We may update these rules when needed to keep Woogidex safe and usable.</p>
+                <div class="policy-actions">
+                    <button type="button" class="btn btn-primary" onclick="closeTermsModal()">Got it</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="community-rules-modal" onclick="if(event.target===this) closeCommunityRulesModal()">
+        <div class="modal policy-modal community-rules-modal">
+            <div class="modal-header">
+                <div>
+                    <div class="policy-kicker">Woogidex Community</div>
+                    <h3 id="community-rules-title">Community Rules</h3>
+                </div>
+                <button class="modal-close" onclick="closeCommunityRulesModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>Keep the Community Hub friendly, creative, and safe for everyone.</p>
+                <ul>
+                    <li><strong>No NSFW or sexual content.</strong> This includes artwork, names, descriptions, cries, and other uploaded content.</li>
+                    <li><strong>No inappropriate or offensive names.</strong></li>
+                    <li><strong>No spam.</strong> Do not flood the Community Hub with repeated or low-effort posts.</li>
+                    <li><strong>No harassment, threats, hate, or discrimination.</strong></li>
+                    <li><strong>No impersonation.</strong> Do not pretend to be another user, creator, staff member, company, or organization.</li>
+                    <li><strong>No scams, misleading content, or advertising.</strong></li>
+                    <li><strong>Only share content you have permission to use.</strong></li>
+                    <li><strong>Do not upload malicious or harmful files.</strong></li>
+                </ul>
+                <p>Breaking these rules may result in content removal, account termination, and a permanent ban from the Community Hub and Woogidex.</p>
+                <div class="community-rules-agree-row" id="community-rules-agree-row">
+                    <label class="auth-terms-check">
+                        <input type="checkbox" id="community-rules-checkbox">
+                        <span>I have read and agree to the Community Rules.</span>
+                    </label>
+                </div>
+                <div class="policy-actions">
+                    <button type="button" class="btn btn-primary" id="community-rules-continue-btn" onclick="acceptCommunityRules()">I Agree and Continue</button>
+                </div>
+            </div>
         </div>
     </div>
 

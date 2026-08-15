@@ -51,11 +51,13 @@ function resetEditor() {
             state.sampleSets = [];
             state.artworkData = null;
             state.shinyArtworkData = null;
+            state.cryData = null;
             state.artworkMode = 'normal';
             state.previewArtworkMode = 'normal';
             updateArtworkModeUI();
             state.evolutionGraph = null;
             document.getElementById('artwork-preview').innerHTML = '<span class="placeholder">ART</span>';
+            updateCryUploadUI();
             renderAbilities();
             renderLearnset();
             renderCustomMoves();
@@ -170,10 +172,12 @@ function resetEditor() {
             state.sampleSets = fakemon.sampleSets || [];
             state.artworkData = fakemon.artwork || null;
             state.shinyArtworkData = fakemon.shinyArtwork || null;
+            state.cryData = fakemon.cry || null;
             state.artworkMode = 'normal';
             state.previewArtworkMode = 'normal';
             updateArtworkModeUI();
             renderCurrentArtworkPreview();
+            updateCryUploadUI();
             if (typeof lucide !== 'undefined') lucide.createIcons();
             renderAbilities();
             renderCustomAbilities();
@@ -381,7 +385,7 @@ function resetEditor() {
             const getMatchLabel = (match, kind) => {
                 if (!match) return 'N/A';
                 const bulk = (toBulkStat(match.stats.hp, 'hp') * (kind === 'physical' ? toBulkStat(match.stats.def, 'def') : toBulkStat(match.stats.spd, 'spd'))).toLocaleString();
-                return `${match.name} — ${bulk} bulk`;
+                return `${match.name} - ${bulk} bulk`;
             };
 
             const physSprite = getMatchSprite(closestPhys);
@@ -451,6 +455,11 @@ function resetEditor() {
                 api.showToast('Please use an image file for artwork.', 'error');
                 return;
             }
+            const MAX_ARTWORK_SIZE = 2 * 1024 * 1024;
+            if (file.size > MAX_ARTWORK_SIZE) {
+                api.showToast('Artwork image must be 2 MB or smaller.', 'error');
+                return;
+            }
             const reader = new FileReader();
             reader.onload = (e) => {
                 if ((state.artworkMode || 'normal') === 'shiny') state.shinyArtworkData = e.target.result;
@@ -498,6 +507,66 @@ window.togglePreviewArtworkMode = togglePreviewArtworkMode;
             const file = event.dataTransfer?.files?.[0];
             processArtworkFile(file);
         }
+
+        function removePokemonCry(event) {
+            event?.stopPropagation();
+            state.cryData = null;
+            const input = document.getElementById('cry-upload');
+            if (input) input.value = '';
+            updateCryUploadUI();
+            updatePreview();
+            autoSave(true);
+        }
+
+        function updateCryUploadUI() {
+            const label = document.getElementById('cry-upload-label');
+            const remove = document.getElementById('cry-remove-btn');
+            if (label) label.textContent = state.cryData ? 'Pokemon cry uploaded - click to replace' : 'Click to upload a Pokemon cry';
+            if (remove) remove.hidden = !state.cryData;
+        }
+
+        function processPokemonCryFile(file) {
+            if (!file) return;
+            if (!file.type || !file.type.startsWith('audio/')) {
+                api.showToast('Please use an audio file for the Pokemon cry.', 'error');
+                return;
+            }
+            const MAX_CRY_SIZE = 2 * 1024 * 1024;
+            if (file.size > MAX_CRY_SIZE) {
+                api.showToast('Pokemon cry must be 2 MB or smaller.', 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                state.cryData = e.target.result;
+                updateCryUploadUI();
+                updatePreview();
+                autoSave(true);
+            };
+            reader.onerror = () => api.showToast('Could not read that Pokemon cry file.', 'error');
+            reader.readAsDataURL(file);
+        }
+
+        function handlePokemonCryUpload(event) {
+            processPokemonCryFile(event?.target?.files?.[0]);
+            if (event?.target) event.target.value = '';
+        }
+
+        function playPokemonCry(event) {
+            event?.preventDefault();
+            event?.stopPropagation();
+            if (!state.cryData) return;
+            try {
+                const audio = new Audio(state.cryData);
+                audio.play().catch(() => api.showToast('Could not play this Pokemon cry in your browser.', 'warning'));
+            } catch (err) {
+                api.showToast('Could not play this Pokemon cry.', 'warning');
+            }
+        }
+
+        window.removePokemonCry = removePokemonCry;
+        window.handlePokemonCryUpload = handlePokemonCryUpload;
+        window.playPokemonCry = playPokemonCry;
 
         
 // ==================== EGG GROUPS ====================
@@ -807,6 +876,16 @@ function toggleCollectionShinyPreview() {
 window.setCollectionShinyPreview = setCollectionShinyPreview;
 window.toggleCollectionShinyPreview = toggleCollectionShinyPreview;
 
+function handlePreviewCustomMove(index) {
+    if (state.isCommunityPreview) {
+        const move = state.learnset?.[index];
+        if (move?.name && typeof showMoveDetail === 'function') showMoveDetail(move.name);
+        return;
+    }
+    if (typeof openCustomMoveModal === 'function') openCustomMoveModal(index);
+}
+window.handlePreviewCustomMove = handlePreviewCustomMove;
+
 function setPreviewArtworkMode(mode) {
     state.previewArtworkMode = mode === 'shiny' && state.shinyArtworkData ? 'shiny' : 'normal';
     const activeMode = state.previewArtworkMode;
@@ -942,9 +1021,9 @@ function updatePreview() {
                     const typeClass = 'type-' + (m.type || 'Normal').toLowerCase();
                     const flagLabels = getFlagLabels(m.flags || {}, m.category);
                     const flagHtml = flagLabels.length ? '<div class="cm-flags">' + flagLabels.map(f => '<span class="flag-tidbit">' + escapeHtml(f) + '</span>').join('') + '</div>' : '';
-                    const accText = (m.accuracy === true || m.accuracy === undefined || m.accuracy === false) ? '—' : m.accuracy + '%';
+                    const accText = (m.accuracy === true || m.accuracy === undefined || m.accuracy === false) ? '-' : m.accuracy + '%';
                     const methodText = m.learnMethod === 'level' && m.level ? ' · Level ' + m.level : m.learnMethod === 'tm' ? ' · TM' : m.learnMethod === 'egg' ? ' · Egg' : '';
-                    learnsetHtml += '<div class="board-custom-move-item board-custom-move-inline" onclick="openCustomMoveModal(' + state.learnset.indexOf(m) + ')"><span class="cm-type ' + typeClass + '">' + escapeHtml(m.type || 'Normal') + '</span><div class="cm-body"><div class="cm-name">' + escapeHtml(m.name) + '</div><div class="cm-stats">' + escapeHtml(m.category || 'Status') + ' · ' + (m.basePower || '—') + ' BP · ' + accText + ' acc · ' + (m.pp || '—') + ' PP' + methodText + (m.priority ? ' · Priority ' + m.priority : '') + '</div>' + (m.desc ? '<div class="cm-desc">' + escapeHtml(m.desc) + '</div>' : '') + flagHtml + '</div></div>';
+                    learnsetHtml += '<div class="board-custom-move-item board-custom-move-inline" onclick="handlePreviewCustomMove(' + state.learnset.indexOf(m) + ')"><span class="cm-type ' + typeClass + '">' + escapeHtml(m.type || 'Normal') + '</span><div class="cm-body"><div class="cm-name">' + escapeHtml(m.name) + '</div><div class="cm-stats">' + escapeHtml(m.category || 'Status') + ' · ' + (m.basePower || '-') + ' BP · ' + accText + ' acc · ' + (m.pp || '-') + ' PP' + methodText + (m.priority ? ' · Priority ' + m.priority : '') + '</div>' + (m.desc ? '<div class="cm-desc">' + escapeHtml(m.desc) + '</div>' : '') + flagHtml + '</div></div>';
                 });
                 learnsetHtml += '</div>';
             }
@@ -983,8 +1062,9 @@ function updatePreview() {
                     <!-- Top Row: Art (left) | Data + Dex Entries (right, side by side) -->
                     <div class="board-top-row">
                         <div class="board-artwork-left">
-                            ${state.shinyArtworkData ? `<div class="board-artwork-mode" aria-label="Preview artwork">
-                                <button type="button" class="collection-shiny-toggle board-artwork-shiny-toggle" id="board-artwork-shiny-toggle" onclick="togglePreviewArtworkMode(event)" title="Show shiny artwork" aria-label="Show shiny artwork" aria-pressed="false"><i data-lucide="sparkles" aria-hidden="true"></i></button>
+                            ${(state.shinyArtworkData || state.cryData) ? `<div class="board-artwork-mode" aria-label="Preview controls">
+                                ${state.shinyArtworkData ? `<button type="button" class="collection-shiny-toggle board-artwork-shiny-toggle" id="board-artwork-shiny-toggle" onclick="togglePreviewArtworkMode(event)" title="Show shiny artwork" aria-label="Show shiny artwork" aria-pressed="false"><i data-lucide="sparkles" aria-hidden="true"></i></button>` : ''}
+                                ${state.cryData ? `<button type="button" class="collection-shiny-toggle board-artwork-cry-toggle" onclick="playPokemonCry(event)" title="Play Pokemon cry" aria-label="Play Pokemon cry"><i data-lucide="volume-2" aria-hidden="true"></i></button>` : ''}
                             </div>` : ''}
                             <div id="board-artwork-image"></div>
                         </div>

@@ -139,7 +139,7 @@
             font-size: 12px; font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.5px; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
-        /* Canonical type pill style — used everywhere a single type tag appears
+        /* Canonical type pill style - used everywhere a single type tag appears
            (move type in learnset, moves dropdowns, move detail popup, custom moves,
            recommend-move list, type1/type2 selector + dropdown). Keeping this as one
            unscoped rule means every context renders identically. */
@@ -2723,20 +2723,20 @@
     }
 
     #preview-modal-board-wrap .pokedex-board,
-    #pokedex-board-container .pokedex-board {
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
         padding: clamp(12px, 3vw, 22px);
         border-radius: 14px;
     }
 
     /* Preserve the artwork | information composition instead of stacking it. */
     #preview-modal-board-wrap .board-top-row,
-    #pokedex-board-container .board-top-row {
+    #pokedex-board-container .board-top-row, #community-detail-board .board-top-row {
         grid-template-columns: minmax(0, 38%) minmax(0, 1fr) !important;
         gap: clamp(8px, 2vw, 14px);
     }
 
     #preview-modal-board-wrap .board-artwork-left,
-    #pokedex-board-container .board-artwork-left {
+    #pokedex-board-container .board-artwork-left, #community-detail-board .board-artwork-left {
         width: 100% !important;
         height: auto !important;
         aspect-ratio: 1 / 1;
@@ -2745,54 +2745,54 @@
     }
 
     #preview-modal-board-wrap .board-artwork-left .placeholder,
-    #pokedex-board-container .board-artwork-left .placeholder {
+    #pokedex-board-container .board-artwork-left .placeholder, #community-detail-board .board-artwork-left .placeholder {
         font-size: clamp(36px, 10vw, 72px);
     }
 
     #preview-modal-board-wrap .board-top-row > div:nth-child(2),
-    #pokedex-board-container .board-top-row > div:nth-child(2) {
+    #pokedex-board-container .board-top-row > div:nth-child(2), #community-detail-board .board-top-row > div:nth-child(2) {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
         gap: clamp(6px, 1.5vw, 12px) !important;
     }
 
     #preview-modal-board-wrap .board-data-row,
-    #pokedex-board-container .board-data-row {
+    #pokedex-board-container .board-data-row, #community-detail-board .board-data-row {
         font-size: clamp(11px, 2.4vw, 15px);
         gap: 5px;
     }
 
     #preview-modal-board-wrap .board-data-row .label,
-    #pokedex-board-container .board-data-row .label {
+    #pokedex-board-container .board-data-row .label, #community-detail-board .board-data-row .label {
         min-width: 0;
         font-size: clamp(8px, 1.8vw, 11px);
     }
 
     #preview-modal-board-wrap .board-data-row .value,
-    #pokedex-board-container .board-data-row .value {
+    #pokedex-board-container .board-data-row .value, #community-detail-board .board-data-row .value {
         min-width: 0;
         overflow-wrap: anywhere;
     }
 
     #preview-modal-board-wrap .board-name h2,
-    #pokedex-board-container .board-name h2 {
+    #pokedex-board-container .board-name h2, #community-detail-board .board-name h2 {
         font-size: clamp(20px, 6vw, 34px) !important;
         overflow-wrap: anywhere;
     }
 
     #preview-modal-board-wrap .board-species,
-    #pokedex-board-container .board-species {
+    #pokedex-board-container .board-species, #community-detail-board .board-species {
         font-size: clamp(11px, 3vw, 16px);
         overflow-wrap: anywhere;
     }
 
     #preview-modal-board-wrap .board-number,
-    #pokedex-board-container .board-number {
+    #pokedex-board-container .board-number, #community-detail-board .board-number {
         font-size: clamp(10px, 2.5vw, 14px);
         padding: 4px 9px;
     }
 
     #preview-modal-board-wrap .board-types .type-badge,
-    #pokedex-board-container .board-types .type-badge {
+    #pokedex-board-container .board-types .type-badge, #community-detail-board .board-types .type-badge {
         font-size: clamp(9px, 2.4vw, 13px);
         padding: 4px 9px;
     }
@@ -2800,31 +2800,31 @@
     /* Dense lower content remains the same sections/cards, but gets a readable
        single column rather than forcing a desktop-width layout into a phone. */
     #preview-modal-board-wrap .board-lower-row,
-    #pokedex-board-container .board-lower-row {
+    #pokedex-board-container .board-lower-row, #community-detail-board .board-lower-row {
         grid-template-columns: minmax(0, 1fr) !important;
         gap: 12px !important;
     }
 
     #preview-modal-board-wrap .board-lower-row > .board-learnset-slot,
     #preview-modal-board-wrap .board-lower-row > .board-sets-slot,
-    #pokedex-board-container .board-lower-row > .board-learnset-slot,
-    #pokedex-board-container .board-lower-row > .board-sets-slot {
+    #pokedex-board-container .board-lower-row > .board-learnset-slot,, #community-detail-board .board-lower-row > .board-learnset-slot,
+    #pokedex-board-container .board-lower-row > .board-sets-slot, #community-detail-board .board-lower-row > .board-sets-slot {
         grid-column: 1 !important;
     }
 
     #preview-modal-board-wrap .board-bottom-row,
-    #pokedex-board-container .board-bottom-row {
+    #pokedex-board-container .board-bottom-row, #community-detail-board .board-bottom-row {
         grid-template-columns: minmax(0, 1fr) !important;
         gap: 12px;
     }
 
     #preview-modal-board-wrap .board-section,
-    #pokedex-board-container .board-section {
+    #pokedex-board-container .board-section, #community-detail-board .board-section {
         min-width: 0;
     }
 
     #preview-modal-board-wrap .move-tag,
-    #pokedex-board-container .move-tag {
+    #pokedex-board-container .move-tag, #community-detail-board .move-tag {
         max-width: 100%;
         overflow-wrap: anywhere;
     }
@@ -2834,18 +2834,18 @@
     /* Below this width, the data pane itself becomes single-column while the
        artwork/data split is retained. */
     #preview-modal-board-wrap .board-top-row > div:nth-child(2),
-    #pokedex-board-container .board-top-row > div:nth-child(2) {
+    #pokedex-board-container .board-top-row > div:nth-child(2), #community-detail-board .board-top-row > div:nth-child(2) {
         grid-template-columns: minmax(0, 1fr) !important;
     }
 
     #preview-modal-board-wrap .pokedex-board,
-    #pokedex-board-container .pokedex-board {
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
         padding: 10px;
         border-radius: 12px;
     }
 
     #preview-modal-board-wrap .board-types,
-    #pokedex-board-container .board-types {
+    #pokedex-board-container .board-types, #community-detail-board .board-types {
         gap: 5px;
     }
 }
@@ -2857,7 +2857,7 @@
    the existing document flow intact. */
 @media (max-width: 768px) {
     #preview-modal-board-wrap .pokedex-board,
-    #pokedex-board-container .pokedex-board {
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
         zoom: 0.90;
         width: 111.111% !important;
     }
@@ -2865,7 +2865,7 @@
 
 @media (max-width: 640px) {
     #preview-modal-board-wrap .pokedex-board,
-    #pokedex-board-container .pokedex-board {
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
         zoom: 0.82;
         width: 121.951% !important;
     }
@@ -2873,7 +2873,7 @@
 
 @media (max-width: 520px) {
     #preview-modal-board-wrap .pokedex-board,
-    #pokedex-board-container .pokedex-board {
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
         zoom: 0.76;
         width: 131.579% !important;
     }
@@ -2881,7 +2881,7 @@
 
 @media (max-width: 420px) {
     #preview-modal-board-wrap .pokedex-board,
-    #pokedex-board-container .pokedex-board {
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
         zoom: 0.70;
         width: 142.857% !important;
     }
@@ -2889,7 +2889,7 @@
 
 @media (max-width: 360px) {
     #preview-modal-board-wrap .pokedex-board,
-    #pokedex-board-container .pokedex-board {
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
         zoom: 0.64;
         width: 156.25% !important;
     }
@@ -2972,25 +2972,25 @@
        its Pokedex data and entries vertically instead of squeezing two cards
        into a very narrow column. */
     #preview-modal-board-wrap .board-top-row > div:nth-child(2),
-    #pokedex-board-container .board-top-row > div:nth-child(2) {
+    #pokedex-board-container .board-top-row > div:nth-child(2), #community-detail-board .board-top-row > div:nth-child(2) {
         grid-template-columns: minmax(0, 1fr) !important;
         gap: 8px !important;
     }
 
     #preview-modal-board-wrap .board-dex-entries-compact,
-    #pokedex-board-container .board-dex-entries-compact {
+    #pokedex-board-container .board-dex-entries-compact, #community-detail-board .board-dex-entries-compact {
         padding: 9px 10px;
         border-radius: 10px;
     }
 
     #preview-modal-board-wrap .board-dex-entries-compact .board-section-title,
-    #pokedex-board-container .board-dex-entries-compact .board-section-title {
+    #pokedex-board-container .board-dex-entries-compact .board-section-title, #community-detail-board .board-dex-entries-compact .board-section-title {
         font-size: clamp(9px, 2.4vw, 13px);
         margin-bottom: 6px;
     }
 
     #preview-modal-board-wrap .board-dex-entries-compact .dex-entry,
-    #pokedex-board-container .board-dex-entries-compact .dex-entry {
+    #pokedex-board-container .board-dex-entries-compact .dex-entry, #community-detail-board .board-dex-entries-compact .dex-entry {
         font-size: clamp(9px, 2.4vw, 13px);
         line-height: 1.4;
         padding: 8px;
@@ -2998,7 +2998,7 @@
     }
 
     #preview-modal-board-wrap .board-dex-entries-compact .dex-entry-label,
-    #pokedex-board-container .board-dex-entries-compact .dex-entry-label {
+    #pokedex-board-container .board-dex-entries-compact .dex-entry-label, #community-detail-board .board-dex-entries-compact .dex-entry-label {
         font-size: clamp(7px, 1.9vw, 10px);
     }
 }
@@ -3007,13 +3007,13 @@
    surrounding monospace/stat styling to leak into it. It also shrinks and
    wraps cleanly on narrow screens. */
 #preview-modal-board-wrap .board-gender-compact,
-#pokedex-board-container .board-gender-compact {
+#pokedex-board-container .board-gender-compact, #community-detail-board .board-gender-compact {
     min-width: 0;
     gap: clamp(4px, 1vw, 10px);
     flex-wrap: wrap;
 }
 #preview-modal-board-wrap .board-gender-compact > .label,
-#pokedex-board-container .board-gender-compact > .label {
+#pokedex-board-container .board-gender-compact > .label, #community-detail-board .board-gender-compact > .label {
     min-width: 0 !important;
     flex: 0 0 auto;
     font-family: 'Exo 2', sans-serif !important;
@@ -3021,7 +3021,7 @@
     line-height: 1.2;
 }
 #preview-modal-board-wrap .board-gender-compact .gender-bar,
-#pokedex-board-container .board-gender-compact .gender-bar {
+#pokedex-board-container .board-gender-compact .gender-bar, #community-detail-board .board-gender-compact .gender-bar {
     width: clamp(48px, 10vw, 160px);
     height: clamp(8px, 1.8vw, 16px);
     border-radius: 999px;
@@ -3030,7 +3030,7 @@
     margin-top: 0;
 }
 #preview-modal-board-wrap .board-gender-compact .gender-label,
-#pokedex-board-container .board-gender-compact .gender-label {
+#pokedex-board-container .board-gender-compact .gender-label, #community-detail-board .board-gender-compact .gender-label {
     min-width: 0;
     max-width: 100%;
     flex: 1 1 100%;
@@ -3687,4 +3687,251 @@
   .analysis-profile-main{border-right:0;border-bottom:1px solid var(--border-light);padding:0 0 16px}
   .analysis-profile-tier{font-size:48px}
   .analysis-profile-note{grid-column:auto}
+}
+
+/* ==================== AUTH ==================== */
+.auth-signed-in { display: flex; }
+.auth-user-email {
+    font-size: 13px;
+    color: var(--text-secondary, #888);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.auth-modal { max-width: 380px; width: 100%; }
+.auth-modal-error {
+    color: var(--danger, #ef4444);
+    font-size: 13px;
+    min-height: 18px;
+    margin: -4px 0 8px;
+}
+.auth-submit-btn { width: 100%; margin-top: 4px; }
+.auth-switch-link {
+    display: block;
+    text-align: center;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--accent, #6366f1);
+    text-decoration: none;
+}
+.auth-switch-link:hover { text-decoration: underline; }
+
+/* ---- avatar / profile additions ---- */
+.auth-avatar-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: none; padding: 0; cursor: pointer; overflow: hidden;
+    background: var(--accent, #6366f1); flex-shrink: 0;
+}
+.auth-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.auth-avatar-fallback {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 14px; font-weight: 700;
+}
+.profile-avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.profile-avatar-picker {
+    width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
+    background: var(--bg-secondary, #2a2a35); border: 2px dashed var(--border, #444);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+}
+.profile-avatar-preview { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-avatar-placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-secondary, #888); }
+.profile-avatar-hint { font-size: 12px; color: var(--text-secondary, #888); }
+
+/* ==================== COMMUNITY HUB ==================== */
+.community-loading, .community-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary, #888);
+    font-size: 14px;
+}
+.community-card { cursor: pointer; position: relative; }
+.community-unpublish-btn { position: absolute; top: 8px; right: 8px; z-index: 2; }
+.community-card-author {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 8px; font-size: 12px; color: var(--text-secondary, #888);
+}
+.community-mini-avatar {
+    width: 20px; height: 20px; border-radius: 50%; object-fit: cover;
+    flex-shrink: 0; background: var(--accent, #6366f1);
+}
+.community-mini-avatar-fallback {
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px; font-weight: 700;
+}
+
+.mon-detail-comments-heading { margin: 4px 0 10px; font-size: 14px; }
+.share-view-shell .community-card-author { margin-top: 6px; }
+.share-view-shell .mon-detail-comments,
+.share-view-shell .mon-detail-comment-box,
+.share-view-shell .mon-detail-signin-hint,
+.share-view-shell .mon-detail-comments-heading {
+    margin-left: 4px;
+    margin-right: 4px;
+}
+.mon-detail-comments { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.mon-comment { font-size: 13px; }
+.mon-comment-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.mon-comment-author { font-weight: 600; }
+.mon-comment-time { font-size: 11px; color: var(--text-secondary, #888); margin-left: auto; }
+.mon-comment-delete { background: none; border: none; cursor: pointer; color: var(--text-secondary, #888); padding: 2px; }
+.mon-comment-delete:hover { color: var(--danger, #ef4444); }
+.mon-comment-body { color: var(--text-primary, #eee); white-space: pre-wrap; word-break: break-word; }
+.mon-detail-comment-box { display: flex; gap: 8px; align-items: flex-end; }
+.mon-detail-comment-box textarea {
+    flex: 1; min-height: 44px; max-height: 120px; resize: vertical;
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #444);
+    background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;
+}
+.mon-detail-signin-hint { font-size: 13px; color: var(--text-secondary, #888); }
+.mon-detail-signin-hint a { color: var(--accent, #6366f1); }
+
+.profile-field-hint { font-size: 11px; color: var(--text-secondary, #888); margin-top: 4px; }
+.profile-email-actions {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+}
+.profile-email-actions .profile-email-save-btn,
+.profile-email-actions .profile-email-remove-btn {
+    flex: 1 1 0;
+    width: auto;
+    margin-top: 0;
+    justify-content: center;
+    text-align: center;
+}
+
+
+/* ==================== COMMUNITY PREVIEW RESPONSIVE BOARD ====================
+   The Community detail page uses the same board markup as the editor preview,
+   but the board is cloned into #community-detail-board. Give that clone the
+   same responsive sizing/zoom behavior and prevent horizontal page overflow. */
+#community-detail-board {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+#community-detail-board .pokedex-board {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+@media (max-width: 768px) {
+    #community-detail-board .pokedex-board {
+        padding: clamp(12px, 3vw, 22px);
+        border-radius: 14px;
+        zoom: 0.90;
+        width: 111.111% !important;
+    }
+}
+@media (max-width: 640px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.82;
+        width: 121.951% !important;
+    }
+}
+@media (max-width: 520px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.76;
+        width: 131.579% !important;
+    }
+}
+@media (max-width: 420px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.70;
+        width: 142.857% !important;
+    }
+}
+@media (max-width: 360px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.64;
+        width: 156.25% !important;
+    }
+}
+
+/* Collection / Community sorting controls */
+.collection-controls, .community-controls { align-items: center; }
+.community-controls #community-search-input { min-width: 180px; flex: 1 1 240px; }
+.community-controls select, #collection-sort-by, #collection-sort-order { max-width: 190px; }
+@media (max-width: 640px) {
+    .community-controls { flex-wrap: wrap; }
+    .community-controls #community-search-input { flex: 1 1 100%; width: 100%; }
+    .community-controls select { flex: 1 1 calc(50% - 5px); max-width: none; }
+    #collection-sort-by, #collection-sort-order { flex: 1 1 0; min-width: 0; }
+}
+
+
+/* Pokemon cry upload / preview controls */
+.cry-upload-zone { position:relative; min-height:78px; display:flex; align-items:center; justify-content:center; border:1px dashed var(--border); border-radius:10px; background:var(--bg-input); color:var(--text-secondary); cursor:pointer; transition:border-color .15s ease, background .15s ease; overflow:hidden; }
+.cry-upload-zone:hover { border-color:var(--accent); background:var(--bg-panel); }
+.cry-upload-zone input[type="file"] { display:none; }
+.cry-upload-content { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:14px 60px 14px 14px; text-align:center; pointer-events:none; }
+.cry-upload-content span { font:600 12px 'Exo 2',sans-serif; color:var(--text-primary); }
+.cry-upload-content small { font:500 10px 'Exo 2',sans-serif; color:var(--text-muted); }
+.cry-remove-btn { right:8px; bottom:8px; }
+.board-artwork-mode { flex-direction:column; gap:6px; }
+.board-artwork-cry-toggle { color:var(--text-secondary); }
+.board-artwork-cry-toggle:hover { color:var(--text-primary); }
+
+.auth-terms-check { display:flex; align-items:flex-start; gap:8px; font-size:12px; line-height:1.45; color:var(--text-secondary); cursor:pointer; }
+.auth-terms-check input { margin-top:3px; accent-color:var(--accent); }
+.inline-link-btn { border:0; background:none; padding:0; color:var(--info); text-decoration:underline; font:inherit; cursor:pointer; }
+.policy-modal { max-width:620px; }
+.policy-body { line-height:1.5; }
+.policy-body ul { margin:12px 0 16px 20px; display:flex; flex-direction:column; gap:7px; }
+.policy-body p { margin-bottom:12px; }
+#community-rules-continue-btn { margin-top:14px; }
+
+/* Policy and rules modals */
+.policy-modal { width:min(620px, calc(100vw - 28px)); max-height:min(82vh, 760px); overflow:hidden; border-radius:16px; }
+.policy-modal .modal-header { padding:18px 20px; background:var(--bg-card); border-bottom:1px solid var(--border-light); }
+.policy-modal .modal-body { max-height:calc(82vh - 78px); overflow-y:auto; padding:20px; }
+.policy-kicker { font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin-bottom:3px; }
+.policy-body { color:var(--text-secondary); line-height:1.55; }
+.policy-body p { margin:0 0 14px; }
+.policy-body ul { margin:10px 0 18px; padding-left:20px; display:flex; flex-direction:column; gap:9px; }
+.policy-body li::marker { color:var(--accent); }
+.policy-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+.auth-terms-row { margin:4px 0 14px; padding:11px 12px; background:var(--bg-panel); border:1px solid var(--border-light); border-radius:10px; }
+.auth-terms-check { align-items:flex-start; }
+.auth-terms-check input { width:16px; height:16px; flex:0 0 16px; cursor:pointer; }
+.inline-link-btn { display:inline; vertical-align:baseline; }
+.community-rules-modal .modal-body { padding-bottom:22px; }
+.community-rules-agree-row { padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); }
+.community-rules-agree-row .auth-terms-check { color:var(--text-primary); }
+@media (max-width:640px) {
+    .policy-modal { width:calc(100vw - 20px); max-height:88vh; }
+    .policy-modal .modal-body { max-height:calc(88vh - 72px); padding:16px; }
+    .policy-actions .btn { width:100%; }
+    .policy-actions { display:block; }
+}
+
+/* Account policy and community rules usability fixes */
+.auth-signup-note {
+    margin: 2px 0 14px;
+    padding: 11px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+}
+.auth-signup-note strong { color: var(--text-primary); }
+.policy-modal { display:flex; flex-direction:column; }
+.policy-modal .modal-header { flex:0 0 auto; }
+.policy-modal .modal-body { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+.policy-actions { position:sticky; bottom:0; padding-top:12px; padding-bottom:2px; background:linear-gradient(to bottom, transparent, var(--bg-card) 18%); }
+.community-rules-agree-row { position:sticky; bottom:52px; z-index:2; box-shadow:0 -8px 14px color-mix(in srgb, var(--bg-card) 80%, transparent); }
+.community-rules-modal .policy-actions { bottom:0; z-index:3; }
+@media (max-width:640px) {
+    .policy-modal { max-height:90vh; }
+    .policy-modal .modal-body { max-height:none; }
+    .community-rules-agree-row { bottom:54px; }
 }

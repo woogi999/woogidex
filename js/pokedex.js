@@ -3,21 +3,32 @@ import { state, api } from './app.js';
 import { POKEMON_COLORS } from './data.js';
 
 // ==================== NAVIGATION ====================
-        function showCollection() {
+        async function showCollection() {
             // Leaving a shared-link preview is a navigation action, not an editor
             // save. The shared Fakemon must remain read-only unless the user
             // explicitly chooses "Import to My Collection".
             const wasShareRoute = !!state.isShareRoute;
             api.exitShareRoute?.();
-            if (!wasShareRoute) api.autoSave(true); // Force immediate save before leaving
+            // Same idea for a Community Hub preview: the editor DOM may still hold
+            // whatever community Fakemon was last viewed, and force-saving it here
+            // would silently import it into the user's own collection.
+            const wasCommunityPreview = !!state.isCommunityPreview;
+            state.isCommunityPreview = false;
+            document.getElementById('community-detail-view') && (document.getElementById('community-detail-view').style.display = 'none');
+            document.getElementById('community-view') && (document.getElementById('community-view').style.display = 'none');
+            if (!wasShareRoute && !wasCommunityPreview && document.getElementById('editor-view')?.style.display !== 'none') {
+                await api.autoSave(true); // Force immediate save before leaving
+            }
             document.getElementById('editor-view').style.display = 'none';
             document.getElementById('collection-view').style.display = 'block';
             document.getElementById('save-status').style.display = 'none';
             setCollectionView(collectionView || 'fakemon');
         }
         // ==================== NEW FAKEMON FLOW ====================
-        function createNewFakemon() {
-            api.autoSave(true);
+        async function createNewFakemon() {
+            if (document.getElementById('editor-view')?.style.display !== 'none') {
+                await api.autoSave(true);
+            }
             const input = document.getElementById('new-fakemon-name');
             if (input) input.value = '';
             document.getElementById('new-fakemon-modal')?.classList.add('active');
@@ -644,37 +655,81 @@ import { POKEMON_COLORS } from './data.js';
 // ==================== COLLECTION ====================
         let collectionView = 'fakemon';
 
-        function sortFakemonList(list, sortMode) {
-            const sorted = [...list];
-            switch (sortMode) {
-                case 'oldest':
-                    sorted.sort((a, b) => a.createdAt - b.createdAt); break;
-                case 'name-asc':
-                    sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
-                case 'name-desc':
-                    sorted.sort((a, b) => b.name.localeCompare(a.name)); break;
-                case 'number-asc': {
-                    const num = f => {
-                        const n = parseInt(String(f.number || '').replace(/^#/, ''), 10);
-                        return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
-                    };
-                    sorted.sort((a, b) => {
-                        const diff = num(a) - num(b);
-                        return diff || a.name.localeCompare(b.name);
-                    });
-                    break;
-                }
-                case 'bst-desc':
-                    sorted.sort((a, b) => getFakemonBST(b) - getFakemonBST(a)); break;
-                case 'bst-asc':
-                    sorted.sort((a, b) => getFakemonBST(a) - getFakemonBST(b)); break;
-                case 'updated':
-                    sorted.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)); break;
-                case 'newest':
-                default:
-                    sorted.sort((a, b) => b.createdAt - a.createdAt); break;
+        const COLLECTION_SORT_KEY = 'woogidex.collection.sort.v2';
+
+        function getCollectionSortPrefs() {
+            const fallback = { by: 'created', order: 'desc' };
+            try {
+                const saved = JSON.parse(localStorage.getItem(COLLECTION_SORT_KEY) || 'null');
+                if (!saved) return fallback;
+                return {
+                    by: ['created','name','number','bst','updated'].includes(saved.by) ? saved.by : fallback.by,
+                    order: saved.order === 'asc' ? 'asc' : 'desc'
+                };
+            } catch { return fallback; }
+        }
+
+        function saveCollectionSortPrefs(prefs) {
+            try { localStorage.setItem(COLLECTION_SORT_KEY, JSON.stringify(prefs)); } catch {}
+        }
+
+        function getCollectionSortPrefsFromUI() {
+            const saved = getCollectionSortPrefs();
+            const byEl = document.getElementById('collection-sort-by');
+            const orderEl = document.getElementById('collection-sort-order');
+            return {
+                by: byEl?.value || saved.by,
+                order: orderEl?.value === 'asc' ? 'asc' : orderEl?.value === 'desc' ? 'desc' : saved.order
+            };
+        }
+
+        function applyCollectionSortUI() {
+            const prefs = getCollectionSortPrefs();
+            const byEl = document.getElementById('collection-sort-by');
+            const orderEl = document.getElementById('collection-sort-order');
+            if (byEl) {
+                const hasSavedBy = [...byEl.options].some(o => o.value === prefs.by);
+                byEl.value = hasSavedBy ? prefs.by : (byEl.options[0]?.value || 'name');
             }
-            // Pinned items always float to the top, preserving the chosen sort within each group.
+            if (orderEl) orderEl.value = prefs.order;
+            return {
+                by: byEl?.value || prefs.by,
+                order: orderEl?.value === 'asc' ? 'asc' : 'desc'
+            };
+        }
+
+        function changeCollectionSort() {
+            const prefs = getCollectionSortPrefsFromUI();
+            saveCollectionSortPrefs(prefs);
+            renderCollection();
+        }
+
+        function sortFakemonList(list, sortBy = 'created', sortOrder = 'desc') {
+            // Accept the old single-string mode too, so older callers/imports remain safe.
+            const legacy = {
+                newest: ['created','desc'], oldest: ['created','asc'],
+                'name-asc': ['name','asc'], 'name-desc': ['name','desc'],
+                'number-asc': ['number','asc'], 'bst-desc': ['bst','desc'],
+                'bst-asc': ['bst','asc'], updated: ['updated','desc']
+            };
+            if (legacy[sortBy]) [sortBy, sortOrder] = legacy[sortBy];
+            const sorted = [...list];
+            const dir = sortOrder === 'asc' ? 1 : -1;
+            const text = v => String(v ?? '').localeCompare(String(v ?? ''), undefined, { sensitivity: 'base' });
+            const number = f => {
+                const n = parseInt(String(f.number || '').replace(/^#/, ''), 10);
+                return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+            };
+            sorted.sort((a, b) => {
+                let result = 0;
+                if (sortBy === 'name') result = String(a.name || '').localeCompare(String(b.name || ''));
+                else if (sortBy === 'number') result = number(a) - number(b);
+                else if (sortBy === 'bst') result = getFakemonBST(a) - getFakemonBST(b);
+                else if (sortBy === 'updated') result = (a.updatedAt || a.createdAt || 0) - (b.updatedAt || b.createdAt || 0);
+                else result = (a.createdAt || 0) - (b.createdAt || 0);
+                if (result === 0) result = String(a.name || '').localeCompare(String(b.name || ''));
+                return result * dir;
+            });
             const pinned = sorted.filter(f => f.pinned);
             const unpinned = sorted.filter(f => !f.pinned);
             return [...pinned, ...unpinned];
@@ -708,7 +763,8 @@ import { POKEMON_COLORS } from './data.js';
             if (select) select.value = collectionView;
 
             const searchInput = document.getElementById('search-input');
-            const sort = document.getElementById('collection-sort');
+            const sortBy = document.getElementById('collection-sort-by');
+            const sortOrder = document.getElementById('collection-sort-order');
             const importBtn = document.getElementById('collection-import-btn');
             const exportBtn = document.getElementById('collection-export-btn');
             const fakemonCreate = document.getElementById('create-fakemon-menu-item');
@@ -721,17 +777,16 @@ import { POKEMON_COLORS } from './data.js';
             if (collectionView === 'fakemon') {
                 if (shinyToggle) shinyToggle.style.display = 'inline-flex';
                 if (searchInput) searchInput.placeholder = 'Search your Fakemon...';
-                if (sort) {
-                    sort.innerHTML = `
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>
-                        <option value="name-asc">Name (A-Z)</option>
-                        <option value="name-desc">Name (Z-A)</option>
-                        <option value="number-asc">Pokédex Number</option>
-                        <option value="bst-desc">BST (High-Low)</option>
-                        <option value="bst-asc">BST (Low-High)</option>
-                        <option value="updated">Recently Updated</option>`;
+                if (sortBy) {
+                    sortBy.innerHTML = `
+                        <option value="created">Date Added</option>
+                        <option value="name">Name</option>
+                        <option value="number">Pokédex Number</option>
+                        <option value="bst">BST</option>
+                        <option value="updated">Last Updated</option>`;
                 }
+                if (sortOrder) sortOrder.innerHTML = '<option value="desc">Descending</option><option value="asc">Ascending</option>';
+                applyCollectionSortUI();
                 if (importBtn) importBtn.style.display = '';
                 if (exportBtn) exportBtn.style.display = '';
                 if (fakemonCreate) fakemonCreate.style.display = '';
@@ -742,14 +797,11 @@ import { POKEMON_COLORS } from './data.js';
             } else {
                 if (shinyToggle) shinyToggle.style.display = 'none';
                 if (searchInput) searchInput.placeholder = collectionView === 'moves' ? 'Search your custom moves...' : collectionView === 'abilities' ? 'Search your custom abilities...' : 'Search your custom items...';
-                if (sort) {
-                    sort.innerHTML = `
-                        <option value="name-asc">Name (A-Z)</option>
-                        <option value="name-desc">Name (Z-A)</option>
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>`;
-                    sort.value = 'name-asc';
+                if (sortBy) {
+                    sortBy.innerHTML = '<option value="name">Name</option><option value="created">Date Added</option><option value="updated">Last Updated</option>';
                 }
+                if (sortOrder) sortOrder.innerHTML = '<option value="asc">Ascending</option><option value="desc">Descending</option>';
+                applyCollectionSortUI();
                 if (importBtn) importBtn.style.display = '';
                 if (exportBtn) exportBtn.style.display = '';
                 if (fakemonCreate) fakemonCreate.style.display = '';
@@ -781,7 +833,7 @@ import { POKEMON_COLORS } from './data.js';
             const grid = document.getElementById('collection-grid');
             const empty = document.getElementById('empty-collection');
             const search = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
-            const sortMode = document.getElementById('collection-sort')?.value || 'name-asc';
+            const sortPrefs = getCollectionSortPrefsFromUI();
             const isMove = kind === 'moves';
             const isAbility = kind === 'abilities';
             const source = isMove ? (state.customMoves || []) : isAbility ? (state.customAbilities || []) : (state.customItems || []);
@@ -793,7 +845,7 @@ import { POKEMON_COLORS } from './data.js';
                 return text.toLowerCase().includes(search);
             });
             if (!search) items = items.filter(item => (item.folderId || null) === state.currentFolderId);
-            items = sortLibraryList(items, sortMode);
+            items = sortLibraryList(items, sortPrefs.by === 'name' ? (sortPrefs.order === 'asc' ? 'name-asc' : 'name-desc') : sortPrefs.order === 'asc' ? 'oldest' : 'newest');
 
             // Folders only show at the root level, and only while not searching.
             let folders = (!search && !state.currentFolderId) ? state.folders.filter(f => f.type === kind) : [];
@@ -844,7 +896,7 @@ import { POKEMON_COLORS } from './data.js';
                 const moveOutBtn = inFolder ? `<button onclick="moveLibraryItemOutOfFolder('${kind}','${id}', event)" title="Remove from folder"><i data-lucide="folder-output" style="width:14px;height:14px;"></i></button>` : '';
                 if (isMove) {
                     const typeClass = `type-${String(item.type || 'Normal').toLowerCase()}`;
-                    const acc = item.accuracy === true || item.accuracy === undefined || item.accuracy === false ? '—' : `${item.accuracy}%`;
+                    const acc = item.accuracy === true || item.accuracy === undefined || item.accuracy === false ? '-' : `${item.accuracy}%`;
                     return `<div class="collection-library-card" draggable="true" ondragstart="handleLibraryCardDragStart('moves','${id}', event)" ondragend="handleCardDragEnd()">
                         <div class="card-actions">
                             <button class="${item.pinned ? 'pinned-btn' : ''}" onclick="toggleCustomLibraryPin('moves','${id}', event)" title="${item.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin" style="width:14px;height:14px"></i></button>
@@ -856,7 +908,7 @@ import { POKEMON_COLORS } from './data.js';
                             <button class="card-delete-btn" onclick="deleteCustomLibraryItem('moves','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                         </div>
                         <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>
-                        <div class="collection-library-card-meta"><span class="type-pill ${typeClass}">${escapeCollectionHtml(item.type || 'Normal')}</span> · ${escapeCollectionHtml(item.category || 'Status')} · ${item.basePower || '—'} BP · ${acc} · ${item.pp || '—'} PP</div>
+                        <div class="collection-library-card-meta"><span class="type-pill ${typeClass}">${escapeCollectionHtml(item.type || 'Normal')}</span> · ${escapeCollectionHtml(item.category || 'Status')} · ${item.basePower || '-'} BP · ${acc} · ${item.pp || '-'} PP</div>
                         <div class="collection-library-card-desc">${escapeCollectionHtml(item.desc || 'No description')}</div>
                     </div>`;
                 }
@@ -904,7 +956,7 @@ import { POKEMON_COLORS } from './data.js';
                 return;
             }
             const search = document.getElementById('search-input').value.toLowerCase();
-            const sortMode = document.getElementById('collection-sort') ? document.getElementById('collection-sort').value : 'newest';
+            const sortPrefs = getCollectionSortPrefsFromUI();
 
             let filtered = state.fakemonDB;
             if (search) {
@@ -917,7 +969,7 @@ import { POKEMON_COLORS } from './data.js';
             } else {
                 filtered = state.fakemonDB.filter(f => (f.folderId || null) === state.currentFolderId);
             }
-            filtered = sortFakemonList(filtered, sortMode);
+            filtered = sortFakemonList(filtered, sortPrefs.by, sortPrefs.order);
 
             // Folders only show at the root level, and only while not searching.
             let folders = (!search && !state.currentFolderId) ? state.folders.filter(f => (f.type || 'fakemon') === 'fakemon') : [];
@@ -971,6 +1023,7 @@ import { POKEMON_COLORS } from './data.js';
                             <button onclick="editFakemon('${f.id}'); event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
                             ${inFolder ? `<button onclick="moveFakemonOutOfFolder('${f.id}', event)" title="Remove from folder"><i data-lucide="folder-output" style="width:14px;height:14px;"></i></button>` : ''}
                             <button onclick="duplicateFakemon('${f.id}', event)" title="Duplicate"><i data-lucide="copy" style="width:14px;height:14px;"></i></button>
+                            <button onclick="publishFakemon('${f.id}'); event.stopPropagation();" title="Publish to Community"><i data-lucide="upload" style="width:14px;height:14px;"></i></button>
                             <div class="collection-card-export-wrap">
                                 <button onclick="toggleCollectionFakemonExportMenu('${f.id}', event)" title="Export"><i data-lucide="download" style="width:14px;height:14px;"></i></button>
                                 <div class="collection-card-export-menu" id="fakemon-export-menu-${f.id}" style="display:none;">
@@ -1022,13 +1075,15 @@ import { POKEMON_COLORS } from './data.js';
             const moveGrid=document.getElementById('custom-move-library-grid'), moveEmpty=document.getElementById('custom-move-library-empty');
             const abilityGrid=document.getElementById('custom-ability-library-grid'), abilityEmpty=document.getElementById('custom-ability-library-empty');
             const moves=state.customMoves||[], abilities=state.customAbilities||[];
-            if(moveGrid){moveGrid.innerHTML=moves.map(m=>`<div class="library-card"><div class="library-card-actions"><button onclick="editCustomMoveLibrary('${String(m.id).replace(/'/g,"\\'")}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button></div><div class="library-card-title">${escapeLibraryHtml(m.name)}</div><div class="library-card-meta">${escapeLibraryHtml(m.type||'Normal')} · ${escapeLibraryHtml(m.category||'Status')} · ${m.basePower||'—'} BP · ${m.pp||'—'} PP</div><div class="library-card-desc">${escapeLibraryHtml(m.desc||'No description')}</div></div>`).join(''); moveEmpty.style.display=moves.length?'none':'block';}
+            if(moveGrid){moveGrid.innerHTML=moves.map(m=>`<div class="library-card"><div class="library-card-actions"><button onclick="editCustomMoveLibrary('${String(m.id).replace(/'/g,"\\'")}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button></div><div class="library-card-title">${escapeLibraryHtml(m.name)}</div><div class="library-card-meta">${escapeLibraryHtml(m.type||'Normal')} · ${escapeLibraryHtml(m.category||'Status')} · ${m.basePower||'-'} BP · ${m.pp||'-'} PP</div><div class="library-card-desc">${escapeLibraryHtml(m.desc||'No description')}</div></div>`).join(''); moveEmpty.style.display=moves.length?'none':'block';}
             if(abilityGrid){abilityGrid.innerHTML=abilities.map(a=>`<div class="library-card"><div class="library-card-actions"><button onclick="editCustomAbilityLibrary('${String(a.id).replace(/'/g,"\\'")}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button></div><div class="library-card-title">${escapeLibraryHtml(a.name)}</div><div class="library-card-desc">${escapeLibraryHtml(a.desc||'No description')}</div></div>`).join(''); abilityEmpty.style.display=abilities.length?'none':'block';}
             if(typeof lucide!=='undefined')lucide.createIcons();
         }
 
         function filterCollection() { renderCollection(); }
 
+        window.changeCollectionSort = changeCollectionSort;
+
         
 
-export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate};
+export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST, changeCollectionSort , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate};

@@ -364,8 +364,8 @@ import { sortLearnsetEntries } from './editor.js';
 
             const typeText = valueAfter(/^Types:\s*/i);
             const types = typeText.split(/\s*\/\s*/).map(trim);
-            result.type1 = types[0] && types[0] !== '—' ? types[0] : '';
-            result.type2 = types[1] && types[1] !== '—' ? types[1] : '';
+            result.type1 = types[0] && types[0] !== '-' ? types[0] : '';
+            result.type2 = types[1] && types[1] !== '-' ? types[1] : '';
 
             const statsText = valueAfter(/^Stats:\s*/i);
             const statMatch = statsText.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
@@ -491,9 +491,9 @@ import { sortLearnsetEntries } from './editor.js';
                         name,
                         source:'custom', custom:true, learnMethod:'none', level:null,
                         category:trim(categoryMatch[1]), type:trim(categoryMatch[2]),
-                        basePower: /^—$/.test(trim(bpMatch[1])) ? 0 : (parseInt(bpMatch[1], 10) || 0),
-                        accuracy: /^—$/.test(accuracyText) ? true : (parseFloat(accuracyText.replace('%','')) || 100),
-                        pp: /^—$/.test(trim(bpMatch[3])) ? 0 : (parseInt(bpMatch[3], 10) || 0),
+                        basePower: /^-$/.test(trim(bpMatch[1])) ? 0 : (parseInt(bpMatch[1], 10) || 0),
+                        accuracy: /^-$/.test(accuracyText) ? true : (parseFloat(accuracyText.replace('%','')) || 100),
+                        pp: /^-$/.test(trim(bpMatch[3])) ? 0 : (parseInt(bpMatch[3], 10) || 0),
                         flags,
                         desc
                     };
@@ -604,8 +604,8 @@ import { sortLearnsetEntries } from './editor.js';
         function buildPlainTextExport(sort = 'name', order = 'asc') {
             const name = document.getElementById('fakemon-name')?.value.trim() || 'Fakemon';
             const species = document.getElementById('fakemon-species')?.value.trim() || 'Pokemon';
-            const type1 = document.getElementById('fakemon-type1')?.value.trim() || '—';
-            const type2 = document.getElementById('fakemon-type2')?.value.trim() || '—';
+            const type1 = document.getElementById('fakemon-type1')?.value.trim() || '-';
+            const type2 = document.getElementById('fakemon-type2')?.value.trim() || '-';
             const number = document.getElementById('fakemon-number')?.value.trim() || '';
             const stats = ['hp','atk','def','spa','spd','spe'].map(k => parseInt(document.getElementById('stat-' + k)?.value) || 0);
             const bst = stats.reduce((sum, n) => sum + n, 0);
@@ -670,8 +670,8 @@ import { sortLearnsetEntries } from './editor.js';
             customMoves.forEach((m, index) => {
                 lines.push(`${m.name}*`);
                 lines.push(`${m.category || 'Status'} | ${m.type || 'Normal'}`);
-                const acc = (m.accuracy === true || m.accuracy === undefined) ? '—' : (m.accuracy === false ? '—' : `${m.accuracy}%`);
-                lines.push(`${m.basePower || '—'} BP | ${acc} ACC | ${m.pp || '—'} PP`);
+                const acc = (m.accuracy === true || m.accuracy === undefined) ? '-' : (m.accuracy === false ? '-' : `${m.accuracy}%`);
+                lines.push(`${m.basePower || '-'} BP | ${acc} ACC | ${m.pp || '-'} PP`);
                 const flags = api.getFlagLabels ? api.getFlagLabels(m.flags || {}, m.category) : [];
                 if (flags.length) lines.push(flags.join(' | '));
                 lines.push(escapePlainText(m.desc || ''));

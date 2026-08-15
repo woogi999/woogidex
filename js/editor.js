@@ -109,7 +109,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                 }
 
                 // Parse pokedex (species stats/typing/height/weight/color/egg groups/gender)
-                // — used to find real Pokemon similar to this Fakemon for state.learnset generation.
+                // - used to find real Pokemon similar to this Fakemon for state.learnset generation.
                 for (const [key, p] of Object.entries(pokedexRaw)) {
                     if (!p.baseStats || !p.types || !p.num || p.num <= 0) continue; // skip CAP/nonstandard/formes w/o stats
                     // Keep all usable alternate formes (regional, Mega, Unbound, Totem,
@@ -386,7 +386,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         }
 
         function formatCustomMoveForImportExport(move) {
-            const accText = (move.accuracy === true || move.accuracy === undefined || move.accuracy === false) ? '—' : `${move.accuracy}%`;
+            const accText = (move.accuracy === true || move.accuracy === undefined || move.accuracy === false) ? '-' : `${move.accuracy}%`;
             const flags = getFlagLabels(move.flags || {}, move.category);
             const flagText = flags.length ? flags.join(' | ') : 'None';
             const description = (move.desc || move.description || '').trim();
@@ -484,7 +484,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                 return Number.isFinite(n) ? n : fallback;
             };
             const accRaw = String(stats[1] || '').trim();
-            const acc = accRaw === '—' || /^true$/i.test(accRaw) ? true : parseStat(accRaw.replace(/%/g, ''), 100);
+            const acc = accRaw === '-' || /^true$/i.test(accRaw) ? true : parseStat(accRaw.replace(/%/g, ''), 100);
             const pp = parseStat(stats[2], 10);
             const flagsLine = details[2] || 'None';
             const desc = details.length >= 4 ? details[3] : '';
@@ -864,7 +864,7 @@ function handleMoveKey(e) {
         function removeCustomAbility(index) { removeAbility(index); }
         function renderCustomAbilities() { renderAbilities(); }
 // ==================== LEARNSET ====================
-        // Learnset entries are saved with just {name, learnMethod, level} — everything else
+        // Learnset entries are saved with just {name, learnMethod, level} - everything else
         // (type, category, power, accuracy, flags, desc) is vanilla move data we re-derive
         // from the Showdown dataset here, so we never have to persist duplicate move info.
         function getSdMoveByName(name) {
@@ -1103,7 +1103,7 @@ function handleMoveKey(e) {
                 const custom = isCustomMove(m);
                 const catClass = m.category === 'Physical' ? 'cat-physical' : m.category === 'Special' ? 'cat-special' : 'cat-status';
                 const typeClass = `type-${(m.type || 'normal').toLowerCase()}`;
-                const accText = m.accuracy === true || m.accuracy === undefined ? '—' : (m.accuracy === false ? '—' : `${m.accuracy}%`);
+                const accText = m.accuracy === true || m.accuracy === undefined ? '-' : (m.accuracy === false ? '-' : `${m.accuracy}%`);
                 const levelDisplay = m.learnMethod === 'level' ? 'inline-block' : 'none';
                 // Multi-hit/Pivot are metadata shown in move info, not on the learnset nodes.
                 const moveTagHtml = '';
@@ -1116,12 +1116,12 @@ function handleMoveKey(e) {
                             <div class="move-meta">
                                 <span class="type-pill ${typeClass}">${m.type || 'Normal'}</span>
                                 <span class="cat-pill ${catClass}">${getCategoryIcon(m.category || 'Status', 14)}</span>
-                                <span class="power-text">${m.basePower || '—'} BP / ${accText}</span>
+                                <span class="power-text">${m.basePower || '-'} BP / ${accText}</span>
                                 ${moveTagHtml}
                             </div>
                             <div class="move-method-row">
                                 <select class="method-select-inline" onchange="updateMoveMethod(${i}, this.value); event.stopPropagation();" onclick="event.stopPropagation();">
-                                    <option value="none" ${m.learnMethod === 'none' || !m.learnMethod ? 'selected' : ''}>—</option>
+                                    <option value="none" ${m.learnMethod === 'none' || !m.learnMethod ? 'selected' : ''}>-</option>
                                     <option value="level" ${m.learnMethod === 'level' ? 'selected' : ''}>Level</option>
                                     <option value="tm" ${m.learnMethod === 'tm' ? 'selected' : ''}>TM</option>
                                     <option value="egg" ${m.learnMethod === 'egg' ? 'selected' : ''}>Egg</option>
@@ -1255,7 +1255,7 @@ function handleMoveKey(e) {
         }
 
         // Reads this Fakemon's full profile (typing, stats, height/weight, color, egg
-        // groups, gender ratio) — everything we use to find real Pokemon it resembles.
+        // groups, gender ratio) - everything we use to find real Pokemon it resembles.
         function getFakemonProfile() {
             const type1 = document.getElementById('fakemon-type1').value;
             const type2 = document.getElementById('fakemon-type2').value;
@@ -1307,7 +1307,7 @@ function handleMoveKey(e) {
         // ---- Similarity engine ----
         // Scores every real Pokemon against this Fakemon's profile (typing, stats,
         // height/weight, color, egg groups, gender ratio) and returns the closest
-        // matches. Nothing needs to match exactly — it's a weighted "family resemblance"
+        // matches. Nothing needs to match exactly - it's a weighted "family resemblance"
         // score, same spirit as bitcrush.org's movelist generator.
         function findSimilarPokemon(profile, limit) {
             const scored = [];
@@ -1315,12 +1315,12 @@ function handleMoveKey(e) {
                 if (!getPokemonLearnsetData(dex.id)) continue;
                 let score = 0;
 
-                // Typing — the single biggest driver of what a mon's movepool looks like
+                // Typing - the single biggest driver of what a mon's movepool looks like
                 const sharedTypes = dex.types.filter(t => profile.types.includes(t)).length;
                 score += sharedTypes * 30;
                 if (sharedTypes === dex.types.length && sharedTypes === profile.types.length) score += 12;
 
-                // Stat spread — normalized Euclidean distance across all 6 stats, so mons
+                // Stat spread - normalized Euclidean distance across all 6 stats, so mons
                 // with a similar role (e.g. bulky physical wall, frail special sweeper) rank close
                 const statKeys = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
                 let statDistSq = 0;
@@ -1328,7 +1328,7 @@ function handleMoveKey(e) {
                 const statDist = Math.sqrt(statDistSq);
                 score += Math.max(0, 34 - statDist / 6);
 
-                // Height/weight — compared on a log scale since these span a huge range
+                // Height/weight - compared on a log scale since these span a huge range
                 if (profile.heightm && dex.heightm) {
                     const hDiff = Math.abs(Math.log(dex.heightm) - Math.log(profile.heightm));
                     score += Math.max(0, 8 - hDiff * 5);
@@ -1376,7 +1376,7 @@ function handleMoveKey(e) {
         }
 
         // A move is treated as "signature" (too exclusive to hand out to a Fakemon)
-        // if only a couple of real species can ever learn it — e.g. Fleur Cannon,
+        // if only a couple of real species can ever learn it - e.g. Fleur Cannon,
         // Gigaton Hammer, Make It Rain. Computed once across the full Showdown
         // learnsets dataset and cached, since it doesn't depend on which Fakemon
         // we're generating for.
@@ -1398,7 +1398,7 @@ function handleMoveKey(e) {
         }
 
         // Aggregates the learnsets of the most similar real Pokemon into weighted
-        // level-up / egg / TM move pools — this is what makes generated levels realistic
+        // level-up / egg / TM move pools - this is what makes generated levels realistic
         // (a move only lands at Lv.1 here if similar mons actually learn it that early).
         function buildSimilarMovePools(profile) {
             const similar = findSimilarPokemon(profile, 25);
@@ -1503,7 +1503,7 @@ function handleMoveKey(e) {
             };
         }
 
-        // Name-based role classifiers — used only to sort already similarity-selected
+        // Name-based role classifiers - used only to sort already similarity-selected
         // moves into familiar categories (STAB/Flavour/Setup/Recovery/Utility/Coverage);
         // move *selection* and *levels* still come entirely from the similarity engine above.
         const SETUP_MOVE_NAMES = new Set(['Swords Dance', 'Nasty Plot', 'Calm Mind', 'Bulk Up', 'Dragon Dance', 'Coil', 'Quiver Dance', 'Tail Glow', 'Shell Smash', 'Growth', 'Work Up', 'Hone Claws', 'Iron Defense', 'Amnesia', 'Cotton Guard', 'Acid Armor', 'Cosmic Power', 'Stockpile', 'Rock Polish', 'Autotomize', 'Agility']);
@@ -1511,7 +1511,7 @@ function handleMoveKey(e) {
         const RECOVERY_MOVE_NAMES = new Set(['Recover', 'Roost', 'Rest', 'Slack Off', 'Synthesis', 'Moonlight', 'Morning Sun', 'Milk Drink', 'Soft-Boiled', 'Shore Up', 'Wish', 'Strength Sap']);
         const UTILITY_MOVE_NAMES = new Set(['Toxic', 'Will-O-Wisp', 'Thunder Wave', 'Stealth Rock', 'Spikes', 'Toxic Spikes', 'Sticky Web', 'Taunt', 'Knock Off', 'Trick', 'Switcheroo', 'Encore', 'Disable', 'Haze', 'Defog', 'Rapid Spin', 'Substitute', 'Protect', 'Detect', 'Light Screen', 'Reflect', 'Aurora Veil', 'Leech Seed', 'Confuse Ray', 'Yawn', 'Glare']);
         // Attacking moves that are technically damaging but too weak, too situational, or
-        // secondary-effect-focused to count as a real STAB/Coverage pick — these get bucketed
+        // secondary-effect-focused to count as a real STAB/Coverage pick - these get bucketed
         // as Flavour instead. Rather than raw BP alone (which Showdown doesn't rate for
         // "usefulness"), we combine a minimum power floor with named exclusions for moves
         // whose type is conditional/variable (Tera Blast, Hidden Power, etc.) or whose real
@@ -1542,7 +1542,7 @@ function handleMoveKey(e) {
             return raw > 0 ? raw : (VARIABLE_BP_ESTIMATE[move.name] || 0);
         }
         // A move only counts as real "coverage" if it's actually super-effective
-        // against something the Fakemon's own STAB doesn't already hit hard — e.g.
+        // against something the Fakemon's own STAB doesn't already hit hard - e.g.
         // for a pure Normal-type Fakemon (whose STAB never resists/hits 2x anything),
         // any strong off-type attack with a genuine 2x matchup qualifies, but a
         // neutral-everywhere off-type move does not; it's just Flavour.
@@ -1651,7 +1651,7 @@ function handleMoveKey(e) {
                 return;
             }
             if (!sections.length) {
-                container.innerHTML = '<p style="font-size:13px;color:var(--text-muted);">No new suggestions — looks like your learnset already covers the basics!</p>';
+                container.innerHTML = '<p style="font-size:13px;color:var(--text-muted);">No new suggestions - looks like your learnset already covers the basics!</p>';
                 return;
             }
             sections.forEach(sec => sec.moves.forEach(({ move, learnMethod, level }) => {
@@ -1671,7 +1671,7 @@ function handleMoveKey(e) {
                             <div class="meta-right">
                                 <span class="type-pill ${typeClass}">${move.type}</span>
                                 <span class="cat-pill ${catClass}">${getCategoryIcon(move.category, 14)}</span>
-                                <span class="power-text">${move.basePower || '—'}</span>
+                                <span class="power-text">${move.basePower || '-'}</span>
                             </div>
                         </div>
                     `;
@@ -1694,9 +1694,9 @@ function handleMoveKey(e) {
         // Produces a plausible in-game-style state.learnset (level-up curve + egg moves + TMs)
         // by finding real Pokemon similar to this Fakemon (typing, stats, height, weight,
         // color, egg groups, gender ratio) and aggregating their actual Showdown learnsets,
-        // weighted by similarity — so both which moves show up and what level they land at
+        // weighted by similarity - so both which moves show up and what level they land at
         // reflect real patterns instead of a fixed curve. Moves already in the state.learnset are
-        // "woven" in — reused in place (method/level updated) — rather than duplicated;
+        // "woven" in - reused in place (method/level updated) - rather than duplicated;
         // moves not touched by the generator are left alone.
         function generateLearnset() {
             if (!state.sdLoaded) { api.showToast('Showdown data still loading, try again shortly.', 'error'); return; }
@@ -1733,7 +1733,7 @@ function handleMoveKey(e) {
                 const picks = sortedBucket.slice(0, PICKS_PER_BUCKET);
                 if (idx === 0) {
                     // The earliest bucket (Lv.1-20) is where basic "starter" attacks like
-                    // Tackle/Pound/Scratch live — they're weak so stronger same-level moves
+                    // Tackle/Pound/Scratch live - they're weak so stronger same-level moves
                     // usually out-weigh them for the general slots above. Explicitly hold a
                     // couple of spots for them so early learnsets don't skip straight to
                     // strategic picks and look unrealistically strong right out the gate.
@@ -1809,7 +1809,7 @@ function handleMoveKey(e) {
             if (!move) return;
             const sdEntry = Object.entries(state.sdMoves).find(([k,v]) => v.name === name);
             const desc = sdEntry ? sdEntry[1].desc : (move.desc || 'No description available.');
-            const acc = move.accuracy === true ? '—' : (move.accuracy === false ? '—' : `${move.accuracy}%`);
+            const acc = move.accuracy === true ? '-' : (move.accuracy === false ? '-' : `${move.accuracy}%`);
 
             // Build flag tidbits using the editor's normalized convention.
             // Vanilla Showdown flags are inverted here, and Status-only tags are
@@ -1841,9 +1841,9 @@ function handleMoveKey(e) {
             const content = `
                 <div class="detail-row"><span class="detail-label">Type</span><span class="detail-value"><span class="type-pill ${typeClass}">${move.type}</span></span></div>
                 <div class="detail-row"><span class="detail-label">Category</span><span class="detail-value">${getCategoryIcon(move.category, 16)} ${move.category}</span></div>
-                <div class="detail-row"><span class="detail-label">Base Power</span><span class="detail-value">${move.basePower || '—'}</span></div>
+                <div class="detail-row"><span class="detail-label">Base Power</span><span class="detail-value">${move.basePower || '-'}</span></div>
                 <div class="detail-row"><span class="detail-label">Accuracy</span><span class="detail-value">${acc}</span></div>
-                <div class="detail-row"><span class="detail-label">PP</span><span class="detail-value">${move.pp || '—'}</span></div>
+                <div class="detail-row"><span class="detail-label">PP</span><span class="detail-value">${move.pp || '-'}</span></div>
                 <div class="detail-row"><span class="detail-label">Priority</span><span class="detail-value">${priorityDisplay}</span></div>
                 ${flagsHtml}
                 <div class="desc-text">${desc}</div>
@@ -1911,7 +1911,7 @@ function handleMoveKey(e) {
                     ${filtered.length ? filtered.map(item => {
                         const detail = isAbility
                             ? (item.desc || 'No description')
-                            : `${item.category || 'Status'} · ${item.type || 'Normal'} · ${item.basePower || '—'} BP · ${item.pp || '—'} PP`;
+                            : `${item.category || 'Status'} · ${item.type || 'Normal'} · ${item.basePower || '-'} BP · ${item.pp || '-'} PP`;
                         const handler = isAbility
                             ? `addExistingCustomAbility('${escapeJsString(item.id)}')`
                             : `addExistingCustomMove('${escapeJsString(item.id)}')`;
@@ -2261,10 +2261,10 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
 
             const cards = customMoves.map((m) => {
                 const typeClass = `type-${(m.type || 'Normal').toLowerCase()}`;
-                const accText = (m.accuracy === true || m.accuracy === undefined || m.accuracy === false) ? '—' : `${m.accuracy}%`;
+                const accText = (m.accuracy === true || m.accuracy === undefined || m.accuracy === false) ? '-' : `${m.accuracy}%`;
                 const method = m.learnMethod === 'level' && m.level ? `Level ${m.level}` :
                     m.learnMethod === 'tm' ? 'TM' :
-                    m.learnMethod === 'egg' ? 'Egg' : '—';
+                    m.learnMethod === 'egg' ? 'Egg' : '-';
                 const priority = m.priority ? ` · Priority ${m.priority}` : '';
                 const flags = getFlagLabels(m.flags || {}, m.category);
                 return `
@@ -2275,7 +2275,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
                             <span class="custom-move-showcase-method">${method}</span>
                         </div>
                         <div class="custom-move-showcase-stats">
-                            ${m.category || 'Status'} · ${m.basePower || '—'} BP · ${accText} acc · ${m.pp || '—'} PP${priority}
+                            ${m.category || 'Status'} · ${m.basePower || '-'} BP · ${accText} acc · ${m.pp || '-'} PP${priority}
                         </div>
                         ${m.desc ? `<div class="custom-move-showcase-desc">${escapeHtml(m.desc)}</div>` : ''}
                         ${flags.length ? `<div class="custom-move-showcase-flags">${flags.map(f => `<span>${escapeHtml(f)}</span>`).join('')}</div>` : ''}

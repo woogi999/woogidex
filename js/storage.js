@@ -6,6 +6,10 @@ import { state, api } from './app.js';
         const IDB_VERSION = 1;
         const IDB_STORE = 'kv';
         let idbPromise = null;
+let storageWriteRevision = 0;
+let latestStorageWriteRevision = 0;
+let storageWriteChain = Promise.resolve();
+let autoSaveGeneration = 0;
 
         function openDB() {
             log.debug('STORAGE', 'openDB requested', { database: IDB_NAME, version: IDB_VERSION });
@@ -44,43 +48,75 @@ import { state, api } from './app.js';
 // IDs are the primary key for every saved collection entry. Older builds could
 // accidentally append the same object more than once during overlapping saves.
 // Normalize on load/save so duplicates can no longer accumulate.
-function normalizeCollectionArray(arr) {
+function normalizeCollectionArray(arr, options = {}) {
     if (!Array.isArray(arr)) return [];
-    const seen = new Set();
+    const seenIds = new Set();
+    const seenNames = new Set();
     const out = [];
+
     for (const item of arr) {
         if (!item || typeof item !== 'object') continue;
-        const id = String(item.id ?? '').trim();
-        if (id && seen.has(id)) continue;
-        if (id) seen.add(id);
+
+        let id = String(item.id ?? '').trim();
+        const nameKey = String(item.name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+        if (id && seenIds.has(id)) continue;
+        // Custom libraries are name-unique in the UI. Older versions could create
+        // the same entry twice with different generated IDs during overlapping saves.
+        if (options.uniqueName && nameKey && seenNames.has(nameKey)) continue;
+
+        if (!id && options.idPrefix && nameKey) {
+            id = `${options.idPrefix}${nameKey}`;
+            item.id = id;
+        }
+
+        if (id) seenIds.add(id);
+        if (options.uniqueName && nameKey) seenNames.add(nameKey);
         out.push(item);
     }
     return out;
 }
+
 function normalizeCollections() {
     state.fakemonDB = normalizeCollectionArray(state.fakemonDB);
-    state.customMoves = normalizeCollectionArray(state.customMoves);
-    state.customAbilities = normalizeCollectionArray(state.customAbilities);
-    state.customItems = normalizeCollectionArray(state.customItems);
+    state.customMoves = normalizeCollectionArray(state.customMoves, { uniqueName: true, idPrefix: 'cm_' });
+    state.customAbilities = normalizeCollectionArray(state.customAbilities, { uniqueName: true, idPrefix: 'ca_' });
+    state.customItems = normalizeCollectionArray(state.customItems, { uniqueName: true, idPrefix: 'ci_' });
 }
 
 // ==================== AUTO SAVE ====================
 
 
-        function autoSave(immediate) {
-            // Shared-link previews are read-only. Loading a shared Fakemon into the
-            // editor is only for rendering/rehydration and must never create or
-            // overwrite a collection entry through the normal autosave pipeline.
-            if (state.isShareRoute) {
-                log.debug('STORAGE', 'autoSave skipped during shared preview');
-                return;
+        function autoSave(immediate = false) {
+            // Shared-link previews and Community Hub previews are strictly read-only.
+            // They may hydrate the editor for rendering, but they can never enter the
+            // private collection through this function.
+            if (state.isShareRoute || state.isCommunityPreview) {
+                if (state.autoSaveTimer) {
+                    clearTimeout(state.autoSaveTimer);
+                    state.autoSaveTimer = null;
+                }
+                autoSaveGeneration++;
+                log.debug('STORAGE', 'autoSave skipped during read-only preview');
+                return Promise.resolve(false);
             }
+
+            // Debounced autosave requests only originate from editor changes. This
+            // prevents hidden/stale editor DOM from being accidentally persisted when
+            // collection/community UI is being navigated.
+            const editor = document.getElementById('editor-view');
+            if (!immediate && editor && editor.style.display === 'none') {
+                log.debug('STORAGE', 'autoSave skipped while editor is hidden');
+                return Promise.resolve(false);
+            }
+
             log.debug('STORAGE', 'autoSave requested', { immediate: !!immediate, editingId: state.editingId });
-            // Don't auto-save if there's no name yet (silently skip)
-            const name = document.getElementById('fakemon-name').value.trim();
+
+            const nameEl = document.getElementById('fakemon-name');
+            const name = nameEl?.value.trim() || '';
             if (!name) {
                 updateSaveStatus('unsaved');
-                return;
+                return Promise.resolve(false);
             }
 
             if (state.autoSaveTimer) {
@@ -88,35 +124,63 @@ function normalizeCollections() {
                 state.autoSaveTimer = null;
             }
 
+            const generation = ++autoSaveGeneration;
+
             const doSave = async () => {
                 state.autoSaveTimer = null;
+
+                // A newer save, delete, or route transition owns the editor now.
+                if (generation !== autoSaveGeneration) {
+                    log.debug('STORAGE', 'Discarding stale autosave generation', { generation, current: autoSaveGeneration });
+                    return false;
+                }
+
                 const done = log.time('STORAGE', 'autoSave commit');
                 const fakemon = buildFakemonObject();
-                if (!fakemon) return;
+                if (!fakemon) return false;
 
-                // Claim the new ID before awaiting IndexedDB. This closes a race
-                // where two auto-saves could both see editingId as empty and append
-                // the same newly-created Fakemon.
-                if (!state.editingId) state.editingId = fakemon.id;
-                const idx = state.fakemonDB.findIndex(f => String(f.id) === String(state.editingId));
+                // Claim the new ID before the first await. Every later save of this
+                // editor session therefore updates the same primary-keyed record.
+                const savedId = state.editingId || fakemon.id;
+                state.editingId = savedId;
+                fakemon.id = savedId;
+
+                const idx = state.fakemonDB.findIndex(f => String(f.id) === String(savedId));
                 if (idx !== -1) state.fakemonDB[idx] = fakemon;
                 else state.fakemonDB.push(fakemon);
                 normalizeCollections();
 
                 await saveToStorage();
+
+                // Do not let an older in-flight save update UI state after a delete
+                // or a newer editor session has superseded it.
+                if (generation !== autoSaveGeneration) {
+                    log.debug('STORAGE', 'Autosave finished stale; storage revision protected', { id: fakemon.id });
+                    return false;
+                }
+
                 done({ id: fakemon.id, name: fakemon.name });
                 log.info('STORAGE', 'Fakemon saved', { id: fakemon.id, name: fakemon.name });
                 state.lastSavedId = fakemon.id;
                 api.onFakemonSaved?.(fakemon.id);
                 updateSaveStatus('saved');
+                return true;
             };
 
             if (immediate) {
-                doSave();
-            } else {
-                updateSaveStatus('saving');
-                state.autoSaveTimer = setTimeout(doSave, 800);
+                return doSave();
             }
+
+            updateSaveStatus('saving');
+            return new Promise(resolve => {
+                state.autoSaveTimer = setTimeout(() => {
+                    doSave().then(resolve).catch(err => {
+                        log.error('STORAGE', 'Autosave failed', err);
+                        updateSaveStatus('unsaved');
+                        resolve(false);
+                    });
+                }, 800);
+            });
         }
 
         function buildFakemonObject() {
@@ -168,6 +232,7 @@ function normalizeCollections() {
                 sampleSets: state.sampleSets,
                 artwork: state.artworkData,
                 shinyArtwork: state.shinyArtworkData,
+                cry: state.cryData,
                 evolutionGraph: state.evolutionGraph ? JSON.parse(JSON.stringify(state.evolutionGraph)) : null,
                 evolutionStage: state.evolutionGraph && typeof api.calculateEvolutionStages === 'function' ? (api.calculateEvolutionStages(state.evolutionGraph)[state.editingId ? `fakemon:${state.editingId}` : 'current:fakemon'] || 1) : 1,
                 createdAt: state.editingId ? (state.fakemonDB.find(f => f.id === state.editingId)?.createdAt || Date.now()) : Date.now(),
@@ -205,7 +270,21 @@ function normalizeCollections() {
         async function deleteFakemon(id, event) {
             event.stopPropagation();
             if (!confirm('Are you sure you want to delete this Fakemon?')) return;
-            state.fakemonDB = state.fakemonDB.filter(f => f.id !== id);
+
+            // Invalidate both delayed and in-flight autosaves before removing the
+            // record. The storage revision queue will also reject any older snapshot.
+            if (state.autoSaveTimer) {
+                clearTimeout(state.autoSaveTimer);
+                state.autoSaveTimer = null;
+            }
+            autoSaveGeneration++;
+
+            state.fakemonDB = state.fakemonDB.filter(f => String(f.id) !== String(id));
+            if (String(state.editingId) === String(id)) {
+                state.editingId = null;
+                state.lastSavedId = null;
+            }
+
             await saveToStorage();
             api.renderCollection();
             api.showToast('Fakemon deleted!', 'info');
@@ -228,21 +307,64 @@ function normalizeCollections() {
 
         
 // ==================== STORAGE (IndexedDB) ====================
+        // Storage is local-only (IndexedDB). Signing in only grants access to the
+        // Community Hub (publishing/commenting) - it never uploads, backs up, or
+        // syncs your private collection anywhere.
         async function saveToStorage() {
-            const done = log.time('STORAGE', 'saveToStorage');
-            log.debug('STORAGE', 'Saving collection', { fakemons: state.fakemonDB.length, folders: state.folders.length, customMoves: state.customMoves.length });
-            try {
-                normalizeCollections();
-                await idbSet('fakemonDB_v4', state.fakemonDB);
-                await idbSet('woogidexFolders_v1', state.folders);
-                await idbSet('woogidexCustomMoves_v1', state.customMoves);
-                await idbSet('woogidexCustomAbilities_v1', state.customAbilities);
-                await idbSet('woogidexCustomItems_v1', state.customItems);
-                done({ fakemons: state.fakemonDB.length });
-                log.info('STORAGE', 'Collection saved');
-            }
-            catch (e) { log.error('STORAGE', 'Collection save failed', e); api.showToast('Warning: Storage limit may be reached. Export your collection!', 'error'); }
+            normalizeCollections();
+
+            // Snapshot the exact state being requested. IndexedDB writes are async, so
+            // never hand it live arrays that may be changed by a delete/edit while a
+            // previous write is still in flight.
+            const snapshot = {
+                fakemonDB: JSON.parse(JSON.stringify(state.fakemonDB)),
+                folders: JSON.parse(JSON.stringify(state.folders)),
+                customMoves: JSON.parse(JSON.stringify(state.customMoves)),
+                customAbilities: JSON.parse(JSON.stringify(state.customAbilities)),
+                customItems: JSON.parse(JSON.stringify(state.customItems))
+            };
+
+            const revision = ++storageWriteRevision;
+            latestStorageWriteRevision = revision;
+
+            storageWriteChain = storageWriteChain.then(async () => {
+                // A newer snapshot is already queued, so this snapshot is obsolete.
+                // Skipping it is what prevents a delete from being resurrected by an
+                // older autosave that was already waiting on IndexedDB.
+                if (revision !== latestStorageWriteRevision) {
+                    log.debug('STORAGE', 'Skipping stale storage snapshot', { revision, latest: latestStorageWriteRevision });
+                    return false;
+                }
+
+                const done = log.time('STORAGE', 'saveToStorage');
+                log.debug('STORAGE', 'Saving collection snapshot', {
+                    revision,
+                    fakemons: snapshot.fakemonDB.length,
+                    folders: snapshot.folders.length,
+                    customMoves: snapshot.customMoves.length,
+                    customAbilities: snapshot.customAbilities.length,
+                    customItems: snapshot.customItems.length
+                });
+
+                try {
+                    await idbSet('fakemonDB_v4', snapshot.fakemonDB);
+                    await idbSet('woogidexFolders_v1', snapshot.folders);
+                    await idbSet('woogidexCustomMoves_v1', snapshot.customMoves);
+                    await idbSet('woogidexCustomAbilities_v1', snapshot.customAbilities);
+                    await idbSet('woogidexCustomItems_v1', snapshot.customItems);
+                    done({ revision, fakemons: snapshot.fakemonDB.length });
+                    log.info('STORAGE', 'Collection saved', { revision });
+                    return true;
+                } catch (e) {
+                    log.error('STORAGE', 'Collection save failed', e);
+                    api.showToast('Warning: Storage limit may be reached. Export your collection!', 'error');
+                    return false;
+                }
+            });
+
+            return storageWriteChain;
         }
+
         async function loadFromStorage() {
             const done = log.time('STORAGE', 'loadFromStorage');
             log.info('STORAGE', 'Loading persisted application state');

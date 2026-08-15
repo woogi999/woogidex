@@ -11,6 +11,8 @@ import * as showdownExport from './showdown-export.js';
 import * as essentialsExport from './essentials-export.js';
 import * as evolution from './evolution.js';
 import * as analysis from './analysis.js';
+import * as auth from './auth.js';
+import * as community from './community.js';
 
 // ==================== SHARED STATE ====================
 export const state = {
@@ -36,6 +38,7 @@ export const state = {
     sampleSets: [],
     artworkData: null,
     shinyArtworkData: null,
+    cryData: null,
     artworkMode: 'normal',
     previewArtworkMode: 'normal',
     collectionShinyPreview: localStorage.getItem('woogidex-collection-shiny-preview') === 'true',
@@ -285,7 +288,7 @@ export const api = {};
 // ==================== MODULE COORDINATION ====================
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
@@ -302,6 +305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     log.info('BOOT', 'DOMContentLoaded fired');
     api.initTypeSelects();
     api.initColorPicker();
+    await api.initAuth();
     await api.loadFromStorage();
     // Load Showdown's authoritative move/ability data before rendering a shared
     // Fakemon so its preview is fully rehydrated on the first render.

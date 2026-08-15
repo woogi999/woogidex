@@ -2392,7 +2392,7 @@ async function runFakemonAnalysis(){
     if(metagameStatCombination!=null && metagameStatCombination>=70)strengths.push(`Stat profile is ${ordinal(metagameStatCombination)}-percentile quality among usage-weighted ${esc(selectedFormat)} Pokémon`);
      if(tf.typing.resist+tf.typing.immune>=6)strengths.push(`${tf.typing.resist} resistances and ${tf.typing.immune} immunities provide strong switch-in potential`);
     if(tf.recoveryMoves>=1)strengths.push('Reliable recovery is available');
-    if(tf.stall?.score>=65)strengths.push(`Stall potential is high (${Math.round(tf.stall.score)}/100)${tf.stall.hasCorrosion&&tf.stall.hasToxic?' — Corrosion lets Toxic punish Poison/Steel switch-ins that would normally shrug it off':''}`);
+    if(tf.stall?.score>=65)strengths.push(`Stall potential is high (${Math.round(tf.stall.score)}/100)${tf.stall.hasCorrosion&&tf.stall.hasToxic?' - Corrosion lets Toxic punish Poison/Steel switch-ins that would normally shrug it off':''}`);
     else if(tf.stall?.score<=25 && (tf.stall?.hasToxic||tf.stall?.hasWillOWisp||tf.stall?.hasThunderWave) && !tf.stall?.hasReliableRecovery)weaknesses.push('Has status/chip tools but no reliable recovery, so it cannot actually win a war of attrition');
     if(tf.pivot)strengths.push('Pivoting adds role compression');
     if(tf.hazards||tf.removal)strengths.push('Hazard utility adds team value');
