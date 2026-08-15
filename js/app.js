@@ -13,6 +13,7 @@ import * as evolution from './evolution.js';
 import * as analysis from './analysis.js';
 import * as auth from './auth.js';
 import * as community from './community.js';
+import * as notifications from './notifications.js';
 
 // ==================== SHARED STATE ====================
 export const state = {
@@ -45,7 +46,6 @@ export const state = {
     autoSaveTimer: null,
     lastSavedId: null,
     evolutionGraph: null,
-    isShareRoute: false,
     profilePageUser: null,
     profilePageEditing: false
 };
@@ -78,12 +78,16 @@ export const api = {};
         }
         function updateDarkModeUI(isDark) {
             const btn = document.getElementById('dark-mode-btn');
-            const sidebarBtn = document.getElementById('sidebar-dark-icon')?.closest('.sidebar-nav-btn');
+            // Look the button up by a fixed selector rather than the icon's id -
+            // lucide.createIcons() swaps the <i data-lucide> element for a fresh
+            // <svg>, and outerHTML-replacing it below would otherwise need to
+            // keep re-guessing which element currently holds the id.
+            const sidebarBtn = document.querySelector('.sidebar-nav-btn[onclick*="toggleDarkMode"]');
             const sidebarLabel = document.getElementById('sidebar-dark-label');
             const iconName = isDark ? 'sun' : 'moon';
-            const iconMarkup = `<i data-lucide="${iconName}" style="width:18px;height:18px;"></i>`;
+            const iconMarkup = `<i data-lucide="${iconName}" id="sidebar-dark-icon" style="width:18px;height:18px;"></i>`;
 
-            if (btn) btn.innerHTML = iconMarkup;
+            if (btn) btn.innerHTML = `<i data-lucide="${iconName}" style="width:18px;height:18px;"></i>`;
             if (sidebarBtn) {
                 const currentIcon = sidebarBtn.querySelector('[data-lucide], svg');
                 if (currentIcon) currentIcon.outerHTML = iconMarkup;
@@ -318,7 +322,7 @@ function closeSidebar() {
 // ==================== MODULE COORDINATION ====================
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, toggleSidebar, closeSidebar, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
@@ -340,9 +344,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load Showdown's authoritative move/ability data before rendering a shared
     // Fakemon so its preview is fully rehydrated on the first render.
     await api.fetchShowdownData?.();
-    const isShareRoute = await api.initShareRoute?.();
-    const isProfileRoute = !isShareRoute && await api.handleProfileHashRoute?.();
-    if (!isShareRoute && !isProfileRoute) api.renderCollection();
+    const isCommunityRoute = await api.handleCommunityHashRoute?.();
+    const isProfileRoute = !isCommunityRoute && await api.handleProfileHashRoute?.();
+    if (!isCommunityRoute && !isProfileRoute) api.renderCollection();
     loadDarkMode();
     loadSettings();
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -352,7 +356,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 window.addEventListener('hashchange', async () => {
-    if (window.location.hash.startsWith('#profile/')) await api.handleProfileHashRoute?.();
+    const hash = window.location.hash || '';
+    if (hash.startsWith('#community/')) await api.handleCommunityHashRoute?.();
+    else if (hash.startsWith('#profile/')) await api.handleProfileHashRoute?.();
 });
 
 export { loadDarkMode, toggleDarkMode, updateDarkModeUI, showToast, initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor };

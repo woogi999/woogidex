@@ -1,6 +1,6 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
-import { renderBadgeRow } from './data.js';
+import { renderBadgeRow, renderCommentMarkdown } from './data.js';
 
 // ==================== LIVE ROLES ====================
 // Roles are DB-driven now (see LIVE_PROFILES_AND_ROLES_SETUP.sql) so staff
@@ -146,7 +146,7 @@ async function publishSnapshot(mon, rulesChecked = false) {
         source_fakemon_id: String(mon.id),
         fakemon_data: mon
     };
-    const { error } = await client.from('published_mons').insert(payload);
+    const { data: published, error } = await client.from('published_mons').insert(payload).select('id').single();
     if (error) {
         log.error('COMMUNITY', 'Publish failed', error);
         // A 42501/RLS rejection here means the hourly cooldown was hit despite
@@ -157,36 +157,80 @@ async function publishSnapshot(mon, rulesChecked = false) {
         api.showToast?.(friendly, 'error');
         return;
     }
-    api.showToast?.(`${mon.name} published to the Community Hub!`, 'success');
-    log.info('COMMUNITY', 'Published', { id: mon.id, name: mon.name });
+    const copied = published?.id ? await copyCommunityShareLink(published.id, true) : false;
+    api.showToast?.(`${mon.name} published to the Community Hub!${copied ? ' Share link copied.' : ''}`, 'success');
+    log.info('COMMUNITY', 'Published', { id: published?.id, name: mon.name });
 }
 
 
-async function openPublishedMonById(publishedId) {
+// Pushes the current state of a Fakemon the user already has published back
+// up to its existing Community Hub listing (same row, same comments) instead
+// of creating a duplicate post. Skips the hourly publish cooldown since this
+// is an edit to something already live, not a new upload.
+async function updatePublishedMon(publishedId) {
+    if (!state.user) { api.showToast?.('Sign in to update your Community Hub listing.', 'warning'); return; }
+    const client = await api.getClient();
+    const { data: row, error: fetchError } = await client
+        .from('published_mons')
+        .select('*')
+        .eq('id', publishedId)
+        .maybeSingle();
+    if (fetchError || !row) { api.showToast?.('Could not find that listing.', 'error'); return; }
+    if (row.user_id !== state.user.id && !api.isStaff?.()) { api.showToast?.('You can only update your own listings.', 'error'); return; }
+
+    // Prefer whatever's currently open in the editor if it's the same
+    // Fakemon (covers "I just tweaked it, now update the listing"); otherwise
+    // fall back to the saved copy in the collection.
+    const isEditingSameMon = state.editingId && String(state.editingId) === String(row.source_fakemon_id) && !state.isCommunityPreview;
+    if (isEditingSameMon) await api.autoSave?.(true);
+    const mon = state.fakemonDB.find(f => String(f.id) === String(row.source_fakemon_id));
+    if (!mon) { api.showToast?.('Could not find the current version of this Fakemon in your collection.', 'error'); return; }
+
+    const payload = {
+        author_name: state.user.displayName || state.user.username || state.user.email,
+        author_avatar_url: state.user.avatarUrl || null,
+        author_role: state.user.role || 'user',
+        author_badges: state.user.badges || [],
+        fakemon_data: mon
+    };
+    const { error } = await client.from('published_mons').update(payload).eq('id', publishedId);
+    if (error) {
+        log.error('COMMUNITY', 'Update listing failed', error);
+        api.showToast?.('Could not update the listing: ' + error.message, 'error');
+        return;
+    }
+    api.showToast?.(`${mon.name}'s Community Hub listing was updated!`, 'success');
+    log.info('COMMUNITY', 'Updated published listing', { id: publishedId, name: mon.name });
+
+    const cs = ensureCommunityState();
+    const idx = (cs.mons || []).findIndex(m => m.id === publishedId);
+    const updatedRow = { ...row, ...payload };
+    if (idx !== -1) cs.mons[idx] = updatedRow;
+    if (cs.openMonId === publishedId) {
+        cs.openMonRow = updatedRow;
+        await openMonDetail(publishedId);
+    } else {
+        renderCommunityGrid();
+    }
+}
+
+// Wrapper for the detail page's "Update Listing" button - inline onclick
+// handlers only have access to functions on `api`/`window`, not module-scoped `state`.
+function updateOpenCommunityMon() {
+    const cs = ensureCommunityState();
+    if (cs.openMonId) updatePublishedMon(cs.openMonId);
+}
+
+async function openPublishedMonById(publishedId, options = {}) {
     const client = await api.getClient();
     const { data, error } = await client.from('published_mons').select('*').eq('id', publishedId).maybeSingle();
-    if (error || !data) { api.showToast?.('Could not load that Fakemon.', 'error'); return; }
+    if (error || !data) { api.showToast?.('Could not load that Fakemon.', 'error'); return false; }
     const cs = ensureCommunityState();
     cs.mons = [data, ...(cs.mons || []).filter(x => x.id !== data.id)];
     await attachLiveAuthorInfo(cs.mons);
-    await openMonDetail(publishedId);
+    await openMonDetail(publishedId, options);
+    return true;
 }
-
-function toggleShareMenu(event) {
-    if (event) event.stopPropagation();
-    const menu = document.getElementById('share-menu');
-    if (!menu) return;
-    menu.style.display = menu.style.display === 'none' || !menu.style.display ? 'block' : 'none';
-}
-
-function closeShareMenu() {
-    const menu = document.getElementById('share-menu');
-    if (menu) menu.style.display = 'none';
-}
-
-document.addEventListener('click', (event) => {
-    if (!event.target.closest('.export-as-wrap')) closeShareMenu();
-});
 
 // Owners "unpublish" their own mon; staff can remove ANY mon as a moderation
 // action (RLS on published_mons allows is_staff() to delete any row - see
@@ -221,6 +265,42 @@ function unpublishOpenCommunityMon() {
     const cs = ensureCommunityState();
     if (cs.openMonId) unpublishMon(cs.openMonId);
 }
+// ==================== COMMUNITY SHARE ROUTES ====================
+const COMMUNITY_HASH_PREFIX = '#community/';
+
+function communityShareUrl(publishedId) {
+    return `${window.location.href.split('#')[0]}${COMMUNITY_HASH_PREFIX}${encodeURIComponent(String(publishedId))}`;
+}
+
+function copyOpenCommunityShareLink() { return copyCommunityShareLink(ensureCommunityState().openMonId); }
+
+async function copyCommunityShareLink(publishedId, silent = false) {
+    if (!publishedId) return false;
+    const url = communityShareUrl(publishedId);
+    try {
+        await navigator.clipboard.writeText(url);
+        if (!silent) api.showToast?.('Community share link copied!', 'success');
+        return true;
+    } catch (_) {
+        if (!silent) window.prompt('Copy this Community share link:', url);
+        return false;
+    }
+}
+
+function exitCommunityRoute() {
+    if ((window.location.hash || '').startsWith(COMMUNITY_HASH_PREFIX)) {
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+}
+
+async function handleCommunityHashRoute() {
+    const hash = window.location.hash || '';
+    if (!hash.startsWith(COMMUNITY_HASH_PREFIX)) return false;
+    const publishedId = decodeURIComponent(hash.slice(COMMUNITY_HASH_PREFIX.length)).trim();
+    if (!publishedId) return false;
+    return await openPublishedMonById(publishedId, { preserveHash: true });
+}
+
 // ==================== FEED ====================
 async function fetchCommunityFeed() {
     const cs = ensureCommunityState();
@@ -282,6 +362,25 @@ async function postComment(publishedId, body) {
     if (error) { log.error('COMMUNITY', 'Comment failed', error); api.showToast?.('Comment failed: ' + error.message, 'error'); return; }
     await fetchComments(publishedId);
     renderMonComments();
+
+    // Let the mon's owner know someone commented, unless they're commenting
+    // on their own mon. openMonRow is set whenever the comment box is
+    // visible (it only shows on the detail page), so it's a reliable source
+    // for who owns this mon without an extra fetch.
+    const cs = ensureCommunityState();
+    const ownerRow = cs.openMonId === publishedId ? cs.openMonRow : null;
+    if (ownerRow) {
+        api.createNotification?.({
+            userId: ownerRow.user_id,
+            actorId: state.user.id,
+            actorName: payload.author_name,
+            actorAvatarUrl: payload.author_avatar_url,
+            type: 'mon_comment',
+            targetId: publishedId,
+            targetName: (ownerRow.fakemon_data || {}).name || 'your Fakemon',
+            preview: text
+        });
+    }
 }
 
 // Staff (moderator/admin/developer) can delete any comment; everyone else
@@ -339,6 +438,7 @@ function acceptCommunityRules() {
 }
 
 async function openCommunityHub() {
+    exitCommunityRoute();
     // Leaving a community-mon preview is a navigation action, not an editor
     // save - mirrors how showCollection() treats leaving a shared-link
     // preview. Without this guard, the editor DOM still holds whatever
@@ -360,8 +460,8 @@ async function openCommunityHub() {
         await api.autoSave?.(true);
     }
 
-    closeShareMenu();
     closeCommunityExportMenu();
+    api.exitProfileRoute?.();
 
     document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
     document.getElementById('editor-view') && (document.getElementById('editor-view').style.display = 'none');
@@ -484,7 +584,7 @@ function renderCommunityGrid() {
         const canDelete = isMine || api.isStaff?.();
         return `
             <div class="collection-card community-card" onclick="openMonDetail('${row.id}')">
-                ${canDelete ? `<button class="card-delete-btn community-unpublish-btn" onclick="unpublishMon('${row.id}', event); event.stopPropagation();" title="${isMine ? 'Unpublish' : 'Remove (staff)'}"><i data-lucide="x" style="width:14px;height:14px;"></i></button>` : ''}
+                ${canDelete ? `<button class="card-delete-btn community-unpublish-btn" onclick="unpublishMon('${row.id}', event); event.stopPropagation();" title="${isMine ? 'Unpublish' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>` : ''}
                 <div class="card-art">${mon.artwork ? `<img src="${mon.artwork}" alt="${escapeHtml(mon.name)}" draggable="false">` : '<span class="placeholder">ART</span>'}</div>
                 <div class="card-name">${escapeHtml(mon.name)}</div>
                 <div class="card-types">
@@ -503,14 +603,14 @@ function renderCommunityGrid() {
 }
 
 // ==================== UI: detail page ("warp" like the Share page) ====================
-async function openMonDetail(publishedId) {
+async function openMonDetail(publishedId, options = {}) {
     const cs = ensureCommunityState();
     const row = cs.mons.find(m => m.id === publishedId);
     if (!row) return;
-    closeShareMenu();
     closeCommunityExportMenu();
     cs.openMonId = publishedId;
     cs.openMonRow = row;
+    if (!options.preserveHash) history.replaceState(null, '', communityShareUrl(publishedId));
     const mon = row.fakemon_data || {};
 
     // Cancel any pending editor autosave so switching into this read-only
@@ -537,6 +637,7 @@ async function openMonDetail(publishedId) {
         setCommunityPreviewArtworkMode(state.previewArtworkMode || 'normal');
     }
 
+    api.exitProfileRoute?.();
     document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
     document.getElementById('editor-view') && (document.getElementById('editor-view').style.display = 'none');
     document.getElementById('collection-view') && (document.getElementById('collection-view').style.display = 'none');
@@ -555,6 +656,8 @@ async function openMonDetail(publishedId) {
     const unpublishBtn = document.getElementById('community-detail-unpublish-btn');
     unpublishBtn.style.display = canDelete ? 'inline-flex' : 'none';
     unpublishBtn.title = isMine ? 'Unpublish' : 'Remove (staff)';
+    const updateBtn = document.getElementById('community-detail-update-btn');
+    if (updateBtn) updateBtn.style.display = isMine ? 'inline-flex' : 'none';
 
     document.getElementById('mon-detail-comment-box').style.display = state.user ? 'flex' : 'none';
     document.getElementById('mon-detail-comment-signin-hint').style.display = state.user ? 'none' : 'block';
@@ -598,6 +701,7 @@ window.setCommunityPreviewArtworkMode = setCommunityPreviewArtworkMode;
 window.toggleCommunityPreviewArtworkMode = toggleCommunityPreviewArtworkMode;
 
 function closeMonDetail() {
+    exitCommunityRoute();
     const cs = ensureCommunityState();
     cs.openMonId = null;
     cs.openMonRow = null;
@@ -658,7 +762,7 @@ function renderMonComments() {
                     <span class="mon-comment-time">${new Date(c.created_at).toLocaleString()}</span>
                     ${canDelete ? `<button class="mon-comment-delete" onclick="deleteComment('${c.id}', '${cs.openMonId}')" title="${mine ? 'Delete' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
                 </div>
-                <div class="mon-comment-body">${escapeHtml(c.body)}</div>
+                <div class="mon-comment-body">${renderCommentMarkdown(c.body)}</div>
             </div>
         `;
     }).join('');
@@ -674,10 +778,9 @@ async function submitMonComment() {
 }
 
 export {
-    publishFakemon, publishCurrentEditorFakemon, unpublishMon, unpublishOpenCommunityMon, fetchCommunityFeed,
+    publishFakemon, publishCurrentEditorFakemon, unpublishMon, unpublishOpenCommunityMon, updatePublishedMon, updateOpenCommunityMon, fetchCommunityFeed,
     fetchComments, postComment, deleteComment,
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal, acceptCommunityRules,
-    openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment,
+    openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment, handleCommunityHashRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
     importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu,
-    toggleShareMenu, closeShareMenu
 };

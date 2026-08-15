@@ -7,16 +7,16 @@ import { POKEMON_COLORS } from './data.js';
             // Leaving a shared-link preview is a navigation action, not an editor
             // save. The shared Fakemon must remain read-only unless the user
             // explicitly chooses "Import to My Collection".
-            const wasShareRoute = !!state.isShareRoute;
-            api.exitShareRoute?.();
             // Same idea for a Community Hub preview: the editor DOM may still hold
             // whatever community Fakemon was last viewed, and force-saving it here
             // would silently import it into the user's own collection.
             const wasCommunityPreview = !!state.isCommunityPreview;
             state.isCommunityPreview = false;
+            api.exitCommunityRoute?.();
+            api.exitProfileRoute?.();
             document.getElementById('community-detail-view') && (document.getElementById('community-detail-view').style.display = 'none');
             document.getElementById('community-view') && (document.getElementById('community-view').style.display = 'none');
-            if (!wasShareRoute && !wasCommunityPreview && document.getElementById('editor-view')?.style.display !== 'none') {
+            if (!wasCommunityPreview && document.getElementById('editor-view')?.style.display !== 'none') {
                 await api.autoSave(true); // Force immediate save before leaving
             }
             document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
@@ -384,6 +384,8 @@ import { POKEMON_COLORS } from './data.js';
             if (!fakemon) return;
             state.editingId = id;
             api.loadFakemonIntoEditor(fakemon);
+            api.exitCommunityRoute?.();
+            api.exitProfileRoute?.();
             document.getElementById('collection-view').style.display = 'none';
             document.getElementById('editor-view').style.display = 'block';
             document.getElementById('save-status').style.display = '';

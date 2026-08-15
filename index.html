@@ -19,20 +19,22 @@
                     <i data-lucide="menu" style="width:22px;height:22px;"></i>
                 </button>
                 <button class="logo logo-button" type="button" onclick="toggleSidebar()" aria-label="Open navigation menu" title="Menu">
-                    <img src="woogidex_icon.png" alt="Woogidex" style="height: 60px; width: auto; object-fit: contain;">
+                    <img src="assets/woogidex_icon.png" alt="Woogidex" style="height: 60px; width: auto; object-fit: contain;">
                 </button>
             </div>
             <div class="header-actions">
-                <div id="auth-signed-out" style="display:flex;">
-                    <button class="btn btn-secondary" onclick="openAuthModal('signin')" id="auth-signin-btn"><i data-lucide="user" style="width:16px;height:16px;"></i> Sign In</button>
-                </div>
-                <div id="auth-signed-in" class="auth-signed-in" style="display:none;align-items:center;gap:8px;">
-                    <button class="auth-avatar-btn" onclick="showProfileView()" title="Open Profile">
-                        <img id="auth-avatar-img" class="auth-avatar-img" style="display:none;" alt="">
-                        <span id="auth-avatar-fallback" class="auth-avatar-fallback"></span>
+                <div id="notifications-wrap" class="notifications-wrap" style="display:none;">
+                    <button class="notifications-bell-btn" type="button" onclick="toggleNotificationsPanel(event)" aria-label="Notifications" title="Notifications">
+                        <i data-lucide="bell" style="width:20px;height:20px;"></i>
+                        <span id="notifications-badge" class="notifications-badge" style="display:none;"></span>
                     </button>
-                    <span class="auth-user-email" id="auth-user-name"></span>
-                    <button class="btn btn-secondary btn-sm" onclick="handleSignOutClick()">Sign Out</button>
+                    <div id="notifications-panel" class="notifications-panel" style="display:none;">
+                        <div class="notifications-panel-header">
+                            <span>Notifications</span>
+                            <button class="notifications-mark-all-btn" type="button" onclick="markAllNotificationsRead(event)">Mark all read</button>
+                        </div>
+                        <div id="notifications-list" class="notifications-list"></div>
+                    </div>
                 </div>
             </div>
         </header>
@@ -41,7 +43,7 @@
         <aside class="app-sidebar" id="app-sidebar" aria-hidden="true">
             <div class="sidebar-header">
                 <button class="sidebar-brand" type="button" onclick="closeSidebar()" aria-label="Close menu">
-                    <img src="woogidex_icon.png" alt="Woogidex" class="sidebar-brand-logo">
+                    <img src="assets/woogidex_icon.png" alt="Woogidex" class="sidebar-brand-logo">
                 </button>
                 <button class="sidebar-close" type="button" onclick="closeSidebar()" aria-label="Close navigation menu" title="Close menu">
                     <i data-lucide="x" style="width:20px;height:20px;"></i>
@@ -73,47 +75,13 @@
         </aside>
 
         <div id="main-content">
-            <!-- Shared Fakemon View -->
-            <div id="share-view" style="display:none;">
-                <div class="share-view-shell">
-                    <div class="share-view-header">
-                        <div>
-                            <div class="share-view-kicker">SHARED FAKEMON</div>
-                            <h2 id="share-view-title">Fakemon</h2>
-                            <p id="share-view-subtitle">Preview shared from Woogidex</p>
-                        </div>
-                        <div class="share-view-actions">
-                            <button class="btn btn-secondary btn-sm" type="button" onclick="importSharedFakemon()">Import to My Collection</button>
-                            <div class="export-as-wrap" style="position:relative;display:inline-block;">
-                                <button class="btn btn-primary btn-sm" type="button" onclick="toggleShareExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
-                                <div id="share-export-as-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
-                                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeShareExportMenu();">Export as PNG</button>
-                                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeShareExportMenu();">Export as Plain Text</button>
-                                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeShareExportMenu();">Export as JSON</button>
-                                    <button class="export-as-menu-item" type="button" onclick="exportShowdownMod(); closeShareExportMenu();">Export as Showdown Mod</button>
-                                    <button class="export-as-menu-item" type="button" onclick="exportEssentialsMod(); closeShareExportMenu();">Export as Essentials Mod</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="share-view-board"></div>
-                    <div id="share-view-status" class="share-view-status" aria-live="polite"></div>
-                </div>
-            </div>
-
             <!-- Editor View -->
             <div id="editor-view" style="display: none;">
                 <div class="main-layout">
                     <div>
                         <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px;">
                             <div style="display:flex;gap:8px;align-items:center;">
-                                <div class="export-as-wrap" style="position:relative;display:inline-block;">
-                                    <button class="btn btn-secondary btn-sm" type="button" onclick="toggleShareMenu(event)">Share <span style="font-size:10px;">▼</span></button>
-                                    <div id="share-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:210px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
-                                        <button class="export-as-menu-item" type="button" onclick="shareFakemon(); closeShareMenu();">Copy Share Link</button>
-                                        <button class="export-as-menu-item" type="button" onclick="publishCurrentEditorFakemon(); closeShareMenu();">Publish to Community</button>
-                                    </div>
-                                </div>
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="publishCurrentEditorFakemon()">Publish to Community</button>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
                                 <div class="export-as-wrap" style="position:relative;display:inline-block;">
                                 <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
@@ -531,7 +499,7 @@
                     </div>
 
                     <div id="profile-public-content">
-                        <section class="panel profile-public-hero">
+                        <section class="panel profile-public-hero trainer-card">
                             <div class="profile-public-avatar-wrap">
                                 <img id="profile-public-avatar" class="profile-public-avatar" style="display:none;" alt="">
                                 <span id="profile-public-avatar-fallback" class="profile-public-avatar-fallback">?</span>
@@ -539,10 +507,14 @@
                             <div class="profile-public-main">
                                 <div class="profile-public-name-row">
                                     <div>
+                                        <div class="trainer-card-label">TRAINER CARD</div>
                                         <h2 id="profile-page-display-heading">Profile</h2>
                                         <p class="profile-page-handle" id="profile-page-handle"></p>
                                     </div>
-                                    <div id="profile-public-badges" class="profile-public-badges"></div>
+                                </div>
+                                <div class="trainer-card-meta">
+                                    <div class="profile-public-badges" id="profile-public-badges"></div>
+                                    <span id="profile-public-joined"></span>
                                 </div>
                                 <p id="profile-public-bio" class="profile-public-bio">No bio yet.</p>
                             </div>
@@ -563,6 +535,7 @@
                             <div id="profile-comments-list" class="profile-comments-list"></div>
                             <div id="profile-comment-box" class="profile-comment-box" style="display:none;">
                                 <textarea id="profile-comment-input" maxlength="1000" rows="3" placeholder="Say hello..."></textarea>
+                                <small class="comment-markdown-hint">Markdown supported: **bold**, *italic*, `code`, [links](https://example.com)</small>
                                 <div class="profile-comment-actions">
                                     <span id="profile-comment-error" class="auth-modal-error"></span>
                                     <button class="btn btn-primary btn-sm" type="button" onclick="submitProfileComment()">Post Comment</button>
@@ -713,8 +686,9 @@
                         </div>
                         <div class="share-view-actions">
                             <button class="btn btn-secondary btn-sm" type="button" onclick="closeMonDetail()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
-                            <button class="btn btn-secondary btn-sm" type="button" onclick="shareFakemon()">Copy Share Link</button>
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="copyOpenCommunityShareLink()"><i data-lucide="link" style="width:14px;height:14px;"></i> Copy Share Link</button>
                             <button class="btn btn-secondary btn-sm" type="button" onclick="importCommunityMonToCollection()">Import to My Collection</button>
+                            <button class="btn btn-secondary btn-sm" id="community-detail-update-btn" type="button" onclick="updateOpenCommunityMon()" style="display:none;" title="Push the current version of this Fakemon to your Community Hub listing"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Update Listing</button>
                             <button class="btn btn-secondary btn-sm community-unpublish-inline" id="community-detail-unpublish-btn" type="button" onclick="unpublishOpenCommunityMon()" style="display:none;">Unpublish</button>
                             <div class="export-as-wrap" style="position:relative;display:inline-block;">
                                 <button class="btn btn-primary btn-sm" type="button" onclick="toggleCommunityExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
@@ -735,6 +709,7 @@
                     <div id="mon-detail-comments" class="mon-detail-comments"></div>
                     <div id="mon-detail-comment-box" class="mon-detail-comment-box" style="display:none;">
                         <textarea id="mon-detail-comment-input" placeholder="Say something nice…" maxlength="1000"></textarea>
+                        <small class="comment-markdown-hint">Markdown supported: **bold**, *italic*, `code`, [links](https://example.com)</small>
                         <button class="btn btn-primary" onclick="submitMonComment()">Post</button>
                     </div>
                     <p id="mon-detail-comment-signin-hint" class="mon-detail-signin-hint" style="display:none;">

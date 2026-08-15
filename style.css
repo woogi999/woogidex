@@ -75,6 +75,71 @@
         }
         .logo span { font-size: 13px; color: var(--text-muted); font-weight: 400; display: block; margin-top: -4px; }
         .header-actions { display: flex; gap: 10px; align-items: center; }
+
+        /* ==================== NOTIFICATIONS ==================== */
+        .notifications-wrap { position: relative; }
+        .notifications-bell-btn {
+            position: relative; width: 40px; height: 40px; border-radius: 10px;
+            border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-primary);
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .notifications-bell-btn:hover { background: var(--border-light); }
+        .notifications-badge {
+            position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
+            border-radius: 999px; background: var(--danger, #ef4444); color: #fff;
+            font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+            display: flex; align-items: center; justify-content: center;
+            border: 2px solid var(--bg-card);
+        }
+        .notifications-panel {
+            position: absolute; top: calc(100% + 10px); right: 0; z-index: 1000;
+            width: 340px; max-width: calc(100vw - 32px); max-height: 420px;
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.18); display: flex; flex-direction: column; overflow: hidden;
+        }
+        .notifications-panel-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 14px; border-bottom: 1px solid var(--border);
+            font-weight: 700; font-size: 14px;
+        }
+        .notifications-mark-all-btn {
+            background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600;
+            cursor: pointer; padding: 4px 6px; border-radius: 6px;
+        }
+        .notifications-mark-all-btn:hover { background: var(--border-light); }
+        .notifications-list { overflow-y: auto; flex: 1 1 auto; }
+        .notifications-empty {
+            padding: 28px 16px; text-align: center; color: var(--text-secondary, #888); font-size: 13px;
+        }
+        .notification-item {
+            display: flex; align-items: flex-start; gap: 10px; width: 100%;
+            padding: 12px 14px; border: none; border-bottom: 1px solid var(--border);
+            background: none; text-align: left; cursor: pointer; position: relative;
+            transition: background 0.15s;
+        }
+        .notification-item:last-child { border-bottom: none; }
+        .notification-item:hover { background: var(--bg-panel); }
+        .notification-item.unread { background: var(--accent-glow, rgba(99,102,241,0.08)); }
+        .notification-avatar {
+            width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+            background: var(--accent, #6366f1);
+        }
+        .notification-avatar-fallback {
+            display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 13px;
+        }
+        .notification-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+        .notification-text { font-size: 13px; line-height: 1.4; color: var(--text-primary); }
+        .notification-preview {
+            font-size: 12px; color: var(--text-secondary, #888); font-style: italic;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .notification-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .notification-dot {
+            position: absolute; top: 14px; right: 12px; width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent, #6366f1); flex-shrink: 0;
+        }
+
         .btn {
             padding: 10px 20px; border: none; border-radius: 10px;
             font-family: 'Exo 2', sans-serif; font-weight: 600; font-size: 14px;
@@ -3747,7 +3812,16 @@
     font-size: 14px;
 }
 .community-card { cursor: pointer; position: relative; }
-.community-unpublish-btn { position: absolute; top: 8px; right: 8px; z-index: 2; }
+.community-unpublish-btn {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text-secondary, #888);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: opacity 0.2s, background 0.2s, color 0.2s, border-color 0.2s;
+}
+.community-card:hover .community-unpublish-btn { opacity: 1; }
+.community-unpublish-btn:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.community-unpublish-btn:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
 .community-card-author {
     display: flex; align-items: center; gap: 6px;
     margin-top: 8px; font-size: 12px; color: var(--text-secondary, #888);
@@ -4160,13 +4234,27 @@
 /* ==================== PUBLIC PROFILE ==================== */
 .profile-page-header-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .profile-public-hero { padding:26px; display:flex; gap:24px; align-items:center; margin-bottom:16px; }
+.trainer-card { position:relative; overflow:hidden; background:linear-gradient(135deg,var(--bg-card),var(--bg-panel)); border:1px solid var(--border); box-shadow:0 12px 32px rgba(0,0,0,.08); }
+.trainer-card::after { content:''; position:absolute; inset:auto -50px -70px auto; width:180px; height:180px; border-radius:50%; border:1px solid var(--border-light); opacity:.8; }
+.trainer-card-label { display:inline-flex; align-items:center; gap:6px; margin-bottom:6px; font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; letter-spacing:.16em; color:var(--text-muted); }
+.trainer-card-meta { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:13px; color:var(--text-secondary); font-size:11px; align-items:center; }
+.trainer-card-meta span { display:inline-flex; align-items:center; gap:5px; }
+.trainer-card-meta strong { color:var(--text-primary); }
+.comment-markdown-hint { display:block; color:var(--text-muted); font-size:10px; line-height:1.4; }
+.profile-comment-body p, .mon-comment-body p { margin:0 0 7px; }
+.profile-comment-body p:last-child, .mon-comment-body p:last-child { margin-bottom:0; }
+.profile-comment-body ul, .profile-comment-body ol, .mon-comment-body ul, .mon-comment-body ol { margin:4px 0 7px 20px; }
+.profile-comment-body blockquote, .mon-comment-body blockquote { margin:5px 0; padding-left:10px; border-left:3px solid var(--border); color:var(--text-secondary); }
+.profile-comment-body code, .mon-comment-body code { font-family:'JetBrains Mono',monospace; font-size:.9em; padding:1px 4px; border-radius:4px; background:var(--bg-panel); }
+.profile-comment-body a, .mon-comment-body a { color:var(--info); text-decoration:underline; }
+
 .profile-public-avatar-wrap { width:112px; height:112px; flex:0 0 112px; border-radius:50%; overflow:hidden; background:var(--bg-panel); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; }
 .profile-public-avatar { width:100%; height:100%; object-fit:cover; }
 .profile-public-avatar-fallback { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:38px; font-weight:800; color:var(--text-secondary); }
 .profile-public-main { min-width:0; flex:1; }
 .profile-public-name-row { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
 .profile-public-name-row h2 { font-size:30px; margin:0 0 4px; }
-.profile-public-badges { display:flex; align-items:center; justify-content:flex-end; min-height:24px; }
+.profile-public-badges { display:flex; align-items:center; justify-content:flex-start; min-height:24px; }
 .profile-public-bio { margin-top:14px; color:var(--text-secondary); font-size:14px; line-height:1.6; white-space:pre-wrap; max-width:760px; }
 .profile-public-section { padding:20px; margin-bottom:16px; }
 .profile-mons-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
@@ -4225,3 +4313,19 @@
     .profile-comment-body { margin-left:0; }
     .profile-comment-time { display:none; }
 }
+
+
+/* ==================== USER HOVER TRAINER CARD ==================== */
+.user-hover-card { position:fixed; z-index:10000; width:300px; max-width:calc(100vw - 24px); box-sizing:border-box; padding:14px; border:1px solid var(--border); border-radius:14px; background:linear-gradient(135deg,var(--bg-card),var(--bg-panel)); color:var(--text-primary); box-shadow:0 18px 45px rgba(0,0,0,.22); pointer-events:auto; overflow:hidden; }
+.user-hover-card-accent { position:absolute; top:0; left:0; right:0; height:3px; background:var(--accent); opacity:.9; }
+.user-hover-card-top { display:flex; align-items:center; gap:12px; }
+.user-hover-card-avatar { width:52px; height:52px; flex:0 0 52px; border-radius:50%; overflow:hidden; border:1px solid var(--border); background:var(--bg-input); display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; color:var(--text-secondary); }
+.user-hover-card-avatar img { width:100%; height:100%; object-fit:cover; }
+.user-hover-card-identity { min-width:0; display:flex; flex-direction:column; }
+.user-hover-card-label { font-family:'JetBrains Mono',monospace; font-size:8px; letter-spacing:.14em; color:var(--text-muted); margin-bottom:2px; }
+.user-hover-card-identity strong { font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.user-hover-card-identity > span { font-size:10px; color:var(--text-muted); margin-top:2px; }
+.user-hover-card-badges { min-height:18px; margin-top:11px; display:flex; align-items:center; }
+.user-hover-card-bio { margin-top:10px; color:var(--text-secondary); font-size:11px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.user-hover-card-joined { margin-top:9px; font-size:9px; color:var(--text-muted); }
+.user-hover-card-loading { color:var(--text-muted); font-size:11px; padding:8px 2px; }

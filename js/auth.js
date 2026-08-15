@@ -1,5 +1,6 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
+import { renderCommentMarkdown } from './data.js';
 
 // ==================== SUPABASE CLIENT ====================
 // Loaded from CDN as an ES module - no npm/bundler needed.
@@ -534,9 +535,9 @@ async function showProfileView(userId = null, options = {}) {
     if (document.getElementById('editor-view')?.style.display !== 'none' && userId === state.user?.id) {
         await api.autoSave?.(true);
     }
-    api.exitShareRoute?.();
     state.isCommunityPreview = false;
-    ['share-view','editor-view','collection-view','community-view','community-detail-view'].forEach(id => {
+    api.exitCommunityRoute?.();
+    ['editor-view','collection-view','community-view','community-detail-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -558,6 +559,17 @@ async function showProfileView(userId = null, options = {}) {
         log.error('AUTH', 'Profile page failed to load', e);
         renderProfileError(e?.message || 'Could not load this profile.');
         api.showToast?.('Could not load that profile.', 'error');
+    }
+}
+
+// Leaving the profile page (to Collection, Community Hub, the Editor, etc.)
+// should drop the #profile/username hash so the address bar matches what's
+// actually on screen. Without this, reloading or sharing the URL after
+// navigating away would drop the visitor right back on a profile they'd
+// already left. Called from every place that hides #profile-view.
+function exitProfileRoute() {
+    if ((window.location.hash || '').startsWith('#profile/')) {
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
 }
 
@@ -632,7 +644,7 @@ async function loadPublicProfile(userId) {
 
     let { data: profile, error: profileError } = await withProfileTimeout(
         client.from('profiles')
-            .select('id, username, display_name, avatar_url, role, bio, display_badges')
+            .select('id, username, display_name, avatar_url, role, bio, display_badges, created_at')
             .eq('id', userId)
             .maybeSingle(),
         'Profile request'
@@ -641,7 +653,7 @@ async function loadPublicProfile(userId) {
     if (profileError && /bio|display_badges|column .* does not exist/i.test(profileError.message || '')) {
         const fallback = await withProfileTimeout(
             client.from('profiles')
-                .select('id, username, display_name, avatar_url, role')
+                .select('id, username, display_name, avatar_url, role, created_at')
                 .eq('id', userId)
                 .maybeSingle(),
             'Profile request'
@@ -779,8 +791,15 @@ function renderProfilePage() {
     const bio = document.getElementById('profile-public-bio');
     if (bio) bio.textContent = profile.bio || 'No bio yet.';
     const badges = document.getElementById('profile-public-badges');
-    if (badges) badges.innerHTML = (Array.isArray(profile.display_badges) ? profile.display_badges : []).length && api.renderBadgeRow
-        ? api.renderBadgeRow(profile.display_badges, 18) : '<span class="profile-no-badges">No featured badges</span>';
+    if (badges) {
+        const hasBadges = Array.isArray(profile.display_badges) && profile.display_badges.length;
+        badges.innerHTML = hasBadges && api.renderBadgeRow ? api.renderBadgeRow(profile.display_badges, 18) : '';
+        badges.style.display = hasBadges ? 'flex' : 'none';
+    }
+    const joined = document.getElementById('profile-public-joined');
+    if (joined) {
+        joined.textContent = profile.created_at ? `Joined ${new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}` : '';
+    }
     const monsCount = document.getElementById('profile-mons-count');
     if (monsCount) monsCount.textContent = `${profile.mons.length} ${profile.mons.length === 1 ? 'mon' : 'mons'}`;
     renderPublicProfileMons();
@@ -848,6 +867,16 @@ async function submitProfileComment() {
     input.value = '';
     await loadPublicProfile(state.profilePageUser.id);
     renderProfilePage();
+
+    api.createNotification?.({
+        userId: state.profilePageUser.id,
+        actorId: state.user.id,
+        actorName: state.user.displayName || state.user.username || state.user.email,
+        actorAvatarUrl: state.user.avatarUrl || null,
+        type: 'profile_comment',
+        targetId: state.profilePageUser.id,
+        preview: text
+    });
 }
 
 async function deleteProfileComment(commentId) {
@@ -885,11 +914,123 @@ function renderProfileComments() {
                 <span class="profile-comment-time">${new Date(c.created_at).toLocaleString()}</span>
                 ${canDelete ? `<button type="button" class="mon-comment-delete" onclick="event.stopPropagation(); deleteProfileComment('${c.id}')" title="Delete"><i data-lucide="trash-2"></i></button>` : ''}
             </div>
-            <div class="profile-comment-body">${esc(c.body)}</div>
+            <div class="profile-comment-body">${renderCommentMarkdown(c.body)}</div>
         </div>`;
     }).join('');
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
+
+
+// ==================== USER HOVER CARD ====================
+let userHoverCardEl = null;
+let userHoverTimer = null;
+let userHoverRequest = 0;
+
+function ensureUserHoverCard() {
+    if (userHoverCardEl) return userHoverCardEl;
+    userHoverCardEl = document.createElement('div');
+    userHoverCardEl.id = 'user-hover-card';
+    userHoverCardEl.className = 'user-hover-card';
+    userHoverCardEl.style.display = 'none';
+    document.body.appendChild(userHoverCardEl);
+    userHoverCardEl.addEventListener('mouseenter', () => clearTimeout(userHoverTimer));
+    userHoverCardEl.addEventListener('mouseleave', scheduleHideUserHoverCard);
+    return userHoverCardEl;
+}
+
+function scheduleHideUserHoverCard() {
+    clearTimeout(userHoverTimer);
+    userHoverTimer = setTimeout(() => {
+        if (userHoverCardEl) userHoverCardEl.style.display = 'none';
+    }, 120);
+}
+
+function positionUserHoverCard(anchor) {
+    const card = ensureUserHoverCard();
+    const rect = anchor.getBoundingClientRect();
+    const gap = 10;
+    card.style.display = 'block';
+    card.style.visibility = 'hidden';
+    const width = card.offsetWidth || 300;
+    const height = card.offsetHeight || 180;
+    let left = rect.left;
+    let top = rect.bottom + gap;
+    if (left + width > window.innerWidth - 12) left = window.innerWidth - width - 12;
+    if (left < 12) left = 12;
+    if (top + height > window.innerHeight - 12) top = rect.top - height - gap;
+    if (top < 12) top = 12;
+    card.style.left = `${Math.round(left)}px`;
+    card.style.top = `${Math.round(top)}px`;
+    card.style.visibility = 'visible';
+}
+
+function renderUserHoverCard(profile) {
+    const card = ensureUserHoverCard();
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const name = profile.display_name || profile.username || 'Trainer';
+    const initial = esc(name.charAt(0).toUpperCase());
+    const badges = Array.isArray(profile.display_badges) ? profile.display_badges : [];
+    card.innerHTML = `
+        <div class="user-hover-card-accent"></div>
+        <div class="user-hover-card-top">
+            <div class="user-hover-card-avatar">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="">` : `<span>${initial}</span>`}</div>
+            <div class="user-hover-card-identity">
+                <div class="user-hover-card-label">TRAINER CARD</div>
+                <strong>${esc(name)}</strong>
+                <span>@${esc(profile.username || '')}</span>
+            </div>
+        </div>
+        <div class="user-hover-card-badges">${badges.length && api.renderBadgeRow ? api.renderBadgeRow(badges, 15) : ''}</div>
+        ${profile.bio ? `<div class="user-hover-card-bio">${esc(profile.bio)}</div>` : ''}
+        ${profile.created_at ? `<div class="user-hover-card-joined">Joined ${new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}</div>` : ''}
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function showUserHoverCard(userId, anchor) {
+    if (!userId || !anchor) return;
+    clearTimeout(userHoverTimer);
+    const requestId = ++userHoverRequest;
+    const card = ensureUserHoverCard();
+    card.innerHTML = '<div class="user-hover-card-loading">Loading trainer card…</div>';
+    positionUserHoverCard(anchor);
+    try {
+        const client = await getClient();
+        let { data: profile, error } = await client
+            .from('profiles')
+            .select('id, username, display_name, avatar_url, bio, created_at, display_badges')
+            .eq('id', userId)
+            .maybeSingle();
+        if (error) throw error;
+        if (!profile || requestId !== userHoverRequest) return;
+        renderUserHoverCard(profile);
+        positionUserHoverCard(anchor);
+    } catch (e) {
+        if (requestId !== userHoverRequest) return;
+        card.innerHTML = '';
+        card.style.display = 'none';
+    }
+}
+
+document.addEventListener('mouseover', event => {
+    const anchor = event.target.closest('.community-author-link, .mon-comment-author, .profile-comment-header');
+    if (!anchor || !anchor.closest('body') || anchor.contains(event.relatedTarget)) return;
+    const match = anchor.getAttribute('onclick')?.match(/showUserProfile\('([^']+)'\)/);
+    const userId = match?.[1] || anchor.closest('[data-user-id]')?.dataset.userId;
+    if (!userId) return;
+    clearTimeout(userHoverTimer);
+    userHoverTimer = setTimeout(() => showUserHoverCard(userId, anchor), 250);
+});
+
+document.addEventListener('mouseout', event => {
+    const anchor = event.target.closest('.community-author-link, .mon-comment-author, .profile-comment-header');
+    if (!anchor || anchor.contains(event.relatedTarget)) return;
+    scheduleHideUserHoverCard();
+});
+
+document.addEventListener('scroll', () => {
+    if (userHoverCardEl?.style.display !== 'none') userHoverCardEl.style.display = 'none';
+}, true);
 
 async function showUserProfile(userIdOrUsername) {
     try {
@@ -1145,10 +1286,14 @@ function updateAuthUI() {
     const sidebarAvatarImg = document.getElementById('sidebar-profile-avatar-img');
     const sidebarAvatarFallback = document.getElementById('sidebar-profile-avatar-fallback');
     const sidebarAuthBtn = document.getElementById('sidebar-auth-btn');
-    if (!signedOutEl || !signedInEl) return;
+    // The header no longer has sign-in/profile controls (replaced by the
+    // notifications bell) - sidebarAuthBtn/sidebarProfile below are the real
+    // source of truth now. signedOutEl/signedInEl are kept optional so this
+    // still works if a page (e.g. admin.html) still has them.
+    api.refreshNotifications?.();
     if (state.user) {
-        signedOutEl.style.display = 'none';
-        signedInEl.style.display = 'flex';
+        if (signedOutEl) signedOutEl.style.display = 'none';
+        if (signedInEl) signedInEl.style.display = 'flex';
         if (nameEl) nameEl.textContent = state.user.displayName || state.user.username || state.user.email;
         if (sidebarProfile) sidebarProfile.style.display = 'block';
         if (sidebarProfileName) {
@@ -1175,8 +1320,8 @@ function updateAuthUI() {
             }
         }
     } else {
-        signedOutEl.style.display = 'flex';
-        signedInEl.style.display = 'none';
+        if (signedOutEl) signedOutEl.style.display = 'flex';
+        if (signedInEl) signedInEl.style.display = 'none';
         if (sidebarProfile) sidebarProfile.style.display = 'none';
         if (sidebarAuthBtn) { sidebarAuthBtn.innerHTML = '<i data-lucide="log-in"></i><span>Sign In</span>'; sidebarAuthBtn.onclick = () => { openAuthModal('signin'); closeSidebar(); }; }
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1208,7 +1353,7 @@ export {
     getCurrentUser, isLoggedIn, updateDisplayName, uploadAvatar,
     setUsername, updateEmail, removeEmail, fetchProfile,
     openAuthModal, closeAuthModal, toggleAuthMode, submitAuthForm, openTermsModal, closeTermsModal,
-    showProfileView, showUserProfile, handleProfileHashRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, onProfileAvatarFileChosen, submitProfileForm, renderProfilePage, submitDisplayedBadges, submitProfileComment, deleteProfileComment,
+    showProfileView, showUserProfile, handleProfileHashRoute, exitProfileRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, onProfileAvatarFileChosen, submitProfileForm, renderProfilePage, submitDisplayedBadges, submitProfileComment, deleteProfileComment,
     submitUsernameForm, submitEmailForm, submitRemoveEmail,
     handleSignOutClick, updateAuthUI, promptUsernameIfMissing,
     fetchBadges, currentRole, isStaff, isAdminOrDev, canDeleteAnyContent

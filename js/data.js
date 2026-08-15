@@ -87,6 +87,60 @@ const TYPE_EFFECTIVENESS = {
         }
 
 
+
+// ==================== SAFE COMMENT MARKDOWN ====================
+// Lightweight markdown for user comments. HTML is always escaped first, then a
+// deliberately small set of Markdown constructs is rendered. This keeps comment
+// content useful without allowing arbitrary HTML/script injection.
+function renderCommentMarkdown(value) {
+    const source = String(value ?? '').replace(/\r\n?/g, '\n');
+    const escape = text => String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const safeUrl = url => /^(https?:\/\/|mailto:)/i.test(url) ? url : '#';
+    const inline = text => {
+        let out = escape(text);
+        const code = [];
+        out = out.replace(/`([^`\n]+)`/g, (_, v) => { const i=code.push(v)-1; return `@@CODE${i}@@`; });
+        const links = [];
+        out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)(?:\s+["']([^"']*)["'])?\)/g, (_, label, url, title='') => {
+            const i=links.push({label, url:safeUrl(url), title})-1;
+            return `@@LINK${i}@@`;
+        });
+        out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+        out = out.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+        out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+        out = out.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+        out = out.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+        out = out.replace(/@@CODE(\d+)@@/g, (_, i) => `<code>${code[Number(i)]}</code>`);
+        out = out.replace(/@@LINK(\d+)@@/g, (_, i) => {
+            const l = links[Number(i)];
+            const title = l.title ? ` title="${escape(l.title)}"` : '';
+            return `<a href="${escape(l.url)}" target="_blank" rel="noopener noreferrer"${title}>${l.label}</a>`;
+        });
+        return out;
+    };
+    const lines = source.split('\n');
+    const html = [];
+    let list = null;
+    let quote = false;
+    const closeList = () => { if (list) { html.push(`</${list}>`); list=null; } };
+    const closeQuote = () => { if (quote) { html.push('</blockquote>'); quote=false; } };
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) { closeList(); closeQuote(); continue; }
+        const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) { closeList(); closeQuote(); const level=heading[1].length; html.push(`<h${level}>${inline(heading[2])}</h${level}>`); continue; }
+        const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+        if (bullet) { closeQuote(); if (list !== 'ul') { closeList(); html.push('<ul>'); list='ul'; } html.push(`<li>${inline(bullet[1])}</li>`); continue; }
+        const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+        if (ordered) { closeQuote(); if (list !== 'ol') { closeList(); html.push('<ol>'); list='ol'; } html.push(`<li>${inline(ordered[1])}</li>`); continue; }
+        const quoteLine = trimmed.match(/^>\s?(.*)$/);
+        if (quoteLine) { closeList(); if (!quote) { html.push('<blockquote>'); quote=true; } html.push(`<p>${inline(quoteLine[1])}</p>`); continue; }
+        closeList(); closeQuote(); html.push(`<p>${inline(trimmed)}</p>`);
+    }
+    closeList(); closeQuote();
+    return html.join('');
+}
+
 // ==================== STAFF ROLES & BADGES ====================
 // `role` lives on profiles.role (one value per user, drives permissions).
 // `badges` are cosmetic/earned tags, many-per-user, stored in profile_badges.
@@ -155,4 +209,4 @@ function renderBadgeRow(badgeKeys, size) {
 
 
 export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
-    ROLES, BADGES, roleAtLeast, canDeleteAnyContent, setBadgeDefinitions, renderBadge, renderBadgeRow };
+    ROLES, BADGES, roleAtLeast, canDeleteAnyContent, setBadgeDefinitions, renderBadge, renderBadgeRow, renderCommentMarkdown };

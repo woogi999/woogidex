@@ -91,7 +91,7 @@ function normalizeCollections() {
             // Shared-link previews and Community Hub previews are strictly read-only.
             // They may hydrate the editor for rendering, but they can never enter the
             // private collection through this function.
-            if (state.isShareRoute || state.isCommunityPreview) {
+            if (state.isCommunityPreview) {
                 if (state.autoSaveTimer) {
                     clearTimeout(state.autoSaveTimer);
                     state.autoSaveTimer = null;

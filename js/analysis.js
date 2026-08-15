@@ -2429,7 +2429,7 @@ async function runFakemonAnalysis(){
           <div class="analysis-score">${Math.round(tier.score)}/100 · ${Math.round(tier.reliability)}% confidence</div>
         </div>
         <div class="analysis-profile-summary">
-          <div class="analysis-discord-message"><img class="analysis-discord-avatar" src="inoue_profile.gif" alt="Inoue"><div class="analysis-discord-body"><div class="analysis-discord-name">Inoue</div><div class="analysis-discord-text">${esc(makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,roleScore,typePct,intrinsic.cap,summarySeedFromTarget(t)))}</div></div></div>
+          <div class="analysis-discord-message"><img class="analysis-discord-avatar" src="assets/inoue_profile.gif" alt="Inoue"><div class="analysis-discord-body"><div class="analysis-discord-name">Inoue</div><div class="analysis-discord-text">${esc(makeCasualSummary(t,tf,tier,matchup,selectedFormat,statCombination,roleScore,typePct,intrinsic.cap,summarySeedFromTarget(t)))}</div></div></div>
         </div>
         <div class="analysis-profile-note"><strong>Take it with a grain of salt.</strong> This is an estimate, not an official competitive ranking.</div>
       </div>
