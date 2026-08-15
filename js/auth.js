@@ -643,7 +643,7 @@ function updateAuthUI() {
         if (sidebarProfileName) {
             const nameText = state.user.displayName || state.user.username || 'Profile';
             const nameSafe = nameText.replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-            sidebarProfileName.innerHTML = `${nameSafe} ` + (state.user.badges || []).map(b => api.renderBadge ? api.renderBadge(b, 12) : '').join('');
+            sidebarProfileName.innerHTML = `${nameSafe}` + (api.renderBadgeRow ? api.renderBadgeRow(state.user.badges, 12) : '');
         }
         if (sidebarProfileUsername) sidebarProfileUsername.textContent = state.user.username ? '@' + state.user.username : 'Edit profile';
         if (sidebarAvatarImg && sidebarAvatarFallback) {

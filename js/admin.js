@@ -11,7 +11,7 @@
 // doesn't check. Treat this file as "hide the panel from people who
 // shouldn't see it", not "the thing standing between users and the data".
 
-import { ROLES, BADGES, roleAtLeast } from './data.js';
+import { ROLES, BADGES, renderBadgeRow, roleAtLeast } from './data.js';
 
 const SUPABASE_URL = 'https://qstbascfeolkyxtrqqwv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_B4jEJ--w0XFsgXDmQeJREA_xH1GRBsf';
@@ -85,29 +85,34 @@ async function runSearch() {
     const resultsEl = $('admin-results');
     resultsEl.innerHTML = '<div class="admin-empty">Loading…</div>';
 
-    let query = client.from('profiles').select('id, username, role').order('username', { ascending: true }).limit(30);
-    if (q) query = query.ilike('username', `%${q}%`);
-    const { data: profiles, error } = await query;
+    // admin_search_users is a SECURITY DEFINER RPC (see BADGES_EVERYWHERE_SETUP.sql)
+    // — it's the only way to get email/account data, since auth.users is never
+    // client-readable directly, even for staff.
+    const { data: users, error } = await client.rpc('admin_search_users', { search_query: q });
 
     if (error) {
         resultsEl.innerHTML = `<div class="admin-empty admin-error">Search failed: ${escapeHtml(error.message)}</div>`;
         return;
     }
-    if (!profiles || !profiles.length) {
+    if (!users || !users.length) {
         resultsEl.innerHTML = '<div class="admin-empty">No matching users.</div>';
         return;
     }
 
-    // Batch-fetch badges for everyone in this page of results.
-    const ids = profiles.map(p => p.id);
+    const ids = users.map(u => u.id);
     const { data: badgeRows } = await client.from('profile_badges').select('user_id, badge_key').in('user_id', ids);
     const badgesByUser = {};
     (badgeRows || []).forEach(row => {
         (badgesByUser[row.user_id] ||= []).push(row.badge_key);
     });
 
-    state.results = profiles.map(p => ({ ...p, badges: badgesByUser[p.id] || [] }));
+    state.results = users.map(u => ({ ...u, badges: badgesByUser[u.id] || [] }));
     renderResults();
+}
+
+function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function renderResults() {
@@ -118,10 +123,6 @@ function renderResults() {
     resultsEl.innerHTML = state.results.map(u => {
         const targetRank = ROLES[u.role]?.rank ?? 0;
         const isSelf = u.id === state.me.id;
-        // Can't act on someone who outranks you, and role dropdown options
-        // are capped at your own rank — mirrors admin_set_user_role()'s
-        // server-side check, so the UI won't offer something the DB would
-        // just reject anyway.
         const roleLocked = !canManageRoles || targetRank > myRank || isSelf;
         const roleOptions = Object.entries(ROLES)
             .filter(([, r]) => r.rank <= myRank)
@@ -134,7 +135,7 @@ function renderResults() {
                 <label class="admin-badge-check" title="${escapeHtml(b.tooltip)}">
                     <input type="checkbox" data-user="${u.id}" data-badge="${key}" ${checked}
                         onchange="window.adminToggleBadge(this)">
-                    <span>${b.icon} ${b.label}</span>
+                    <span>${b.label}</span>
                 </label>`;
         }).join('');
 
@@ -142,7 +143,14 @@ function renderResults() {
             <div class="admin-user-row">
                 <div class="admin-user-head">
                     <strong>${escapeHtml(u.username || '(no username)')}</strong>
+                    ${renderBadgeRow(u.badges, 14)}
                     ${isSelf ? '<span class="admin-you-tag">you</span>' : ''}
+                </div>
+                <div class="admin-user-meta">
+                    <span>${escapeHtml(u.email || 'no email on file')}</span>
+                    <span>Joined ${fmtDate(u.created_at)}</span>
+                    <span>Last seen ${fmtDate(u.last_sign_in_at)}</span>
+                    <span>${u.published_count ?? 0} published</span>
                 </div>
                 <div class="admin-user-controls">
                     <label class="admin-field-label">Role
@@ -153,8 +161,80 @@ function renderResults() {
                     </label>
                     <div class="admin-badge-grid">${badgeChecks}</div>
                 </div>
+                ${u.published_count > 0 ? `
+                <div class="admin-mons-toggle">
+                    <button type="button" onclick="window.adminToggleMonsList(this, '${u.id}')">
+                        <i data-lucide="chevron-right"></i> View published mons (${u.published_count})
+                    </button>
+                    <div class="admin-mons-list" id="admin-mons-${u.id}" style="display:none;"></div>
+                </div>` : ''}
             </div>`;
     }).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function toggleMonsList(btn, userId) {
+    const listEl = $('admin-mons-' + userId);
+    const icon = btn.querySelector('i');
+    const isOpen = listEl.style.display !== 'none';
+
+    if (isOpen) {
+        listEl.style.display = 'none';
+        if (icon) icon.setAttribute('data-lucide', 'chevron-right');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        return;
+    }
+
+    listEl.style.display = 'block';
+    if (icon) icon.setAttribute('data-lucide', 'chevron-down');
+    listEl.innerHTML = '<div class="admin-empty">Loading…</div>';
+
+    const client = await getClient();
+    const { data: mons, error } = await client
+        .from('published_mons')
+        .select('id, fakemon_data, published_at')
+        .eq('user_id', userId)
+        .order('published_at', { ascending: false });
+
+    if (error) {
+        listEl.innerHTML = `<div class="admin-empty admin-error">${escapeHtml(error.message)}</div>`;
+        return;
+    }
+    if (!mons || !mons.length) {
+        listEl.innerHTML = '<div class="admin-empty">No published mons.</div>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        return;
+    }
+
+    listEl.innerHTML = mons.map(m => `
+        <div class="admin-mon-row" id="admin-mon-row-${m.id}">
+            <span>${escapeHtml(m.fakemon_data?.name || 'Unnamed')}</span>
+            <span class="admin-mon-date">${fmtDate(m.published_at)}</span>
+            <button type="button" class="admin-mon-delete" onclick="window.adminDeleteMon('${m.id}', '${userId}')" title="Delete this published mon">
+                <i data-lucide="trash-2"></i>
+            </button>
+        </div>
+    `).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function deleteMon(monId, userId) {
+    if (!confirm('Remove this published Fakemon from the Community Hub? This cannot be undone.')) return;
+    const client = await getClient();
+    // admin_delete_published_mon is a SECURITY DEFINER RPC (see
+    // BADGES_EVERYWHERE_SETUP.sql) — real enforcement is still the
+    // published_mons DELETE RLS policy staff already satisfy directly.
+    const { error } = await client.rpc('admin_delete_published_mon', { mon_id: monId });
+    if (error) {
+        showToast('Could not delete: ' + error.message, 'error');
+        return;
+    }
+    showToast('Published mon removed', 'success');
+    const row = $('admin-mon-row-' + monId);
+    if (row) row.remove();
+    // Keep the visible "N published" count roughly in sync without a full re-search.
+    const userEntry = state.results.find(u => u.id === userId);
+    if (userEntry) userEntry.published_count = Math.max(0, (userEntry.published_count || 1) - 1);
 }
 
 function buildBadgeCheckboxTemplate() {
@@ -213,6 +293,8 @@ function escapeHtml(str) {
 // Exposed for inline onclick/onchange handlers (matches the rest of the site's pattern).
 window.adminChangeRole = adminChangeRole;
 window.adminToggleBadge = adminToggleBadge;
+window.adminToggleMonsList = toggleMonsList;
+window.adminDeleteMon = deleteMon;
 window.adminRunSearch = runSearch;
 
 init();

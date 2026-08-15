@@ -4052,8 +4052,15 @@
     white-space: nowrap;
 }
 .profile-badge {
-    margin-left: 2px;
-    line-height: 1;
+    margin-left: 3px;
     vertical-align: middle;
     cursor: default;
+    display: inline-block;
+}
+.profile-badge-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 4px;
+    vertical-align: middle;
 }

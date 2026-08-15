@@ -106,21 +106,32 @@ function canDeleteAnyContent(role) {
     return !!ROLES[role]?.canDeleteAny;
 }
 
+// Lucide icon names (https://lucide.dev/icons) — rendered via <i data-lucide="...">
+// so they inherit the same icon set as the rest of the site. Call
+// lucide.createIcons() after inserting any renderBadge() output into the DOM.
 const BADGES = {
-    admin:        { label: 'Admin',        icon: '🛡️', color: '#ef4444', tooltip: 'Site Administrator' },
-    developer:    { label: 'Developer',    icon: '🛠️', color: '#a855f7', tooltip: 'Site Developer' },
-    moderator:    { label: 'Moderator',    icon: '🧹', color: '#3b82f6', tooltip: 'Community Moderator' },
-    beta_tester:  { label: 'Beta Tester',  icon: '🧪', color: '#06b6d4', tooltip: 'Helped test the site early on' },
-    artist:       { label: 'Artist',       icon: '🎨', color: '#ec4899', tooltip: 'Recognized for standout Fakemon art' },
-    contributor:  { label: 'Contributor',  icon: '⭐', color: '#eab308', tooltip: 'Notable community contributor' },
-    veteran:      { label: 'Veteran',      icon: '🏆', color: '#f97316', tooltip: 'Long-time member' }
+    admin:        { label: 'Admin',        icon: 'shield-check',  color: '#ef4444', tooltip: 'Site Administrator — can manage roles, badges, and delete any content' },
+    developer:    { label: 'Developer',    icon: 'code-2',        color: '#a855f7', tooltip: 'Site Developer — builds and maintains the site' },
+    moderator:    { label: 'Moderator',    icon: 'shield',        color: '#3b82f6', tooltip: 'Community Moderator — helps keep the community hub clean' },
+    beta_tester:  { label: 'Beta Tester',  icon: 'flask-conical', color: '#06b6d4', tooltip: 'Helped test the site early on' },
+    artist:       { label: 'Artist',       icon: 'palette',       color: '#ec4899', tooltip: 'Recognized for standout Fakemon art' },
+    contributor:  { label: 'Contributor',  icon: 'star',          color: '#eab308', tooltip: 'Notable community contributor' },
+    veteran:      { label: 'Veteran',      icon: 'trophy',        color: '#f97316', tooltip: 'Long-time member' }
 };
 
 function renderBadge(badgeKey, size) {
     size = size || 14;
     const b = BADGES[badgeKey];
     if (!b) return '';
-    return `<span class="profile-badge" title="${b.tooltip}" style="font-size:${size}px;">${b.icon}</span>`;
+    return `<i data-lucide="${b.icon}" class="profile-badge" title="${b.tooltip}" style="width:${size}px;height:${size}px;color:${b.color};" aria-label="${b.label}"></i>`;
+}
+
+// Renders a full row of a user's badges. Accepts an array of badge keys
+// (e.g. row.author_badges from a published mon / comment, or
+// state.user.badges). Safe to call with an empty/undefined array.
+function renderBadgeRow(badgeKeys, size) {
+    if (!badgeKeys || !badgeKeys.length) return '';
+    return `<span class="profile-badge-row">${badgeKeys.map(k => renderBadge(k, size)).join('')}</span>`;
 }
 
 function renderRoleTag(role) {
@@ -130,4 +141,4 @@ function renderRoleTag(role) {
 }
 
 export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
-    ROLES, BADGES, roleAtLeast, canDeleteAnyContent, renderBadge, renderRoleTag };
+    ROLES, BADGES, roleAtLeast, canDeleteAnyContent, renderBadge, renderBadgeRow, renderRoleTag };

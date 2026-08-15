@@ -8,6 +8,7 @@
      stops the page from showing up in a Google search. -->
 <meta name="robots" content="noindex, nofollow">
 <title>Staff Panel</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <style>
     :root {
         --bg-dark: #f5f5f7; --bg-card: #ffffff; --bg-panel: #f0f0f2; --bg-input: #ffffff;
@@ -59,7 +60,11 @@
         background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 10px;
         padding: 14px 16px; margin-bottom: 10px;
     }
-    .admin-user-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 15px; }
+    .admin-user-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 15px; }
+    .admin-user-meta {
+        display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-muted);
+        margin-bottom: 10px;
+    }
     .admin-you-tag {
         font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted);
         border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px;
@@ -81,6 +86,25 @@
         color: var(--text-secondary); cursor: pointer; user-select: none;
     }
     .admin-badge-check input { cursor: pointer; }
+
+    .admin-mons-toggle { margin-top: 12px; border-top: 1px solid var(--border-light); padding-top: 10px; }
+    .admin-mons-toggle > button {
+        background: none; border: none; color: var(--text-secondary); font-size: 12px;
+        cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0;
+    }
+    .admin-mons-toggle > button i { width: 14px; height: 14px; }
+    .admin-mons-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .admin-mon-row {
+        display: flex; align-items: center; gap: 10px; font-size: 13px;
+        background: var(--bg-panel); border-radius: 6px; padding: 6px 10px;
+    }
+    .admin-mon-row span:first-child { flex: 1; }
+    .admin-mon-date { color: var(--text-muted); font-size: 11px; }
+    .admin-mon-delete {
+        background: none; border: none; color: var(--danger); cursor: pointer;
+        display: flex; align-items: center; padding: 2px;
+    }
+    .admin-mon-delete i { width: 15px; height: 15px; }
 
     .admin-toast {
         display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -121,6 +145,6 @@
 
 <div id="admin-toast" class="admin-toast"></div>
 
-<script type="module" src="admin.js"></script>
+<script type="module" src="js/admin.js"></script>
 </body>
 </html>

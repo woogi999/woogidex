@@ -1,6 +1,6 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
-import { renderBadge, renderRoleTag } from './data.js';
+import { renderBadgeRow, renderRoleTag } from './data.js';
 
 // ==================== STATE ====================
 // state.community.* is initialized lazily (see initAuth-style note in auth.js -
@@ -83,6 +83,7 @@ async function publishSnapshot(mon, rulesChecked = false) {
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
+        author_badges: state.user.badges || [],
         source_fakemon_id: String(mon.id),
         fakemon_data: mon
     };
@@ -204,6 +205,7 @@ async function postComment(publishedId, body) {
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
+        author_badges: state.user.badges || [],
         body: text
     };
     const { error } = await client.from('mon_comments').insert(payload);
@@ -422,6 +424,7 @@ function renderCommunityGrid() {
                     ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span>${escapeHtml(row.author_name)}</span>
                     ${renderRoleTag(row.author_role)}
+                    ${renderBadgeRow(row.author_badges, 13)}
                 </div>
             </div>
         `;
@@ -474,6 +477,7 @@ async function openMonDetail(publishedId) {
         ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
         <span>Published by ${escapeHtml(row.author_name)}</span>
         ${renderRoleTag(row.author_role)}
+        ${renderBadgeRow(row.author_badges, 13)}
     `;
 
     const isMine = state.user && row.user_id === state.user.id;
@@ -581,6 +585,7 @@ function renderMonComments() {
                     ${c.author_avatar_url ? `<img class="community-mini-avatar" src="${c.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((c.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span class="mon-comment-author">${escapeHtml(c.author_name)}</span>
                     ${renderRoleTag(c.author_role)}
+                    ${renderBadgeRow(c.author_badges, 12)}
                     <span class="mon-comment-time">${new Date(c.created_at).toLocaleString()}</span>
                     ${canDelete ? `<button class="mon-comment-delete" onclick="deleteComment('${c.id}', '${cs.openMonId}')" title="${mine ? 'Delete' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
                 </div>
