@@ -598,11 +598,26 @@ function updateAuthUI() {
     const nameEl = document.getElementById('auth-user-name');
     const avatarImg = document.getElementById('auth-avatar-img');
     const avatarFallback = document.getElementById('auth-avatar-fallback');
+    const sidebarProfile = document.getElementById('sidebar-profile');
+    const sidebarProfileName = document.getElementById('sidebar-profile-name');
+    const sidebarProfileUsername = document.getElementById('sidebar-profile-username');
+    const sidebarAvatarImg = document.getElementById('sidebar-profile-avatar-img');
+    const sidebarAvatarFallback = document.getElementById('sidebar-profile-avatar-fallback');
+    const sidebarAuthBtn = document.getElementById('sidebar-auth-btn');
     if (!signedOutEl || !signedInEl) return;
     if (state.user) {
         signedOutEl.style.display = 'none';
         signedInEl.style.display = 'flex';
         if (nameEl) nameEl.textContent = state.user.displayName || state.user.username || state.user.email;
+        if (sidebarProfile) sidebarProfile.style.display = 'block';
+        if (sidebarProfileName) sidebarProfileName.textContent = state.user.displayName || state.user.username || 'Profile';
+        if (sidebarProfileUsername) sidebarProfileUsername.textContent = state.user.username ? '@' + state.user.username : 'Edit profile';
+        if (sidebarAvatarImg && sidebarAvatarFallback) {
+            if (state.user.avatarUrl) { sidebarAvatarImg.src = state.user.avatarUrl; sidebarAvatarImg.style.display = 'block'; sidebarAvatarFallback.style.display = 'none'; }
+            else { sidebarAvatarImg.style.display = 'none'; sidebarAvatarFallback.style.display = 'flex'; sidebarAvatarFallback.textContent = (state.user.displayName || state.user.username || '?').charAt(0).toUpperCase(); }
+        }
+        if (sidebarAuthBtn) { sidebarAuthBtn.innerHTML = '<i data-lucide="log-out"></i><span>Sign Out</span>'; sidebarAuthBtn.onclick = () => { handleSignOutClick(); closeSidebar(); }; }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
         if (avatarImg && avatarFallback) {
             if (state.user.avatarUrl) {
                 avatarImg.src = state.user.avatarUrl;
@@ -617,6 +632,9 @@ function updateAuthUI() {
     } else {
         signedOutEl.style.display = 'flex';
         signedInEl.style.display = 'none';
+        if (sidebarProfile) sidebarProfile.style.display = 'none';
+        if (sidebarAuthBtn) { sidebarAuthBtn.innerHTML = '<i data-lucide="log-in"></i><span>Sign In</span>'; sidebarAuthBtn.onclick = () => { openAuthModal('signin'); closeSidebar(); }; }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 }
 

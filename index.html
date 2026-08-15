@@ -14,16 +14,15 @@
 <body>
     <div class="app-container">
         <header class="header">
-            <div class="logo">
-                <img src="woogidex_icon.png" alt="Woogidex" style="height: 60px; width: auto; object-fit: contain;">
+            <div class="header-left">
+                <button class="menu-toggle" type="button" onclick="toggleSidebar()" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false" title="Menu">
+                    <i data-lucide="menu" style="width:22px;height:22px;"></i>
+                </button>
+                <button class="logo logo-button" type="button" onclick="toggleSidebar()" aria-label="Open navigation menu" title="Menu">
+                    <img src="woogidex_icon.png" alt="Woogidex" style="height: 60px; width: auto; object-fit: contain;">
+                </button>
             </div>
             <div class="header-actions">
-                <div class="api-status" id="api-status">Loading data...</div>
-                <div class="save-status unsaved" id="save-status" style="display:none;">Unsaved</div>
-                <button class="btn btn-secondary" onclick="toggleDarkMode()" id="dark-mode-btn" title="Toggle Dark Mode" aria-label="Toggle Dark Mode"><i data-lucide="sun" style="width:18px;height:18px;"></i></button>
-                <button class="btn btn-secondary btn-icon" onclick="openSettings()" id="settings-btn" title="Settings" aria-label="Settings"><i data-lucide="settings" style="width:18px;height:18px;"></i></button>
-                <button class="btn btn-secondary" onclick="showCollection()">My Collection</button>
-                <button class="btn btn-secondary" onclick="openCommunityHub()"><i data-lucide="users" style="width:16px;height:16px;"></i> Community</button>
                 <div id="auth-signed-out" style="display:flex;">
                     <button class="btn btn-secondary" onclick="openAuthModal('signin')" id="auth-signin-btn"><i data-lucide="user" style="width:16px;height:16px;"></i> Sign In</button>
                 </div>
@@ -37,6 +36,41 @@
                 </div>
             </div>
         </header>
+
+        <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+        <aside class="app-sidebar" id="app-sidebar" aria-hidden="true">
+            <div class="sidebar-header">
+                <button class="sidebar-brand" type="button" onclick="closeSidebar()" aria-label="Close menu">
+                    <img src="woogidex_icon.png" alt="Woogidex" class="sidebar-brand-logo">
+                </button>
+                <button class="sidebar-close" type="button" onclick="closeSidebar()" aria-label="Close navigation menu" title="Close menu">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="sidebar-status">
+                <div class="api-status" id="api-status">Loading data...</div>
+                <div class="save-status unsaved" id="save-status" style="display:none;">Unsaved</div>
+            </div>
+            <div class="sidebar-profile" id="sidebar-profile" style="display:none;">
+                <button class="sidebar-profile-main" type="button" onclick="openProfileModal(); closeSidebar();">
+                    <span class="sidebar-profile-avatar"><img id="sidebar-profile-avatar-img" style="display:none;" alt=""><span id="sidebar-profile-avatar-fallback">?</span></span>
+                    <span class="sidebar-profile-copy"><strong id="sidebar-profile-name">Profile</strong><small id="sidebar-profile-username"></small></span>
+                    <i data-lucide="chevron-right"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <button class="sidebar-nav-btn" type="button" onclick="showCollection(); closeSidebar();"><i data-lucide="library"></i><span>My Collection</span></button>
+                <button class="sidebar-nav-btn" type="button" onclick="openCommunityHub(); closeSidebar();"><i data-lucide="users"></i><span>Community</span></button>
+                <div class="sidebar-divider"></div>
+                <button class="sidebar-nav-btn" type="button" onclick="toggleDarkMode();"><i data-lucide="sun" id="sidebar-dark-icon"></i><span id="sidebar-dark-label">Light Mode</span></button>
+                <button class="sidebar-nav-btn" type="button" onclick="openSettings(); closeSidebar();"><i data-lucide="settings"></i><span>Settings</span></button>
+                <div class="sidebar-divider"></div>
+                <button class="sidebar-nav-btn sidebar-auth-btn" id="sidebar-auth-btn" type="button" onclick="openAuthModal('signin'); closeSidebar();"><i data-lucide="log-in"></i><span>Sign In</span></button>
+            </nav>
+            <div class="sidebar-footer">
+                <span>Build your own Pokemon</span>
+            </div>
+        </aside>
 
         <div id="main-content">
             <!-- Shared Fakemon View -->

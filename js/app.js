@@ -76,12 +76,18 @@ export const api = {};
         }
         function updateDarkModeUI(isDark) {
             const btn = document.getElementById('dark-mode-btn');
-            if (btn) {
-                btn.innerHTML = isDark 
-                    ? '<i data-lucide="moon" style="width:18px;height:18px;"></i>' 
-                    : '<i data-lucide="sun" style="width:18px;height:18px;"></i>';
-                if (typeof lucide !== 'undefined') lucide.createIcons();
+            const sidebarBtn = document.getElementById('sidebar-dark-icon')?.closest('.sidebar-nav-btn');
+            const sidebarLabel = document.getElementById('sidebar-dark-label');
+            const iconName = isDark ? 'sun' : 'moon';
+            const iconMarkup = `<i data-lucide="${iconName}" style="width:18px;height:18px;"></i>`;
+
+            if (btn) btn.innerHTML = iconMarkup;
+            if (sidebarBtn) {
+                const currentIcon = sidebarBtn.querySelector('[data-lucide], svg');
+                if (currentIcon) currentIcon.outerHTML = iconMarkup;
             }
+            if (sidebarLabel) sidebarLabel.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
         function isDarkModeEnabled() {
@@ -285,11 +291,33 @@ export const api = {};
         }
     
 
+function toggleSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    const toggle = document.getElementById('menu-toggle');
+    if (!sidebar || !backdrop) return;
+    const open = !sidebar.classList.contains('open');
+    sidebar.classList.toggle('open', open);
+    backdrop.classList.toggle('open', open);
+    sidebar.setAttribute('aria-hidden', String(!open));
+    toggle?.setAttribute('aria-expanded', String(open));
+    if (open && typeof lucide !== 'undefined') lucide.createIcons();
+}
+function closeSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    const toggle = document.getElementById('menu-toggle');
+    sidebar?.classList.remove('open');
+    backdrop?.classList.remove('open');
+    sidebar?.setAttribute('aria-hidden', 'true');
+    toggle?.setAttribute('aria-expanded', 'false');
+}
+
 // ==================== MODULE COORDINATION ====================
 log.setContext({ state, api });
 
 Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, {
-    loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
+    loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, toggleSidebar, closeSidebar, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
     getUse2DSprites, setUse2DSprites, toggleUse2DSprites,
