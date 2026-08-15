@@ -69,6 +69,7 @@ async function attachProfile(user) {
     user.usernameHistory = profile?.username_history || [];
     user.role = profile?.role || 'user';
     user.badges = await fetchBadges(user.id);
+    user.displayBadges = Array.isArray(profile?.display_badges) ? profile.display_badges : user.badges.slice();
     return user;
 }
 
@@ -229,7 +230,8 @@ function applySupabaseUser(supabaseUser) {
     state.user = {
         ...mapped,
         username: state.user?.username || '',
-        usernameHistory: state.user?.usernameHistory || []
+        usernameHistory: state.user?.usernameHistory || [],
+        displayBadges: state.user?.displayBadges || []
     };
     return state.user;
 }
@@ -483,25 +485,399 @@ async function handleSignOutClick() {
     }
 }
 
-function openProfileModal() {
-    const modal = document.getElementById('profile-modal');
-    if (!modal || !state.user) return;
-    document.getElementById('profile-modal-error').textContent = '';
-    document.getElementById('profile-display-name').value = state.user.displayName || '';
-    document.getElementById('profile-avatar-file').value = '';
+async function showProfileView(userId = null, options = {}) {
+    if (!userId) {
+        if (!state.user) { openAuthModal('signin'); return; }
+        userId = state.user.id;
+    }
+    if (document.getElementById('editor-view')?.style.display !== 'none' && userId === state.user?.id) {
+        await api.autoSave?.(true);
+    }
+    api.exitShareRoute?.();
+    state.isCommunityPreview = false;
+    ['share-view','editor-view','collection-view','community-view','community-detail-view'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    const view = document.getElementById('profile-view');
+    if (!view) return;
+    view.style.display = 'block';
+    state.profilePageUser = null;
+    state.profilePageEditing = false;
+    renderProfileLoading();
+    try {
+        await loadPublicProfile(userId);
+        renderProfilePage();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        closeSidebar?.();
+        const username = state.profilePageUser?.username;
+        if (username) history.replaceState(null, '', `${window.location.pathname}${window.location.search}#profile/${encodeURIComponent(username)}`);
+        document.title = `${state.profilePageUser?.display_name || username || 'Profile'} · Woogidex`;
+    } catch (e) {
+        log.error('AUTH', 'Profile page failed to load', e);
+        renderProfileError(e?.message || 'Could not load this profile.');
+        api.showToast?.('Could not load that profile.', 'error');
+    }
+}
+
+function openProfileModal() { return showProfileView(); }
+function closeProfileModal() { api.showCollection?.(); }
+
+function getProfileStateEl(id) {
+    return document.getElementById(id);
+}
+
+function renderProfileLoading() {
+    const view = document.getElementById('profile-view');
+    const publicEl = document.getElementById('profile-public-content');
+    const editEl = document.getElementById('profile-edit-content');
+    if (!view) return;
+    if (publicEl) publicEl.style.display = 'none';
+    if (editEl) editEl.style.display = 'none';
+    getProfileStateEl('profile-load-error-state')?.remove();
+    let loading = getProfileStateEl('profile-loading-state');
+    if (!loading) {
+        loading = document.createElement('div');
+        loading.id = 'profile-loading-state';
+        loading.className = 'profile-loading';
+        view.appendChild(loading);
+    }
+    loading.textContent = 'Loading profile…';
+    loading.style.display = 'flex';
+    const editBtn = document.getElementById('profile-edit-btn');
+    if (editBtn) editBtn.style.display = 'none';
+}
+
+function renderProfileError(message) {
+    const view = document.getElementById('profile-view');
+    const publicEl = document.getElementById('profile-public-content');
+    const editEl = document.getElementById('profile-edit-content');
+    const editBtn = document.getElementById('profile-edit-btn');
+    if (!view) return;
+    if (publicEl) publicEl.style.display = 'none';
+    if (editEl) editEl.style.display = 'none';
+    getProfileStateEl('profile-loading-state')?.remove();
+    let errorEl = getProfileStateEl('profile-load-error-state');
+    if (!errorEl) {
+        errorEl = document.createElement('div');
+        errorEl.id = 'profile-load-error-state';
+        errorEl.className = 'profile-loading profile-load-error';
+        view.appendChild(errorEl);
+    }
+    errorEl.innerHTML = `<strong>Couldn’t load this profile.</strong><span>${escapeHtml(message)}</span><button type="button" class="btn btn-secondary btn-sm" onclick="showProfileView()">Try Again</button>`;
+    errorEl.style.display = 'flex';
+    if (editBtn) editBtn.style.display = 'none';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function withProfileTimeout(promise, label, ms = 8000) {
+    let timer;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), ms);
+            })
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+
+async function loadPublicProfile(userId) {
+    const client = await getClient();
+
+    let { data: profile, error: profileError } = await withProfileTimeout(
+        client.from('profiles')
+            .select('id, username, display_name, avatar_url, role, bio, display_badges')
+            .eq('id', userId)
+            .maybeSingle(),
+        'Profile request'
+    );
+
+    if (profileError && /bio|display_badges|column .* does not exist/i.test(profileError.message || '')) {
+        const fallback = await withProfileTimeout(
+            client.from('profiles')
+                .select('id, username, display_name, avatar_url, role')
+                .eq('id', userId)
+                .maybeSingle(),
+            'Profile request'
+        );
+        profile = fallback.data ? { ...fallback.data, bio: '', display_badges: [] } : null;
+        profileError = fallback.error;
+    }
+    if (profileError) throw profileError;
+    if (!profile) throw new Error('Profile not found.');
+
+    // Load the two optional public sections independently. A problem with the
+    // comments table must never prevent the profile header or Fakemon gallery
+    // from rendering.
+    let mons = [];
+    let comments = [];
+    try {
+        const result = await withProfileTimeout(
+            client.from('published_mons')
+                .select('id, user_id, fakemon_data, published_at')
+                .eq('user_id', userId)
+                .order('published_at', { ascending: false })
+                .limit(100),
+            'Published Fakemon request'
+        );
+        if (result.error) console.warn('Could not load published mons:', result.error);
+        else mons = result.data || [];
+    } catch (e) {
+        console.warn('Could not load published mons:', e);
+    }
+
+    try {
+        const result = await withProfileTimeout(
+            client.from('profile_comments')
+                .select('id, profile_id, user_id, body, created_at')
+                .eq('profile_id', userId)
+                .order('created_at', { ascending: true })
+                .limit(200),
+            'Profile comments request'
+        );
+        if (result.error) console.warn('Could not load profile comments:', result.error);
+        else comments = result.data || [];
+    } catch (e) {
+        console.warn('Could not load profile comments:', e);
+    }
+
+    const ids = [...new Set(comments.map(c => c.user_id).filter(Boolean))];
+    let authors = {};
+    if (ids.length) {
+        try {
+            const result = await withProfileTimeout(
+                client.from('profiles')
+                    .select('id, username, display_name, avatar_url, role, display_badges')
+                    .in('id', ids),
+                'Comment authors request'
+            );
+            (result.data || []).forEach(x => { authors[x.id] = x; });
+        } catch (e) {
+            console.warn('Could not load comment authors:', e);
+        }
+    }
+
+    state.profilePageUser = {
+        ...profile,
+        mons,
+        comments: comments.map(c => ({ ...c, author: authors[c.user_id] || null }))
+    };
+    return state.profilePageUser;
+}
+
+function editOwnProfile() {
+    if (!state.user || state.profilePageUser?.id !== state.user.id) return;
+    state.profilePageEditing = true;
+    const editEl = document.getElementById('profile-edit-content');
+    const publicEl = document.getElementById('profile-public-content');
+    if (publicEl) publicEl.style.display = 'none';
+    if (editEl) editEl.style.display = 'block';
+    const editBtn = document.getElementById('profile-edit-btn');
+    if (editBtn) editBtn.style.display = 'none';
+    renderProfileEditForm();
+    document.getElementById('profile-display-name')?.focus();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function cancelEditOwnProfile() {
+    state.profilePageEditing = false;
+    renderProfilePage();
+}
+
+function renderProfilePage() {
+    const profile = state.profilePageUser;
+    if (!profile) return;
+    document.getElementById('profile-loading-state')?.remove();
+    document.getElementById('profile-load-error-state')?.remove();
+    const isOwn = !!state.user && state.user.id === profile.id;
+    const publicEl = document.getElementById('profile-public-content');
+    const editEl = document.getElementById('profile-edit-content');
+    const editBtn = document.getElementById('profile-edit-btn');
+    if (editBtn) editBtn.style.display = isOwn && !state.profilePageEditing ? 'inline-flex' : 'none';
+    if (state.profilePageEditing && isOwn) {
+        if (publicEl) publicEl.style.display = 'none';
+        if (editEl) editEl.style.display = 'block';
+        renderProfileEditForm();
+        return;
+    }
+    if (publicEl) publicEl.style.display = 'block';
+    if (editEl) editEl.style.display = 'none';
+
+    const displayName = profile.display_name || profile.username || 'Profile';
+    const heading = document.getElementById('profile-page-display-heading');
+    const handle = document.getElementById('profile-page-handle');
+    if (heading) heading.textContent = displayName;
+    if (handle) handle.textContent = profile.username ? '@' + profile.username : '';
+    const avatar = document.getElementById('profile-public-avatar');
+    const fallback = document.getElementById('profile-public-avatar-fallback');
+    if (avatar) { avatar.src = profile.avatar_url || ''; avatar.style.display = profile.avatar_url ? 'block' : 'none'; }
+    if (fallback) { fallback.textContent = displayName.charAt(0).toUpperCase(); fallback.style.display = profile.avatar_url ? 'none' : 'flex'; }
+    const bio = document.getElementById('profile-public-bio');
+    if (bio) bio.textContent = profile.bio || 'No bio yet.';
+    const badges = document.getElementById('profile-public-badges');
+    if (badges) badges.innerHTML = (Array.isArray(profile.display_badges) ? profile.display_badges : []).length && api.renderBadgeRow
+        ? api.renderBadgeRow(profile.display_badges, 18) : '<span class="profile-no-badges">No featured badges</span>';
+    const monsCount = document.getElementById('profile-mons-count');
+    if (monsCount) monsCount.textContent = `${profile.mons.length} ${profile.mons.length === 1 ? 'mon' : 'mons'}`;
+    renderPublicProfileMons();
+    renderProfileComments();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function renderProfileEditForm() {
+    const profile = state.profilePageUser;
+    if (!profile || !state.user || state.user.id !== profile.id) return;
+    const heading = document.getElementById('profile-page-display-heading');
+    const handle = document.getElementById('profile-page-handle');
+    if (heading) heading.textContent = profile.display_name || profile.username || 'Profile';
+    if (handle) handle.textContent = profile.username ? '@' + profile.username : 'Choose a username';
+    const nameInput = document.getElementById('profile-display-name');
+    if (nameInput) nameInput.value = state.user.displayName || '';
+    const bioInput = document.getElementById('profile-bio');
+    if (bioInput) bioInput.value = profile.bio || '';
+    const avatarInput = document.getElementById('profile-avatar-file');
+    if (avatarInput) avatarInput.value = '';
     setProfilePreview(state.user.avatarUrl);
-
-    document.getElementById('profile-username-error').textContent = '';
-    document.getElementById('profile-username').value = state.user.username || '';
-    document.getElementById('profile-username-hint').textContent = usernameChangesRemainingText(state.user.usernameHistory);
-
-    document.getElementById('profile-email-error').textContent = '';
-    document.getElementById('profile-email').value = state.user.hasRealEmail ? state.user.email : '';
-    document.getElementById('profile-email').placeholder = state.user.hasRealEmail ? '' : 'No email on file - add one for account recovery';
+    const usernameInput = document.getElementById('profile-username');
+    if (usernameInput) usernameInput.value = state.user.username || '';
+    const usernameHint = document.getElementById('profile-username-hint');
+    if (usernameHint) usernameHint.textContent = usernameChangesRemainingText(state.user.usernameHistory);
+    const emailInput = document.getElementById('profile-email');
+    if (emailInput) {
+        emailInput.value = state.user.hasRealEmail ? state.user.email : '';
+        emailInput.placeholder = state.user.hasRealEmail ? '' : 'No email on file - add one for account recovery';
+    }
     const removeBtn = document.getElementById('profile-email-remove-btn');
     if (removeBtn) removeBtn.style.display = state.user.hasRealEmail ? 'inline-block' : 'none';
+    renderProfileBadgeSelection();
+}
 
-    modal.classList.add('active');
+function renderPublicProfileMons() {
+    const grid = document.getElementById('profile-mons-grid');
+    if (!grid || !state.profilePageUser) return;
+    const mons = state.profilePageUser.mons || [];
+    if (!mons.length) { grid.innerHTML = '<div class="profile-empty">No published Fakemon yet.</div>'; return; }
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    grid.innerHTML = mons.map(row => {
+        const mon = row.fakemon_data || {};
+        const t1 = mon.type1 ? `type-${String(mon.type1).toLowerCase()}` : '';
+        const t2 = mon.type2 ? `type-${String(mon.type2).toLowerCase()}` : '';
+        return `<button type="button" class="profile-mon-card" onclick="openPublishedMonById('${row.id}')">
+            <div class="profile-mon-art">${mon.artwork ? `<img src="${esc(mon.artwork)}" alt="${esc(mon.name)}" draggable="false">` : '<span class="placeholder">ART</span>'}</div>
+            <strong>${esc(mon.name || 'Fakemon')}</strong>
+            <div class="card-types">${mon.type1 ? `<span class="type-badge ${t1}">${esc(mon.type1)}</span>` : ''}${mon.type2 ? `<span class="type-badge ${t2}">${esc(mon.type2)}</span>` : ''}</div>
+        </button>`;
+    }).join('');
+}
+
+async function submitProfileComment() {
+    if (!state.user || !state.profilePageUser) { openAuthModal('signin'); return; }
+    const input = document.getElementById('profile-comment-input');
+    const errorEl = document.getElementById('profile-comment-error');
+    const text = input?.value.trim() || '';
+    if (!text) return;
+    if (text.length > 1000) { if (errorEl) errorEl.textContent = 'Comments are limited to 1000 characters.'; return; }
+    if (errorEl) errorEl.textContent = '';
+    const client = await getClient();
+    const { error } = await client.from('profile_comments').insert({ profile_id: state.profilePageUser.id, user_id: state.user.id, body: text });
+    if (error) { if (errorEl) errorEl.textContent = error.message || 'Could not post comment.'; return; }
+    input.value = '';
+    await loadPublicProfile(state.profilePageUser.id);
+    renderProfilePage();
+}
+
+async function deleteProfileComment(commentId) {
+    if (!state.user) return;
+    const client = await getClient();
+    let query = client.from('profile_comments').delete().eq('id', commentId);
+    if (!isStaff()) query = query.eq('user_id', state.user.id);
+    const { error } = await query;
+    if (error) { api.showToast?.('Could not delete comment: ' + error.message, 'error'); return; }
+    await loadPublicProfile(state.profilePageUser.id);
+    renderProfilePage();
+}
+
+function renderProfileComments() {
+    const list = document.getElementById('profile-comments-list');
+    const inputBox = document.getElementById('profile-comment-box');
+    const hint = document.getElementById('profile-comment-signin-hint');
+    if (!list || !state.profilePageUser) return;
+    if (inputBox) inputBox.style.display = state.user ? 'flex' : 'none';
+    if (hint) hint.style.display = state.user ? 'none' : 'block';
+    const comments = state.profilePageUser.comments || [];
+    if (!comments.length) { list.innerHTML = '<div class="profile-empty">No comments yet. Be the first to say hello!</div>'; return; }
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    list.innerHTML = comments.map(c => {
+        const a = c.author || {};
+        const name = a.display_name || a.username || 'User';
+        const mine = state.user && c.user_id === state.user.id;
+        const canDelete = mine || isStaff();
+        const badgeKeys = Array.isArray(a.display_badges) ? a.display_badges : [];
+        return `<div class="profile-comment">
+            <div class="profile-comment-header" onclick="showUserProfile('${c.user_id}')" title="View profile">
+                ${a.avatar_url ? `<img class="community-mini-avatar" src="${esc(a.avatar_url)}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${esc(name.charAt(0).toUpperCase())}</span>`}
+                <strong>${esc(name)}</strong>
+                ${api.renderBadgeRow ? api.renderBadgeRow(badgeKeys, 12) : ''}
+                <span class="profile-comment-time">${new Date(c.created_at).toLocaleString()}</span>
+                ${canDelete ? `<button type="button" class="mon-comment-delete" onclick="event.stopPropagation(); deleteProfileComment('${c.id}')" title="Delete"><i data-lucide="trash-2"></i></button>` : ''}
+            </div>
+            <div class="profile-comment-body">${esc(c.body)}</div>
+        </div>`;
+    }).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function showUserProfile(userIdOrUsername) {
+    try {
+        const client = await getClient();
+        const value = String(userIdOrUsername || '').trim();
+        if (!value) { api.showToast?.('Profile not found.', 'error'); return; }
+
+        // `profiles.id` is a UUID. Never send a username such as "Woogi"
+        // through an `eq('id', ...)` filter: PostgREST rejects that request
+        // with HTTP 400 before we ever get a chance to fall back to username.
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+        let targetId = null;
+
+        if (isUuid) {
+            const { data: byId, error: idError } = await client
+                .from('profiles')
+                .select('id')
+                .eq('id', value)
+                .maybeSingle();
+            if (idError) throw idError;
+            targetId = byId?.id || null;
+        }
+
+        if (!targetId) {
+            const { data: byUsername, error: usernameError } = await client
+                .from('profiles')
+                .select('id')
+                .eq('username', value)
+                .maybeSingle();
+            if (usernameError) throw usernameError;
+            targetId = byUsername?.id || null;
+        }
+
+        if (!targetId) { api.showToast?.('Profile not found.', 'error'); return; }
+        await showProfileView(targetId);
+    } catch (e) {
+        log.error('AUTH', 'Profile page failed to load', e);
+        api.showToast?.('Could not load that profile.', 'error');
+    }
+}
+
+async function handleProfileHashRoute() {
+    const hash = window.location.hash || '';
+    if (!hash.startsWith('#profile/')) return false;
+    const username = decodeURIComponent(hash.slice('#profile/'.length));
+    if (!username) return false;
+    await showUserProfile(username);
+    return true;
 }
 
 // Best-effort client-side estimate of remaining username changes this week,
@@ -514,9 +890,6 @@ function usernameChangesRemainingText(history) {
         : 'No username changes left this week.';
 }
 
-function closeProfileModal() {
-    document.getElementById('profile-modal')?.classList.remove('active');
-}
 
 function setProfilePreview(url) {
     const img = document.getElementById('profile-avatar-preview');
@@ -544,6 +917,59 @@ function onProfileAvatarFileChosen(input) {
     reader.readAsDataURL(file);
 }
 
+function renderProfileBadgeSelection() {
+    const list = document.getElementById('profile-badges-list');
+    const count = document.getElementById('profile-badge-count');
+    if (!list || !state.user) return;
+    const owned = Array.isArray(state.user.badges) ? state.user.badges : [];
+    const selected = new Set((Array.isArray(state.user.displayBadges) ? state.user.displayBadges : owned).filter(key => owned.includes(key)));
+    if (count) count.textContent = `${selected.size} of ${owned.length} shown`;
+    if (!owned.length) {
+        list.innerHTML = '<div class="profile-badges-empty">You do not have any badges yet.</div>';
+        return;
+    }
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    list.innerHTML = owned.map(key => {
+        const b = api.BADGES?.[key];
+        if (!b) return '';
+        const checked = selected.has(key) ? ' checked' : '';
+        return `<label class="profile-badge-option">
+            <input type="checkbox" data-badge="${esc(key)}"${checked}>
+            <span class="profile-badge-option-icon"><i data-lucide="${esc(b.icon || 'star')}" style="color:${esc(b.color || 'var(--accent)')};"></i></span>
+            <span class="profile-badge-option-copy"><strong>${esc(b.label || key)}</strong><small>${esc(b.tooltip || '')}</small></span>
+        </label>`;
+    }).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function submitDisplayedBadges() {
+    const errorEl = document.getElementById('profile-badges-error');
+    const btn = document.getElementById('profile-badges-submit-btn');
+    if (!state.user) return;
+    const checked = [...document.querySelectorAll('#profile-badges-list input[type="checkbox"]:checked')].map(el => el.dataset.badge);
+    if (errorEl) { errorEl.textContent = ''; errorEl.style.color = ''; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        const client = await getClient();
+        const owned = new Set(state.user.badges || []);
+        const valid = checked.filter(key => owned.has(key));
+        const { error } = await client.from('profiles').upsert(
+            { id: state.user.id, display_badges: valid },
+            { onConflict: 'id' }
+        );
+        if (error) throw error;
+        state.user.displayBadges = valid;
+        renderProfileBadgeSelection();
+        updateAuthUI();
+        if (errorEl) { errorEl.style.color = 'var(--success, #22c55e)'; errorEl.textContent = 'Badge display updated.'; }
+        api.showToast?.('Badge display updated', 'success');
+    } catch (e) {
+        if (errorEl) errorEl.textContent = e.message || 'Could not update badge display.';
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Badge Display'; }
+    }
+}
+
 async function submitProfileForm() {
     const errorEl = document.getElementById('profile-modal-error');
     const submitBtn = document.getElementById('profile-submit-btn');
@@ -557,8 +983,14 @@ async function submitProfileForm() {
     try {
         if (file) await uploadAvatar(file);
         await updateDisplayName(displayName);
+        const bio = document.getElementById('profile-bio')?.value.trim() || '';
+        const client = await getClient();
+        const { error: bioError } = await client.from('profiles').upsert({ id: state.user.id, bio }, { onConflict: 'id' });
+        if (bioError) throw bioError;
+        state.profilePageEditing = false;
+        await loadPublicProfile(state.user.id);
         api.showToast?.('Profile updated', 'success');
-        closeProfileModal();
+        renderProfilePage();
     } catch (e) {
         errorEl.textContent = e.message || 'Something went wrong.';
     } finally {
@@ -579,6 +1011,7 @@ async function submitUsernameForm() {
     try {
         await setUsername(username);
         document.getElementById('profile-username-hint').textContent = usernameChangesRemainingText(state.user.usernameHistory);
+        renderProfilePage();
         errorEl.style.color = 'var(--success, #22c55e)';
         errorEl.textContent = 'Username updated.';
     } catch (e) {
@@ -657,7 +1090,7 @@ function updateAuthUI() {
         if (sidebarProfileName) {
             const nameText = state.user.displayName || state.user.username || 'Profile';
             const nameSafe = nameText.replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-            sidebarProfileName.innerHTML = `${nameSafe}` + (api.renderBadgeRow ? api.renderBadgeRow(state.user.badges, 12) : '');
+            sidebarProfileName.innerHTML = `${nameSafe}` + (api.renderBadgeRow ? api.renderBadgeRow(state.user.displayBadges || [], 12) : '');
         }
         if (sidebarProfileUsername) sidebarProfileUsername.textContent = state.user.username ? '@' + state.user.username : 'Edit profile';
         if (sidebarAvatarImg && sidebarAvatarFallback) {
@@ -689,13 +1122,13 @@ function updateAuthUI() {
 // Accounts can end up without a username - e.g. an old account created before
 // usernames were required, or a signup where the username claim failed (see
 // signUp's catch block, which still leaves the auth account logged in). Nudge
-// those users into the profile modal, focused on the username field, right
+// those users into the profile page, focused on the username field, right
 // after we know who's signed in.
 function promptUsernameIfMissing() {
     if (!state.user || state.user.username) return;
     api.showToast?.('Please choose a username to finish setting up your account.', 'warning');
-    openProfileModal();
-    // Give the modal a tick to render before focusing/scrolling to the field.
+    showProfileView();
+    // Give the profile page a tick to render before focusing/scrolling to the field.
     setTimeout(() => {
         const errorEl = document.getElementById('profile-username-error');
         if (errorEl) {
@@ -711,7 +1144,7 @@ export {
     getCurrentUser, isLoggedIn, updateDisplayName, uploadAvatar,
     setUsername, updateEmail, removeEmail, fetchProfile,
     openAuthModal, closeAuthModal, toggleAuthMode, submitAuthForm, openTermsModal, closeTermsModal,
-    openProfileModal, closeProfileModal, onProfileAvatarFileChosen, submitProfileForm,
+    showProfileView, showUserProfile, handleProfileHashRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, onProfileAvatarFileChosen, submitProfileForm, renderProfilePage, submitDisplayedBadges, submitProfileComment, deleteProfileComment,
     submitUsernameForm, submitEmailForm, submitRemoveEmail,
     handleSignOutClick, updateAuthUI, promptUsernameIfMissing,
     fetchBadges, currentRole, isStaff, isAdminOrDev, canDeleteAnyContent

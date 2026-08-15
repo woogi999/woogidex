@@ -19,6 +19,7 @@ import { POKEMON_COLORS } from './data.js';
             if (!wasShareRoute && !wasCommunityPreview && document.getElementById('editor-view')?.style.display !== 'none') {
                 await api.autoSave(true); // Force immediate save before leaving
             }
+            document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
             document.getElementById('editor-view').style.display = 'none';
             document.getElementById('collection-view').style.display = 'block';
             document.getElementById('save-status').style.display = 'none';

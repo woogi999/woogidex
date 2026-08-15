@@ -27,7 +27,7 @@
                     <button class="btn btn-secondary" onclick="openAuthModal('signin')" id="auth-signin-btn"><i data-lucide="user" style="width:16px;height:16px;"></i> Sign In</button>
                 </div>
                 <div id="auth-signed-in" class="auth-signed-in" style="display:none;align-items:center;gap:8px;">
-                    <button class="auth-avatar-btn" onclick="openProfileModal()" title="Edit Profile">
+                    <button class="auth-avatar-btn" onclick="showProfileView()" title="Open Profile">
                         <img id="auth-avatar-img" class="auth-avatar-img" style="display:none;" alt="">
                         <span id="auth-avatar-fallback" class="auth-avatar-fallback"></span>
                     </button>
@@ -52,7 +52,7 @@
                 <div class="save-status unsaved" id="save-status" style="display:none;">Unsaved</div>
             </div>
             <div class="sidebar-profile" id="sidebar-profile" style="display:none;">
-                <button class="sidebar-profile-main" type="button" onclick="openProfileModal(); closeSidebar();">
+                <button class="sidebar-profile-main" type="button" onclick="showProfileView(); closeSidebar();">
                     <span class="sidebar-profile-avatar"><img id="sidebar-profile-avatar-img" style="display:none;" alt=""><span id="sidebar-profile-avatar-fallback">?</span></span>
                     <span class="sidebar-profile-copy"><strong id="sidebar-profile-name">Profile</strong><small id="sidebar-profile-username"></small></span>
                     <i data-lucide="chevron-right"></i>
@@ -517,6 +517,101 @@
                         <div class="section-divider"></div>
                     </div></div>
 
+            <!-- Profile View -->
+            <div id="profile-view" class="profile-page-view" style="display:none;">
+                <div class="profile-page-shell">
+                    <div class="profile-page-header profile-page-header-clean">
+                        <div></div>
+                        <div class="profile-page-header-actions">
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn btn-primary btn-sm" id="profile-edit-btn" type="button" style="display:none;" onclick="editOwnProfile()"><i data-lucide="pencil"></i> Edit Profile</button>
+                        </div>
+                    </div>
+
+                    <div id="profile-public-content">
+                        <section class="panel profile-public-hero">
+                            <div class="profile-public-avatar-wrap">
+                                <img id="profile-public-avatar" class="profile-public-avatar" style="display:none;" alt="">
+                                <span id="profile-public-avatar-fallback" class="profile-public-avatar-fallback">?</span>
+                            </div>
+                            <div class="profile-public-main">
+                                <div class="profile-public-name-row">
+                                    <div>
+                                        <h2 id="profile-page-display-heading">Profile</h2>
+                                        <p class="profile-page-handle" id="profile-page-handle"></p>
+                                    </div>
+                                    <div id="profile-public-badges" class="profile-public-badges"></div>
+                                </div>
+                                <p id="profile-public-bio" class="profile-public-bio">No bio yet.</p>
+                            </div>
+                        </section>
+
+                        <section class="panel profile-public-section">
+                            <div class="profile-section-title">
+                                <div><h3>Fakemon</h3><p>Published creations from this creator.</p></div>
+                                <span class="profile-badge-count" id="profile-mons-count"></span>
+                            </div>
+                            <div id="profile-mons-grid" class="profile-mons-grid"></div>
+                        </section>
+
+                        <section class="panel profile-public-section">
+                            <div class="profile-section-title">
+                                <div><h3>Comments</h3><p>Leave a message for this creator.</p></div>
+                            </div>
+                            <div id="profile-comments-list" class="profile-comments-list"></div>
+                            <div id="profile-comment-box" class="profile-comment-box" style="display:none;">
+                                <textarea id="profile-comment-input" maxlength="1000" rows="3" placeholder="Say hello..."></textarea>
+                                <div class="profile-comment-actions">
+                                    <span id="profile-comment-error" class="auth-modal-error"></span>
+                                    <button class="btn btn-primary btn-sm" type="button" onclick="submitProfileComment()">Post Comment</button>
+                                </div>
+                            </div>
+                            <div id="profile-comment-signin-hint" class="profile-signin-hint" style="display:none;">Sign in to leave a comment.</div>
+                        </section>
+                    </div>
+
+                    <div id="profile-edit-content" style="display:none;">
+                        <div class="profile-page-grid">
+                            <section class="panel profile-page-card profile-identity-card">
+                                <div class="profile-page-avatar-row">
+                                    <label for="profile-avatar-file" class="profile-page-avatar-picker" title="Change picture">
+                                        <img id="profile-avatar-preview" class="profile-avatar-preview" style="display:none;" alt="">
+                                        <span id="profile-avatar-placeholder" class="profile-avatar-placeholder"><i data-lucide="camera" style="width:22px;height:22px;"></i></span>
+                                    </label>
+                                    <input type="file" id="profile-avatar-file" accept="image/*" style="display:none;" onchange="onProfileAvatarFileChosen(this)">
+                                    <div><h3>Customize Profile</h3><p class="profile-page-handle" id="profile-edit-handle">Edit how you appear around Woogidex.</p><p class="profile-avatar-hint">JPG, PNG, or GIF. Max 2MB.</p></div>
+                                </div>
+                                <div class="form-group"><label for="profile-display-name">Display Name</label><input type="text" id="profile-display-name" maxlength="40" placeholder="e.g., AshK"></div>
+                                <div class="form-group"><label for="profile-bio">Bio</label><textarea id="profile-bio" maxlength="280" rows="4" placeholder="Tell people a little about yourself..."></textarea><div class="profile-field-hint">280 characters max.</div></div>
+                                <p class="auth-modal-error" id="profile-modal-error"></p>
+                                <div class="profile-edit-actions"><button class="btn btn-secondary" type="button" onclick="cancelEditOwnProfile()">Cancel</button><button class="btn btn-primary auth-submit-btn" id="profile-submit-btn" onclick="submitProfileForm()">Save Profile</button></div>
+                            </section>
+
+                            <section class="panel profile-page-card">
+                                <div class="profile-section-title"><div><h3>Username</h3><p>Your username is used to sign in and identify you.</p></div></div>
+                                <div class="form-group"><label for="profile-username">Username</label><input type="text" id="profile-username" maxlength="20" placeholder="letters, numbers, underscore only"><div class="profile-field-hint" id="profile-username-hint"></div></div>
+                                <p class="auth-modal-error" id="profile-username-error"></p>
+                                <button class="btn btn-secondary auth-submit-btn" id="profile-username-submit-btn" onclick="submitUsernameForm()">Save Username</button>
+                            </section>
+
+                            <section class="panel profile-page-card">
+                                <div class="profile-section-title"><div><h3>Badges to Show</h3><p>Choose which badges appear on your profile and beside your name.</p></div><span class="profile-badge-count" id="profile-badge-count"></span></div>
+                                <div id="profile-badges-list" class="profile-badges-selection"></div>
+                                <p class="auth-modal-error" id="profile-badges-error"></p>
+                                <button class="btn btn-primary auth-submit-btn" id="profile-badges-submit-btn" onclick="submitDisplayedBadges()">Save Badge Display</button>
+                            </section>
+
+                            <section class="panel profile-page-card">
+                                <div class="profile-section-title"><div><h3>Account Email</h3><p>Optional. Use an email for account recovery, or leave the account username-only.</p></div></div>
+                                <div class="form-group"><label for="profile-email">Account Email</label><input type="email" id="profile-email" placeholder="you@example.com"></div>
+                                <p class="auth-modal-error" id="profile-email-error"></p>
+                                <div class="profile-email-actions"><button type="button" class="btn btn-secondary profile-email-save-btn" id="profile-email-submit-btn" onclick="submitEmailForm()">Save Email</button><button type="button" class="btn btn-danger profile-email-remove-btn" id="profile-email-remove-btn" style="display:none;" onclick="submitRemoveEmail()">Remove Email</button></div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Collection View -->
             <div id="collection-view">
                 <div class="panel">
@@ -698,60 +793,6 @@
             </div>
         </div>
     </div>
-
-    <div class="modal-overlay" id="profile-modal">
-        <div class="modal auth-modal">
-            <div class="modal-header">
-                <h3>Edit Profile</h3>
-                <button class="modal-close" onclick="closeProfileModal()" aria-label="Close">
-                    <i data-lucide="x" style="width:20px;height:20px;"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <p class="auth-modal-error" id="profile-modal-error"></p>
-
-                <div class="profile-avatar-row">
-                    <label for="profile-avatar-file" class="profile-avatar-picker" title="Change picture">
-                        <img id="profile-avatar-preview" class="profile-avatar-preview" style="display:none;" alt="">
-                        <span id="profile-avatar-placeholder" class="profile-avatar-placeholder">
-                            <i data-lucide="camera" style="width:20px;height:20px;"></i>
-                        </span>
-                    </label>
-                    <input type="file" id="profile-avatar-file" accept="image/*" style="display:none;" onchange="onProfileAvatarFileChosen(this)">
-                    <div class="profile-avatar-hint">JPG, PNG, or GIF. Max 2MB.</div>
-                </div>
-
-                <div class="form-group">
-                    <label for="profile-display-name">Display Name</label>
-                    <input type="text" id="profile-display-name" maxlength="40" placeholder="e.g., AshK">
-                </div>
-                <button class="btn btn-primary auth-submit-btn" id="profile-submit-btn" onclick="submitProfileForm()">Save Profile</button>
-
-                <div class="section-divider"></div>
-
-                <div class="form-group">
-                    <label for="profile-username">Username</label>
-                    <input type="text" id="profile-username" maxlength="20" placeholder="letters, numbers, underscore only">
-                    <div class="profile-field-hint" id="profile-username-hint"></div>
-                </div>
-                <p class="auth-modal-error" id="profile-username-error"></p>
-                <button class="btn btn-secondary auth-submit-btn" id="profile-username-submit-btn" onclick="submitUsernameForm()">Save Username</button>
-
-                <div class="section-divider"></div>
-
-                <div class="form-group">
-                    <label for="profile-email">Account Email</label>
-                    <input type="email" id="profile-email" placeholder="you@example.com">
-                </div>
-                <p class="auth-modal-error" id="profile-email-error"></p>
-                <div class="profile-email-actions">
-                    <button type="button" class="btn btn-secondary profile-email-save-btn" id="profile-email-submit-btn" onclick="submitEmailForm()">Save Email</button>
-                    <button type="button" class="btn btn-danger profile-email-remove-btn" id="profile-email-remove-btn" style="display:none;" onclick="submitRemoveEmail()">Remove Email</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
 
     <div class="modal-overlay" id="terms-modal" onclick="if(event.target===this) closeTermsModal()">
         <div class="modal policy-modal">

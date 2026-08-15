@@ -45,7 +45,9 @@ export const state = {
     autoSaveTimer: null,
     lastSavedId: null,
     evolutionGraph: null,
-    isShareRoute: false
+    isShareRoute: false,
+    profilePageUser: null,
+    profilePageEditing: false
 };
 
 export const api = {};
@@ -339,13 +341,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Fakemon so its preview is fully rehydrated on the first render.
     await api.fetchShowdownData?.();
     const isShareRoute = await api.initShareRoute?.();
-    if (!isShareRoute) api.renderCollection();
+    const isProfileRoute = !isShareRoute && await api.handleProfileHashRoute?.();
+    if (!isShareRoute && !isProfileRoute) api.renderCollection();
     loadDarkMode();
     loadSettings();
     if (typeof lucide !== 'undefined') lucide.createIcons();
     api.updateEditorStats();
     done({ fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
     log.info('BOOT', 'Application ready', { fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
+});
+
+window.addEventListener('hashchange', async () => {
+    if (window.location.hash.startsWith('#profile/')) await api.handleProfileHashRoute?.();
 });
 
 export { loadDarkMode, toggleDarkMode, updateDarkModeUI, showToast, initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor };

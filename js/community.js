@@ -40,7 +40,7 @@ async function attachLiveAuthorInfo(rows) {
     if (!userIds.length) return rows;
 
     const [{ data: profiles }, { data: badgeRows }] = await Promise.all([
-        client.from('profiles').select('id, username, display_name, avatar_url, role').in('id', userIds),
+        client.from('profiles').select('id, username, display_name, avatar_url, role, display_badges').in('id', userIds),
         client.from('profile_badges').select('user_id, badge_key').in('user_id', userIds)
     ]);
 
@@ -54,7 +54,7 @@ async function attachLiveAuthorInfo(rows) {
         row.author_name = p ? (p.display_name || p.username || row.author_name) : row.author_name;
         row.author_avatar_url = p ? (p.avatar_url || row.author_avatar_url) : row.author_avatar_url;
         row.author_role = p ? (p.role || 'user') : row.author_role;
-        row.author_badges = p ? (badgesByUser[row.user_id] || []) : row.author_badges;
+        row.author_badges = p ? (Array.isArray(p.display_badges) ? p.display_badges : (badgesByUser[row.user_id] || [])) : row.author_badges;
     });
     return rows;
 }
@@ -157,6 +157,17 @@ async function publishSnapshot(mon, rulesChecked = false) {
     }
     api.showToast?.(`${mon.name} published to the Community Hub!`, 'success');
     log.info('COMMUNITY', 'Published', { id: mon.id, name: mon.name });
+}
+
+
+async function openPublishedMonById(publishedId) {
+    const client = await api.getClient();
+    const { data, error } = await client.from('published_mons').select('*').eq('id', publishedId).maybeSingle();
+    if (error || !data) { api.showToast?.('Could not load that Fakemon.', 'error'); return; }
+    const cs = ensureCommunityState();
+    cs.mons = [data, ...(cs.mons || []).filter(x => x.id !== data.id)];
+    await attachLiveAuthorInfo(cs.mons);
+    await openMonDetail(publishedId);
 }
 
 function toggleShareMenu(event) {
@@ -350,6 +361,7 @@ async function openCommunityHub() {
     closeShareMenu();
     closeCommunityExportMenu();
 
+    document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
     document.getElementById('editor-view') && (document.getElementById('editor-view').style.display = 'none');
     document.getElementById('collection-view') && (document.getElementById('collection-view').style.display = 'none');
     document.getElementById('community-detail-view') && (document.getElementById('community-detail-view').style.display = 'none');
@@ -479,7 +491,7 @@ function renderCommunityGrid() {
                 </div>
                 <div class="community-card-author">
                     ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
-                    <span>${escapeHtml(row.author_name)}</span>
+                    <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">${escapeHtml(row.author_name)}</span>
                     ${renderRoleTag(row.author_role, ensureCommunityState().rolesMap)}
                     ${renderBadgeRow(row.author_badges, 13)}
                 </div>
@@ -524,6 +536,7 @@ async function openMonDetail(publishedId) {
         setCommunityPreviewArtworkMode(state.previewArtworkMode || 'normal');
     }
 
+    document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
     document.getElementById('editor-view') && (document.getElementById('editor-view').style.display = 'none');
     document.getElementById('collection-view') && (document.getElementById('collection-view').style.display = 'none');
     document.getElementById('community-view').style.display = 'none';
@@ -532,7 +545,7 @@ async function openMonDetail(publishedId) {
     document.getElementById('community-detail-title').textContent = mon.name || 'Fakemon';
     document.getElementById('community-detail-author').innerHTML = `
         ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
-        <span>Published by ${escapeHtml(row.author_name)}</span>
+        <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">Published by ${escapeHtml(row.author_name)}</span>
         ${renderRoleTag(row.author_role, ensureCommunityState().rolesMap)}
         ${renderBadgeRow(row.author_badges, 13)}
     `;
@@ -640,7 +653,7 @@ function renderMonComments() {
             <div class="mon-comment">
                 <div class="mon-comment-header">
                     ${c.author_avatar_url ? `<img class="community-mini-avatar" src="${c.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((c.author_name || '?').charAt(0).toUpperCase())}</span>`}
-                    <span class="mon-comment-author">${escapeHtml(c.author_name)}</span>
+                    <span class="mon-comment-author community-author-link" onclick="event.stopPropagation(); showUserProfile('${c.user_id}')">${escapeHtml(c.author_name)}</span>
                     ${renderRoleTag(c.author_role, ensureCommunityState().rolesMap)}
                     ${renderBadgeRow(c.author_badges, 12)}
                     <span class="mon-comment-time">${new Date(c.created_at).toLocaleString()}</span>
@@ -665,7 +678,7 @@ export {
     publishFakemon, publishCurrentEditorFakemon, unpublishMon, unpublishOpenCommunityMon, fetchCommunityFeed,
     fetchComments, postComment, deleteComment,
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal, acceptCommunityRules,
-    openMonDetail, closeMonDetail, renderMonComments, submitMonComment,
+    openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment,
     importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu,
     toggleShareMenu, closeShareMenu
 };
