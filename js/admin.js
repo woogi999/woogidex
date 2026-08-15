@@ -11,7 +11,7 @@
 // doesn't check. Treat this file as "hide the panel from people who
 // shouldn't see it", not "the thing standing between users and the data".
 
-import { ROLES, BADGES, renderBadgeRow, roleAtLeast } from './data.js';
+import { BADGES, renderBadgeRow } from './data.js';
 
 const SUPABASE_URL = 'https://qstbascfeolkyxtrqqwv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_B4jEJ--w0XFsgXDmQeJREA_xH1GRBsf';
@@ -27,9 +27,23 @@ async function getClient() {
 }
 
 const state = {
-    me: null,        // { id, role }
-    results: [],      // last search results, each with .role and .badges attached
+    me: null,          // { id, role }
+    results: [],        // last search results, each with .role and .badges attached
+    roles: [],          // live rows from the `roles` table, sorted by rank
 };
+
+function rolesByKey() {
+    const map = {};
+    state.roles.forEach(r => { map[r.key] = r; });
+    return map;
+}
+
+async function loadRoles() {
+    const client = await getClient();
+    const { data, error } = await client.from('roles').select('*').order('rank', { ascending: true });
+    if (error) { showToast('Could not load roles: ' + error.message, 'error'); return; }
+    state.roles = data || [];
+}
 
 function $(id) { return document.getElementById(id); }
 
@@ -66,6 +80,8 @@ async function init() {
 
     state.me = { id: session.user.id, role: profile.role };
     renderGate('ok');
+    await loadRoles();
+    renderRolesPanel();
     buildBadgeCheckboxTemplate();
     $('admin-search-form').addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
     // Show a starting page of users so the panel isn't empty on load.
@@ -117,16 +133,17 @@ function fmtDate(iso) {
 
 function renderResults() {
     const resultsEl = $('admin-results');
-    const myRank = ROLES[state.me.role]?.rank ?? 0;
-    const canManageRoles = ROLES[state.me.role]?.canManageRoles;
+    const rolesMap = rolesByKey();
+    const myRank = rolesMap[state.me.role]?.rank ?? 0;
+    const canManageRoles = !!rolesMap[state.me.role]?.can_manage_roles;
 
     resultsEl.innerHTML = state.results.map(u => {
-        const targetRank = ROLES[u.role]?.rank ?? 0;
+        const targetRank = rolesMap[u.role]?.rank ?? 0;
         const isSelf = u.id === state.me.id;
         const roleLocked = !canManageRoles || targetRank > myRank || isSelf;
-        const roleOptions = Object.entries(ROLES)
-            .filter(([, r]) => r.rank <= myRank)
-            .map(([key, r]) => `<option value="${key}" ${key === u.role ? 'selected' : ''}>${r.label}</option>`)
+        const roleOptions = state.roles
+            .filter(r => r.rank <= myRank)
+            .map(r => `<option value="${r.key}" ${r.key === u.role ? 'selected' : ''}>${escapeHtml(r.label)}</option>`)
             .join('');
 
         const badgeChecks = Object.entries(BADGES).map(([key, b]) => {
@@ -242,6 +259,77 @@ function buildBadgeCheckboxTemplate() {
     // per-row in renderResults() since availability depends on the row.
 }
 
+// ==================== ROLE MANAGEMENT ====================
+function renderRolesPanel() {
+    const section = $('admin-roles-section');
+    const canManageRoles = !!rolesByKey()[state.me.role]?.can_manage_roles;
+    if (!canManageRoles) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+
+    $('admin-roles-list').innerHTML = state.roles.map(r => `
+        <div class="admin-role-row">
+            <span class="role-tag" style="color:${escapeHtml(r.color)};border-color:${escapeHtml(r.color)};">${escapeHtml(r.label)}</span>
+            <span class="admin-role-meta">
+                rank ${r.rank}${r.can_delete_any ? ' · moderates content' : ''}${r.can_manage_roles ? ' · manages roles' : ''}${r.can_manage_badges ? ' · manages badges' : ''}
+            </span>
+            <button type="button" onclick="window.adminEditRole('${r.key}')">
+                <i data-lucide="pencil"></i> Edit
+            </button>
+        </div>
+    `).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function openRoleForm(existingKey) {
+    const r = existingKey ? rolesByKey()[existingKey] : null;
+    $('admin-role-form-title').textContent = r ? `Edit "${r.label}"` : 'Add a new role';
+    $('admin-role-key').value = r ? r.key : '';
+    $('admin-role-key').disabled = !!r; // key is the primary key — don't allow renaming it, only its label/etc.
+    $('admin-role-label').value = r ? r.label : '';
+    $('admin-role-color').value = r ? r.color : '#6b7280';
+    $('admin-role-rank').value = r ? r.rank : (Math.max(0, ...state.roles.map(x => x.rank)) + 1);
+    $('admin-role-can-delete').checked = r ? r.can_delete_any : false;
+    $('admin-role-can-manage-roles').checked = r ? r.can_manage_roles : false;
+    $('admin-role-can-manage-badges').checked = r ? r.can_manage_badges : false;
+    $('admin-role-form-modal').style.display = 'flex';
+}
+
+function closeRoleForm() {
+    $('admin-role-form-modal').style.display = 'none';
+}
+
+async function submitRoleForm(event) {
+    event.preventDefault();
+    const client = await getClient();
+    const key = $('admin-role-key').value.trim().toLowerCase();
+    if (!/^[a-z0-9_]{2,20}$/.test(key)) {
+        showToast('Role key must be 2-20 lowercase letters/numbers/underscores.', 'error');
+        return;
+    }
+    const payload = {
+        p_key: key,
+        p_label: $('admin-role-label').value.trim() || key,
+        p_color: $('admin-role-color').value,
+        p_rank: parseInt($('admin-role-rank').value, 10) || 0,
+        p_can_delete_any: $('admin-role-can-delete').checked,
+        p_can_manage_roles: $('admin-role-can-manage-roles').checked,
+        p_can_manage_badges: $('admin-role-can-manage-badges').checked,
+    };
+    // admin_upsert_role is a SECURITY DEFINER RPC (see
+    // LIVE_PROFILES_AND_ROLES_SETUP.sql) — re-checks can_manage_roles
+    // server-side regardless of what this form lets you type.
+    const { error } = await client.rpc('admin_upsert_role', payload);
+    if (error) {
+        showToast('Could not save role: ' + error.message, 'error');
+        return;
+    }
+    showToast('Role saved', 'success');
+    closeRoleForm();
+    await loadRoles();
+    renderRolesPanel();
+    renderResults(); // role dropdowns/labels elsewhere may need the new data
+}
+
 // ==================== ACTIONS ====================
 async function adminChangeRole(selectEl) {
     const client = await getClient();
@@ -257,7 +345,7 @@ async function adminChangeRole(selectEl) {
         selectEl.value = prevRole; // revert visually
     } else {
         selectEl.dataset.prevRole = newRole;
-        showToast('Role updated to ' + (ROLES[newRole]?.label || newRole), 'success');
+        showToast('Role updated to ' + (rolesByKey()[newRole]?.label || newRole), 'success');
     }
     selectEl.disabled = false;
 }
@@ -296,5 +384,9 @@ window.adminToggleBadge = adminToggleBadge;
 window.adminToggleMonsList = toggleMonsList;
 window.adminDeleteMon = deleteMon;
 window.adminRunSearch = runSearch;
+window.adminEditRole = (key) => openRoleForm(key);
+window.adminAddRole = () => openRoleForm(null);
+window.adminCloseRoleForm = closeRoleForm;
+window.adminSubmitRoleForm = submitRoleForm;
 
 init();

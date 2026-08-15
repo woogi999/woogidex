@@ -2,6 +2,63 @@ import { log } from './log.js';
 import { state, api } from './app.js';
 import { renderBadgeRow, renderRoleTag } from './data.js';
 
+// ==================== LIVE ROLES ====================
+// Roles are DB-driven now (see LIVE_PROFILES_AND_ROLES_SETUP.sql) so staff
+// can add/edit them from the admin panel. Cache the table once per session
+// rather than re-fetching on every render; falls back to data.js's static
+// ROLES (used as seed data) if the fetch ever fails.
+let rolesMapCache = null;
+async function getRolesMap() {
+    if (rolesMapCache) return rolesMapCache;
+    try {
+        const client = await api.getClient();
+        const { data, error } = await client.from('roles').select('*');
+        if (error) throw error;
+        rolesMapCache = {};
+        (data || []).forEach(r => { rolesMapCache[r.key] = { label: r.label, color: r.color, rank: r.rank }; });
+    } catch (e) {
+        log.error('COMMUNITY', 'Roles fetch failed, using defaults', e);
+        rolesMapCache = null;
+    }
+    return rolesMapCache;
+}
+
+// ==================== LIVE AUTHOR INFO ====================
+// Published mons / comments still WRITE author_name/author_avatar_url/
+// author_role/author_badges at insert time (harmless denormalized columns,
+// kept as a fallback for a since-deleted account), but rendering no longer
+// trusts them. Instead every fetch batch-loads the current profiles + role +
+// badges for whoever's user_ids showed up, so a rename/avatar change/role
+// change/badge grant shows up immediately everywhere without needing the
+// original row edited. Falls back to the stored snapshot only if the
+// author's profile is missing entirely (e.g. deleted account).
+async function attachLiveAuthorInfo(rows) {
+    if (!rows.length) return rows;
+    const client = await api.getClient();
+    const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+    ensureCommunityState().rolesMap = await getRolesMap();
+    if (!userIds.length) return rows;
+
+    const [{ data: profiles }, { data: badgeRows }] = await Promise.all([
+        client.from('profiles').select('id, username, display_name, avatar_url, role').in('id', userIds),
+        client.from('profile_badges').select('user_id, badge_key').in('user_id', userIds)
+    ]);
+
+    const profileById = {};
+    (profiles || []).forEach(p => { profileById[p.id] = p; });
+    const badgesByUser = {};
+    (badgeRows || []).forEach(b => { (badgesByUser[b.user_id] ||= []).push(b.badge_key); });
+
+    rows.forEach(row => {
+        const p = profileById[row.user_id];
+        row.author_name = p ? (p.display_name || p.username || row.author_name) : row.author_name;
+        row.author_avatar_url = p ? (p.avatar_url || row.author_avatar_url) : row.author_avatar_url;
+        row.author_role = p ? (p.role || 'user') : row.author_role;
+        row.author_badges = p ? (badgesByUser[row.user_id] || []) : row.author_badges;
+    });
+    return rows;
+}
+
 // ==================== STATE ====================
 // state.community.* is initialized lazily (see initAuth-style note in auth.js -
 // same circular-import concern doesn't apply here since community.js isn't
@@ -163,7 +220,7 @@ async function fetchCommunityFeed() {
             .order('published_at', { ascending: false })
             .limit(100);
         if (error) throw error;
-        cs.mons = data || [];
+        cs.mons = await attachLiveAuthorInfo(data || []);
         log.info('COMMUNITY', 'Feed loaded', { count: cs.mons.length });
     } catch (e) {
         log.error('COMMUNITY', 'Feed load failed', e);
@@ -185,7 +242,7 @@ async function fetchComments(publishedId) {
             .eq('mon_id', publishedId)
             .order('created_at', { ascending: true });
         if (error) throw error;
-        cs.comments = data || [];
+        cs.comments = await attachLiveAuthorInfo(data || []);
     } catch (e) {
         log.error('COMMUNITY', 'Comments load failed', e);
         cs.comments = [];
@@ -423,7 +480,7 @@ function renderCommunityGrid() {
                 <div class="community-card-author">
                     ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span>${escapeHtml(row.author_name)}</span>
-                    ${renderRoleTag(row.author_role)}
+                    ${renderRoleTag(row.author_role, ensureCommunityState().rolesMap)}
                     ${renderBadgeRow(row.author_badges, 13)}
                 </div>
             </div>
@@ -476,7 +533,7 @@ async function openMonDetail(publishedId) {
     document.getElementById('community-detail-author').innerHTML = `
         ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
         <span>Published by ${escapeHtml(row.author_name)}</span>
-        ${renderRoleTag(row.author_role)}
+        ${renderRoleTag(row.author_role, ensureCommunityState().rolesMap)}
         ${renderBadgeRow(row.author_badges, 13)}
     `;
 
@@ -584,7 +641,7 @@ function renderMonComments() {
                 <div class="mon-comment-header">
                     ${c.author_avatar_url ? `<img class="community-mini-avatar" src="${c.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((c.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span class="mon-comment-author">${escapeHtml(c.author_name)}</span>
-                    ${renderRoleTag(c.author_role)}
+                    ${renderRoleTag(c.author_role, ensureCommunityState().rolesMap)}
                     ${renderBadgeRow(c.author_badges, 12)}
                     <span class="mon-comment-time">${new Date(c.created_at).toLocaleString()}</span>
                     ${canDelete ? `<button class="mon-comment-delete" onclick="deleteComment('${c.id}', '${cs.openMonId}')" title="${mine ? 'Delete' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>` : ''}

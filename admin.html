@@ -106,6 +106,48 @@
     }
     .admin-mon-delete i { width: 15px; height: 15px; }
 
+    .admin-section-head { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 12px; }
+    .admin-section-head h2 { font-size: 16px; margin: 0; }
+    .admin-add-role-btn {
+        display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px;
+        border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-primary);
+        font-size: 12px; cursor: pointer;
+    }
+    .admin-add-role-btn i { width: 14px; height: 14px; }
+
+    .admin-roles-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+    .admin-role-row {
+        display: flex; align-items: center; gap: 12px; background: var(--bg-card);
+        border: 1px solid var(--border-light); border-radius: 8px; padding: 10px 14px; font-size: 13px;
+    }
+    .admin-role-meta { color: var(--text-muted); font-size: 11px; flex: 1; }
+    .admin-role-row button {
+        display: flex; align-items: center; gap: 4px; background: none; border: 1px solid var(--border);
+        border-radius: 6px; padding: 4px 10px; color: var(--text-secondary); font-size: 12px; cursor: pointer;
+    }
+    .admin-role-row button i { width: 13px; height: 13px; }
+
+    .admin-modal-backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200;
+        display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .admin-modal {
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+        padding: 22px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .admin-modal h3 { margin: 0 0 4px; font-size: 16px; }
+    .admin-modal input[type="text"], .admin-modal input[type="number"] {
+        padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+        background: var(--bg-input); color: var(--text-primary); font-size: 13px; width: 100%;
+    }
+    .admin-modal input[type="color"] { width: 100%; height: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 2px; background: var(--bg-input); }
+    .admin-modal-row { display: flex; gap: 12px; }
+    .admin-modal-row .admin-field-label { flex: 1; }
+    .admin-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+    .admin-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+    .admin-modal-cancel { background: none; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 7px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
+    .admin-modal-save { background: var(--accent); color: var(--bg-dark); border: none; border-radius: 7px; padding: 8px 16px; font-weight: 600; cursor: pointer; font-size: 13px; }
+
     .admin-toast {
         display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
         padding: 10px 18px; border-radius: 8px; background: var(--bg-panel); border: 1px solid var(--border);
@@ -135,12 +177,52 @@
     </div>
 
     <div id="admin-panel">
+        <div id="admin-roles-section" style="display:none;">
+            <div class="admin-section-head">
+                <h2>Roles</h2>
+                <button type="button" class="admin-add-role-btn" onclick="window.adminAddRole()">
+                    <i data-lucide="plus"></i> Add role
+                </button>
+            </div>
+            <div id="admin-roles-list" class="admin-roles-list"></div>
+        </div>
+
+        <div class="admin-section-head">
+            <h2>Users</h2>
+        </div>
         <form id="admin-search-form" class="admin-search-bar">
-            <input id="admin-search-input" type="text" placeholder="Search by username…" autocomplete="off">
+            <input id="admin-search-input" type="text" placeholder="Search by username or email…" autocomplete="off">
             <button type="submit">Search</button>
         </form>
         <div id="admin-results"></div>
     </div>
+</div>
+
+<div id="admin-role-form-modal" class="admin-modal-backdrop" style="display:none;">
+    <form class="admin-modal" onsubmit="window.adminSubmitRoleForm(event)">
+        <h3 id="admin-role-form-title">Add a new role</h3>
+        <label class="admin-field-label">Key (used internally, can't be changed later)
+            <input id="admin-role-key" type="text" placeholder="e.g. artist_lead" required>
+        </label>
+        <label class="admin-field-label">Display label
+            <input id="admin-role-label" type="text" placeholder="e.g. Artist Lead" required>
+        </label>
+        <div class="admin-modal-row">
+            <label class="admin-field-label">Color
+                <input id="admin-role-color" type="color" value="#6b7280">
+            </label>
+            <label class="admin-field-label">Rank (higher = more senior)
+                <input id="admin-role-rank" type="number" min="0" step="1" required>
+            </label>
+        </div>
+        <label class="admin-checkbox-row"><input id="admin-role-can-delete" type="checkbox"> Can delete any content (moderation)</label>
+        <label class="admin-checkbox-row"><input id="admin-role-can-manage-roles" type="checkbox"> Can manage roles</label>
+        <label class="admin-checkbox-row"><input id="admin-role-can-manage-badges" type="checkbox"> Can grant/revoke badges</label>
+        <div class="admin-modal-actions">
+            <button type="button" class="admin-modal-cancel" onclick="window.adminCloseRoleForm()">Cancel</button>
+            <button type="submit" class="admin-modal-save">Save role</button>
+        </div>
+    </form>
 </div>
 
 <div id="admin-toast" class="admin-toast"></div>

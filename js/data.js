@@ -134,8 +134,8 @@ function renderBadgeRow(badgeKeys, size) {
     return `<span class="profile-badge-row">${badgeKeys.map(k => renderBadge(k, size)).join('')}</span>`;
 }
 
-function renderRoleTag(role) {
-    const r = ROLES[role];
+function renderRoleTag(role, rolesMap) {
+    const r = (rolesMap && rolesMap[role]) || ROLES[role];
     if (!r || role === 'user') return '';
     return `<span class="role-tag" style="color:${r.color};border-color:${r.color};">${r.label}</span>`;
 }

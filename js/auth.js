@@ -243,8 +243,7 @@ async function setUsername(username) {
     const { error } = await client.from('profiles').upsert(
         { id: state.user.id, username },
         { onConflict: 'id' }
-    );
-    if (error) {
+    );    if (error) {
         if (error.code === '23505') throw new Error('That username is already taken.');
         throw new Error(error.message || 'Could not update username.');
     }
@@ -316,11 +315,25 @@ async function removeEmail() {
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2MB
 const AVATAR_BUCKET = 'avatars';
 
+// Mirrors display_name/avatar_url from auth.users.user_metadata onto the
+// public `profiles` table. Necessary because other users' clients can never
+// read someone else's user_metadata (no RLS-bypassable public API for that),
+// but profiles IS publicly readable — so profiles is what community.js's
+// live author lookups actually join against. Best-effort: failures here
+// don't block the metadata update itself from succeeding.
+async function mirrorToProfile(fields) {
+    if (!state.user) return;
+    const client = await getClient();
+    const { error } = await client.from('profiles').upsert({ id: state.user.id, ...fields }, { onConflict: 'id' });
+    if (error) log.error('AUTH', 'Profile mirror failed', error);
+}
+
 async function updateDisplayName(displayName) {
     const client = await getClient();
     const { data, error } = await client.auth.updateUser({ data: { display_name: displayName } });
     if (error) { log.error('AUTH', 'Display name update failed', error); throw error; }
     applySupabaseUser(data.user);
+    await mirrorToProfile({ display_name: displayName });
     updateAuthUI();
     return state.user;
 }
@@ -350,6 +363,7 @@ async function uploadAvatar(file) {
     const { data, error } = await client.auth.updateUser({ data: { avatar_url: bustedUrl } });
     if (error) { log.error('AUTH', 'Avatar URL save failed', error); throw error; }
     applySupabaseUser(data.user);
+    await mirrorToProfile({ avatar_url: bustedUrl });
     updateAuthUI();
     return state.user;
 }
