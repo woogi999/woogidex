@@ -311,9 +311,9 @@
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
-            z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; backdrop-filter: none; -webkit-backdrop-filter: none;
         }
-        .modal-overlay.active { opacity: 1; pointer-events: all; }
+        .modal-overlay.active { opacity: 1; pointer-events: all; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
         .modal {
             background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px;
             padding: 30px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;
@@ -463,8 +463,8 @@
         .move-detail-popup .detail-label { color: var(--text-secondary); font-size: 13px; }
         .move-detail-popup .detail-value { font-weight: 600; font-size: 13px; }
         .move-detail-popup .desc-text { font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light); }
-        .overlay-dark { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2999; opacity: 0; transition: opacity 0.15s ease; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-        .overlay-dark.active { opacity: 1; }
+        .overlay-dark { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2999; opacity: 0; transition: opacity 0.15s ease; backdrop-filter: none; -webkit-backdrop-filter: none; }
+        .overlay-dark.active { opacity: 1; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
         .api-status {
             display: inline-flex; align-items: center; gap: 6px;
             font-size: 12px; padding: 4px 10px; border-radius: 20px;
@@ -3955,9 +3955,9 @@
 .app-sidebar.open { transform:translateX(0); }
 .sidebar-backdrop {
     position:fixed; inset:0; background:rgba(0,0,0,.34); z-index:2999; opacity:0;
-    pointer-events:none; transition:opacity .25s ease; backdrop-filter:blur(2px);
+    pointer-events:none; transition:opacity .25s ease; backdrop-filter:none; -webkit-backdrop-filter:none;
 }
-.sidebar-backdrop.open { opacity:1; pointer-events:auto; }
+.sidebar-backdrop.open { opacity:1; pointer-events:auto; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
 .sidebar-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:2px 4px 20px; border-bottom:1px solid var(--border-light); }
 .sidebar-kicker { font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.5px; color:var(--text-muted); margin-bottom:4px; }
 .sidebar-header h2 { font-size:22px; line-height:1; }
@@ -4024,4 +4024,17 @@
 @media (max-width: 380px) {
     .app-sidebar { width: 88vw; }
     .sidebar-nav-btn { gap: 10px; }
+}
+
+
+/* Performance: full-screen backdrop blur is expensive on mobile GPUs. Keep the blur effect,
+   but use a lighter radius on small screens and avoid applying it while overlays are hidden. */
+@media (max-width: 640px) {
+    .modal-overlay.active { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+    .overlay-dark.active { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+    .sidebar-backdrop.open { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay, .modal, .overlay-dark, .sidebar-backdrop, .app-sidebar { transition: none !important; }
 }
