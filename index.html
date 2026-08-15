@@ -535,7 +535,6 @@
                             <div id="profile-comments-list" class="profile-comments-list"></div>
                             <div id="profile-comment-box" class="profile-comment-box" style="display:none;">
                                 <textarea id="profile-comment-input" maxlength="1000" rows="3" placeholder="Say hello..."></textarea>
-                                <small class="comment-markdown-hint">Markdown supported: **bold**, *italic*, `code`, [links](https://example.com)</small>
                                 <div class="profile-comment-actions">
                                     <span id="profile-comment-error" class="auth-modal-error"></span>
                                     <button class="btn btn-primary btn-sm" type="button" onclick="submitProfileComment()">Post Comment</button>
@@ -661,6 +660,10 @@
                     <div class="search-bar community-controls">
                         <input type="text" id="community-search-input" placeholder="Search Community Hub..." oninput="filterCommunity()" aria-label="Search Community Hub">
                         <select id="community-sort-by" onchange="changeCommunitySort()" aria-label="Sort Community Hub by" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;background:var(--bg-input);color:var(--text-primary);">
+                            <option value="activity">Activity</option>
+                            <option value="likes">Total Likes</option>
+                            <option value="comments">Total Comments</option>
+                            <option value="views">Total Views</option>
                             <option value="published">Date Published</option>
                             <option value="name">Name</option>
                             <option value="author">Creator</option>
@@ -709,7 +712,6 @@
                     <div id="mon-detail-comments" class="mon-detail-comments"></div>
                     <div id="mon-detail-comment-box" class="mon-detail-comment-box" style="display:none;">
                         <textarea id="mon-detail-comment-input" placeholder="Say something nice…" maxlength="1000"></textarea>
-                        <small class="comment-markdown-hint">Markdown supported: **bold**, *italic*, `code`, [links](https://example.com)</small>
                         <button class="btn btn-primary" onclick="submitMonComment()">Post</button>
                     </div>
                     <p id="mon-detail-comment-signin-hint" class="mon-detail-signin-hint" style="display:none;">

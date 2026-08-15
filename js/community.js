@@ -75,7 +75,7 @@ function ensureCommunityState() {
             openMonRow: null,  // the full row object for the open detail page
             comments: [],        // comments for the currently open mon
             search: '',
-            sortBy: 'published',
+            sortBy: 'activity',
             sortOrder: 'desc'
         };
     }
@@ -310,10 +310,11 @@ async function fetchCommunityFeed() {
         const { data, error } = await client
             .from('published_mons')
             .select('*')
-            .order('published_at', { ascending: false })
+            .order('activity_at', { ascending: false })
             .limit(100);
         if (error) throw error;
         cs.mons = await attachLiveAuthorInfo(data || []);
+        await hydrateCommunityStats(cs.mons);
         log.info('COMMUNITY', 'Feed loaded', { count: cs.mons.length });
     } catch (e) {
         log.error('COMMUNITY', 'Feed load failed', e);
@@ -322,6 +323,53 @@ async function fetchCommunityFeed() {
     } finally {
         cs.loading = false;
     }
+}
+
+// ==================== COMMUNITY STATS ====================
+async function hydrateCommunityStats(rows) {
+    if (!rows.length) return rows;
+    const client = await api.getClient();
+    const ids = rows.map(r => r.id).filter(Boolean);
+    const [{ data: comments }, { data: likes }] = await Promise.all([
+        client.from('mon_comments').select('mon_id').in('mon_id', ids),
+        client.from('mon_likes').select('mon_id, user_id').in('mon_id', ids)
+    ]);
+    const commentCounts = {};
+    const likeCounts = {};
+    const likedByMe = {};
+    (comments || []).forEach(r => { commentCounts[r.mon_id] = (commentCounts[r.mon_id] || 0) + 1; });
+    (likes || []).forEach(r => {
+        likeCounts[r.mon_id] = (likeCounts[r.mon_id] || 0) + 1;
+        if (state.user && r.user_id === state.user.id) likedByMe[r.mon_id] = true;
+    });
+    rows.forEach(r => {
+        r.comment_count = commentCounts[r.id] || 0;
+        r.like_count = likeCounts[r.id] || 0;
+        r.liked_by_me = !!likedByMe[r.id];
+        r.view_count = Number(r.view_count || 0);
+    });
+    return rows;
+}
+
+async function toggleCommunityLike(publishedId, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (!state.user) { api.showToast?.('Sign in to like Fakemon.', 'warning'); return; }
+    const client = await api.getClient();
+    const row = ensureCommunityState().mons.find(r => r.id === publishedId);
+    const liked = !!row?.liked_by_me;
+    if (liked) {
+        const { error } = await client.from('mon_likes').delete().eq('mon_id', publishedId).eq('user_id', state.user.id);
+        if (error) { api.showToast?.('Could not remove like: ' + error.message, 'error'); return; }
+    } else {
+        const { error } = await client.from('mon_likes').insert({ mon_id: publishedId, user_id: state.user.id });
+        if (error) { api.showToast?.('Could not like this Fakemon: ' + error.message, 'error'); return; }
+    }
+    if (row) {
+        row.liked_by_me = !liked;
+        row.like_count = Math.max(0, Number(row.like_count || 0) + (liked ? -1 : 1));
+    }
+    renderCommunityGrid();
 }
 
 // ==================== COMMENTS ====================
@@ -360,6 +408,12 @@ async function postComment(publishedId, body) {
     };
     const { error } = await client.from('mon_comments').insert(payload);
     if (error) { log.error('COMMUNITY', 'Comment failed', error); api.showToast?.('Comment failed: ' + error.message, 'error'); return; }
+    try {
+        const client = await api.getClient();
+        const viewerKey = getCommunityViewerKey();
+        const { data: nextViewCount, error: viewError } = await client.rpc('increment_published_mon_view', { p_published_id: publishedId, p_viewer_key: viewerKey });
+        if (!viewError && Number.isFinite(Number(nextViewCount))) row.view_count = Number(nextViewCount);
+    } catch {}
     await fetchComments(publishedId);
     renderMonComments();
 
@@ -496,18 +550,18 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-const COMMUNITY_SORT_KEY = 'woogidex.community.sort.v1';
+const COMMUNITY_SORT_KEY = 'woogidex.community.sort.v2';
 
 function getCommunityPrefs() {
     const cs = ensureCommunityState();
     try {
         const saved = JSON.parse(localStorage.getItem(COMMUNITY_SORT_KEY) || 'null');
         if (saved) {
-            cs.sortBy = ['published','name','author','number'].includes(saved.sortBy) ? saved.sortBy : 'published';
+            cs.sortBy = ['activity','likes','comments','views','published','name','author','number'].includes(saved.sortBy) ? saved.sortBy : 'activity';
             cs.sortOrder = saved.sortOrder === 'asc' ? 'asc' : 'desc';
         }
     } catch {}
-    return { sortBy: cs.sortBy || 'published', sortOrder: cs.sortOrder === 'asc' ? 'asc' : 'desc' };
+    return { sortBy: cs.sortBy || 'activity', sortOrder: cs.sortOrder === 'asc' ? 'asc' : 'desc' };
 }
 
 function applyCommunityPrefsToUI() {
@@ -524,7 +578,7 @@ function applyCommunityPrefsToUI() {
 
 function changeCommunitySort() {
     const cs = ensureCommunityState();
-    cs.sortBy = document.getElementById('community-sort-by')?.value || 'published';
+    cs.sortBy = document.getElementById('community-sort-by')?.value || 'activity';
     cs.sortOrder = document.getElementById('community-sort-order')?.value === 'asc' ? 'asc' : 'desc';
     try { localStorage.setItem(COMMUNITY_SORT_KEY, JSON.stringify({ sortBy: cs.sortBy, sortOrder: cs.sortOrder })); } catch {}
     renderCommunityGrid();
@@ -561,7 +615,11 @@ function renderCommunityGrid() {
     mons.sort((a, b) => {
         const am = a.fakemon_data || {}, bm = b.fakemon_data || {};
         let result = 0;
-        if (prefs.sortBy === 'name') result = String(am.name || '').localeCompare(String(bm.name || ''));
+        if (prefs.sortBy === 'activity') result = new Date(a.activity_at || a.published_at || 0).getTime() - new Date(b.activity_at || b.published_at || 0).getTime();
+        else if (prefs.sortBy === 'likes') result = Number(a.like_count || 0) - Number(b.like_count || 0);
+        else if (prefs.sortBy === 'comments') result = Number(a.comment_count || 0) - Number(b.comment_count || 0);
+        else if (prefs.sortBy === 'views') result = Number(a.view_count || 0) - Number(b.view_count || 0);
+        else if (prefs.sortBy === 'name') result = String(am.name || '').localeCompare(String(bm.name || ''));
         else if (prefs.sortBy === 'author') result = String(a.author_name || '').localeCompare(String(b.author_name || ''));
         else if (prefs.sortBy === 'number') result = getCommunityDexNumber(am) - getCommunityDexNumber(bm);
         else result = new Date(a.published_at || 0).getTime() - new Date(b.published_at || 0).getTime();
@@ -591,6 +649,11 @@ function renderCommunityGrid() {
                     ${mon.type1 ? `<span class="type-badge ${type1Class}">${mon.type1}</span>` : ''}
                     ${mon.type2 ? `<span class="type-badge ${type2Class}">${mon.type2}</span>` : ''}
                 </div>
+                <div class="community-card-stats" aria-label="Community activity">
+                    <button type="button" class="community-stat-btn" onclick="openMonDetail('${row.id}'); event.stopPropagation();" title="Comments"><i data-lucide="message-circle"></i><span>${row.comment_count || 0}</span></button>
+                    <span class="community-stat-btn community-stat-static" title="Views"><i data-lucide="eye"></i><span>${row.view_count || 0}</span></span>
+                    <button type="button" class="community-stat-btn community-like-btn${row.liked_by_me ? ' liked' : ''}" onclick="toggleCommunityLike('${row.id}', event)" title="${row.liked_by_me ? 'Unlike' : 'Like'}"><i data-lucide="heart"></i><span>${row.like_count || 0}</span></button>
+                </div>
                 <div class="community-card-author">
                     ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">${escapeHtml(row.author_name)}</span>
@@ -600,6 +663,20 @@ function renderCommunityGrid() {
         `;
     }).join('');
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function getCommunityViewerKey() {
+    const keyName = 'woogidex.community.viewer.v1';
+    try {
+        let key = localStorage.getItem(keyName);
+        if (!key) {
+            key = (crypto?.randomUUID ? crypto.randomUUID() : `viewer-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+            localStorage.setItem(keyName, key);
+        }
+        return state.user?.id ? `user:${state.user.id}` : `anon:${key}`;
+    } catch {
+        return state.user?.id ? `user:${state.user.id}` : null;
+    }
 }
 
 // ==================== UI: detail page ("warp" like the Share page) ====================
@@ -665,6 +742,13 @@ async function openMonDetail(publishedId, options = {}) {
 
     document.getElementById('mon-detail-comments').innerHTML = '<div class="community-loading">Loading comments…</div>';
     if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    try {
+        const client = await api.getClient();
+        const viewerKey = getCommunityViewerKey();
+        const { data: nextViewCount, error: viewError } = await client.rpc('increment_published_mon_view', { p_published_id: publishedId, p_viewer_key: viewerKey });
+        if (!viewError && Number.isFinite(Number(nextViewCount))) row.view_count = Number(nextViewCount);
+    } catch {}
 
     await fetchComments(publishedId);
     renderMonComments();
@@ -782,5 +866,5 @@ export {
     fetchComments, postComment, deleteComment,
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal, acceptCommunityRules,
     openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment, handleCommunityHashRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
-    importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu,
+    importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu, toggleCommunityLike,
 };
