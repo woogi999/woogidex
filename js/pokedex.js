@@ -971,7 +971,6 @@ import { POKEMON_COLORS } from './data.js';
                             <button onclick="editFakemon('${f.id}'); event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
                             ${inFolder ? `<button onclick="moveFakemonOutOfFolder('${f.id}', event)" title="Remove from folder"><i data-lucide="folder-output" style="width:14px;height:14px;"></i></button>` : ''}
                             <button onclick="duplicateFakemon('${f.id}', event)" title="Duplicate"><i data-lucide="copy" style="width:14px;height:14px;"></i></button>
-                            <button onclick="publishFakemon('${f.id}'); event.stopPropagation();" title="Publish to Community"><i data-lucide="upload" style="width:14px;height:14px;"></i></button>
                             <div class="collection-card-export-wrap">
                                 <button onclick="toggleCollectionFakemonExportMenu('${f.id}', event)" title="Export"><i data-lucide="download" style="width:14px;height:14px;"></i></button>
                                 <div class="collection-card-export-menu" id="fakemon-export-menu-${f.id}" style="display:none;">

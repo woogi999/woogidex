@@ -68,12 +68,11 @@ function normalizeCollections() {
 
 
         function autoSave(immediate) {
-            // Shared-link previews and Community Hub previews are read-only.
-            // Loading a Fakemon into the editor for either is only for
-            // rendering/rehydration and must never create or overwrite a
-            // collection entry through the normal autosave pipeline.
-            if (state.isShareRoute || state.isCommunityPreview) {
-                log.debug('STORAGE', 'autoSave skipped during read-only preview');
+            // Shared-link previews are read-only. Loading a shared Fakemon into the
+            // editor is only for rendering/rehydration and must never create or
+            // overwrite a collection entry through the normal autosave pipeline.
+            if (state.isShareRoute) {
+                log.debug('STORAGE', 'autoSave skipped during shared preview');
                 return;
             }
             log.debug('STORAGE', 'autoSave requested', { immediate: !!immediate, editingId: state.editingId });
@@ -243,79 +242,6 @@ function normalizeCollections() {
                 log.info('STORAGE', 'Collection saved');
             }
             catch (e) { log.error('STORAGE', 'Collection save failed', e); api.showToast('Warning: Storage limit may be reached. Export your collection!', 'error'); }
-
-            // Mirror to Supabase when the user is logged in. This is fire-and-forget
-            // and never blocks the local (IndexedDB) save above — local storage is
-            // always the source of truth for immediate UI responsiveness; the cloud
-            // copy is best-effort backup/sync across devices.
-            pushToCloud();
-        }
-
-        // ==================== CLOUD SYNC (Supabase) ====================
-        let cloudPushTimer = null;
-
-        function pushToCloud() {
-            if (!state.user) return; // not logged in — local-only mode
-            if (cloudPushTimer) clearTimeout(cloudPushTimer);
-            cloudPushTimer = setTimeout(async () => {
-                cloudPushTimer = null;
-                try {
-                    const client = await api.getClient();
-                    const payload = {
-                        user_id: state.user.id,
-                        fakemon_db: state.fakemonDB,
-                        folders: state.folders,
-                        custom_moves: state.customMoves,
-                        custom_abilities: state.customAbilities,
-                        custom_items: state.customItems,
-                        updated_at: new Date().toISOString()
-                    };
-                    const { error } = await client.from('collections').upsert(payload, { onConflict: 'user_id' });
-                    if (error) throw error;
-                    log.info('STORAGE', 'Cloud sync: pushed', { fakemons: state.fakemonDB.length });
-                } catch (e) {
-                    log.error('STORAGE', 'Cloud sync: push failed', e);
-                    api.showToast?.('Cloud sync failed — your data is still saved locally.', 'warning');
-                }
-            }, 1200); // debounce so rapid edits don't spam the network
-        }
-
-        // Pulls the logged-in user's cloud collection and adopts it as the local
-        // collection. Called right after sign-in. If the user has local data from
-        // before logging in (e.g. they made a few fakemon anonymously) and the
-        // cloud is empty, we push the local data up instead of wiping it.
-        async function pullFromCloud() {
-            if (!state.user) return;
-            try {
-                const client = await api.getClient();
-                const { data, error } = await client
-                    .from('collections')
-                    .select('*')
-                    .eq('user_id', state.user.id)
-                    .maybeSingle();
-                if (error) throw error;
-
-                const hasLocalData = state.fakemonDB.length > 0;
-                const hasCloudData = data && Array.isArray(data.fakemon_db) && data.fakemon_db.length > 0;
-
-                if (hasCloudData) {
-                    state.fakemonDB = data.fakemon_db || [];
-                    state.folders = data.folders || [];
-                    state.customMoves = data.custom_moves || [];
-                    state.customAbilities = data.custom_abilities || [];
-                    state.customItems = data.custom_items || [];
-                    normalizeCollections();
-                    await saveToStorage(); // caches the cloud copy into IndexedDB too
-                    log.info('STORAGE', 'Cloud sync: pulled', { fakemons: state.fakemonDB.length });
-                } else if (hasLocalData) {
-                    // Nothing in the cloud yet, but there's local data — adopt it as
-                    // this account's collection by pushing it up immediately.
-                    pushToCloud();
-                }
-            } catch (e) {
-                log.error('STORAGE', 'Cloud sync: pull failed', e);
-                api.showToast?.('Could not load your cloud collection — showing local data.', 'warning');
-            }
         }
         async function loadFromStorage() {
             const done = log.time('STORAGE', 'loadFromStorage');
@@ -449,4 +375,4 @@ function normalizeCollections() {
 
         
 
-export { autoSave, buildFakemonObject, updateSaveStatus, saveFakemon, deleteFakemon, duplicateFakemon, saveToStorage, loadFromStorage, migrateLearnsetsToMinimal, migrateCustomLibrariesFromCollection, pushToCloud, pullFromCloud };
+export { autoSave, buildFakemonObject, updateSaveStatus, saveFakemon, deleteFakemon, duplicateFakemon, saveToStorage, loadFromStorage, migrateLearnsetsToMinimal, migrateCustomLibrariesFromCollection };
