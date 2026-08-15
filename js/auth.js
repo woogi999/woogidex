@@ -55,12 +55,42 @@ async function fetchProfile(userId) {
     return data;
 }
 
+async function fetchBadges(userId) {
+    const client = await getClient();
+    const { data, error } = await client.from('profile_badges').select('badge_key').eq('user_id', userId);
+    if (error) { log.error('AUTH', 'Badge fetch failed', error); return []; }
+    return (data || []).map(row => row.badge_key);
+}
+
 async function attachProfile(user) {
     if (!user) return user;
     const profile = await fetchProfile(user.id);
     user.username = profile?.username || '';
     user.usernameHistory = profile?.username_history || [];
+    user.role = profile?.role || 'user';
+    user.badges = await fetchBadges(user.id);
     return user;
+}
+
+// ==================== ROLE / PERMISSION HELPERS ====================
+// Thin wrappers around state.user.role so the rest of the app never has to
+// think about the profiles.role string directly. Client-side checks are for
+// UI only (hide/show buttons) - the actual enforcement lives in Supabase RLS
+// policies, so a user can never truly bypass this by editing JS.
+function currentRole() {
+    return state.user?.role || 'user';
+}
+
+function isStaff() {
+    return ['moderator', 'admin', 'developer'].includes(currentRole());
+}
+
+function isAdminOrDev() {
+    return ['admin', 'developer'].includes(currentRole());
+}
+
+function canDeleteAnyContent() {
+    return isStaff();
 }
 
 // ==================== STATE ====================
@@ -610,7 +640,11 @@ function updateAuthUI() {
         signedInEl.style.display = 'flex';
         if (nameEl) nameEl.textContent = state.user.displayName || state.user.username || state.user.email;
         if (sidebarProfile) sidebarProfile.style.display = 'block';
-        if (sidebarProfileName) sidebarProfileName.textContent = state.user.displayName || state.user.username || 'Profile';
+        if (sidebarProfileName) {
+            const nameText = state.user.displayName || state.user.username || 'Profile';
+            const nameSafe = nameText.replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+            sidebarProfileName.innerHTML = `${nameSafe} ` + (state.user.badges || []).map(b => api.renderBadge ? api.renderBadge(b, 12) : '').join('');
+        }
         if (sidebarProfileUsername) sidebarProfileUsername.textContent = state.user.username ? '@' + state.user.username : 'Edit profile';
         if (sidebarAvatarImg && sidebarAvatarFallback) {
             if (state.user.avatarUrl) { sidebarAvatarImg.src = state.user.avatarUrl; sidebarAvatarImg.style.display = 'block'; sidebarAvatarFallback.style.display = 'none'; }
@@ -665,5 +699,6 @@ export {
     openAuthModal, closeAuthModal, toggleAuthMode, submitAuthForm, openTermsModal, closeTermsModal,
     openProfileModal, closeProfileModal, onProfileAvatarFileChosen, submitProfileForm,
     submitUsernameForm, submitEmailForm, submitRemoveEmail,
-    handleSignOutClick, updateAuthUI, promptUsernameIfMissing
+    handleSignOutClick, updateAuthUI, promptUsernameIfMissing,
+    fetchBadges, currentRole, isStaff, isAdminOrDev, canDeleteAnyContent
 };

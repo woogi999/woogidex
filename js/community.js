@@ -1,5 +1,6 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
+import { renderBadge, renderRoleTag } from './data.js';
 
 // ==================== STATE ====================
 // state.community.* is initialized lazily (see initAuth-style note in auth.js -
@@ -81,6 +82,7 @@ async function publishSnapshot(mon, rulesChecked = false) {
         user_id: state.user.id,
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
+        author_role: state.user.role || 'user',
         source_fakemon_id: String(mon.id),
         fakemon_data: mon
     };
@@ -115,13 +117,18 @@ document.addEventListener('click', (event) => {
     if (!event.target.closest('.export-as-wrap')) closeShareMenu();
 });
 
+// Owners "unpublish" their own mon; staff can remove ANY mon as a moderation
+// action (RLS on published_mons allows is_staff() to delete any row - see
+// SUPABASE_SETUP.md). Same eq('user_id', ...) guard logic as deleteComment.
 async function unpublishMon(publishedId, event) {
     if (event) event.stopPropagation();
     if (!state.user) return;
     const client = await api.getClient();
-    const { error } = await client.from('published_mons').delete().eq('id', publishedId).eq('user_id', state.user.id);
+    let query = client.from('published_mons').delete().eq('id', publishedId);
+    if (!api.isStaff?.()) query = query.eq('user_id', state.user.id);
+    const { error } = await query;
     if (error) { log.error('COMMUNITY', 'Unpublish failed', error); api.showToast?.('Could not unpublish: ' + error.message, 'error'); return; }
-    api.showToast?.('Removed from Community Hub', 'info');
+    api.showToast?.(api.isStaff?.() ? 'Removed by staff' : 'Removed from Community Hub', 'info');
     const cs = ensureCommunityState();
     if (cs.openMonId === publishedId) {
         // We were viewing the mon we just unpublished - return to the grid
@@ -196,6 +203,7 @@ async function postComment(publishedId, body) {
         user_id: state.user.id,
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
+        author_role: state.user.role || 'user',
         body: text
     };
     const { error } = await client.from('mon_comments').insert(payload);
@@ -204,10 +212,17 @@ async function postComment(publishedId, body) {
     renderMonComments();
 }
 
+// Staff (moderator/admin/developer) can delete any comment; everyone else
+// only their own. The .eq('user_id', ...) guard is dropped for staff since
+// RLS on mon_comments already allows is_staff() to delete any row - trying
+// to also filter by user_id here would just make staff deletes silently
+// no-op on comments they don't own.
 async function deleteComment(commentId, publishedId) {
     if (!state.user) return;
     const client = await api.getClient();
-    const { error } = await client.from('mon_comments').delete().eq('id', commentId).eq('user_id', state.user.id);
+    let query = client.from('mon_comments').delete().eq('id', commentId);
+    if (!api.isStaff?.()) query = query.eq('user_id', state.user.id);
+    const { error } = await query;
     if (error) { api.showToast?.('Could not delete comment: ' + error.message, 'error'); return; }
     await fetchComments(publishedId);
     renderMonComments();
@@ -393,9 +408,10 @@ function renderCommunityGrid() {
         const type1Class = mon.type1 ? `type-${mon.type1.toLowerCase()}` : '';
         const type2Class = mon.type2 ? `type-${mon.type2.toLowerCase()}` : '';
         const isMine = state.user && row.user_id === state.user.id;
+        const canDelete = isMine || api.isStaff?.();
         return `
             <div class="collection-card community-card" onclick="openMonDetail('${row.id}')">
-                ${isMine ? `<button class="card-delete-btn community-unpublish-btn" onclick="unpublishMon('${row.id}', event); event.stopPropagation();" title="Unpublish"><i data-lucide="x" style="width:14px;height:14px;"></i></button>` : ''}
+                ${canDelete ? `<button class="card-delete-btn community-unpublish-btn" onclick="unpublishMon('${row.id}', event); event.stopPropagation();" title="${isMine ? 'Unpublish' : 'Remove (staff)'}"><i data-lucide="x" style="width:14px;height:14px;"></i></button>` : ''}
                 <div class="card-art">${mon.artwork ? `<img src="${mon.artwork}" alt="${escapeHtml(mon.name)}" draggable="false">` : '<span class="placeholder">ART</span>'}</div>
                 <div class="card-name">${escapeHtml(mon.name)}</div>
                 <div class="card-types">
@@ -405,6 +421,7 @@ function renderCommunityGrid() {
                 <div class="community-card-author">
                     ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span>${escapeHtml(row.author_name)}</span>
+                    ${renderRoleTag(row.author_role)}
                 </div>
             </div>
         `;
@@ -456,10 +473,14 @@ async function openMonDetail(publishedId) {
     document.getElementById('community-detail-author').innerHTML = `
         ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
         <span>Published by ${escapeHtml(row.author_name)}</span>
+        ${renderRoleTag(row.author_role)}
     `;
 
     const isMine = state.user && row.user_id === state.user.id;
-    document.getElementById('community-detail-unpublish-btn').style.display = isMine ? 'inline-flex' : 'none';
+    const canDelete = isMine || api.isStaff?.();
+    const unpublishBtn = document.getElementById('community-detail-unpublish-btn');
+    unpublishBtn.style.display = canDelete ? 'inline-flex' : 'none';
+    unpublishBtn.title = isMine ? 'Unpublish' : 'Remove (staff)';
 
     document.getElementById('mon-detail-comment-box').style.display = state.user ? 'flex' : 'none';
     document.getElementById('mon-detail-comment-signin-hint').style.display = state.user ? 'none' : 'block';
@@ -553,13 +574,15 @@ function renderMonComments() {
     if (!cs.comments.length) { container.innerHTML = '<div class="community-empty">No comments yet.</div>'; return; }
     container.innerHTML = cs.comments.map(c => {
         const mine = state.user && c.user_id === state.user.id;
+        const canDelete = mine || api.isStaff?.();
         return `
             <div class="mon-comment">
                 <div class="mon-comment-header">
                     ${c.author_avatar_url ? `<img class="community-mini-avatar" src="${c.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((c.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span class="mon-comment-author">${escapeHtml(c.author_name)}</span>
+                    ${renderRoleTag(c.author_role)}
                     <span class="mon-comment-time">${new Date(c.created_at).toLocaleString()}</span>
-                    ${mine ? `<button class="mon-comment-delete" onclick="deleteComment('${c.id}', '${cs.openMonId}')" title="Delete"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
+                    ${canDelete ? `<button class="mon-comment-delete" onclick="deleteComment('${c.id}', '${cs.openMonId}')" title="${mine ? 'Delete' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
                 </div>
                 <div class="mon-comment-body">${escapeHtml(c.body)}</div>
             </div>

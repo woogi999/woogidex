@@ -87,4 +87,47 @@ const TYPE_EFFECTIVENESS = {
         }
 
 
-export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS };
+// ==================== STAFF ROLES & BADGES ====================
+// `role` lives on profiles.role (one value per user, drives permissions).
+// `badges` are cosmetic/earned tags, many-per-user, stored in profile_badges.
+const ROLES = {
+    user:      { label: 'User',      rank: 0, color: '#6b7280' },
+    trusted:   { label: 'Trusted',   rank: 1, color: '#22c55e' },
+    moderator: { label: 'Moderator', rank: 2, color: '#3b82f6', canDeleteAny: true },
+    admin:     { label: 'Admin',     rank: 3, color: '#ef4444', canDeleteAny: true, canManageRoles: true, canManageBadges: true },
+    developer: { label: 'Developer', rank: 4, color: '#a855f7', canDeleteAny: true, canManageRoles: true, canManageBadges: true }
+};
+
+function roleAtLeast(role, minRole) {
+    return (ROLES[role]?.rank ?? 0) >= (ROLES[minRole]?.rank ?? 0);
+}
+
+function canDeleteAnyContent(role) {
+    return !!ROLES[role]?.canDeleteAny;
+}
+
+const BADGES = {
+    admin:        { label: 'Admin',        icon: '🛡️', color: '#ef4444', tooltip: 'Site Administrator' },
+    developer:    { label: 'Developer',    icon: '🛠️', color: '#a855f7', tooltip: 'Site Developer' },
+    moderator:    { label: 'Moderator',    icon: '🧹', color: '#3b82f6', tooltip: 'Community Moderator' },
+    beta_tester:  { label: 'Beta Tester',  icon: '🧪', color: '#06b6d4', tooltip: 'Helped test the site early on' },
+    artist:       { label: 'Artist',       icon: '🎨', color: '#ec4899', tooltip: 'Recognized for standout Fakemon art' },
+    contributor:  { label: 'Contributor',  icon: '⭐', color: '#eab308', tooltip: 'Notable community contributor' },
+    veteran:      { label: 'Veteran',      icon: '🏆', color: '#f97316', tooltip: 'Long-time member' }
+};
+
+function renderBadge(badgeKey, size) {
+    size = size || 14;
+    const b = BADGES[badgeKey];
+    if (!b) return '';
+    return `<span class="profile-badge" title="${b.tooltip}" style="font-size:${size}px;">${b.icon}</span>`;
+}
+
+function renderRoleTag(role) {
+    const r = ROLES[role];
+    if (!r || role === 'user') return '';
+    return `<span class="role-tag" style="color:${r.color};border-color:${r.color};">${r.label}</span>`;
+}
+
+export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
+    ROLES, BADGES, roleAtLeast, canDeleteAnyContent, renderBadge, renderRoleTag };

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Deliberately kept out of search engines / casual discovery. This is NOT
+     a security measure by itself (see admin.js's note on that) — it just
+     stops the page from showing up in a Google search. -->
+<meta name="robots" content="noindex, nofollow">
+<title>Staff Panel</title>
+<style>
+    :root {
+        --bg-dark: #f5f5f7; --bg-card: #ffffff; --bg-panel: #f0f0f2; --bg-input: #ffffff;
+        --accent: #333333; --text-primary: #1a1a1a; --text-secondary: #555555; --text-muted: #888888;
+        --border: #d0d0d5; --border-light: #e8e8ec;
+        --success: #2d8a3e; --danger: #c0392b; --info: #2c5aa0;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg-dark: #0f0f12; --bg-card: #1a1a20; --bg-panel: #23232a; --bg-input: #1e1e24;
+            --accent: #e0e0e5; --text-primary: #e8e8ec; --text-secondary: #a0a0a8; --text-muted: #6b6b75;
+            --border: #3a3a42; --border-light: #2a2a30;
+            --success: #3dbb52; --danger: #e74c3c; --info: #5b8ee0;
+        }
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--bg-dark); color: var(--text-primary); min-height: 100vh;
+    }
+    .admin-shell { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
+    .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .admin-header h1 { font-size: 22px; margin: 0; }
+    .admin-header .admin-header-sub { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+
+    .admin-gate-msg {
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+        padding: 40px 24px; text-align: center; color: var(--text-secondary);
+    }
+    .admin-gate-msg strong { display: block; font-size: 18px; color: var(--text-primary); margin-bottom: 8px; }
+    .admin-gate-msg a { color: var(--info); }
+
+    #admin-panel { display: none; }
+
+    .admin-search-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+    .admin-search-bar input {
+        flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+        background: var(--bg-input); color: var(--text-primary); font-size: 14px;
+    }
+    .admin-search-bar button {
+        padding: 10px 18px; border-radius: 8px; border: none; background: var(--accent);
+        color: var(--bg-dark); font-weight: 600; cursor: pointer;
+    }
+
+    .admin-empty { color: var(--text-muted); padding: 20px 0; }
+    .admin-error { color: var(--danger); }
+
+    .admin-user-row {
+        background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 10px;
+        padding: 14px 16px; margin-bottom: 10px;
+    }
+    .admin-user-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 15px; }
+    .admin-you-tag {
+        font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted);
+        border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px;
+    }
+    .admin-user-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+    .admin-field-label {
+        display: flex; flex-direction: column; gap: 4px; font-size: 11px;
+        color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em;
+    }
+    .admin-field-label select {
+        padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
+        background: var(--bg-input); color: var(--text-primary); font-size: 13px; min-width: 130px;
+    }
+    .admin-field-label select:disabled { opacity: .5; cursor: not-allowed; }
+
+    .admin-badge-grid { display: flex; flex-wrap: wrap; gap: 8px 14px; max-width: 480px; }
+    .admin-badge-check {
+        display: flex; align-items: center; gap: 5px; font-size: 12px;
+        color: var(--text-secondary); cursor: pointer; user-select: none;
+    }
+    .admin-badge-check input { cursor: pointer; }
+
+    .admin-toast {
+        display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        padding: 10px 18px; border-radius: 8px; background: var(--bg-panel); border: 1px solid var(--border);
+        color: var(--text-primary); font-size: 13px; z-index: 100;
+    }
+    .admin-toast-success { border-color: var(--success); }
+    .admin-toast-error { border-color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+    <div class="admin-header">
+        <div>
+            <h1>Staff Panel</h1>
+            <div class="admin-header-sub">Manage roles &amp; badges</div>
+        </div>
+    </div>
+
+    <div id="admin-gate-signedout" class="admin-gate-msg" style="display:none;">
+        <strong>Sign in required</strong>
+        Sign in on the main site first, then reload this page.
+    </div>
+
+    <div id="admin-gate-forbidden" class="admin-gate-msg" style="display:none;">
+        <strong>Access denied</strong>
+        Your account doesn't have staff permissions.
+    </div>
+
+    <div id="admin-panel">
+        <form id="admin-search-form" class="admin-search-bar">
+            <input id="admin-search-input" type="text" placeholder="Search by username…" autocomplete="off">
+            <button type="submit">Search</button>
+        </form>
+        <div id="admin-results"></div>
+    </div>
+</div>
+
+<div id="admin-toast" class="admin-toast"></div>
+
+<script type="module" src="admin.js"></script>
+</body>
+</html>

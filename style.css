@@ -4038,3 +4038,22 @@
 @media (prefers-reduced-motion: reduce) {
     .modal-overlay, .modal, .overlay-dark, .sidebar-backdrop, .app-sidebar { transition: none !important; }
 }
+
+/* ==================== STAFF ROLES & BADGES ==================== */
+.role-tag {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 6px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    margin-left: 4px;
+    white-space: nowrap;
+}
+.profile-badge {
+    margin-left: 2px;
+    line-height: 1;
+    vertical-align: middle;
+    cursor: default;
+}
