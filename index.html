@@ -23,6 +23,18 @@
                 <button class="btn btn-secondary" onclick="toggleDarkMode()" id="dark-mode-btn" title="Toggle Dark Mode" aria-label="Toggle Dark Mode"><i data-lucide="sun" style="width:18px;height:18px;"></i></button>
                 <button class="btn btn-secondary btn-icon" onclick="openSettings()" id="settings-btn" title="Settings" aria-label="Settings"><i data-lucide="settings" style="width:18px;height:18px;"></i></button>
                 <button class="btn btn-secondary" onclick="showCollection()">My Collection</button>
+                <button class="btn btn-secondary" onclick="openCommunityHub()"><i data-lucide="users" style="width:16px;height:16px;"></i> Community</button>
+                <div id="auth-signed-out" style="display:flex;">
+                    <button class="btn btn-secondary" onclick="openAuthModal('signin')" id="auth-signin-btn"><i data-lucide="user" style="width:16px;height:16px;"></i> Sign In</button>
+                </div>
+                <div id="auth-signed-in" class="auth-signed-in" style="display:none;align-items:center;gap:8px;">
+                    <button class="auth-avatar-btn" onclick="openProfileModal()" title="Edit Profile">
+                        <img id="auth-avatar-img" class="auth-avatar-img" style="display:none;" alt="">
+                        <span id="auth-avatar-fallback" class="auth-avatar-fallback"></span>
+                    </button>
+                    <span class="auth-user-email" id="auth-user-name"></span>
+                    <button class="btn btn-secondary btn-sm" onclick="handleSignOutClick()">Sign Out</button>
+                </div>
             </div>
         </header>
 
@@ -61,7 +73,13 @@
                     <div>
                         <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px;">
                             <div style="display:flex;gap:8px;align-items:center;">
-                                <button class="btn btn-secondary btn-sm" type="button" onclick="shareFakemon()">Share</button>
+                                <div class="export-as-wrap" style="position:relative;display:inline-block;">
+                                    <button class="btn btn-secondary btn-sm" type="button" onclick="toggleShareMenu(event)">Share <span style="font-size:10px;">▼</span></button>
+                                    <div id="share-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:210px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
+                                        <button class="export-as-menu-item" type="button" onclick="shareFakemon(); closeShareMenu();">Copy Share Link</button>
+                                        <button class="export-as-menu-item" type="button" onclick="publishCurrentEditorFakemon(); closeShareMenu();">Publish to Community</button>
+                                    </div>
+                                </div>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
                                 <div class="export-as-wrap" style="position:relative;display:inline-block;">
                                 <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
@@ -514,6 +532,60 @@
                 </div>
             </div>
 
+            <!-- Community Hub View -->
+            <div id="community-view" style="display:none;">
+                <div class="panel">
+                    <div class="collection-title-row" id="community-header-row">
+                        <div class="collection-title-left">
+                            <h2 class="collection-heading">Community Hub</h2>
+                        </div>
+                        <button class="btn btn-secondary" onclick="closeCommunityHub()"><i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Back to Collection</button>
+                    </div>
+                    <div id="community-grid" class="collection-grid"></div>
+                </div>
+            </div>
+
+            <!-- Community Fakemon Detail View ("warp" page, mirrors Share View) -->
+            <div id="community-detail-view" style="display:none;">
+                <div class="share-view-shell">
+                    <div class="share-view-header">
+                        <div>
+                            <div class="share-view-kicker">COMMUNITY FAKEMON</div>
+                            <h2 id="community-detail-title">Fakemon</h2>
+                            <div class="community-card-author" id="community-detail-author"></div>
+                        </div>
+                        <div class="share-view-actions">
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="closeMonDetail()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="shareFakemon()">Copy Share Link</button>
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="importCommunityMonToCollection()">Import to My Collection</button>
+                            <button class="btn btn-secondary btn-sm community-unpublish-inline" id="community-detail-unpublish-btn" type="button" onclick="unpublishOpenCommunityMon()" style="display:none;">Unpublish</button>
+                            <div class="export-as-wrap" style="position:relative;display:inline-block;">
+                                <button class="btn btn-primary btn-sm" type="button" onclick="toggleCommunityExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
+                                <div id="community-export-as-menu" class="export-as-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1000;min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);">
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeCommunityExportMenu();">Export as PNG</button>
+                                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeCommunityExportMenu();">Export as Plain Text</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeCommunityExportMenu();">Export as JSON</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportShowdownMod(); closeCommunityExportMenu();">Export as Showdown Mod</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportEssentialsMod(); closeCommunityExportMenu();">Export as Essentials Mod</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="community-detail-board"></div>
+
+                    <div class="section-divider"></div>
+                    <h4 class="mon-detail-comments-heading">Comments</h4>
+                    <div id="mon-detail-comments" class="mon-detail-comments"></div>
+                    <div id="mon-detail-comment-box" class="mon-detail-comment-box" style="display:none;">
+                        <textarea id="mon-detail-comment-input" placeholder="Say something nice…" maxlength="1000"></textarea>
+                        <button class="btn btn-primary" onclick="submitMonComment()">Post</button>
+                    </div>
+                    <p id="mon-detail-comment-signin-hint" class="mon-detail-signin-hint" style="display:none;">
+                        <a href="#" onclick="openAuthModal('signin'); return false;">Sign in</a> to leave a comment.
+                    </p>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -527,6 +599,62 @@
                 <input id="evolution-node-search" type="text" placeholder="Search Pokemon by name..." autocomplete="off" oninput="renderEvolutionNodeChooser()">
             </div>
             <div id="evolution-node-list" class="evolution-node-list"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="auth-modal" data-mode="signin">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Sign In</h3>
+                <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-error" id="auth-modal-error"></p>
+                <div class="form-group">
+                    <label for="auth-email">Email</label>
+                    <input type="email" id="auth-email" autocomplete="email" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <button class="btn btn-primary auth-submit-btn" id="auth-submit-btn" onclick="submitAuthForm()">Sign In</button>
+                <a href="#" class="auth-switch-link" id="auth-switch-link" onclick="toggleAuthMode(); return false;">Don't have an account? Sign up</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="profile-modal">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3>Edit Profile</h3>
+                <button class="modal-close" onclick="closeProfileModal()" aria-label="Close">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-error" id="profile-modal-error"></p>
+
+                <div class="profile-avatar-row">
+                    <label for="profile-avatar-file" class="profile-avatar-picker" title="Change picture">
+                        <img id="profile-avatar-preview" class="profile-avatar-preview" style="display:none;" alt="">
+                        <span id="profile-avatar-placeholder" class="profile-avatar-placeholder">
+                            <i data-lucide="camera" style="width:20px;height:20px;"></i>
+                        </span>
+                    </label>
+                    <input type="file" id="profile-avatar-file" accept="image/*" style="display:none;" onchange="onProfileAvatarFileChosen(this)">
+                    <div class="profile-avatar-hint">JPG, PNG, or GIF. Max 2MB.</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="profile-display-name">Display Name</label>
+                    <input type="text" id="profile-display-name" maxlength="40" placeholder="e.g., AshK">
+                </div>
+
+                <button class="btn btn-primary auth-submit-btn" id="profile-submit-btn" onclick="submitProfileForm()">Save Profile</button>
+            </div>
         </div>
     </div>
 
