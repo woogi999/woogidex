@@ -523,8 +523,10 @@
                     <div class="profile-page-header profile-page-header-clean">
                         <div></div>
                         <div class="profile-page-header-actions">
-                            <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn btn-secondary btn-sm" id="profile-back-btn" type="button" onclick="showCollection()"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn btn-secondary btn-sm" id="profile-edit-cancel-btn" type="button" style="display:none;" onclick="cancelEditOwnProfile()"><i data-lucide="x"></i> Cancel</button>
                             <button class="btn btn-primary btn-sm" id="profile-edit-btn" type="button" style="display:none;" onclick="editOwnProfile()"><i data-lucide="pencil"></i> Edit Profile</button>
+                            <button class="btn btn-primary btn-sm" id="profile-edit-save-btn" type="button" style="display:none;" onclick="submitProfileForm()"><i data-lucide="save"></i> Save Profile</button>
                         </div>
                     </div>
 
@@ -584,7 +586,7 @@
                                 <div class="form-group"><label for="profile-display-name">Display Name</label><input type="text" id="profile-display-name" maxlength="40" placeholder="e.g., AshK"></div>
                                 <div class="form-group"><label for="profile-bio">Bio</label><textarea id="profile-bio" maxlength="280" rows="4" placeholder="Tell people a little about yourself..."></textarea><div class="profile-field-hint">280 characters max.</div></div>
                                 <p class="auth-modal-error" id="profile-modal-error"></p>
-                                <div class="profile-edit-actions"><button class="btn btn-secondary" type="button" onclick="cancelEditOwnProfile()">Cancel</button><button class="btn btn-primary auth-submit-btn" id="profile-submit-btn" onclick="submitProfileForm()">Save Profile</button></div>
+                                <div class="profile-edit-actions" style="display:none;"><button class="btn btn-secondary" type="button" onclick="cancelEditOwnProfile()">Cancel</button><button class="btn btn-primary auth-submit-btn" id="profile-submit-btn" onclick="submitProfileForm()">Save Profile</button></div>
                             </section>
 
                             <section class="panel profile-page-card">

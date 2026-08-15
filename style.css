@@ -4040,17 +4040,7 @@
 }
 
 /* ==================== STAFF ROLES & BADGES ==================== */
-.role-tag {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    padding: 1px 6px;
-    border: 1px solid currentColor;
-    border-radius: 999px;
-    margin-left: 4px;
-    white-space: nowrap;
-}
+.role-tag { display:none; }
 .profile-badge {
     margin-left: 3px;
     vertical-align: middle;
@@ -4063,6 +4053,65 @@
     gap: 3px;
     margin-left: 4px;
     vertical-align: middle;
+}
+
+.profile-badge-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    margin-left: 3px;
+    cursor: help;
+    outline: none;
+}
+.profile-badge-tooltip::after {
+    content: attr(data-badge-name) "\A" attr(data-badge-description);
+    white-space: pre-line;
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 9px);
+    transform: translateX(-50%) translateY(4px);
+    width: max-content;
+    max-width: 250px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    box-shadow: 0 8px 24px rgba(0,0,0,.22);
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: left;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    z-index: 1000;
+    transition: opacity .12s ease, transform .12s ease, visibility .12s ease;
+}
+.profile-badge-tooltip::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--border);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 1001;
+}
+.profile-badge-tooltip:hover::after,
+.profile-badge-tooltip:hover::before,
+.profile-badge-tooltip:focus-visible::after,
+.profile-badge-tooltip:focus-visible::before {
+    opacity: 1;
+    visibility: visible;
+}
+.profile-badge-tooltip:hover::after,
+.profile-badge-tooltip:focus-visible::after {
+    transform: translateX(-50%) translateY(0);
 }
 
 /* ==================== PROFILE PAGE ==================== */

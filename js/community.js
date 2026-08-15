@@ -1,6 +1,6 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
-import { renderBadgeRow, renderRoleTag } from './data.js';
+import { renderBadgeRow } from './data.js';
 
 // ==================== LIVE ROLES ====================
 // Roles are DB-driven now (see LIVE_PROFILES_AND_ROLES_SETUP.sql) so staff
@@ -39,10 +39,12 @@ async function attachLiveAuthorInfo(rows) {
     ensureCommunityState().rolesMap = await getRolesMap();
     if (!userIds.length) return rows;
 
-    const [{ data: profiles }, { data: badgeRows }] = await Promise.all([
+    const [{ data: profiles }, { data: badgeRows }, { data: badgeDefinitions }] = await Promise.all([
         client.from('profiles').select('id, username, display_name, avatar_url, role, display_badges').in('id', userIds),
-        client.from('profile_badges').select('user_id, badge_key').in('user_id', userIds)
+        client.from('profile_badges').select('user_id, badge_key').in('user_id', userIds),
+        client.from('badges').select('key, label, icon, color, description, rank').order('rank', { ascending: false })
     ]);
+    if (Array.isArray(badgeDefinitions) && badgeDefinitions.length) api.setBadgeDefinitions?.(badgeDefinitions);
 
     const profileById = {};
     (profiles || []).forEach(p => { profileById[p.id] = p; });
@@ -492,7 +494,6 @@ function renderCommunityGrid() {
                 <div class="community-card-author">
                     ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">${escapeHtml(row.author_name)}</span>
-                    ${renderRoleTag(row.author_role, ensureCommunityState().rolesMap)}
                     ${renderBadgeRow(row.author_badges, 13)}
                 </div>
             </div>
@@ -546,7 +547,6 @@ async function openMonDetail(publishedId) {
     document.getElementById('community-detail-author').innerHTML = `
         ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
         <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">Published by ${escapeHtml(row.author_name)}</span>
-        ${renderRoleTag(row.author_role, ensureCommunityState().rolesMap)}
         ${renderBadgeRow(row.author_badges, 13)}
     `;
 
@@ -654,7 +654,6 @@ function renderMonComments() {
                 <div class="mon-comment-header">
                     ${c.author_avatar_url ? `<img class="community-mini-avatar" src="${c.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((c.author_name || '?').charAt(0).toUpperCase())}</span>`}
                     <span class="mon-comment-author community-author-link" onclick="event.stopPropagation(); showUserProfile('${c.user_id}')">${escapeHtml(c.author_name)}</span>
-                    ${renderRoleTag(c.author_role, ensureCommunityState().rolesMap)}
                     ${renderBadgeRow(c.author_badges, 12)}
                     <span class="mon-comment-time">${new Date(c.created_at).toLocaleString()}</span>
                     ${canDelete ? `<button class="mon-comment-delete" onclick="deleteComment('${c.id}', '${cs.openMonId}')" title="${mine ? 'Delete' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>` : ''}

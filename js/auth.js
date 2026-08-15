@@ -62,6 +62,20 @@ async function fetchBadges(userId) {
     return (data || []).map(row => row.badge_key);
 }
 
+async function refreshBadgeDefinitions() {
+    try {
+        const client = await getClient();
+        const { data, error } = await client.from('badges').select('key, label, icon, color, description, rank').order('rank', { ascending: false });
+        if (error) throw error;
+        api.setBadgeDefinitions?.(data || []);
+        return data || [];
+    } catch (e) {
+        log.warn('AUTH', 'Could not load live badge definitions; using cached defaults', e);
+        return [];
+    }
+}
+
+
 async function attachProfile(user) {
     if (!user) return user;
     const profile = await fetchProfile(user.id);
@@ -69,7 +83,8 @@ async function attachProfile(user) {
     user.usernameHistory = profile?.username_history || [];
     user.role = profile?.role || 'user';
     user.badges = await fetchBadges(user.id);
-    user.displayBadges = Array.isArray(profile?.display_badges) ? profile.display_badges : user.badges.slice();
+    user.displayBadges = Array.isArray(profile?.display_badges) ? profile.display_badges : [];
+    await refreshBadgeDefinitions();
     return user;
 }
 
@@ -259,17 +274,43 @@ async function setUsername(username) {
 
 async function updateEmail(newEmail) {
     if (!state.user) throw new Error('You must be signed in.');
-    const email = (newEmail || '').trim();
-    if (!email || !email.includes('@')) throw new Error('Please enter a valid email address.');
-    if (state.user.hasRealEmail && email.toLowerCase() === state.user.email?.toLowerCase()) {
-        throw new Error('That\'s already your current email.');
+    const email = (newEmail || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Please enter a valid email address.');
+    if (state.user.hasRealEmail && email === state.user.email?.toLowerCase()) {
+        throw new Error("That's already your current email.");
     }
     const client = await getClient();
+
+    // A malformed existing email can deadlock Supabase's normal secure-email-change
+    // flow because it may require confirmation at the old address. Repair only that
+    // special case through the authenticated, narrowly scoped SQL RPC.
+    const currentEmail = state.user.email || '';
+    const currentLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentEmail);
+    // Both domains are synthetic/non-user email addresses. They must use the
+    // direct repair RPC instead of Supabase's normal email-change flow.
+    const currentIsPlaceholder = /@(?:users\.woogidex\.invalid|no-email\.woogidex\.com)$/i.test(currentEmail);
+
+    if (currentIsPlaceholder || (state.user.hasRealEmail && !currentLooksValid)) {
+        const { data, error } = await client.rpc('repair_my_invalid_email', { new_email: email });
+        if (error) {
+            log.error('AUTH', 'Invalid email repair failed', error);
+            if (/repair_my_invalid_email|function .* does not exist/i.test(error.message || '')) {
+                throw new Error('Email repair is not configured yet. Run supabase-email-repair.sql in your Supabase SQL Editor.');
+            }
+            throw error;
+        }
+        if (data !== true) throw new Error('Could not repair the account email.');
+        const { data: refreshed, error: refreshError } = await client.auth.refreshSession();
+        if (refreshError) throw refreshError;
+        if (refreshed?.user) {
+            state.user = await attachProfile(mapUser(refreshed.user));
+            updateAuthUI();
+        }
+        return true;
+    }
+
     const { error } = await client.auth.updateUser({ email });
     if (error) { log.error('AUTH', 'Email update failed', error); throw error; }
-    // Supabase typically requires confirming the new address before it takes
-    // effect - state.user.email won't reflect it until that happens and the
-    // session refreshes.
     return true;
 }
 
@@ -587,6 +628,7 @@ async function withProfileTimeout(promise, label, ms = 8000) {
 
 async function loadPublicProfile(userId) {
     const client = await getClient();
+    await refreshBadgeDefinitions();
 
     let { data: profile, error: profileError } = await withProfileTimeout(
         client.from('profiles')
@@ -677,7 +719,13 @@ function editOwnProfile() {
     if (publicEl) publicEl.style.display = 'none';
     if (editEl) editEl.style.display = 'block';
     const editBtn = document.getElementById('profile-edit-btn');
+    const backBtn = document.getElementById('profile-back-btn');
+    const cancelBtn = document.getElementById('profile-edit-cancel-btn');
+    const saveBtn = document.getElementById('profile-edit-save-btn');
     if (editBtn) editBtn.style.display = 'none';
+    if (backBtn) backBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+    if (saveBtn) saveBtn.style.display = 'inline-flex';
     renderProfileEditForm();
     document.getElementById('profile-display-name')?.focus();
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -685,6 +733,12 @@ function editOwnProfile() {
 
 function cancelEditOwnProfile() {
     state.profilePageEditing = false;
+    const backBtn = document.getElementById('profile-back-btn');
+    const cancelBtn = document.getElementById('profile-edit-cancel-btn');
+    const saveBtn = document.getElementById('profile-edit-save-btn');
+    if (backBtn) backBtn.style.display = 'inline-flex';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'none';
     renderProfilePage();
 }
 
@@ -697,7 +751,13 @@ function renderProfilePage() {
     const publicEl = document.getElementById('profile-public-content');
     const editEl = document.getElementById('profile-edit-content');
     const editBtn = document.getElementById('profile-edit-btn');
+    const backBtn = document.getElementById('profile-back-btn');
+    const cancelBtn = document.getElementById('profile-edit-cancel-btn');
+    const saveBtn = document.getElementById('profile-edit-save-btn');
     if (editBtn) editBtn.style.display = isOwn && !state.profilePageEditing ? 'inline-flex' : 'none';
+    if (backBtn) backBtn.style.display = state.profilePageEditing ? 'none' : 'inline-flex';
+    if (cancelBtn) cancelBtn.style.display = state.profilePageEditing ? 'inline-flex' : 'none';
+    if (saveBtn) saveBtn.style.display = state.profilePageEditing ? 'inline-flex' : 'none';
     if (state.profilePageEditing && isOwn) {
         if (publicEl) publicEl.style.display = 'none';
         if (editEl) editEl.style.display = 'block';
@@ -980,6 +1040,8 @@ async function submitProfileForm() {
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving…';
+    const headerSaveBtn = document.getElementById('profile-edit-save-btn');
+    if (headerSaveBtn) { headerSaveBtn.disabled = true; headerSaveBtn.textContent = 'Saving…'; }
     try {
         if (file) await uploadAvatar(file);
         await updateDisplayName(displayName);
@@ -996,6 +1058,8 @@ async function submitProfileForm() {
     } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Save Profile';
+        const headerSaveBtn = document.getElementById('profile-edit-save-btn');
+        if (headerSaveBtn) { headerSaveBtn.disabled = false; headerSaveBtn.innerHTML = '<i data-lucide="save"></i> Save Profile'; if (typeof lucide !== 'undefined') lucide.createIcons(); }
     }
 }
 
@@ -1034,7 +1098,7 @@ async function submitEmailForm() {
     try {
         await updateEmail(email);
         errorEl.style.color = 'var(--success, #22c55e)';
-        errorEl.textContent = 'Check your inbox to confirm the new email address.';
+        errorEl.textContent = 'Email updated. If confirmation is required, check your inbox.';
     } catch (e) {
         errorEl.textContent = e.message || 'Could not update email.';
     } finally {

@@ -119,11 +119,30 @@ const BADGES = {
     veteran:      { label: 'Veteran',      icon: 'trophy',        color: '#f97316', tooltip: 'Long-time member' }
 };
 
+// The staff panel stores badge metadata in the `badges` table. The object is
+// deliberately mutable so the main site can replace its seed values with the
+// live database values without changing every renderer to become async.
+function setBadgeDefinitions(rows) {
+    if (!Array.isArray(rows)) return;
+    Object.keys(BADGES).forEach(key => delete BADGES[key]);
+    rows.forEach(row => {
+        if (!row?.key) return;
+        BADGES[row.key] = {
+            label: row.label || row.key,
+            icon: row.icon || 'star',
+            color: row.color || '#6b7280',
+            tooltip: row.description || row.label || row.key,
+            rank: Number(row.rank) || 0
+        };
+    });
+}
+
+
 function renderBadge(badgeKey, size) {
     size = size || 14;
     const b = BADGES[badgeKey];
     if (!b) return '';
-    return `<i data-lucide="${b.icon}" class="profile-badge" title="${b.tooltip}" style="width:${size}px;height:${size}px;color:${b.color};" aria-label="${b.label}"></i>`;
+    return `<span class="profile-badge-tooltip" data-badge-name="${b.label}" data-badge-description="${b.tooltip}" tabindex="0"><i data-lucide="${b.icon}" class="profile-badge" style="width:${size}px;height:${size}px;color:${b.color};" aria-label="${b.label}"></i></span>`;
 }
 
 // Renders a full row of a user's badges. Accepts an array of badge keys
@@ -134,11 +153,6 @@ function renderBadgeRow(badgeKeys, size) {
     return `<span class="profile-badge-row">${badgeKeys.map(k => renderBadge(k, size)).join('')}</span>`;
 }
 
-function renderRoleTag(role, rolesMap) {
-    const r = (rolesMap && rolesMap[role]) || ROLES[role];
-    if (!r || role === 'user') return '';
-    return `<span class="role-tag" style="color:${r.color};border-color:${r.color};">${r.label}</span>`;
-}
 
 export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
-    ROLES, BADGES, roleAtLeast, canDeleteAnyContent, renderBadge, renderBadgeRow, renderRoleTag };
+    ROLES, BADGES, roleAtLeast, canDeleteAnyContent, setBadgeDefinitions, renderBadge, renderBadgeRow };
