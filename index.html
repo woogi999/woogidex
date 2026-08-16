@@ -192,7 +192,7 @@
                                 <button type="button" class="artwork-mode-tab active" id="artwork-mode-normal" onclick="setArtworkMode('normal'); event.stopPropagation()"><i data-lucide="image" aria-hidden="true"></i><span>Normal</span></button>
                                 <button type="button" class="artwork-mode-tab" id="artwork-mode-shiny" onclick="setArtworkMode('shiny'); event.stopPropagation()"><i data-lucide="sparkles" aria-hidden="true"></i><span>Shiny</span></button>
                             </div>
-                            <div class="artwork-preview" id="artwork-preview"><span class="placeholder">ART</span></div>
+                            <div class="artwork-preview" id="artwork-preview"><img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork"></div>
                             <input type="file" id="artwork-upload" accept="image/*" onchange="handleArtworkUpload(event)">
                             <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span id="artwork-upload-label">Click or drag artwork here</span></div>
                             <button type="button" class="artwork-remove-btn" id="artwork-remove-btn" onclick="removeCurrentArtwork(event)" hidden>Remove artwork</button>
@@ -715,7 +715,7 @@
                             <button class="btn btn-secondary btn-sm" type="button" onclick="closeMonDetail()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
                             <button class="btn btn-secondary btn-sm" type="button" onclick="copyOpenCommunityShareLink()"><i data-lucide="link" style="width:14px;height:14px;"></i> Copy Share Link</button>
                             <button class="btn btn-secondary btn-sm" type="button" onclick="importCommunityMonToCollection()">Import to My Collection</button>
-                            <button class="btn btn-secondary btn-sm" id="community-detail-update-btn" type="button" onclick="updateOpenCommunityMon()" style="display:none;" title="Push the current version of this Fakemon to your Community Hub listing"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Update Listing</button>
+                            <button class="btn btn-secondary btn-sm" id="community-detail-update-btn" type="button" onclick="updateOpenCommunityMon()" style="display:none;" title="Update this Community Hub listing from one of your Fakemon"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Update Listing</button>
                             <button class="btn btn-secondary btn-sm community-unpublish-inline" id="community-detail-unpublish-btn" type="button" onclick="unpublishOpenCommunityMon()" style="display:none;">Unpublish</button>
                             <div class="export-as-wrap" style="position:relative;display:inline-block;">
                                 <button class="btn btn-primary btn-sm" type="button" onclick="toggleCommunityExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
@@ -823,6 +823,38 @@
             </div>
         </div>
     </div>
+
+    <div class="modal-overlay" id="community-update-modal" onclick="if(event.target===this) closeCommunityUpdateModal()">
+         <div class="modal community-update-modal">
+             <div class="modal-header">
+                 <div>
+                     <div class="community-update-kicker">YOUR COLLECTION</div>
+                     <h3>Choose a Fakemon to Update</h3>
+                 </div>
+                 <button class="modal-close" onclick="closeCommunityUpdateModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+             </div>
+             <div class="modal-body community-update-modal-body">
+                 <p class="community-update-help">Select the Fakemon from your collection that should replace this Community Hub upload.</p>
+                 <div class="community-update-controls">
+                     <div class="community-update-search-wrap"><i data-lucide="search"></i><input id="community-update-search" type="search" placeholder="Search your Fakemon..." oninput="filterCommunityUpdateCollection()"></div>
+                     <select id="community-update-sort-by" onchange="sortCommunityUpdateCollection()" aria-label="Sort collection">
+                         <option value="created">Date Added</option><option value="name">Name</option><option value="number">Pokédex Number</option><option value="bst">BST</option><option value="updated">Last Updated</option>
+                     </select>
+                     <select id="community-update-sort-order" onchange="sortCommunityUpdateCollection()" aria-label="Sort direction">
+                         <option value="desc">Descending</option><option value="asc">Ascending</option>
+                     </select>
+                 </div>
+                 <div id="community-update-collection-grid" class="community-update-collection-grid"></div>
+                 <div class="community-update-actions">
+                     <div id="community-update-selected" class="community-update-selected">No Fakemon selected</div>
+                     <div class="community-update-action-buttons">
+                         <button class="btn btn-secondary" type="button" onclick="closeCommunityUpdateModal()">Cancel</button>
+                         <button class="btn btn-primary" id="community-update-confirm" type="button" onclick="confirmCommunityUpdate()" disabled><i data-lucide="refresh-cw" style="width:15px;height:15px;"></i> Update Listing</button>
+                     </div>
+                 </div>
+             </div>
+         </div>
+     </div>
 
     <div class="modal-overlay" id="community-rules-modal" onclick="if(event.target===this) closeCommunityRulesModal()">
         <div class="modal policy-modal community-rules-modal">
@@ -1342,6 +1374,7 @@
     </div>
 
     <div class="toast-container" id="toast-container"></div>
+
 
 
 <script type="module" src="js/app.js"></script>

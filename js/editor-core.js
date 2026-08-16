@@ -59,7 +59,7 @@ function resetEditor() {
             state.previewArtworkMode = 'normal';
             updateArtworkModeUI();
             state.evolutionGraph = null;
-            document.getElementById('artwork-preview').innerHTML = '<span class="placeholder">ART</span>';
+            document.getElementById('artwork-preview').innerHTML = '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork">';
             updateCryUploadUI();
             renderAbilities();
             renderLearnset();
@@ -441,7 +441,7 @@ function resetEditor() {
             const mode = state.artworkMode || 'normal';
             const artwork = mode === 'shiny' ? state.shinyArtworkData : state.artworkData;
             const preview = document.getElementById('artwork-preview');
-            if (preview) preview.innerHTML = artwork ? `<img src="${artwork}" alt="${mode === 'shiny' ? 'Shiny artwork' : 'Artwork'}">` : `<span class="placeholder">${mode === 'shiny' ? 'SHINY' : 'ART'}</span>`;
+            if (preview) preview.innerHTML = artwork ? `<img src="${artwork}" alt="${mode === 'shiny' ? 'Shiny artwork' : 'Artwork'}">` : (mode === 'shiny' ? `<span class="placeholder">SHINY</span>` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork">');
             const remove = document.getElementById('artwork-remove-btn');
             if (remove) remove.hidden = !artwork;
         }
@@ -955,7 +955,7 @@ function setPreviewArtworkMode(mode) {
     }
     const artwork = activeMode === 'shiny' ? state.shinyArtworkData : state.artworkData;
     const name = document.getElementById('fakemon-name')?.value?.trim() || 'Fakemon';
-    image.innerHTML = artwork ? `<img src="${artwork}" alt="${name}${activeMode === 'shiny' ? ' shiny' : ''} artwork">` : `<span class="placeholder">${activeMode === 'shiny' ? 'SHINY' : 'ART'}</span>`;
+    image.innerHTML = artwork ? `<img src="${artwork}" alt="${name}${activeMode === 'shiny' ? ' shiny' : ''} artwork">` : (activeMode === 'shiny' ? `<span class="placeholder">SHINY</span>` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork">');
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -1105,13 +1105,12 @@ function updatePreview() {
                     <!-- Top Row: Art (left) | Data + Dex Entries (right, side by side) -->
                     <div class="board-top-row">
                         <div class="board-artwork-left">
-                            ${(state.shinyArtworkData || state.cryData || state.artCredit) ? `<div class="board-artwork-mode" aria-label="Preview controls">
+                            ${(state.shinyArtworkData || state.cryData) ? `<div class="board-artwork-mode" aria-label="Preview controls">
                                 ${state.shinyArtworkData ? `<button type="button" class="collection-shiny-toggle board-artwork-shiny-toggle" id="board-artwork-shiny-toggle" onclick="togglePreviewArtworkMode(event)" title="Show shiny artwork" aria-label="Show shiny artwork" aria-pressed="false"><i data-lucide="sparkles" aria-hidden="true"></i></button>` : ''}
-                                ${state.cryData ? `<button type="button" class="collection-shiny-toggle board-artwork-cry-toggle" onclick="playPokemonCry(event)" title="Play Pokemon cry" aria-label="Play Pokemon cry"><i data-lucide="volume-2" aria-hidden="true"></i></button>` : ''}
-                                ${state.artCredit ? `<button type="button" class="collection-shiny-toggle board-artwork-credit-toggle" onclick="showArtCredit(event)" onblur="hideArtCreditDelayed()" title="Art credit" aria-label="Show art credit"><i data-lucide="badge-check" aria-hidden="true"></i></button>` : ''}
+                                ${state.cryData ? `<button type="button" class="collection-shiny-toggle board-artwork-shiny-toggle board-artwork-cry-toggle" onclick="playPokemonCry(event)" title="Play Pokemon cry" aria-label="Play Pokemon cry"><i data-lucide="volume-2" aria-hidden="true"></i></button>` : ''}
                             </div>` : ''}
-                            ${state.artCredit ? `<div class="board-artwork-credit-popover" id="board-artwork-credit-popover">${formatArtCreditHtml(state.artCredit)}</div>` : ''}
                             <div id="board-artwork-image"></div>
+                            ${state.artCredit ? `<div class="board-artwork-credit">${formatArtCreditHtml(state.artCredit)}</div>` : ''}
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                             <div class="board-data-right">

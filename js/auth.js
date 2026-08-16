@@ -846,7 +846,7 @@ function renderPublicProfileMons() {
         const t1 = mon.type1 ? `type-${String(mon.type1).toLowerCase()}` : '';
         const t2 = mon.type2 ? `type-${String(mon.type2).toLowerCase()}` : '';
         return `<button type="button" class="profile-mon-card" onclick="openPublishedMonById('${row.id}')">
-            <div class="profile-mon-art">${mon.artwork ? `<img src="${esc(mon.artwork)}" alt="${esc(mon.name)}" draggable="false">` : '<span class="placeholder">ART</span>'}</div>
+            <div class="profile-mon-art">${mon.artwork ? `<img src="${esc(mon.artwork)}" alt="${esc(mon.name)}" draggable="false">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">'}</div>
             <strong>${esc(mon.name || 'Fakemon')}</strong>
             <div class="card-types">${mon.type1 ? `<span class="type-badge ${t1}">${esc(mon.type1)}</span>` : ''}${mon.type2 ? `<span class="type-badge ${t2}">${esc(mon.type2)}</span>` : ''}</div>
         </button>`;

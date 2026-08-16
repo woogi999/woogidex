@@ -105,8 +105,13 @@ function normalizeCollections() {
             // prevents hidden/stale editor DOM from being accidentally persisted when
             // collection/community UI is being navigated.
             const editor = document.getElementById('editor-view');
-            if (!immediate && editor && editor.style.display === 'none') {
-                log.debug('STORAGE', 'autoSave skipped while editor is hidden');
+            if (!editor || editor.style.display === 'none') {
+                if (state.autoSaveTimer) {
+                    clearTimeout(state.autoSaveTimer);
+                    state.autoSaveTimer = null;
+                }
+                autoSaveGeneration++;
+                log.debug('STORAGE', 'autoSave skipped outside the editor');
                 return Promise.resolve(false);
             }
 

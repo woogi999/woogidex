@@ -1042,7 +1042,7 @@ import { POKEMON_COLORS } from './data.js';
                             </div>
                             <button class="card-delete-btn" onclick="deleteFakemon('${f.id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
                         </div>
-                        <div class="card-art">${(state.collectionShinyPreview && f.shinyArtwork) ? `<img src="${f.shinyArtwork}" alt="${f.name} shiny" draggable="false">` : (f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false">` : '<span class="placeholder">ART</span>')}</div>
+                        <div class="card-art">${(state.collectionShinyPreview && f.shinyArtwork) ? `<img src="${f.shinyArtwork}" alt="${f.name} shiny" draggable="false">` : (f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">')}</div>
                         <div class="card-number">${escapeCollectionHtml(f.number || '#???')}</div>
                         <div class="card-name">${f.name}</div>
                         <div class="card-types">

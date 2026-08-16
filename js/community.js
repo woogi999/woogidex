@@ -167,7 +167,7 @@ async function publishSnapshot(mon, rulesChecked = false) {
 // up to its existing Community Hub listing (same row, same comments) instead
 // of creating a duplicate post. Skips the hourly publish cooldown since this
 // is an edit to something already live, not a new upload.
-async function updatePublishedMon(publishedId) {
+async function updatePublishedMon(publishedId, selectedSourceId = '') {
     if (!state.user) { api.showToast?.('Sign in to update your Community Hub listing.', 'warning'); return; }
     const client = await api.getClient();
     const { data: row, error: fetchError } = await client
@@ -178,20 +178,16 @@ async function updatePublishedMon(publishedId) {
     if (fetchError || !row) { api.showToast?.('Could not find that listing.', 'error'); return; }
     if (row.user_id !== state.user.id && !api.isStaff?.()) { api.showToast?.('You can only update your own listings.', 'error'); return; }
 
-    // Prefer whatever's currently open in the editor if it's the same
-    // Fakemon (covers "I just tweaked it, now update the listing"); otherwise
-    // fall back to the saved copy in the collection.
-    const isEditingSameMon = state.editingId && String(state.editingId) === String(row.source_fakemon_id) && !state.isCommunityPreview;
-    if (isEditingSameMon) await api.autoSave?.(true);
-    const mon = state.fakemonDB.find(f => String(f.id) === String(row.source_fakemon_id));
-    if (!mon) { api.showToast?.('Could not find the current version of this Fakemon in your collection.', 'error'); return; }
+    const mon = state.fakemonDB.find(f => String(f.id) === String(selectedSourceId));
+    if (!mon) { api.showToast?.('Could not find that Fakemon in your collection.', 'error'); return; }
 
     const payload = {
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
         author_badges: state.user.badges || [],
-        fakemon_data: mon
+        fakemon_data: mon,
+        source_fakemon_id: String(mon.id)
     };
     const { error } = await client.from('published_mons').update(payload).eq('id', publishedId);
     if (error) {
@@ -199,6 +195,7 @@ async function updatePublishedMon(publishedId) {
         api.showToast?.('Could not update the listing: ' + error.message, 'error');
         return;
     }
+    closeCommunityUpdateModal();
     api.showToast?.(`${mon.name}'s Community Hub listing was updated!`, 'success');
     log.info('COMMUNITY', 'Updated published listing', { id: publishedId, name: mon.name });
 
@@ -214,11 +211,18 @@ async function updatePublishedMon(publishedId) {
     }
 }
 
+function getCommunityUpdateCollection(){const collection=Array.isArray(state.fakemonDB)?state.fakemonDB.slice():[];const search=(document.getElementById('community-update-search')?.value||'').trim().toLowerCase();const sortBy=document.getElementById('community-update-sort-by')?.value||'created';const order=document.getElementById('community-update-sort-order')?.value==='asc'?1:-1;const dex=f=>{const n=parseInt(String(f?.number||'').replace(/^#/,'') ,10);return Number.isFinite(n)?n:Number.POSITIVE_INFINITY};const bst=f=>['hp','attack','defense','spAtk','spDef','speed'].reduce((sum,k)=>sum+(Number(f?.stats?.[k])||0),0);const filtered=collection.filter(f=>!search||String(f?.name||'').toLowerCase().includes(search)||String(f?.number||'').toLowerCase().includes(search));filtered.sort((a,b)=>{if(sortBy==='name')return String(a.name||'').localeCompare(String(b.name||''))*order;if(sortBy==='number')return(dex(a)-dex(b))*order;if(sortBy==='bst')return(bst(a)-bst(b))*order;if(sortBy==='updated')return((Number(a.updatedAt)||0)-(Number(b.updatedAt)||0))*order;return((Number(a.createdAt)||0)-(Number(b.createdAt)||0))*order});return filtered}
+function renderCommunityUpdateCollection(selectedId=''){const grid=document.getElementById('community-update-collection-grid');if(!grid)return;const collection=getCommunityUpdateCollection();if(!collection.length){grid.innerHTML='<div class="community-update-empty">No Fakemon match your search.</div>';return}grid.innerHTML=collection.map(f=>{const id=escapeHtml(String(f.id)),active=String(f.id)===String(selectedId),art=f.artwork||'',number=f.number?`#${escapeHtml(String(f.number).replace(/^#/,''))}`:'';const bst=['hp','attack','defense','spAtk','spDef','speed'].reduce((sum,k)=>sum+(Number(f?.stats?.[k])||0),0);return `<button type="button" class="community-update-mon-card${active?' selected':''}" data-id="${id}" onclick="selectCommunityUpdateMon('${id}')"><div class="community-update-mon-art">${art?`<img src="${escapeHtml(art)}" alt="${escapeHtml(f.name||'Fakemon')}">`:'<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork">'}</div><div class="community-update-mon-info"><strong>${escapeHtml(f.name||'Unnamed Fakemon')}</strong><span>${number}${number&&bst?' · ':''}${bst?'BST '+bst:''}</span></div></button>`}).join('');const current=collection.find(f=>String(f.id)===String(selectedId));const label=document.getElementById('community-update-selected'),confirm=document.getElementById('community-update-confirm');if(label)label.textContent=current?`Selected: ${current.name||'Unnamed Fakemon'}`:'No Fakemon selected';if(confirm)confirm.disabled=!current;if(typeof lucide!=='undefined')lucide.createIcons()}
+function sortCommunityUpdateCollection(){renderCommunityUpdateCollection(document.getElementById('community-update-selected-id')?.value||'')}
+function filterCommunityUpdateCollection(){renderCommunityUpdateCollection(document.getElementById('community-update-selected-id')?.value||'')}
+function selectCommunityUpdateMon(id){let hidden=document.getElementById('community-update-selected-id');if(!hidden){hidden=document.createElement('input');hidden.type='hidden';hidden.id='community-update-selected-id';document.getElementById('community-update-modal')?.appendChild(hidden)}hidden.value=String(id);renderCommunityUpdateCollection(String(id))}
+function openCommunityUpdateModal(){const cs=ensureCommunityState(),row=cs.openMonRow;if(!row||!state.user||row.user_id!==state.user.id)return;const collection=Array.isArray(state.fakemonDB)?state.fakemonDB:[];if(!collection.length){api.showToast?.('You need at least one Fakemon in your collection to update this listing.','warning');return}const hidden=document.getElementById('community-update-selected-id');if(hidden)hidden.value=row.source_fakemon_id&&collection.some(f=>String(f.id)===String(row.source_fakemon_id))?String(row.source_fakemon_id):'';const search=document.getElementById('community-update-search');if(search)search.value='';const by=document.getElementById('community-update-sort-by');if(by)by.value='created';const order=document.getElementById('community-update-sort-order');if(order)order.value='desc';renderCommunityUpdateCollection(hidden?.value||'');document.getElementById('community-update-modal')?.classList.add('active');if(typeof lucide!=='undefined')lucide.createIcons()}
+function closeCommunityUpdateModal(){document.getElementById('community-update-modal')?.classList.remove('active')}
+function confirmCommunityUpdate(){const cs=ensureCommunityState(),selected=document.getElementById('community-update-selected-id')?.value||'';if(!cs.openMonId||!selected){api.showToast?.('Choose a Fakemon from your collection first.','warning');return}updatePublishedMon(cs.openMonId,selected)}
+
 // Wrapper for the detail page's "Update Listing" button - inline onclick
-// handlers only have access to functions on `api`/`window`, not module-scoped `state`.
 function updateOpenCommunityMon() {
-    const cs = ensureCommunityState();
-    if (cs.openMonId) updatePublishedMon(cs.openMonId);
+    openCommunityUpdateModal();
 }
 
 async function openPublishedMonById(publishedId, options = {}) {
@@ -644,7 +648,7 @@ function renderCommunityGrid() {
         return `
             <div class="collection-card community-card" onclick="openMonDetail('${row.id}')">
                 ${canDelete ? `<button class="card-delete-btn community-unpublish-btn" onclick="unpublishMon('${row.id}', event); event.stopPropagation();" title="${isMine ? 'Unpublish' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>` : ''}
-                <div class="card-art">${mon.artwork ? `<img src="${mon.artwork}" alt="${escapeHtml(mon.name)}" draggable="false">` : '<span class="placeholder">ART</span>'}</div>
+                <div class="card-art">${mon.artwork ? `<img src="${mon.artwork}" alt="${escapeHtml(mon.name)}" draggable="false">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">'}</div>
                 <div class="card-name">${escapeHtml(mon.name)}</div>
                 <div class="card-types">
                     ${mon.type1 ? `<span class="type-badge ${type1Class}">${mon.type1}</span>` : ''}
@@ -771,7 +775,7 @@ function setCommunityPreviewArtworkMode(mode) {
     if (image) {
         const artwork = active ? state.shinyArtworkData : state.artworkData;
         const name = state.community?.openMonRow?.fakemon_data?.name || 'Fakemon';
-        image.innerHTML = artwork ? `<img src="${artwork}" alt="${escapeHtml(name)}${active ? ' shiny' : ''} artwork">` : `<span class="placeholder">${active ? 'SHINY' : 'ART'}</span>`;
+        image.innerHTML = artwork ? `<img src="${artwork}" alt="${escapeHtml(name)}${active ? ' shiny' : ''} artwork">` : (active ? `<span class="placeholder">SHINY</span>` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork">');
     }
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
@@ -867,5 +871,5 @@ export {
     fetchComments, postComment, deleteComment,
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal, acceptCommunityRules,
     openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment, handleCommunityHashRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
-    importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu, toggleCommunityLike,
+    importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu, toggleCommunityLike, openCommunityUpdateModal, closeCommunityUpdateModal, confirmCommunityUpdate,
 };
