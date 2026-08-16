@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Woogidex</title>
+    <!-- Must run before style.css paints anything, synchronously, so dark
+         mode is applied on the very first frame instead of flashing light
+         mode and then switching. Keep this tiny and dependency-free. -->
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('woogidex-dark-mode') === 'true') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1111,6 +1123,7 @@
                         <label><input type="checkbox" value="protect"> Bypass Protect</label>
                         <label><input type="checkbox" value="reflectable"> Bypass Reflect</label>
                         <label><input type="checkbox" value="snatch"> Bypass Snatch</label>
+                        <label><input type="checkbox" value="bypasssub"> Bypass Substitute</label>
                     </div>
                 </div>
                 <div class="form-group">

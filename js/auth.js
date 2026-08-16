@@ -1109,7 +1109,7 @@ document.addEventListener('mouseout', event => {
 });
 
 document.addEventListener('scroll', () => {
-    if (userHoverCardEl?.style.display !== 'none') userHoverCardEl.style.display = 'none';
+    if (userHoverCardEl && userHoverCardEl.style.display !== 'none') userHoverCardEl.style.display = 'none';
 }, true);
 
 async function showUserProfile(userIdOrUsername) {

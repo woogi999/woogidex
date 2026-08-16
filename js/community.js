@@ -709,6 +709,48 @@ function getCommunityViewerKey() {
 }
 
 // ==================== UI: detail page ("warp" like the Share page) ====================
+// View counting calls an `increment_published_mon_view` RPC in Supabase.
+// Your project already has one, but with a single `p_published_id` param
+// (confirmed via the PostgREST 404 hint when this called a 2-arg version) -
+// so the call below matches that existing signature. If your function
+// doesn't dedupe repeat views from the same visitor and you want that,
+// replace it with this version instead (mirrors the notifications.js
+// pattern for documenting schema this file depends on):
+//
+//   create table if not exists public.published_mon_views (
+//     published_id uuid not null references public.published_mons(id) on delete cascade,
+//     viewer_key text not null,
+//     viewed_at timestamptz not null default now(),
+//     primary key (published_id, viewer_key)
+//   );
+//   alter table public.published_mon_views enable row level security;
+//   create policy "Anyone can record a view" on public.published_mon_views
+//     for insert with check (true);
+//   create policy "Anyone can read view rows" on public.published_mon_views
+//     for select using (true);
+//
+//   -- Drop the old single-arg version first so PostgREST doesn't end up
+//   -- with two overloads of the same name and refuse to pick one:
+//   drop function if exists public.increment_published_mon_view(uuid);
+//   create or replace function public.increment_published_mon_view(
+//     p_published_id uuid, p_viewer_key text
+//   ) returns int
+//   language plpgsql security definer as $$
+//   declare v_count int;
+//   begin
+//     insert into public.published_mon_views (published_id, viewer_key)
+//     values (p_published_id, p_viewer_key)
+//     on conflict (published_id, viewer_key) do nothing;
+//     if found then
+//       update public.published_mons set view_count = coalesce(view_count, 0) + 1
+//         where id = p_published_id;
+//     end if;
+//     select view_count into v_count from public.published_mons where id = p_published_id;
+//     return v_count;
+//   end;
+//   $$;
+//   grant execute on function public.increment_published_mon_view(uuid, text) to anon, authenticated;
+//   -- and swap the .rpc() call below back to passing both p_published_id and p_viewer_key.
 async function openMonDetail(publishedId, options = {}) {
     const cs = ensureCommunityState();
     const row = cs.mons.find(m => m.id === publishedId);
@@ -774,10 +816,17 @@ async function openMonDetail(publishedId, options = {}) {
 
     try {
         const client = await api.getClient();
-        const viewerKey = getCommunityViewerKey();
-        const { data: nextViewCount, error: viewError } = await client.rpc('increment_published_mon_view', { p_published_id: publishedId, p_viewer_key: viewerKey });
-        if (!viewError && Number.isFinite(Number(nextViewCount))) row.view_count = Number(nextViewCount);
-    } catch {}
+        const { data: nextViewCount, error: viewError } = await client.rpc('increment_published_mon_view', { p_published_id: publishedId });
+        if (viewError) throw viewError;
+        if (Number.isFinite(Number(nextViewCount))) row.view_count = Number(nextViewCount);
+    } catch (e) {
+        // Most likely cause: your `increment_published_mon_view` function has
+        // a different signature than the call above (see the comment at the
+        // top of this section). Fail quietly in the UI - a missing view
+        // count should never block viewing the mon itself - but log it so
+        // it's visible in devtools instead of vanishing.
+        log.error('COMMUNITY', 'Failed to record view', e);
+    }
 
     await fetchComments(publishedId);
     renderMonComments();
@@ -919,5 +968,5 @@ export {
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal, acceptCommunityRules,
     openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment, handleCommunityHashRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
     importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu, toggleCommunityLike, openCommunityUpdateModal, closeCommunityUpdateModal, confirmCommunityUpdate,
-    renderCommunityGridSkeleton, renderCommentsSkeleton,
+    renderCommunityGridSkeleton, renderCommentsSkeleton, selectCommunityUpdateMon, sortCommunityUpdateCollection, filterCommunityUpdateCollection,
 };

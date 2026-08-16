@@ -1071,7 +1071,7 @@ function handleMoveKey(e) {
                 protect: !source.protect,
                 reflectable: isStatus ? !source.reflectable : false,
                 snatch: isStatus ? !source.snatch : false,
-                bypasssub: !!source.bypasssub,
+                bypasssub: !!source.authentic,
                 thawing: !!source.defrost,
                 multihit: !!source.multihit
             };
