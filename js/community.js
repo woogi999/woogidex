@@ -412,12 +412,6 @@ async function postComment(publishedId, body) {
     };
     const { error } = await client.from('mon_comments').insert(payload);
     if (error) { log.error('COMMUNITY', 'Comment failed', error); api.showToast?.('Comment failed: ' + error.message, 'error'); return; }
-    try {
-        const client = await api.getClient();
-        const viewerKey = getCommunityViewerKey();
-        const { data: nextViewCount, error: viewError } = await client.rpc('increment_published_mon_view', { p_published_id: publishedId, p_viewer_key: viewerKey });
-        if (!viewError && Number.isFinite(Number(nextViewCount))) row.view_count = Number(nextViewCount);
-    } catch {}
     await fetchComments(publishedId);
     renderMonComments();
 
@@ -532,8 +526,7 @@ async function openCommunityHub() {
         openCommunityRulesModal({ requireAgreement: false });
     }
 
-    const grid = document.getElementById('community-grid');
-    grid.innerHTML = '<div class="community-loading">Loading Community Hub…</div>';
+    renderCommunityGridSkeleton();
 
     // Guard against a slower, earlier fetch resolving after a newer one and
     // clobbering the grid with stale data (e.g. rapid back-and-forth clicks).
@@ -600,12 +593,43 @@ function getCommunityDexNumber(mon) {
     return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
 }
 
+// Skeleton cards mirror the real .collection-card.community-card markup
+// exactly (same art box, name bar, type pills, stats row, author row) so
+// there's no layout shift when real data replaces them.
+function communityCardSkeleton() {
+    return `
+        <div class="collection-card community-card skel-card">
+            <div class="card-art skel"></div>
+            <div class="skel skel-text skel-name"></div>
+            <div class="card-types">
+                <span class="skel skel-pill"></span>
+                <span class="skel skel-pill"></span>
+            </div>
+            <div class="community-card-stats">
+                <span class="skel skel-pill"></span>
+                <span class="skel skel-pill"></span>
+                <span class="skel skel-pill"></span>
+            </div>
+            <div class="community-card-author">
+                <span class="skel skel-circle"></span>
+                <span class="skel skel-text"></span>
+            </div>
+        </div>
+    `;
+}
+
+function renderCommunityGridSkeleton(count = 8) {
+    const grid = document.getElementById('community-grid');
+    if (!grid) return;
+    grid.innerHTML = Array.from({ length: count }, () => communityCardSkeleton()).join('');
+}
+
 function renderCommunityGrid() {
     const cs = ensureCommunityState();
     const grid = document.getElementById('community-grid');
     if (!grid) return;
     applyCommunityPrefsToUI();
-    if (cs.loading) { grid.innerHTML = '<div class="community-loading">Loading Community Hub…</div>'; return; }
+    if (cs.loading) { renderCommunityGridSkeleton(); return; }
 
     const search = cs.search || '';
     let mons = (cs.mons || []).filter(row => {
@@ -745,7 +769,7 @@ async function openMonDetail(publishedId, options = {}) {
     document.getElementById('mon-detail-comment-signin-hint').style.display = state.user ? 'none' : 'block';
     document.getElementById('mon-detail-comment-input').value = '';
 
-    document.getElementById('mon-detail-comments').innerHTML = '<div class="community-loading">Loading comments…</div>';
+    renderCommentsSkeleton();
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
@@ -834,6 +858,29 @@ document.addEventListener('click', (event) => {
     if (!event.target.closest('.export-as-wrap')) closeCommunityExportMenu();
 });
 
+// Mirrors .mon-comment's real markup (avatar circle, author/time line, two
+// body lines of varying width) so the skeleton -> real swap doesn't shift.
+function commentSkeleton() {
+    return `
+        <div class="mon-comment skel-card">
+            <div class="mon-comment-header">
+                <span class="skel skel-circle"></span>
+                <span class="skel skel-text"></span>
+            </div>
+            <div class="mon-comment-body">
+                <span class="skel skel-text"></span>
+                <span class="skel skel-text"></span>
+            </div>
+        </div>
+    `;
+}
+
+function renderCommentsSkeleton(count = 3) {
+    const container = document.getElementById('mon-detail-comments');
+    if (!container) return;
+    container.innerHTML = Array.from({ length: count }, () => commentSkeleton()).join('');
+}
+
 function renderMonComments() {
     const cs = ensureCommunityState();
     const container = document.getElementById('mon-detail-comments');
@@ -872,4 +919,5 @@ export {
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal, acceptCommunityRules,
     openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment, handleCommunityHashRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
     importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu, toggleCommunityLike, openCommunityUpdateModal, closeCommunityUpdateModal, confirmCommunityUpdate,
+    renderCommunityGridSkeleton, renderCommentsSkeleton,
 };

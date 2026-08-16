@@ -400,7 +400,15 @@ import { POKEMON_COLORS } from './data.js';
             document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
             if (tabEl) tabEl.classList.add('active');
             else document.querySelector(`.tab[onclick*="'${tabName}'"]`).classList.add('active');
-            document.getElementById(`tab-${tabName}`).style.display = 'block';
+            const target = document.getElementById(`tab-${tabName}`);
+            target.style.display = 'block';
+            // Toggling display:none -> block does not replay a CSS animation on
+            // its own, so force a reflow between removing and re-adding the
+            // class - that's what makes the tab content fade/slide in fresh
+            // on every switch instead of only on first render.
+            target.classList.remove('tab-content-enter');
+            void target.offsetWidth;
+            target.classList.add('tab-content-enter');
             if (tabName === 'moves') {
                 setTimeout(() => api.toggleLevelInput(), 10);
             }
@@ -952,6 +960,34 @@ import { POKEMON_COLORS } from './data.js';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
+        // Mirrors .collection-card's real markup (art box, number, name,
+        // type pills, BST line) so the very first paint - before storage has
+        // even loaded - already has the right shape, and swapping in real
+        // cards causes no layout shift. Used once at boot, before
+        // loadFromStorage()/initAuth() resolve.
+        function collectionCardSkeleton() {
+            return `
+                <div class="collection-card skel-card">
+                    <div class="card-art skel"></div>
+                    <div class="skel skel-text skel-number"></div>
+                    <div class="skel skel-text skel-name"></div>
+                    <div class="card-types">
+                        <span class="skel skel-pill"></span>
+                        <span class="skel skel-pill"></span>
+                    </div>
+                    <div class="skel skel-text skel-bst"></div>
+                </div>
+            `;
+        }
+
+        function renderCollectionSkeleton(count = 8) {
+            const grid = document.getElementById('collection-grid');
+            const empty = document.getElementById('empty-collection');
+            if (!grid) return;
+            if (empty) empty.style.display = 'none';
+            grid.innerHTML = Array.from({ length: count }, () => collectionCardSkeleton()).join('');
+        }
+
         function renderCollection() {
         log.debug('COLLECTION', 'Rendering collection', { count: state.fakemonDB.length, folders: state.folders.length });
             renderBreadcrumb();
@@ -1092,4 +1128,4 @@ import { POKEMON_COLORS } from './data.js';
 
         
 
-export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST, changeCollectionSort , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate};
+export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST, changeCollectionSort , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate, renderCollectionSkeleton};

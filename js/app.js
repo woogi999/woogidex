@@ -382,6 +382,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     api.initTypeSelects();
     api.initColorPicker();
     document.getElementById('sidebar-events-btn')?.toggleAttribute('hidden', !FEATURE_EVENTS_ENABLED);
+    // Paint skeleton cards immediately so the very first frame already has
+    // the right shape instead of an empty grid, then let auth/storage load
+    // underneath it — renderCollection() below replaces it seamlessly.
+    if (!window.location.hash.startsWith('#community/') && !window.location.hash.startsWith('#profile/')) {
+        api.renderCollectionSkeleton?.();
+    }
     await api.initAuth();
     await api.loadFromStorage();
     // Load Showdown's authoritative move/ability data before rendering a shared

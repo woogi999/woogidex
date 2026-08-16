@@ -580,25 +580,78 @@ function getProfileStateEl(id) {
     return document.getElementById(id);
 }
 
+// Mirrors .profile-mon-card's real markup so it swaps to real cards
+// without any layout shift.
+function profileMonCardSkeleton() {
+    return `
+        <div class="profile-mon-card skel-card">
+            <div class="profile-mon-art skel"></div>
+            <strong class="skel skel-text" style="margin:10px 12px 5px;width:70%;"></strong>
+            <div class="card-types">
+                <span class="skel skel-pill"></span>
+                <span class="skel skel-pill"></span>
+            </div>
+        </div>
+    `;
+}
+
+// Mirrors .profile-comment's real markup.
+function profileCommentSkeleton() {
+    return `
+        <div class="profile-comment skel-card">
+            <div class="profile-comment-header">
+                <span class="community-mini-avatar skel skel-circle"></span>
+                <strong class="skel skel-text" style="width:90px;"></strong>
+            </div>
+            <div class="profile-comment-body">
+                <span class="skel skel-text" style="width:95%;"></span>
+                <span class="skel skel-text" style="width:65%;"></span>
+            </div>
+        </div>
+    `;
+}
+
 function renderProfileLoading() {
     const view = document.getElementById('profile-view');
     const publicEl = document.getElementById('profile-public-content');
     const editEl = document.getElementById('profile-edit-content');
     if (!view) return;
-    if (publicEl) publicEl.style.display = 'none';
-    if (editEl) editEl.style.display = 'none';
+    getProfileStateEl('profile-loading-state')?.remove();
     getProfileStateEl('profile-load-error-state')?.remove();
-    let loading = getProfileStateEl('profile-loading-state');
-    if (!loading) {
-        loading = document.createElement('div');
-        loading.id = 'profile-loading-state';
-        loading.className = 'profile-loading';
-        view.appendChild(loading);
-    }
-    loading.textContent = 'Loading profile…';
-    loading.style.display = 'flex';
+    if (editEl) editEl.style.display = 'none';
+    // Keep the public layout visible and populate it with skeletons that
+    // mirror the real elements in shape and position, rather than hiding
+    // everything behind a loading message - this is what makes the
+    // skeleton -> real-content swap feel seamless instead of a jump-cut.
+    if (publicEl) publicEl.style.display = 'block';
     const editBtn = document.getElementById('profile-edit-btn');
     if (editBtn) editBtn.style.display = 'none';
+
+    const avatar = document.getElementById('profile-public-avatar');
+    const fallback = document.getElementById('profile-public-avatar-fallback');
+    if (avatar) avatar.style.display = 'none';
+    if (fallback) { fallback.textContent = ''; fallback.style.display = 'flex'; fallback.classList.add('skel', 'skel-circle'); }
+    const heading = document.getElementById('profile-page-display-heading');
+    if (heading) { heading.textContent = ''; heading.classList.add('skel', 'skel-text'); heading.style.width = '160px'; }
+    const handle = document.getElementById('profile-page-handle');
+    if (handle) { handle.textContent = ''; handle.classList.add('skel', 'skel-text'); handle.style.width = '100px'; }
+    const bio = document.getElementById('profile-public-bio');
+    if (bio) { bio.textContent = ''; bio.classList.add('skel', 'skel-text'); bio.style.width = '55%'; }
+    const badges = document.getElementById('profile-public-badges');
+    if (badges) { badges.innerHTML = '<span class="skel skel-pill" style="width:70px;"></span>'; badges.style.display = 'flex'; badges.classList.add('skel-card'); }
+    const joined = document.getElementById('profile-public-joined');
+    if (joined) { joined.textContent = ''; joined.classList.add('skel', 'skel-text'); joined.style.width = '90px'; joined.style.display = 'inline-block'; }
+    const monsCount = document.getElementById('profile-mons-count');
+    if (monsCount) { monsCount.textContent = ''; monsCount.classList.add('skel', 'skel-text'); monsCount.style.width = '46px'; monsCount.style.display = 'inline-block'; }
+
+    const grid = document.getElementById('profile-mons-grid');
+    if (grid) grid.innerHTML = Array.from({ length: 4 }, profileMonCardSkeleton).join('');
+    const list = document.getElementById('profile-comments-list');
+    if (list) list.innerHTML = Array.from({ length: 3 }, profileCommentSkeleton).join('');
+    const inputBox = document.getElementById('profile-comment-box');
+    if (inputBox) inputBox.style.display = 'none';
+    const hint = document.getElementById('profile-comment-signin-hint');
+    if (hint) hint.style.display = 'none';
 }
 
 function renderProfileError(message) {
@@ -782,26 +835,35 @@ function renderProfilePage() {
     const displayName = profile.display_name || profile.username || 'Profile';
     const heading = document.getElementById('profile-page-display-heading');
     const handle = document.getElementById('profile-page-handle');
-    if (heading) heading.textContent = displayName;
-    if (handle) handle.textContent = profile.username ? '@' + profile.username : '';
+    if (heading) { heading.classList.remove('skel', 'skel-text'); heading.style.width = ''; heading.textContent = displayName; }
+    if (handle) { handle.classList.remove('skel', 'skel-text'); handle.style.width = ''; handle.textContent = profile.username ? '@' + profile.username : ''; }
     const avatar = document.getElementById('profile-public-avatar');
     const fallback = document.getElementById('profile-public-avatar-fallback');
     if (avatar) { avatar.src = profile.avatar_url || ''; avatar.style.display = profile.avatar_url ? 'block' : 'none'; }
-    if (fallback) { fallback.textContent = displayName.charAt(0).toUpperCase(); fallback.style.display = profile.avatar_url ? 'none' : 'flex'; }
+    if (fallback) { fallback.classList.remove('skel', 'skel-circle'); fallback.textContent = displayName.charAt(0).toUpperCase(); fallback.style.display = profile.avatar_url ? 'none' : 'flex'; }
     const bio = document.getElementById('profile-public-bio');
-    if (bio) bio.textContent = profile.bio || 'No bio yet.';
+    if (bio) { bio.classList.remove('skel', 'skel-text'); bio.style.width = ''; bio.textContent = profile.bio || 'No bio yet.'; }
     const badges = document.getElementById('profile-public-badges');
     if (badges) {
+        badges.classList.remove('skel-card');
         const hasBadges = Array.isArray(profile.display_badges) && profile.display_badges.length;
         badges.innerHTML = hasBadges && api.renderBadgeRow ? api.renderBadgeRow(profile.display_badges, 18) : '';
         badges.style.display = hasBadges ? 'flex' : 'none';
     }
     const joined = document.getElementById('profile-public-joined');
     if (joined) {
+        joined.classList.remove('skel', 'skel-text');
+        joined.style.width = '';
+        joined.style.display = '';
         joined.textContent = profile.created_at ? `Joined ${new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}` : '';
     }
     const monsCount = document.getElementById('profile-mons-count');
-    if (monsCount) monsCount.textContent = `${profile.mons.length} ${profile.mons.length === 1 ? 'mon' : 'mons'}`;
+    if (monsCount) {
+        monsCount.classList.remove('skel', 'skel-text');
+        monsCount.style.width = '';
+        monsCount.style.display = '';
+        monsCount.textContent = `${profile.mons.length} ${profile.mons.length === 1 ? 'mon' : 'mons'}`;
+    }
     renderPublicProfileMons();
     renderProfileComments();
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -987,12 +1049,30 @@ function renderUserHoverCard(profile) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+function userHoverCardSkeleton() {
+    return `
+        <div class="user-hover-card-accent"></div>
+        <div class="user-hover-card-top">
+            <div class="user-hover-card-avatar skel skel-circle"></div>
+            <div class="user-hover-card-identity">
+                <div class="user-hover-card-label">TRAINER CARD</div>
+                <strong class="skel skel-text" style="width:110px;height:16px;"></strong>
+                <span class="skel skel-text" style="width:70px;margin-top:4px;"></span>
+            </div>
+        </div>
+        <div class="user-hover-card-bio">
+            <span class="skel skel-text" style="width:100%;"></span>
+            <span class="skel skel-text" style="width:80%;"></span>
+        </div>
+    `;
+}
+
 async function showUserHoverCard(userId, anchor) {
     if (!userId || !anchor) return;
     clearTimeout(userHoverTimer);
     const requestId = ++userHoverRequest;
     const card = ensureUserHoverCard();
-    card.innerHTML = '<div class="user-hover-card-loading">Loading trainer card…</div>';
+    card.innerHTML = userHoverCardSkeleton();
     positionUserHoverCard(anchor);
     try {
         const client = await getClient();

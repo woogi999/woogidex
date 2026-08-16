@@ -4665,3 +4665,269 @@ body { padding-top: 0; }
   .profile-public-hero.trainer-card .profile-public-name-row { flex-direction:column; }
   .profile-public-hero.trainer-card .profile-public-badges { justify-content:flex-start; }
 }
+
+/* ======================================================================
+   SKELETON LOADING SYSTEM
+   Skeletons reuse the exact same classes as the real content (.collection-card,
+   .community-card, .mon-comment, .notification-item, etc.) so layout/sizing
+   is guaranteed to match — only a `.skel` shimmer treatment is layered on
+   top of inner elements. This is what keeps the loading -> loaded swap
+   seamless instead of a jarring layout shift.
+   ====================================================================== */
+@keyframes skel-shimmer {
+    0%   { background-position: -320px 0; }
+    100% { background-position: 320px 0; }
+}
+.skel {
+    background-image: linear-gradient(90deg, var(--bg-panel) 20%, var(--border-light) 42%, var(--bg-panel) 64%);
+    background-size: 480px 100%;
+    background-repeat: no-repeat;
+    animation: skel-shimmer 1.5s ease-in-out infinite;
+    border-radius: 6px;
+    color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+.skel-text { display: block; height: 0.85em; border-radius: 4px; }
+.skel-text + .skel-text { margin-top: 6px; }
+.skel-circle { border-radius: 50%; flex-shrink: 0; }
+.skel-pill { display: inline-block; height: 20px; width: 52px; border-radius: 20px; }
+.skel-card, .skel-card * { cursor: default !important; pointer-events: none !important; }
+.skel-card:hover { transform: none !important; box-shadow: none !important; }
+.skel-card .card-actions, .skel-card .community-unpublish-btn { display: none !important; }
+
+/* Collection / Pokédex card skeleton — mirrors .collection-card layout exactly */
+.collection-card.skel-card .card-art { animation-delay: 0s; }
+.collection-card.skel-card .skel-text.skel-name { height: 16px; width: 68%; margin-bottom: 8px; }
+.collection-card.skel-card .skel-text.skel-number { height: 11px; width: 34%; margin-bottom: 6px; }
+.collection-card.skel-card .card-types { display: flex; gap: 6px; margin-bottom: 8px; }
+.collection-card.skel-card .skel-text.skel-bst { height: 12px; width: 46%; }
+
+/* Community card skeleton extras */
+.community-card.skel-card .community-card-stats .skel-pill { width: 34px; height: 15px; border-radius: 8px; }
+.community-card.skel-card .community-card-author .skel-circle { width: 20px; height: 20px; }
+.community-card.skel-card .community-card-author .skel-text { width: 70px; height: 11px; }
+
+/* Comment skeleton — mirrors .mon-comment */
+.mon-comment.skel-card .mon-comment-header .skel-circle { width: 22px; height: 22px; }
+.mon-comment.skel-card .mon-comment-header .skel-text { width: 90px; height: 11px; }
+.mon-comment.skel-card .mon-comment-body .skel-text { width: 100%; }
+.mon-comment.skel-card .mon-comment-body .skel-text:last-child { width: 60%; }
+
+/* Notification item skeleton — mirrors .notification-item */
+.notification-item.skel-card .notification-avatar.skel-circle { width: 32px; height: 32px; }
+.notification-item.skel-card .notification-text.skel-text { width: 85%; height: 12px; }
+.notification-item.skel-card .notification-time.skel-text { width: 40px; height: 10px; margin-top: 4px; }
+
+/* ======================================================================
+   ENTRANCE / MICRO ANIMATIONS
+   ====================================================================== */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes popIn {
+    0%   { opacity: 0; transform: scale(0.9); }
+    70%  { opacity: 1; transform: scale(1.02); }
+    100% { opacity: 1; transform: scale(1); }
+}
+@keyframes gentlePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+/* Cards animate in with a soft stagger. Real content and skeletons both
+   get this, so the transition between them doesn't introduce a pop. */
+.collection-card, .community-card, .collection-library-card, .library-card,
+.mon-comment, .notification-item {
+    animation: fadeInUp 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.collection-grid > *:nth-child(1), .community-hub-grid > *:nth-child(1), #community-grid > *:nth-child(1) { animation-delay: 0.02s; }
+.collection-grid > *:nth-child(2), #community-grid > *:nth-child(2) { animation-delay: 0.05s; }
+.collection-grid > *:nth-child(3), #community-grid > *:nth-child(3) { animation-delay: 0.08s; }
+.collection-grid > *:nth-child(4), #community-grid > *:nth-child(4) { animation-delay: 0.11s; }
+.collection-grid > *:nth-child(5), #community-grid > *:nth-child(5) { animation-delay: 0.14s; }
+.collection-grid > *:nth-child(6), #community-grid > *:nth-child(6) { animation-delay: 0.17s; }
+.collection-grid > *:nth-child(7), #community-grid > *:nth-child(7) { animation-delay: 0.20s; }
+.collection-grid > *:nth-child(8), #community-grid > *:nth-child(8) { animation-delay: 0.23s; }
+.collection-grid > *:nth-child(n+9), #community-grid > *:nth-child(n+9) { animation-delay: 0.25s; }
+.mon-comment { animation-duration: 0.3s; }
+
+/* Skeleton shimmer shouldn't also fight the shimmer keyframe's own opacity ramp */
+.skel-card { animation: fadeIn 0.2s ease both; }
+
+/* Slightly livelier hover/press feedback across buttons + interactive chips,
+   layered on top of whatever transition each element already declares. */
+button, .btn, .type-badge, .community-stat-btn, .card-actions button {
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96); }
+.community-stat-btn:hover { transform: translateY(-1px); }
+.community-like-btn:active svg { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Notification bell + panel */
+#notifications-badge { transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+#notifications-badge:not([style*="display: none"]) { animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.notifications-panel { animation: fadeInUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: top right; }
+.notification-item { transition: background 0.15s ease, transform 0.15s ease; }
+.notification-item:hover:not(.skel-card) { transform: translateX(-2px); }
+.notification-dot { animation: gentlePulse 1.8s ease-in-out infinite; }
+
+/* Comment rows and empty/loading states fade in smoothly rather than snapping */
+.community-empty, .community-loading, .profile-empty, .notifications-empty {
+    animation: fadeIn 0.3s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skel { animation: none; background-image: linear-gradient(90deg, var(--bg-panel), var(--border-light)); }
+    .collection-card, .community-card, .collection-library-card, .library-card,
+    .mon-comment, .notification-item, .skel-card, .notifications-panel,
+    #notifications-badge, .notification-dot, .community-empty, .community-loading,
+    .profile-empty, .notifications-empty {
+        animation: none !important;
+    }
+}
+
+/* ======================================================================
+   PROFILE PAGE POLISH
+   ====================================================================== */
+.profile-public-hero.trainer-card {
+    background: linear-gradient(135deg, var(--bg-card), var(--bg-panel));
+    box-shadow: 0 14px 36px rgba(0,0,0,.1);
+    transition: box-shadow 0.25s ease;
+}
+.profile-public-hero.trainer-card::before {
+    content: '' !important;
+    display: block !important;
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent), transparent 70%);
+    opacity: .55;
+}
+.profile-public-hero.trainer-card:hover { box-shadow: 0 18px 44px rgba(0,0,0,.13); }
+.profile-public-hero.trainer-card .profile-public-avatar-wrap {
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+}
+.profile-public-hero.trainer-card:hover .profile-public-avatar-wrap {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+}
+.profile-public-badges { animation: fadeIn 0.4s ease 0.1s both; }
+.profile-public-hero, .profile-public-section { animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.profile-public-section:nth-of-type(2) { animation-delay: 0.06s; }
+.profile-public-section:nth-of-type(3) { animation-delay: 0.1s; }
+
+/* Fakemon gallery cards get the same lift/zoom treatment as collection cards */
+.profile-mon-card { transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease, box-shadow 0.2s ease; }
+.profile-mon-card:hover { transform: translateY(-3px) scale(1.015); }
+.profile-mon-art { overflow: hidden; }
+.profile-mon-art img { transition: transform 0.3s ease; }
+.profile-mon-card:hover .profile-mon-art img { transform: scale(1.06); }
+.profile-mons-grid > * { animation: fadeInUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.profile-mons-grid > *:nth-child(1) { animation-delay: 0.02s; }
+.profile-mons-grid > *:nth-child(2) { animation-delay: 0.05s; }
+.profile-mons-grid > *:nth-child(3) { animation-delay: 0.08s; }
+.profile-mons-grid > *:nth-child(4) { animation-delay: 0.11s; }
+.profile-mons-grid > *:nth-child(n+5) { animation-delay: 0.13s; }
+
+/* Comments */
+.profile-comment { transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease; }
+.profile-comment:hover { border-color: var(--text-secondary); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+.profile-comment .community-mini-avatar { transition: transform 0.2s ease; }
+.profile-comment-header:hover .community-mini-avatar { transform: scale(1.08); }
+.profile-comments-list > * { animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.profile-comments-list > *:nth-child(1) { animation-delay: 0.02s; }
+.profile-comments-list > *:nth-child(2) { animation-delay: 0.05s; }
+.profile-comments-list > *:nth-child(3) { animation-delay: 0.08s; }
+.profile-comments-list > *:nth-child(n+4) { animation-delay: 0.1s; }
+.profile-comment-box textarea { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+
+/* Skeleton state for the hero + edit button while a profile loads */
+#profile-public-avatar-fallback.skel { font-size: 0; }
+#profile-page-display-heading.skel-text, #profile-page-handle.skel-text { display: inline-block; }
+
+/* ======================================================================
+   ANALYSIS PANEL - entrance + skeleton support
+   ====================================================================== */
+.analysis-profile, .analysis-two-col > *, .analysis-detail-grid > *, .analysis-matchups-card {
+    animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.analysis-detail-grid > *:nth-child(1) { animation-delay: 0.03s; }
+.analysis-detail-grid > *:nth-child(2) { animation-delay: 0.06s; }
+.analysis-detail-grid > *:nth-child(3) { animation-delay: 0.09s; }
+.analysis-detail-grid > *:nth-child(4) { animation-delay: 0.12s; }
+.analysis-matchups-card { animation-delay: 0.15s; }
+.analysis-matchup-card { animation: fadeIn 0.3s ease both; }
+.analysis-card, .analysis-matchup-card { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+    .profile-public-hero, .profile-public-section, .profile-public-badges,
+    .profile-mons-grid > *, .profile-comments-list > *,
+    .analysis-profile, .analysis-two-col > *, .analysis-detail-grid > *,
+    .analysis-matchups-card, .analysis-matchup-card {
+        animation: none !important;
+    }
+}
+
+/* ======================================================================
+   USER HOVER CARD - skeleton support
+   ====================================================================== */
+.user-hover-card-avatar.skel { border-radius: 50%; }
+.user-hover-card-identity strong.skel { display: block; }
+.user-hover-card-identity > span.skel { display: block; }
+.user-hover-card-bio .skel-text + .skel-text { margin-top: 5px; }
+
+/* ======================================================================
+   EDITOR UI POLISH
+   ====================================================================== */
+.tabs { position: relative; }
+.tab { position: relative; }
+.tab.active { animation: popIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); box-shadow: 0 4px 14px var(--accent-glow); }
+.tab:hover:not(.active) { transform: translateY(-1px); }
+
+/* Tab panels fade + slide in fresh every time switchTab() re-adds this class */
+.tab-content-enter { animation: fadeInUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+.form-group input, .form-group select, .form-group textarea {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease, background 0.2s ease;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    transform: translateY(-1px);
+}
+.form-group { transition: opacity 0.2s ease; }
+.form-group label { transition: color 0.15s ease; }
+.form-group:focus-within label { color: var(--text-primary); }
+
+.color-option { transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.18s ease, box-shadow 0.18s ease; }
+.color-option.selected { animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+.file-upload-btn { transition: transform 0.15s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease; }
+.file-upload-btn:hover { transform: translateY(-2px); border-color: var(--text-secondary); }
+
+.gender-bar .male, .gender-bar .female, .gender-bar .genderless {
+    transition: width 0.35s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Panels within the editor lift very slightly when focused/hovered, giving
+   the whole form a bit more life without being distracting while typing. */
+#editor-view .panel { transition: box-shadow 0.25s ease; }
+#editor-view .panel:hover { box-shadow: 0 4px 26px rgba(0,0,0,0.08); }
+
+.section-divider { position: relative; overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+    .tab.active, .tab-content-enter, .color-option.selected {
+        animation: none !important;
+    }
+    .tab:hover:not(.active), .form-group input:focus, .form-group select:focus,
+    .form-group textarea:focus, .color-option, .file-upload-btn:hover,
+    .gender-bar .male, .gender-bar .female, .gender-bar .genderless {
+        transition: none !important;
+        transform: none !important;
+    }
+}

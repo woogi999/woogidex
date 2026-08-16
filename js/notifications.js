@@ -122,12 +122,26 @@ function notificationText(n) {
     return `commented on ${escNotif(n.target_name || 'your Fakemon')}`;
 }
 
+// Mirrors the real .notification-item markup (avatar circle, one text line,
+// a short time stub) so it swaps to real content without any layout jump.
+function notificationSkeleton() {
+    return `
+        <div class="notification-item skel-card">
+            <span class="notification-avatar skel skel-circle"></span>
+            <span class="notification-body">
+                <span class="notification-text skel skel-text"></span>
+                <span class="notification-time skel skel-text"></span>
+            </span>
+        </div>
+    `;
+}
+
 function renderNotificationsPanel() {
     const ns = ensureNotificationState();
     const list = document.getElementById('notifications-list');
     if (!list) return;
     if (ns.loading && !ns.items.length) {
-        list.innerHTML = '<div class="notifications-empty">Loading…</div>';
+        list.innerHTML = Array.from({ length: 4 }, () => notificationSkeleton()).join('');
         return;
     }
     if (!ns.items.length) {
@@ -264,3 +278,4 @@ export {
     createNotification, fetchNotifications, refreshNotifications, renderNotificationBadge, renderNotificationsPanel,
     toggleNotificationsPanel, closeNotificationsPanel, markAllNotificationsRead, markNotificationRead, openNotification
 };
+// notificationSkeleton is internal to this module's rendering only.

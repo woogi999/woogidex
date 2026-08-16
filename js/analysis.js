@@ -2205,6 +2205,48 @@ function matchupScenario(row){
   return `${open} ${middle}${switchText}${pb}`;
 }
 
+// Mirrors the real results markup (.analysis-profile hero, the two-column
+// strengths/weaknesses cards, the four-card detail grid, and the matchups
+// card) so swapping in the real analysis causes no layout jump.
+function analysisResultsSkeleton(){
+  const detailCard=()=>`<div class="analysis-card panel-lite"><div class="skel skel-text" style="width:40%;height:12px;margin-bottom:14px;"></div><div class="skel skel-text" style="width:70px;height:38px;margin-bottom:10px;"></div><div class="skel skel-text" style="width:90%;"></div><div class="skel skel-text" style="width:60%;"></div></div>`;
+  const matchupCard=()=>`<div class="analysis-matchup-card skel-card"><div class="analysis-matchup-icon skel"></div><div class="analysis-matchup-info"><span class="skel skel-text" style="width:80%;"></span><span class="skel skel-text" style="width:60%;height:9px;"></span></div></div>`;
+  return `
+    <div class="analysis-profile panel-lite skel-card">
+      <div class="analysis-profile-main">
+        <div class="skel skel-text" style="width:60%;height:11px;margin-bottom:10px;"></div>
+        <div class="skel skel-text" style="width:80%;height:42px;margin:6px 0 8px;"></div>
+        <div class="skel skel-text" style="width:70%;height:12px;"></div>
+      </div>
+      <div class="analysis-profile-summary">
+        <div class="analysis-discord-message">
+          <span class="analysis-discord-avatar skel skel-circle"></span>
+          <div class="analysis-discord-body">
+            <div class="skel skel-text" style="width:80px;margin-bottom:8px;"></div>
+            <div class="skel skel-text" style="width:100%;"></div>
+            <div class="skel skel-text" style="width:85%;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="skel skel-text" style="width:90%;height:11px;"></div>
+    </div>
+    <div class="analysis-two-col analysis-strength-row">
+      <div class="analysis-card panel-lite analysis-strength-card skel-card"><div class="skel skel-text" style="width:45%;height:15px;margin-bottom:12px;"></div><div class="skel skel-text" style="width:95%;"></div><div class="skel skel-text" style="width:88%;"></div><div class="skel skel-text" style="width:70%;"></div></div>
+      <div class="analysis-card panel-lite analysis-strength-card skel-card"><div class="skel skel-text" style="width:45%;height:15px;margin-bottom:12px;"></div><div class="skel skel-text" style="width:92%;"></div><div class="skel skel-text" style="width:80%;"></div><div class="skel skel-text" style="width:65%;"></div></div>
+    </div>
+    <div class="analysis-detail-grid">${detailCard()}${detailCard()}${detailCard()}${detailCard()}</div>
+    <div class="analysis-card panel-lite analysis-matchups-card skel-card">
+      <div class="analysis-matchups-header">
+        <div><div class="skel skel-text" style="width:160px;height:15px;margin-bottom:8px;"></div><div class="skel skel-text" style="width:220px;"></div></div>
+        <div class="analysis-matchups-score"><span class="skel skel-text" style="width:40px;height:9px;"></span><b class="skel skel-text" style="width:34px;height:16px;"></b></div>
+      </div>
+      <div class="analysis-matchup-columns">
+        <div class="analysis-matchup-group favorable"><h4><span>✓</span> Looks good into</h4><div class="analysis-matchup-list">${matchupCard()}${matchupCard()}${matchupCard()}${matchupCard()}</div></div>
+        <div class="analysis-matchup-group unfavorable"><h4><span>×</span> Looks rough into</h4><div class="analysis-matchup-list">${matchupCard()}${matchupCard()}${matchupCard()}${matchupCard()}</div></div>
+      </div>
+    </div>
+  `;
+}
 function renderBars(obj){return Object.entries(obj).map(([k,v])=>`<div class="analysis-stat-row"><span>${esc(STAT_NAMES[k]||k)}</span><div class="analysis-bar"><i style="width:${clamp(v)}%"></i></div><b>${Math.round(v)}%</b></div>`).join('');}
 function getCfg(){return {pool:document.getElementById('analysis-pool')?.value||'generation',gen:Number(document.getElementById('analysis-gen')?.value||9),natdex:!!document.getElementById('analysis-natdex')?.checked,folder:document.getElementById('analysis-folder')?.value||'',comparePokemon:document.getElementById('analysis-pokemon')?.value||''};}
 function analysisPoolChanged(){
@@ -2235,7 +2277,7 @@ function ensurePanel(){
       <div id="analysis-natdex-wrap" class="analysis-check"><label><input type="checkbox" id="analysis-natdex" onchange="scheduleAnalysis()"> National Dex pool</label></div>
     </div>
     <div id="analysis-status" class="analysis-status"><span class="analysis-spinner"></span><span>${state.sdLoaded?'Preparing analysis…':'Loading data…'}</span></div>
-    <div id="analysis-results"></div>
+    <div id="analysis-results">${analysisResultsSkeleton()}</div>
   </div>`;
   document.getElementById('analysis-pool').value='generation';
   document.getElementById('analysis-gen').value='9';
@@ -2253,6 +2295,7 @@ async function runFakemonAnalysis(){
   const key=JSON.stringify([cfg.pool,cfg.gen,cfg.natdex,cfg.folder,cfg.comparePokemon,getTarget().stats,getTarget().types,state.abilities?.map(a=>a.name),state.learnset?.map(m=>m.name)]);
   if(key===lastAnalysisKey && results.innerHTML.trim())return;
   lastAnalysisKey=key;analysisBusy=true;
+  results.innerHTML=analysisResultsSkeleton();
   let status=document.getElementById('analysis-status');
   status.innerHTML='<span class="analysis-spinner"></span><span>Preparing comparison…</span>';
   try{
