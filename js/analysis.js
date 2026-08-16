@@ -1278,13 +1278,17 @@ function strategicallyRelevantMoves(candidates){
     else if(Number(r.typeMult)===1)groups.neutral.push(r);
     else groups.resisted.push(r);
   }
-  const cmp=(a,b)=>{
-    const ea=Number(a.typeMult)||0, eb=Number(b.typeMult)||0;
-    if(eb!==ea)return eb-ea;
-    return (Number(b.expected)||0)-(Number(a.expected)||0) ||
-      (Number(b.damageMax)||0)-(Number(a.damageMax)||0) ||
-      (Number(b.accuracy)||100)-(Number(a.accuracy)||100);
-  };
+  // Moves are already partitioned into se/neutral/resisted buckets above, which
+  // is where "super effective beats neutral" belongs. Do NOT also break ties by
+  // raw typeMult here - everything in a bucket already shares that tier, and
+  // re-sorting by exact multiplier (4x over 2x) let a weak, technically-4x
+  // coverage move outrank a far harder-hitting 2x STAB move as "best", which
+  // understated real damage output and could turn a genuine one-shot into a
+  // modeled multi-hit loss. Rank purely by actual expected damage within a tier.
+  const cmp=(a,b)=>
+    (Number(b.expected)||0)-(Number(a.expected)||0) ||
+    (Number(b.damageMax)||0)-(Number(a.damageMax)||0) ||
+    (Number(b.accuracy)||100)-(Number(a.accuracy)||100);
   Object.values(groups).forEach(g=>g.sort(cmp));
   const selected=[], seen=new Set(), seenTypes=new Set();
   const add=(r,force=false)=>{
@@ -2401,7 +2405,7 @@ async function runFakemonAnalysis(){
     const matchup=buildMatchupProfile(target,matchupPool,matchupUsage,tf,cfg.gen);
     matchup.comparableTier=tier.tier;
     matchup.comparablePoolSize=comparable.pool.length;
-    matchup.usingComparableTier=true;
+    matchup.usingComparableTier=comparable.pool.length>=6;
     // TEMP DEBUG: exposes the last computed matchup profile to the console so
     // individual matchup rows (score, offense/reverse best move, damage %) can
     // be inspected directly. Safe to remove once the issue is found.
