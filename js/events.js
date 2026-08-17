@@ -27,6 +27,7 @@ async function openEvents() {
     document.querySelectorAll('#main-content > div').forEach(el => { if (el.id !== 'events-view') el.style.display='none'; });
     const view = document.getElementById('events-view');
     if (view) view.style.display = 'block';
+    api.setRoute?.('events', 'Events & Contests');
     closeContestVoting();
     await loadEventsView();
     if (typeof lucide !== 'undefined') lucide.createIcons();

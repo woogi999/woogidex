@@ -483,7 +483,7 @@
         }
         .cat-physical { background: rgba(204,136,68,0.15); color: #995511; }
         .cat-special { background: rgba(68,102,204,0.15); color: #2244aa; }
-        .cat-status { background: rgba(68,170,68,0.15); color: #226622; }
+        .cat-status { background: rgba(107,114,128,0.15); color: #4b5563; }
         .custom-entity-row {
             display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
             padding: 10px; background: var(--bg-dark); border-radius: 10px; border: 1px solid var(--border);
@@ -3108,15 +3108,33 @@
 }
 
 /* Settings */
-.settings-modal { width: min(520px, 92vw); }
-.settings-list { display:flex; flex-direction:column; gap:10px; }
+.settings-modal { width: min(560px, 92vw); max-height: min(720px, 85vh); display: flex; flex-direction: column; }
+.settings-modal .modal-header { flex: 0 0 auto; }
+.settings-list { display:flex; flex-direction:column; gap:22px; overflow-y:auto; padding-right:4px; margin-right:-4px; }
+.settings-group { display:flex; flex-direction:column; gap:8px; }
+.settings-group-title {
+    display:flex; align-items:center; gap:8px;
+    font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--text-muted); padding:0 2px;
+}
+.settings-group-title svg { width:14px; height:14px; stroke-width:2.2; color:var(--accent); }
 .settings-row {
-    display:flex; align-items:center; justify-content:space-between; gap:18px;
-    min-height:58px; padding:12px 14px;
+    display:flex; align-items:center; gap:14px;
+    min-height:58px; padding:13px 14px;
     background:var(--bg-panel); border:1px solid var(--border); border-radius:12px;
     cursor:pointer;
+    transition: border-color .18s ease, background .18s ease, transform .15s ease;
 }
-.settings-label { color:var(--text-primary); font-size:14px; font-weight:600; line-height:1.3; }
+.settings-row:hover { border-color:color-mix(in srgb, var(--accent) 35%, var(--border)); transform:translateY(-1px); }
+.settings-row-icon {
+    flex:0 0 34px; width:34px; height:34px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg-card); border:1px solid var(--border); color:var(--accent);
+}
+.settings-row-icon svg { width:16px; height:16px; stroke-width:2; }
+.settings-row-text { display:flex; flex-direction:column; gap:3px; min-width:0; flex:1 1 auto; }
+.settings-label { color:var(--text-primary); font-size:13.5px; font-weight:700; line-height:1.3; }
+.settings-desc { color:var(--text-muted); font-size:11.5px; line-height:1.4; }
 .settings-switch-wrap { position:relative; width:46px; height:26px; flex:0 0 46px; }
 .settings-toggle-input { position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
 .settings-toggle-slider {
@@ -3126,14 +3144,21 @@
 .settings-toggle-slider::after {
     content:''; position:absolute; width:20px; height:20px; left:3px; top:3px;
     border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25);
-    transition:transform .2s ease;
+    transition:transform .2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .settings-toggle-input:checked + .settings-toggle-slider { background:var(--accent); }
 .settings-toggle-input:checked + .settings-toggle-slider::after { transform:translateX(20px); }
 .settings-toggle-input:focus-visible + .settings-toggle-slider { outline:2px solid var(--info); outline-offset:2px; }
+.settings-group { animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.settings-group:nth-child(2) { animation-delay: 0.04s; }
+.settings-group:nth-child(3) { animation-delay: 0.08s; }
+@media (prefers-reduced-motion: reduce) {
+    .settings-group { animation: none !important; }
+    .settings-row:hover { transform: none; }
+}
 @media (max-width:520px) {
     .settings-row { align-items:flex-start; }
-    .settings-label { max-width:calc(100% - 64px); }
+    .settings-row-icon { margin-top:1px; }
 }
 
 /* ==================== NEW FAKEMON / VANILLA TEMPLATE FLOW ==================== */
@@ -4057,13 +4082,13 @@
 .app-sidebar {
     position:fixed; top:0; left:0; bottom:0; width:min(320px, 88vw);
     background:var(--bg-card); border-right:1px solid var(--border);
-    box-shadow:18px 0 50px rgba(0,0,0,.16); z-index:3000;
+    box-shadow:18px 0 50px rgba(0,0,0,.16); z-index:10600 !important;
     transform:translateX(-105%); transition:transform .25s ease;
     display:flex; flex-direction:column; padding:22px 16px;
 }
 .app-sidebar.open { transform:translateX(0); }
 .sidebar-backdrop {
-    position:fixed; inset:0; background:rgba(0,0,0,.34); z-index:2999; opacity:0;
+    position:fixed; inset:0; background:rgba(0,0,0,.34); z-index:10599 !important; opacity:0;
     pointer-events:none; transition:opacity .25s ease; backdrop-filter:none; -webkit-backdrop-filter:none;
 }
 .sidebar-backdrop.open { opacity:1; pointer-events:auto; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
@@ -4930,4 +4955,17 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96
         transition: none !important;
         transform: none !important;
     }
+}
+
+/* ======================================================================
+   REDUCE MOTION (manual, in-app setting)
+   Independent of the OS-level prefers-reduced-motion query above - this is
+   an explicit in-app toggle so people can turn animations off even on a
+   system that doesn't otherwise request it.
+   ====================================================================== */
+html.reduce-motion, html.reduce-motion * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
 }

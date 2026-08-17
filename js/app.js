@@ -167,19 +167,36 @@ export const api = {};
             setIncludeOwnFakemonsInRecommendedMoves(!getIncludeOwnFakemonsInRecommendedMoves());
         }
 
-        function getUseRawStatBulk() {
-            // Defaults to on: absent/unset key means "not explicitly disabled".
-            return localStorage.getItem('woogidex-raw-stat-bulk') !== 'false';
+        function getShowCollectionCardDate() {
+            return localStorage.getItem('woogidex-show-card-date') !== 'false';
         }
 
-        function setUseRawStatBulk(enabled) {
-            localStorage.setItem('woogidex-raw-stat-bulk', enabled ? 'true' : 'false');
+        function setShowCollectionCardDate(enabled) {
+            localStorage.setItem('woogidex-show-card-date', enabled ? 'true' : 'false');
             updateSettingsUI();
-            if (typeof api.updateBulkComparison === 'function') api.updateBulkComparison();
+            if (typeof api.renderCollection === 'function') api.renderCollection();
         }
 
-        function toggleUseRawStatBulk() {
-            setUseRawStatBulk(!getUseRawStatBulk());
+        function toggleShowCollectionCardDate() {
+            setShowCollectionCardDate(!getShowCollectionCardDate());
+        }
+
+        function getReduceMotion() {
+            return localStorage.getItem('woogidex-reduce-motion') === 'true';
+        }
+
+        function applyReduceMotion(enabled) {
+            document.documentElement.classList.toggle('reduce-motion', enabled);
+        }
+
+        function setReduceMotion(enabled) {
+            localStorage.setItem('woogidex-reduce-motion', enabled ? 'true' : 'false');
+            applyReduceMotion(enabled);
+            updateSettingsUI();
+        }
+
+        function toggleReduceMotion() {
+            setReduceMotion(!getReduceMotion());
         }
 
         function openSettings() {
@@ -198,16 +215,19 @@ export const api = {};
             const ownBulkToggle = document.getElementById('settings-own-bulk-toggle');
             const ownRecommendedToggle = document.getElementById('settings-own-recommended-toggle');
             const use2dToggle = document.getElementById('settings-2d-sprites-toggle');
-            const rawBulkToggle = document.getElementById('settings-raw-bulk-toggle');
+            const cardDateToggle = document.getElementById('settings-card-date-toggle');
+            const reduceMotionToggle = document.getElementById('settings-reduce-motion-toggle');
             if (darkToggle) darkToggle.checked = dark;
             if (fadeToggle) fadeToggle.checked = fade;
             if (ownBulkToggle) ownBulkToggle.checked = getIncludeOwnFakemonsInBulkComparison();
             if (ownRecommendedToggle) ownRecommendedToggle.checked = getIncludeOwnFakemonsInRecommendedMoves();
             if (use2dToggle) use2dToggle.checked = getUse2DSprites();
-            if (rawBulkToggle) rawBulkToggle.checked = getUseRawStatBulk();
+            if (cardDateToggle) cardDateToggle.checked = getShowCollectionCardDate();
+            if (reduceMotionToggle) reduceMotionToggle.checked = getReduceMotion();
         }
 
         function loadSettings() {
+            applyReduceMotion(getReduceMotion());
             updateSettingsUI();
         }
 
@@ -327,12 +347,38 @@ function closeSidebar() {
     toggle?.setAttribute('aria-expanded', 'false');
 }
 
+// ==================== URL + TITLE ROUTING ====================
+// Keeps the address bar and document title in sync with whatever view the
+// user is actually looking at. Always uses replaceState, never pushState -
+// this is meant to make refreshing/sharing a link land back where you were,
+// not to build a Back-button history of every click; ordinary in-app
+// navigation should never pile up history entries.
+// Community mon (#community/<id>) and profile (#profile/<username>) deep
+// links are richer and manage their own hash (see community.js / auth.js);
+// this only touches the hash when neither of those routes is active, so it
+// never fights them.
+const BASE_TITLE = 'Woogidex';
+function setPageTitle(subtitle) {
+    document.title = subtitle ? `${subtitle} · ${BASE_TITLE}` : BASE_TITLE;
+}
+function setRoute(hashPath, title) {
+    setPageTitle(title);
+    const current = window.location.hash || '';
+    if (current.startsWith('#community/') || current.startsWith('#profile/')) return;
+    const nextHash = hashPath ? `#${hashPath}` : '';
+    if (current === nextHash) return;
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+}
+
 // ==================== MODULE COORDINATION ====================
 log.setContext({ state, api });
 
 Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, toggleSidebar, closeSidebar, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
+    setRoute, setPageTitle,
+    getShowCollectionCardDate, setShowCollectionCardDate, toggleShowCollectionCardDate,
+    getReduceMotion, setReduceMotion, toggleReduceMotion,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
     getUse2DSprites, setUse2DSprites, toggleUse2DSprites,
     updateSettingsUI, loadSettings, showToast,
@@ -395,7 +441,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     await api.fetchShowdownData?.();
     const isCommunityRoute = await api.handleCommunityHashRoute?.();
     const isProfileRoute = !isCommunityRoute && await api.handleProfileHashRoute?.();
-    if (!isCommunityRoute && !isProfileRoute) api.renderCollection();
+    if (!isCommunityRoute && !isProfileRoute) {
+        const handled = await handleAppHashRoute(window.location.hash || '');
+        if (!handled) api.renderCollection();
+    }
     loadDarkMode();
     loadSettings();
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -404,10 +453,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     log.info('BOOT', 'Application ready', { fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
 });
 
+// Restores the app's other top-level views (collection/editor/community
+// hub/events) from a plain #route hash on load or Back/Forward - the richer
+// #community/<id> and #profile/<username> deep links are handled separately
+// above this, before we ever get here. Returns true if it recognized and
+// handled the hash, so the caller knows whether to fall back to the
+// collection as the default view.
+async function handleAppHashRoute(hash) {
+    if (hash.startsWith('#editor/')) {
+        const id = decodeURIComponent(hash.slice('#editor/'.length));
+        const fakemon = state.fakemonDB.find(f => String(f.id) === id);
+        if (fakemon) { api.editFakemon(id); return true; }
+        return false;
+    }
+    if (hash === '#community') { await api.openCommunityHub?.(); return true; }
+    if (hash === '#events') { await api.openEvents?.(); return true; }
+    if (hash === '#collection' || hash === '') { return false; }
+    return false;
+}
+
 window.addEventListener('hashchange', async () => {
     const hash = window.location.hash || '';
     if (hash.startsWith('#community/')) await api.handleCommunityHashRoute?.();
     else if (hash.startsWith('#profile/')) await api.handleProfileHashRoute?.();
+    else await handleAppHashRoute(hash);
 });
 
 export { loadDarkMode, toggleDarkMode, updateDarkModeUI, showToast, initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor };

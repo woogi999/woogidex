@@ -306,6 +306,14 @@ async function handleCommunityHashRoute() {
 }
 
 // ==================== FEED ====================
+// The grid only ever renders a mon's name, types, and artwork thumbnail (see
+// renderCommunityGrid below) - but `fakemon_data` also carries shiny artwork,
+// a cry audio clip, the full learnset, sample sets, and evolution graph,
+// which for a published Fakemon can add up to several hundred KB or more.
+// Pulling all of that for every row of a 100-row feed (on every single
+// Community Hub open) was by far the biggest source of Supabase egress in
+// the app. We only need the slim fields here; openMonDetail() below fetches
+// the full row on demand, only for the one mon someone actually opens.
 async function fetchCommunityFeed() {
     const cs = ensureCommunityState();
     cs.loading = true;
@@ -313,11 +321,11 @@ async function fetchCommunityFeed() {
         const client = await api.getClient();
         const { data, error } = await client
             .from('published_mons')
-            .select('*')
+            .select('id, user_id, published_at, activity_at, view_count, source_fakemon_id, author_name, author_avatar_url, author_role, author_badges, fakemon_data->>name, fakemon_data->>species, fakemon_data->>number, fakemon_data->>type1, fakemon_data->>type2, fakemon_data->>artwork')
             .order('activity_at', { ascending: false })
             .limit(100);
         if (error) throw error;
-        cs.mons = await attachLiveAuthorInfo(data || []);
+        cs.mons = await attachLiveAuthorInfo((data || []).map(unflattenSlimMonRow));
         await hydrateCommunityStats(cs.mons);
         log.info('COMMUNITY', 'Feed loaded', { count: cs.mons.length });
     } catch (e) {
@@ -327,6 +335,16 @@ async function fetchCommunityFeed() {
     } finally {
         cs.loading = false;
     }
+}
+
+// Supabase/PostgREST's `column->>key` selector returns each requested jsonb
+// key as its own flat top-level column (named `key`, not `fakemon_data`)
+// rather than a nested object. Every renderer in this file expects
+// `row.fakemon_data.name` etc., so this rebuilds that shape from the flat
+// columns and removes them so a slim row can't be mistaken for a full one.
+function unflattenSlimMonRow(row) {
+    const { name, species, number, type1, type2, artwork, ...rest } = row;
+    return { ...rest, fakemon_data: { name, species, number, type1, type2, artwork } };
 }
 
 // ==================== COMMUNITY STATS ====================
@@ -358,6 +376,14 @@ async function hydrateCommunityStats(rows) {
 async function toggleCommunityLike(publishedId, event) {
     event?.preventDefault();
     event?.stopPropagation();
+    // Capture the button synchronously, before any `await`. Once a DOM event
+    // finishes dispatching, the browser nulls out event.currentTarget - and
+    // since this function is async, every line after our first `await` runs
+    // *after* dispatch has already finished. Reading currentTarget down
+    // there was reliably grabbing null and falling through to a full-grid
+    // querySelector re-scan, which is what made liking a mon feel like the
+    // whole Community Hub was refreshing.
+    const btn = event?.currentTarget || document.querySelector(`.community-like-btn[onclick*="'${publishedId}'"]`);
     if (!state.user) { api.showToast?.('Sign in to like Fakemon.', 'warning'); return; }
     const client = await api.getClient();
     const row = ensureCommunityState().mons.find(r => r.id === publishedId);
@@ -373,7 +399,16 @@ async function toggleCommunityLike(publishedId, event) {
         row.liked_by_me = !liked;
         row.like_count = Math.max(0, Number(row.like_count || 0) + (liked ? -1 : 1));
     }
-    renderCommunityGrid();
+    // Update just this card's like button in place instead of re-rendering
+    // the whole grid - calling renderCommunityGrid() here was rebuilding
+    // every card's DOM (replaying every entrance animation and resetting
+    // scroll position) just to reflect one heart count changing.
+    if (btn && row) {
+        btn.classList.toggle('liked', row.liked_by_me);
+        btn.title = row.liked_by_me ? 'Unlike' : 'Like';
+        const countEl = btn.querySelector('span');
+        if (countEl) countEl.textContent = row.like_count || 0;
+    }
 }
 
 // ==================== COMMENTS ====================
@@ -521,6 +556,7 @@ async function openCommunityHub() {
     document.getElementById('community-detail-view') && (document.getElementById('community-detail-view').style.display = 'none');
     document.getElementById('events-view') && (document.getElementById('events-view').style.display = 'none');
     document.getElementById('community-view').style.display = 'block';
+    api.setRoute?.('community', 'Community Hub');
 
     if (!hasAcceptedCommunityRules()) {
         openCommunityRulesModal({ requireAgreement: false });
@@ -753,13 +789,32 @@ function getCommunityViewerKey() {
 //   -- and swap the .rpc() call below back to passing both p_published_id and p_viewer_key.
 async function openMonDetail(publishedId, options = {}) {
     const cs = ensureCommunityState();
-    const row = cs.mons.find(m => m.id === publishedId);
+    let row = cs.mons.find(m => m.id === publishedId);
     if (!row) return;
+    // The feed only loads slim fields (name/types/artwork thumbnail) to keep
+    // egress down - fetch the full row now that someone's actually opening
+    // this one mon, so the live preview board has its real learnset, sample
+    // sets, shiny artwork, cry, and evolution graph.
+    try {
+        const client = await api.getClient();
+        const { data: fullRow, error } = await client.from('published_mons').select('*').eq('id', publishedId).maybeSingle();
+        if (error) throw error;
+        if (fullRow) {
+            row = { ...row, ...fullRow };
+            const idx = cs.mons.findIndex(m => m.id === publishedId);
+            if (idx !== -1) cs.mons[idx] = row;
+        }
+    } catch (e) {
+        log.error('COMMUNITY', 'Failed to load full mon detail', e);
+        api.showToast?.('Could not load the full details for this Fakemon.', 'error');
+        return;
+    }
     closeCommunityExportMenu();
     cs.openMonId = publishedId;
     cs.openMonRow = row;
     if (!options.preserveHash) history.replaceState(null, '', communityShareUrl(publishedId));
     const mon = row.fakemon_data || {};
+    api.setPageTitle?.(mon.name ? `${mon.name} (Community)` : 'Community Hub');
 
     // Cancel any pending editor autosave so switching into this read-only
     // preview can never commit as a new collection entry, and mark this as

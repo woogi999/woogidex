@@ -244,12 +244,63 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                 levelInput.value = '';
             }
         }
+        function findClosestAbility(query) {
+            if (!query.trim()) return null;
+            const q = query.toLowerCase().trim();
+
+            // Exact match (case-insensitive)
+            let match = Object.entries(state.sdAbilities).find(([k, v]) => v.name.toLowerCase() === q);
+            if (match) return match[1];
+
+            // Key exact match
+            match = Object.entries(state.sdAbilities).find(([k, v]) => k.toLowerCase() === q);
+            if (match) return match[1];
+
+            // Starts with
+            let startsWith = Object.entries(state.sdAbilities).filter(([k, v]) => v.name.toLowerCase().startsWith(q));
+            if (startsWith.length === 1) return startsWith[0][1];
+            if (startsWith.length > 1) {
+                startsWith.sort((a, b) => a[1].name.length - b[1].name.length);
+                return startsWith[0][1];
+            }
+
+            // Includes
+            let includes = Object.entries(state.sdAbilities).filter(([k, v]) => v.name.toLowerCase().includes(q));
+            if (includes.length === 1) return includes[0][1];
+            if (includes.length > 1) {
+                includes.sort((a, b) => a[1].name.length - b[1].name.length);
+                return includes[0][1];
+            }
+
+            // Word-boundary match
+            let wordMatches = Object.entries(state.sdAbilities).filter(([k, v]) => {
+                const name = v.name.toLowerCase();
+                const words = name.split(/[\s\-]+/);
+                return words.some(w => w.startsWith(q) || w === q);
+            });
+            if (wordMatches.length > 0) {
+                wordMatches.sort((a, b) => a[1].name.length - b[1].name.length);
+                return wordMatches[0][1];
+            }
+
+            return null;
+        }
         function handleAbilityKey(e) {
             if (e.key === 'Enter') {
                 const val = e.target.value.trim();
-                if (val) addAbility(val, 'custom');
-                e.target.value = '';
-                document.getElementById('ability-dropdown').classList.remove('active');
+                if (val) {
+                    const closest = findClosestAbility(val);
+                    if (closest) {
+                        addAbility(closest.name, 'sd');
+                        e.target.value = '';
+                        document.getElementById('ability-dropdown').classList.remove('active');
+                    }
+                    // No match: leave the input as-is so the user can keep typing
+                    // rather than silently accepting an invalid ability name.
+                } else {
+                    e.target.value = '';
+                    document.getElementById('ability-dropdown').classList.remove('active');
+                }
             }
         }
                 
@@ -279,14 +330,26 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         }
 
         function populateMoveBrowserTypeOptions() {
-            const select = document.getElementById('mb-filter-type');
-            if (!select || select.options.length > 1) return;
-            POKEMON_TYPES.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t;
-                opt.textContent = t;
-                select.appendChild(opt);
-            });
+            const typeMenu = document.getElementById('mb-filter-type-menu');
+            if (typeMenu && !typeMenu.children.length) {
+                typeMenu.innerHTML = buildTypeMenuOptions(t => `selectMoveBrowserTypeFilter('${t}')`, true, 'Any Type');
+            }
+            const catMenu = document.getElementById('mb-filter-category-menu');
+            if (catMenu && !catMenu.children.length) {
+                catMenu.innerHTML = buildCatMenuOptions(c => `selectMoveBrowserCategoryFilter('${c}')`, true, 'Any Category');
+            }
+        }
+
+        function selectMoveBrowserTypeFilter(type) {
+            document.getElementById('mb-filter-type').value = type;
+            setTypeDropdownValue('mb-filter-type', type, 'Any Type');
+            filterMoveBrowser();
+        }
+
+        function selectMoveBrowserCategoryFilter(category) {
+            document.getElementById('mb-filter-category').value = category;
+            setCatDropdownValue('mb-filter-category', category, 'Any Category');
+            filterMoveBrowser();
         }
 
         function renderMoveBrowserFlagChips() {
@@ -310,7 +373,9 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         function clearMoveBrowserFilters() {
             document.getElementById('mb-filter-name').value = '';
             document.getElementById('mb-filter-type').value = '';
+            setTypeDropdownValue('mb-filter-type', '', 'Any Type');
             document.getElementById('mb-filter-category').value = '';
+            setCatDropdownValue('mb-filter-category', '', 'Any Category');
             document.getElementById('mb-filter-priority').value = '';
             document.getElementById('mb-filter-bp-min').value = '';
             document.getElementById('mb-filter-acc-min').value = '';
@@ -2502,4 +2567,4 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
 
         
 
-export { sortLearnsetEntries, resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, openMoveBrowserModal, filterMoveBrowser, addMoveFromBrowser, toggleMoveBrowserFlag, clearMoveBrowserFilters, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, formatLearnMethodLabel, showGeneratedLearnsetSummary, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };
+export { sortLearnsetEntries, resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, openMoveBrowserModal, filterMoveBrowser, addMoveFromBrowser, toggleMoveBrowserFlag, clearMoveBrowserFilters, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestAbility, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, formatLearnMethodLabel, showGeneratedLearnsetSummary, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, selectMoveBrowserTypeFilter, selectMoveBrowserCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };

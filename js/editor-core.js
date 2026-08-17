@@ -969,6 +969,14 @@ function updatePreview() {
     log.debug('PREVIEW', 'Updating Fakemon preview', { name: document.getElementById('fakemon-name')?.value || '', moves: state.learnset.length });
             renderTypeEffectiveness();
             const name = document.getElementById('fakemon-name').value || 'Unnamed Pokemon';
+            // Keep the tab title live as the name changes, matching whatever's
+            // in the field right now - only while the editor is actually the
+            // visible view, so background preview renders (e.g. the quick
+            // preview popup) don't steal the title from wherever the user
+            // actually is.
+            if (document.getElementById('editor-view')?.style.display !== 'none') {
+                api.setPageTitle?.(name);
+            }
             const speciesRaw = document.getElementById('fakemon-species').value.trim();
             const species = speciesRaw ? (/^the\s/i.test(speciesRaw) ? speciesRaw : 'The ' + speciesRaw) : '';
             const type1 = document.getElementById('fakemon-type1').value;

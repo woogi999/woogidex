@@ -723,16 +723,22 @@ async function loadPublicProfile(userId) {
     let mons = [];
     let comments = [];
     try {
+        // Same egress fix as the Community Hub feed: the gallery grid only
+        // renders name/types/artwork thumbnail, so don't pull the full
+        // fakemon_data blob (shiny artwork, cry audio, learnset, sample
+        // sets, evolution graph) for up to 100 rows on every profile view.
+        // Clicking a card calls openPublishedMonById(), which fetches the
+        // full row for that one mon.
         const result = await withProfileTimeout(
             client.from('published_mons')
-                .select('id, user_id, fakemon_data, published_at')
+                .select('id, user_id, published_at, fakemon_data->>name, fakemon_data->>type1, fakemon_data->>type2, fakemon_data->>artwork')
                 .eq('user_id', userId)
                 .order('published_at', { ascending: false })
                 .limit(100),
             'Published Fakemon request'
         );
         if (result.error) console.warn('Could not load published mons:', result.error);
-        else mons = result.data || [];
+        else mons = (result.data || []).map(({ name, type1, type2, artwork, ...rest }) => ({ ...rest, fakemon_data: { name, type1, type2, artwork } }));
     } catch (e) {
         console.warn('Could not load published mons:', e);
     }
@@ -833,6 +839,7 @@ function renderProfilePage() {
     if (editEl) editEl.style.display = 'none';
 
     const displayName = profile.display_name || profile.username || 'Profile';
+    api.setPageTitle?.(`${displayName}'s Profile`);
     const heading = document.getElementById('profile-page-display-heading');
     const handle = document.getElementById('profile-page-handle');
     if (heading) { heading.classList.remove('skel', 'skel-text'); heading.style.width = ''; heading.textContent = displayName; }

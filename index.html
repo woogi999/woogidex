@@ -13,10 +13,15 @@
                 if (localStorage.getItem('woogidex-dark-mode') === 'true') {
                     document.documentElement.setAttribute('data-theme', 'dark');
                 }
+                if (localStorage.getItem('woogidex-reduce-motion') === 'true') {
+                    document.documentElement.classList.add('reduce-motion');
+                }
             } catch (e) {}
         })();
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -111,6 +116,7 @@
                     <div>
                         <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px;">
                             <div style="display:flex;gap:8px;align-items:center;">
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left"></i> Back</button>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="publishCurrentEditorFakemon()">Publish to Community</button>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
                                 <div class="export-as-wrap" style="position:relative;display:inline-block;">
@@ -910,41 +916,85 @@
                 <button class="modal-close" onclick="closeModal('settings-modal')" aria-label="Close settings"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="settings-list">
-                <label class="settings-row" for="settings-dark-toggle">
-                    <span class="settings-label">Toggle Dark Mode</span>
-                    <span class="settings-switch-wrap">
-                        <input id="settings-dark-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleDarkMode()">
-                        <span class="settings-toggle-slider"></span>
-                    </span>
-                </label>
-                <label class="settings-row" for="settings-fade-toggle">
-                    <span class="settings-label">Fade out usually useless moves</span>
-                    <span class="settings-switch-wrap">
-                        <input id="settings-fade-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleFadeUselessMoves()">
-                        <span class="settings-toggle-slider"></span>
-                    </span>
-                </label>
-                <label class="settings-row" for="settings-own-bulk-toggle">
-                    <span class="settings-label">Include own Fakemons in Bulk Comparison</span>
-                    <span class="settings-switch-wrap">
-                        <input id="settings-own-bulk-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInBulkComparison()">
-                        <span class="settings-toggle-slider"></span>
-                    </span>
-                </label>
-                <label class="settings-row" for="settings-own-recommended-toggle">
-                    <span class="settings-label">Include own Fakemons in Recommended Moves</span>
-                    <span class="settings-switch-wrap">
-                        <input id="settings-own-recommended-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInRecommendedMoves()">
-                        <span class="settings-toggle-slider"></span>
-                    </span>
-                </label>
-                <label class="settings-row" for="settings-2d-sprites-toggle">
-                    <span class="settings-label">Use 2D sprites instead of 3D models</span>
-                    <span class="settings-switch-wrap">
-                        <input id="settings-2d-sprites-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleUse2DSprites()">
-                        <span class="settings-toggle-slider"></span>
-                    </span>
-                </label>
+                <div class="settings-group">
+                    <div class="settings-group-title"><span>Appearance</span></div>
+                    <label class="settings-row" for="settings-dark-toggle">
+                        <span class="settings-row-text">
+                            <span class="settings-label">Dark mode</span>
+                            <span class="settings-desc">Switch the whole site to a dark color scheme.</span>
+                        </span>
+                        <span class="settings-switch-wrap">
+                            <input id="settings-dark-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleDarkMode()">
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="settings-row" for="settings-reduce-motion-toggle">
+                        <span class="settings-row-text">
+                            <span class="settings-label">Reduce motion</span>
+                            <span class="settings-desc">Turn off animations and transitions across the site.</span>
+                        </span>
+                        <span class="settings-switch-wrap">
+                            <input id="settings-reduce-motion-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleReduceMotion()">
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="settings-row" for="settings-2d-sprites-toggle">
+                        <span class="settings-row-text">
+                            <span class="settings-label">Use 2D sprites</span>
+                            <span class="settings-desc">Show flat sprites instead of animated 3D models.</span>
+                        </span>
+                        <span class="settings-switch-wrap">
+                            <input id="settings-2d-sprites-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleUse2DSprites()">
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="settings-row" for="settings-card-date-toggle">
+                        <span class="settings-row-text">
+                            <span class="settings-label">Show creation date on cards</span>
+                            <span class="settings-desc">Display when each Fakemon was created on its collection card.</span>
+                        </span>
+                        <span class="settings-switch-wrap">
+                            <input id="settings-card-date-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleShowCollectionCardDate()">
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title"><span>Editor</span></div>
+                    <label class="settings-row" for="settings-fade-toggle">
+                        <span class="settings-row-text">
+                            <span class="settings-label">Fade out usually useless moves</span>
+                            <span class="settings-desc">Dim moves in the movepool that rarely see competitive use.</span>
+                        </span>
+                        <span class="settings-switch-wrap">
+                            <input id="settings-fade-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleFadeUselessMoves()">
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title"><span>Comparison tools</span></div>
+                    <label class="settings-row" for="settings-own-bulk-toggle">
+                        <span class="settings-row-text">
+                            <span class="settings-label">Include own Fakemon in Bulk Comparison</span>
+                            <span class="settings-desc">Let your own collection show up alongside official Pokémon.</span>
+                        </span>
+                        <span class="settings-switch-wrap">
+                            <input id="settings-own-bulk-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInBulkComparison()">
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="settings-row" for="settings-own-recommended-toggle">
+                        <span class="settings-row-text">
+                            <span class="settings-label">Include own Fakemon in Recommended Moves</span>
+                            <span class="settings-desc">Factor your own collection into move recommendations.</span>
+                        </span>
+                        <span class="settings-switch-wrap">
+                            <input id="settings-own-recommended-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInRecommendedMoves()">
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                </div>
             </div>
         </div>
     </div>
@@ -1233,15 +1283,22 @@
             </div>
             <div class="move-browser-filters">
                 <input type="text" id="mb-filter-name" placeholder="Search by name..." oninput="filterMoveBrowser()" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
-                <select id="mb-filter-type" onchange="filterMoveBrowser()" style="width:120px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
-                    <option value="">Any Type</option>
-                </select>
-                <select id="mb-filter-category" onchange="filterMoveBrowser()" style="width:120px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
-                    <option value="">Any Category</option>
-                    <option value="Physical">Physical</option>
-                    <option value="Special">Special</option>
-                    <option value="Status">Status</option>
-                </select>
+                <div class="type-dropdown" id="mb-filter-type-dropdown" style="width:120px;">
+                    <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('mb-filter-type')">
+                        <span class="type-dropdown-value" id="mb-filter-type-value">Any Type</span>
+                        <span class="type-dropdown-arrow">▼</span>
+                    </button>
+                    <div class="type-dropdown-menu" id="mb-filter-type-menu"></div>
+                </div>
+                <input type="hidden" id="mb-filter-type" value="">
+                <div class="cat-dropdown" id="mb-filter-category-dropdown" style="width:120px;">
+                    <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('mb-filter-category')">
+                        <span class="cat-dropdown-value" id="mb-filter-category-value">Any Category</span>
+                        <span class="type-dropdown-arrow">▼</span>
+                    </button>
+                    <div class="cat-dropdown-menu" id="mb-filter-category-menu"></div>
+                </div>
+                <input type="hidden" id="mb-filter-category" value="">
                 <select id="mb-filter-priority" onchange="filterMoveBrowser()" style="width:130px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
                     <option value="">Any Priority</option>
                     <option value="positive">Priority &gt; 0</option>

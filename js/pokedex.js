@@ -25,6 +25,7 @@ import { POKEMON_COLORS } from './data.js';
             document.getElementById('collection-view').style.display = 'block';
             document.getElementById('save-status').style.display = 'none';
             setCollectionView(collectionView || 'fakemon');
+            api.setRoute?.('collection', null);
         }
         // ==================== NEW FAKEMON FLOW ====================
         async function createNewFakemon() {
@@ -60,6 +61,7 @@ import { POKEMON_COLORS } from './data.js';
             switchTab(document.querySelector('.tab'), 'basic');
             document.getElementById('new-fakemon-modal')?.classList.remove('active');
             document.getElementById('pokemon-template-modal')?.classList.remove('active');
+            api.setRoute?.('editor', name || 'New Fakemon');
 
             // Apply the vanilla data before the first editor render. The template
             // learnset is hydrated immediately from the already-loaded Showdown
@@ -394,6 +396,7 @@ import { POKEMON_COLORS } from './data.js';
             document.getElementById('save-status').style.display = '';
             switchTab(document.querySelector('.tab'), 'basic');
             api.updatePreview();
+            api.setRoute?.(`editor/${encodeURIComponent(id)}`, fakemon.name || 'Editor');
         }
         function switchTab(tabEl, tabName) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1085,7 +1088,7 @@ import { POKEMON_COLORS } from './data.js';
                             ${f.type1 ? `<span class="type-badge ${type1Class}">${f.type1}</span>` : ''}
                             ${f.type2 ? `<span class="type-badge ${type2Class}">${f.type2}</span>` : ''}
                         </div>
-                        <div class="card-bst" style="font-size:11px;color:var(--text-muted);">Created: ${new Date(f.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${new Date(f.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div class="card-bst" style="font-size:11px;color:var(--text-muted);">${api.getShowCollectionCardDate?.() === false ? '' : `Created: ${new Date(f.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${new Date(f.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}</div>
                     </div>
                 `;
             }).join('');
