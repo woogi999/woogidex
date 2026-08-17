@@ -102,7 +102,7 @@
                             <h2>Events &amp; Contests</h2>
                             <p>Check the available contests first, then submit one of your own Fakemon while submissions are open.</p>
                         </div>
-                        <button class="btn btn-secondary btn-sm" type="button" onclick="loadEventsView()"><i data-lucide="refresh-cw"></i> Refresh</button>
+                        <button class="btn btn-secondary btn-sm" type="button" onclick="loadEventsView()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh</button>
                     </div>
                     <div id="events-status" class="events-status"></div>
                     <div id="events-list" class="events-list"></div>
@@ -116,7 +116,7 @@
                     <div>
                         <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px;">
                             <div style="display:flex;gap:8px;align-items:center;">
-                                <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left"></i> Back</button>
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="publishCurrentEditorFakemon()">Publish to Community</button>
                                 <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
                                 <div class="export-as-wrap" style="position:relative;display:inline-block;">
@@ -533,7 +533,7 @@
                     <div class="profile-page-header profile-page-header-clean">
                         <div></div>
                         <div class="profile-page-header-actions">
-                            <button class="btn btn-secondary btn-sm" id="profile-back-btn" type="button" onclick="showCollection()"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn btn-secondary btn-sm" id="profile-back-btn" type="button" onclick="showCollection()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
                             <button class="btn btn-secondary btn-sm" id="profile-edit-cancel-btn" type="button" style="display:none;" onclick="cancelEditOwnProfile()"><i data-lucide="x"></i> Cancel</button>
                             <button class="btn btn-primary btn-sm" id="profile-edit-btn" type="button" style="display:none;" onclick="editOwnProfile()"><i data-lucide="pencil"></i> Edit Profile</button>
                             <button class="btn btn-primary btn-sm" id="profile-edit-save-btn" type="button" style="display:none;" onclick="submitProfileForm()"><i data-lucide="save"></i> Save Profile</button>
@@ -697,7 +697,7 @@
                         <div class="collection-title-left">
                             <h2 class="collection-heading">Community Hub</h2>
                         </div>
-                        <button class="btn btn-secondary" onclick="closeCommunityHub()"><i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Back to Collection</button>
+                        <button class="btn btn-secondary btn-sm" onclick="closeCommunityHub()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back to Collection</button>
                     </div>
                     <div class="search-bar community-controls">
                         <input type="text" id="community-search-input" placeholder="Search Community Hub..." oninput="filterCommunity()" aria-label="Search Community Hub">
@@ -867,7 +867,7 @@
                      <div id="community-update-selected" class="community-update-selected">No Fakemon selected</div>
                      <div class="community-update-action-buttons">
                          <button class="btn btn-secondary" type="button" onclick="closeCommunityUpdateModal()">Cancel</button>
-                         <button class="btn btn-primary" id="community-update-confirm" type="button" onclick="confirmCommunityUpdate()" disabled><i data-lucide="refresh-cw" style="width:15px;height:15px;"></i> Update Listing</button>
+                         <button class="btn btn-primary" id="community-update-confirm" type="button" onclick="confirmCommunityUpdate()" disabled><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Update Listing</button>
                      </div>
                  </div>
              </div>
@@ -1003,7 +1003,7 @@
         <div class="modal" style="max-width: 620px;">
             <div class="modal-header">
                 <h3 id="custom-entity-chooser-title">Add Custom Move</h3>
-                <button class="modal-close" onclick="closeModal('custom-entity-chooser-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('custom-entity-chooser-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div id="custom-entity-chooser-body"></div>
         </div>
@@ -1013,7 +1013,7 @@
         <div class="modal" style="max-width: 520px;">
             <div class="modal-header">
                 <h3 id="custom-ability-modal-title">Create Custom Ability</h3>
-                <button class="modal-close" onclick="closeModal('custom-ability-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('custom-ability-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="form-group">
                 <label>Ability Name</label>
@@ -1035,7 +1035,7 @@
         <div class="modal" style="max-width: 520px;">
             <div class="modal-header">
                 <h3 id="custom-item-modal-title">Create Custom Item</h3>
-                <button class="modal-close" onclick="closeModal('custom-item-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('custom-item-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="form-group">
                 <label>Item Name</label>
@@ -1065,7 +1065,7 @@
         <div class="modal quick-preview-modal">
             <div class="modal-header">
                 <h3>Quick Preview</h3>
-                <button class="modal-close" onclick="closeModal('fakemon-preview-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('fakemon-preview-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div id="preview-modal-board-wrap"></div>
             <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
@@ -1078,7 +1078,7 @@
         <div class="modal" style="max-width: 380px;">
             <div class="modal-header">
                 <h3 id="folder-name-modal-title">New Folder</h3>
-                <button class="modal-close" onclick="closeModal('folder-name-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('folder-name-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="form-group">
                 <label>Folder Name</label>
@@ -1099,7 +1099,7 @@
         <div class="modal" style="max-width: 600px;">
             <div class="modal-header">
                 <h3 id="custom-move-modal-title">Create Custom Move</h3>
-                <button class="modal-close" onclick="closeModal('custom-move-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('custom-move-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div id="custom-move-form">
                 <input type="hidden" id="custom-move-edit-index" value="">
@@ -1192,7 +1192,7 @@
         <div class="modal" style="max-width: 620px;">
             <div class="modal-header">
                 <h3>Add Sample Set</h3>
-                <button class="modal-close" onclick="closeSampleSetModal()">&times;</button>
+                <button class="modal-close" onclick="closeSampleSetModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
                 
@@ -1216,7 +1216,7 @@
         <div class="modal" style="max-width: 700px;">
             <div class="modal-header">
                 <h3>Import / Export Moves</h3>
-                <button class="modal-close" onclick="closeModal('move-import-export-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('move-import-export-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
                 Import and export your moves here. The selected order is used for both operations.
@@ -1249,7 +1249,7 @@
         <div class="modal" style="max-width: 850px;">
             <div class="modal-header">
                 <h3>Export as Plain Text</h3>
-                <button class="modal-close" onclick="closeModal('plain-text-export-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('plain-text-export-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Choose the learnset order, then copy the text below or download it as a .txt file.</p>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
@@ -1279,7 +1279,7 @@
         <div class="modal" style="max-width: 820px;">
             <div class="modal-header">
                 <h3>Browse Moves</h3>
-                <button class="modal-close" onclick="closeModal('move-browser-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('move-browser-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="move-browser-filters">
                 <input type="text" id="mb-filter-name" placeholder="Search by name..." oninput="filterMoveBrowser()" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
@@ -1322,7 +1322,7 @@
         <div class="modal" style="max-width: 960px;">
             <div class="modal-header">
                 <h3>Generated Learnset</h3>
-                <button class="modal-close" onclick="closeModal('generated-learnset-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('generated-learnset-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <p id="generated-learnset-subtitle" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></p>
             <div id="generated-learnset-body"></div>
@@ -1333,7 +1333,7 @@
         <div class="modal" style="max-width: 560px;">
             <div class="modal-header">
                 <h3>Recommended Moves</h3>
-                <button class="modal-close" onclick="closeModal('recommend-moves-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('recommend-moves-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Based on this Fakemon's typing and stat spread. Click a move to add it to the learnset.</p>
             <button class="btn btn-secondary btn-sm" onclick="generateLearnset()" style="width:100%;margin-bottom:6px;justify-content:center;">Generate Learnset</button>
@@ -1345,7 +1345,7 @@
         <div class="modal" style="max-width:520px;">
             <div class="modal-header">
                 <h3>Import Collection</h3>
-                <button class="modal-close" onclick="closeModal('import-modal')">&times;</button>
+                <button class="modal-close" onclick="closeModal('import-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <p style="margin-bottom: 16px; color: var(--text-secondary);">Import a collection or a Fakemon export. You can choose to add the imported Fakemon to your collection, or replace the current collection.</p>
             <label class="file-upload-btn" style="width:100%;box-sizing:border-box;text-align:center;">
@@ -1366,7 +1366,7 @@
         <div class="modal new-fakemon-modal">
             <div class="modal-header">
                 <h3>New Fakemon</h3>
-                <button class="modal-close" type="button" onclick="closeModal('new-fakemon-modal')" aria-label="Close">&times;</button>
+                <button class="modal-close" type="button" onclick="closeModal('new-fakemon-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="form-group" style="margin-bottom:18px;">
                 <label for="new-fakemon-name">Enter your Fakemon's name</label>
@@ -1384,7 +1384,7 @@
         <div class="modal pokemon-template-modal">
             <div class="modal-header">
                 <h3>Choose a Pokemon Template</h3>
-                <button class="modal-close" type="button" onclick="closeModal('pokemon-template-modal')" aria-label="Close">&times;</button>
+                <button class="modal-close" type="button" onclick="closeModal('pokemon-template-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <p class="new-fakemon-subtitle">Choose a vanilla Pokémon. Its stats, typing, abilities, dimensions, learnset, and other available data will be copied into your new Fakemon.</p>
             <div class="pokemon-template-controls">
@@ -1401,7 +1401,7 @@
         <div class="modal evolution-method-modal">
             <div class="modal-header">
                 <h3 id="evolution-method-modal-title">Add Evo Method</h3>
-                <button class="modal-close" type="button" onclick="closeModal('evolution-method-modal')" aria-label="Close">&times;</button>
+                <button class="modal-close" type="button" onclick="closeModal('evolution-method-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="evolution-method-form">
                 <div class="form-group">

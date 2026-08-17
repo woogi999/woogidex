@@ -981,7 +981,7 @@ function renderProfileComments() {
                 <strong>${esc(name)}</strong>
                 ${api.renderBadgeRow ? api.renderBadgeRow(badgeKeys, 12) : ''}
                 <span class="profile-comment-time">${new Date(c.created_at).toLocaleString()}</span>
-                ${canDelete ? `<button type="button" class="mon-comment-delete" onclick="event.stopPropagation(); deleteProfileComment('${c.id}')" title="Delete"><i data-lucide="trash-2"></i></button>` : ''}
+                ${canDelete ? `<button type="button" class="mon-comment-delete" onclick="event.stopPropagation(); deleteProfileComment('${c.id}')" title="Delete"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
             </div>
             <div class="profile-comment-body">${renderCommentMarkdown(c.body)}</div>
         </div>`;
