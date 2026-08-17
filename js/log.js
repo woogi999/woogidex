@@ -1,6 +1,6 @@
-// ==================== WOOGIDEX DIAGNOSTIC LOG ====================
-// Single logging/diagnostics surface for the entire application.
-// Other modules should NOT call console.* directly; use log.* instead.
+// ==================== Woogidex diagnostic log ====================
+// single logging/diagnostics surface for the entire application.
+// other modules should not call console.* directly; use log.* instead.
 const STORAGE_KEY = 'woogidex-log-enabled';
 const VERBOSE_KEY = 'woogidex-log-verbose';
 const MAX_HISTORY = 500;

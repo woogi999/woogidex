@@ -1,7 +1,7 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
 
-// ==================== INDEXEDDB ====================
+// ==================== IndexedDB ====================
         const IDB_NAME = 'woogidex-db';
         const IDB_VERSION = 1;
         const IDB_STORE = 'kv';
@@ -44,10 +44,10 @@ let autoSaveGeneration = 0;
             }));
         }
 
-// ==================== COLLECTION NORMALIZATION ====================
-// IDs are the primary key for every saved collection entry. Older builds could
+// ==================== collection normalization ====================
+// IDs are the primary key for every saved collection entry. older builds could
 // accidentally append the same object more than once during overlapping saves.
-// Normalize on load/save so duplicates can no longer accumulate.
+// normalize on load/save so duplicates can no longer accumulate.
 function normalizeCollectionArray(arr, options = {}) {
     if (!Array.isArray(arr)) return [];
     const seenIds = new Set();
@@ -61,7 +61,7 @@ function normalizeCollectionArray(arr, options = {}) {
         const nameKey = String(item.name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 
         if (id && seenIds.has(id)) continue;
-        // Custom libraries are name-unique in the UI. Older versions could create
+        // custom libraries are name-unique in the UI. older versions could create
         // the same entry twice with different generated IDs during overlapping saves.
         if (options.uniqueName && nameKey && seenNames.has(nameKey)) continue;
 
@@ -84,12 +84,12 @@ function normalizeCollections() {
     state.customItems = normalizeCollectionArray(state.customItems, { uniqueName: true, idPrefix: 'ci_' });
 }
 
-// ==================== AUTO SAVE ====================
+// ==================== auto save ====================
 
 
         function autoSave(immediate = false) {
-            // Shared-link previews and Community Hub previews are strictly read-only.
-            // They may hydrate the editor for rendering, but they can never enter the
+            // shared-link previews and community hub previews are strictly read-only.
+            // they may hydrate the editor for rendering, but they can never enter the
             // private collection through this function.
             if (state.isCommunityPreview) {
                 if (state.autoSaveTimer) {
@@ -101,7 +101,7 @@ function normalizeCollections() {
                 return Promise.resolve(false);
             }
 
-            // Debounced autosave requests only originate from editor changes. This
+            // debounced autosave requests only originate from editor changes. this
             // prevents hidden/stale editor DOM from being accidentally persisted when
             // collection/community UI is being navigated.
             const editor = document.getElementById('editor-view');
@@ -134,7 +134,7 @@ function normalizeCollections() {
             const doSave = async () => {
                 state.autoSaveTimer = null;
 
-                // A newer save, delete, or route transition owns the editor now.
+                // a newer save, delete, or route transition owns the editor now.
                 if (generation !== autoSaveGeneration) {
                     log.debug('STORAGE', 'Discarding stale autosave generation', { generation, current: autoSaveGeneration });
                     return false;
@@ -144,7 +144,7 @@ function normalizeCollections() {
                 const fakemon = buildFakemonObject();
                 if (!fakemon) return false;
 
-                // Claim the new ID before the first await. Every later save of this
+                // claim the new ID before the first await. every later save of this
                 // editor session therefore updates the same primary-keyed record.
                 const savedId = state.editingId || fakemon.id;
                 state.editingId = savedId;
@@ -157,7 +157,7 @@ function normalizeCollections() {
 
                 await saveToStorage();
 
-                // Do not let an older in-flight save update UI state after a delete
+                // do not let an older in-flight save update UI state after a delete
                 // or a newer editor session has superseded it.
                 if (generation !== autoSaveGeneration) {
                     log.debug('STORAGE', 'Autosave finished stale; storage revision protected', { id: fakemon.id });
@@ -232,7 +232,7 @@ function normalizeCollections() {
                     }
                     return { name: m.name, learnMethod: m.learnMethod || 'none', level: m.level || null };
                 }),
-                // Kept as an empty legacy field so older imports remain compatible.
+                // kept as an empty legacy field so older imports remain compatible.
                 customMoves: [],
                 sampleSets: state.sampleSets,
                 artwork: state.artworkData,
@@ -262,10 +262,10 @@ function normalizeCollections() {
         }
 
         
-// ==================== SAVE / LOAD ====================
+// ==================== save / load ====================
 
         function saveFakemon() {
-            // Manual save button - just forces an immediate auto-save
+            // manual save button - just forces an immediate auto-save
             const name = document.getElementById('fakemon-name').value.trim();
             if (!name) { api.showToast('Please enter a Pokemon name!', 'error'); return; }
             autoSave(true);
@@ -277,8 +277,8 @@ function normalizeCollections() {
             event.stopPropagation();
             if (!confirm('Are you sure you want to delete this Fakemon?')) return;
 
-            // Invalidate both delayed and in-flight autosaves before removing the
-            // record. The storage revision queue will also reject any older snapshot.
+            // invalidate both delayed and in-flight autosaves before removing the
+            // record. the storage revision queue will also reject any older snapshot.
             if (state.autoSaveTimer) {
                 clearTimeout(state.autoSaveTimer);
                 state.autoSaveTimer = null;
@@ -312,14 +312,14 @@ function normalizeCollections() {
         }
 
         
-// ==================== STORAGE (IndexedDB) ====================
-        // Storage is local-only (IndexedDB). Signing in only grants access to the
-        // Community Hub (publishing/commenting) - it never uploads, backs up, or
+// ==================== storage (IndexedDB) ====================
+        // storage is local-only (IndexedDB). signing in only grants access to the
+        // community hub (publishing/commenting) - it never uploads, backs up, or
         // syncs your private collection anywhere.
         async function saveToStorage() {
             normalizeCollections();
 
-            // Snapshot the exact state being requested. IndexedDB writes are async, so
+            // snapshot the exact state being requested. IndexedDB writes are async, so
             // never hand it live arrays that may be changed by a delete/edit while a
             // previous write is still in flight.
             const snapshot = {
@@ -334,8 +334,8 @@ function normalizeCollections() {
             latestStorageWriteRevision = revision;
 
             storageWriteChain = storageWriteChain.then(async () => {
-                // A newer snapshot is already queued, so this snapshot is obsolete.
-                // Skipping it is what prevents a delete from being resurrected by an
+                // a newer snapshot is already queued, so this snapshot is obsolete.
+                // skipping it is what prevents a delete from being resurrected by an
                 // older autosave that was already waiting on IndexedDB.
                 if (revision !== latestStorageWriteRevision) {
                     log.debug('STORAGE', 'Skipping stale storage snapshot', { revision, latest: latestStorageWriteRevision });
@@ -379,8 +379,8 @@ function normalizeCollections() {
                 if (Array.isArray(data)) {
                     state.fakemonDB = data;
                 } else {
-                    // One-time migration for existing users: earlier versions of this
-                    // app kept the collection in localStorage. If IndexedDB is empty,
+                    // one-time migration for existing users: earlier versions of this
+                    // app kept the collection in localStorage. if IndexedDB is empty,
                     // pull whatever legacy copy exists there, adopt it, and persist it
                     // into IndexedDB going forward.
                     const legacy = localStorage.getItem('fakemonDB_v4')
@@ -443,9 +443,9 @@ function normalizeCollections() {
             state.customItems = [...itemMap.values()];
         }
 
-        // Normalize legacy learnsets without destroying unified custom moves.
-        // Vanilla moves can safely be stored minimally because Showdown data is the
-        // authoritative source for their properties. Custom moves cannot: their full
+        // normalize legacy learnsets without destroying unified custom moves.
+        // vanilla moves can safely be stored minimally because Showdown data is the
+        // authoritative source for their properties. custom moves cannot: their full
         // move definition (including source/custom marker) must survive browser reloads.
         async function migrateLearnsetsToMinimal() {
             let changed = false;
@@ -454,7 +454,7 @@ function normalizeCollections() {
                 f.learnset = f.learnset.map(m => {
                     if (!m || !m.name) return m;
 
-                    // Never strip a unified custom move. This is the critical guard that
+                    // never strip a unified custom move. this is the critical guard that
                     // prevents a browser reload from turning it back into a vanilla move.
                     if (m.source === 'custom' || m.custom === true) {
                         return {
@@ -476,7 +476,7 @@ function normalizeCollections() {
                     return minimal;
                 });
 
-                // Older builds kept custom moves in a separate customMoves array. If that
+                // older builds kept custom moves in a separate customMoves array. if that
                 // field still exists, migrate them into the unified learnset once.
                 if (Array.isArray(f.customMoves) && f.customMoves.length) {
                     const existingCustomNames = new Set(
@@ -494,7 +494,7 @@ function normalizeCollections() {
                         });
                         changed = true;
                     });
-                    // The unified system no longer needs a second source of truth.
+                    // the unified system no longer needs a second source of truth.
                     if (f.customMoves.length) { f.customMoves = []; changed = true; }
                 }
             });

@@ -17,8 +17,8 @@ function effectivePhase(c) {
     return 'submission';
 }
 
-// TODO: remove this early-return guard (and FEATURE_EVENTS_ENABLED in
-// app.js) once the Events/Contests feature is finished and ready to ship.
+// TODO: remove this early-return guard (and feature_events_enabled in
+// app.js) once the events/contests feature is finished and ready to ship.
 async function openEvents() {
     if (!FEATURE_EVENTS_ENABLED) {
         api.showToast('ts still under construction gng mb', 'info');

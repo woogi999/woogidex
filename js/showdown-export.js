@@ -1,10 +1,10 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
 
-// ==================== SHOWDOWN MOD EXPORT ====================
-// Packages up the Fakemon currently open in the editor into a tiny
-// Pokémon Showdown mod (pokedex.ts + learnsets.ts, plus install notes in
-// the README) as a downloadable ZIP. Keeps things simple on purpose;
+// ==================== Showdown mod export ====================
+// packages up the Fakemon currently open in the editor into a tiny
+// pokémon Showdown mod (pokedex.ts + learnsets.ts, plus install notes in
+// the README) as a downloadable ZIP. keeps things simple on purpose;
 // custom moves/abilities aren't real Showdown data, so we skip trying to
 // export those as mod files since they'd need actual battle-effect code
 // to do anything.
@@ -61,8 +61,8 @@ import { state, api } from './app.js';
         }
 
         function learnMethodToken(entry) {
-            // Using gen 9 ("9") learn-method notation. Moves with no explicit
-            // method (learnMethod: 'none') get exported as tutor moves ("9T")
+            // using gen 9 ("9") learn-method notation. moves with no explicit
+            // method (learnMethod: 'none') get exported as tutor moves ("9t")
             // so they're still learnable instead of just vanishing.
             if (entry.learnMethod === 'level') return `9L${entry.level || 1}`;
             if (entry.learnMethod === 'tm') return '9M';
@@ -74,7 +74,7 @@ import { state, api } from './app.js';
             return fakemon?.evolutionGraph || state.evolutionGraph || null;
         }
 
-        // Read evolution relationships from the graph itself. A graph can contain
+        // read evolution relationships from the graph itself. a graph can contain
         // both Fakemon and vanilla Showdown species, so do not restrict either
         // endpoint to kind === "fakemon".
         function collectShowdownEvolutionRelations(graph) {
@@ -256,10 +256,10 @@ import { state, api } from './app.js';
             const { entries, skippedCustom } = buildLearnsetLines(fakemon);
 
             return `// Made with Woogidex!
-// Toss this file into your Showdown server's mod folder as learnsets.ts
+// toss this file into your Showdown server's mod folder as learnsets.ts
 // (either an existing mod or a new one you make; see the README).
 //
-// Only moves that actually exist in vanilla Showdown made the cut here.${skippedCustom.length ? `\n// Left out ${skippedCustom.length} custom move${skippedCustom.length === 1 ? '' : 's'} Showdown doesn't know about: ${skippedCustom.map(m => m.name).join(', ')}.` : ''}
+// only moves that actually exist in vanilla Showdown made the cut here.${skippedCustom.length ? `\n// left out ${skippedCustom.length} custom move${skippedCustom.length === 1 ? '' : 's'} Showdown doesn't know about: ${skippedCustom.map(m => m.name).join(', ')}.` : ''}
 
 export const Learnsets: {[k: string]: import('../../../sim/dex-species').LearnsetData} = {
 \t${speciesId}: {
@@ -412,11 +412,11 @@ A couple things worth knowing:
             }).join('\n');
 
             const text = `// Made with Woogidex!
-// Your whole collection's learnsets, ready to drop into
+// your whole collection's learnsets, ready to drop into
 // data/mods/<modname>/learnsets.ts (this file's already sitting in the
 // mod folder in this ZIP, so you shouldn't need to move it).
 //
-// Only moves that actually exist in vanilla Showdown made the cut here.${totalSkipped ? `\n// Left out ${totalSkipped} custom move${totalSkipped === 1 ? '' : 's'} across your collection that Showdown doesn't know about.` : ''}
+// only moves that actually exist in vanilla Showdown made the cut here.${totalSkipped ? `\n// left out ${totalSkipped} custom move${totalSkipped === 1 ? '' : 's'} across your collection that Showdown doesn't know about.` : ''}
 
 export const Learnsets: {[k: string]: import('../../../sim/dex-species').LearnsetData} = {
 ${entries}

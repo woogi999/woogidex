@@ -2,11 +2,11 @@ import { log } from './log.js';
 import { state, api } from './app.js';
 import { renderBadgeRow, renderCommentMarkdown } from './data.js';
 
-// ==================== LIVE ROLES ====================
-// Roles are DB-driven now (see LIVE_PROFILES_AND_ROLES_SETUP.sql) so staff
-// can add/edit them from the admin panel. Cache the table once per session
+// ==================== live roles ====================
+// roles are db-driven now (see live_profiles_and_roles_setup.sql) so staff
+// can add/edit them from the admin panel. cache the table once per session
 // rather than re-fetching on every render; falls back to data.js's static
-// ROLES (used as seed data) if the fetch ever fails.
+// roles (used as seed data) if the fetch ever fails.
 let rolesMapCache = null;
 async function getRolesMap() {
     if (rolesMapCache) return rolesMapCache;
@@ -23,14 +23,14 @@ async function getRolesMap() {
     return rolesMapCache;
 }
 
-// ==================== LIVE AUTHOR INFO ====================
-// Published mons / comments still WRITE author_name/author_avatar_url/
+// ==================== live author info ====================
+// published mons / comments still write author_name/author_avatar_url/
 // author_role/author_badges at insert time (harmless denormalized columns,
 // kept as a fallback for a since-deleted account), but rendering no longer
-// trusts them. Instead every fetch batch-loads the current profiles + role +
+// trusts them. instead every fetch batch-loads the current profiles + role +
 // badges for whoever's user_ids showed up, so a rename/avatar change/role
 // change/badge grant shows up immediately everywhere without needing the
-// original row edited. Falls back to the stored snapshot only if the
+// original row edited. falls back to the stored snapshot only if the
 // author's profile is missing entirely (e.g. deleted account).
 async function attachLiveAuthorInfo(rows) {
     if (!rows.length) return rows;
@@ -61,7 +61,7 @@ async function attachLiveAuthorInfo(rows) {
     return rows;
 }
 
-// ==================== STATE ====================
+// ==================== state ====================
 // state.community.* is initialized lazily (see initAuth-style note in auth.js -
 // same circular-import concern doesn't apply here since community.js isn't
 // imported by app.js's own dependencies before state exists, but we still
@@ -82,8 +82,8 @@ function ensureCommunityState() {
     return state.community;
 }
 
-// ==================== PUBLISH / UNPUBLISH ====================
-// Publishes a snapshot of a Fakemon from the user's own collection. Snapshot
+// ==================== publish / unpublish ====================
+// publishes a snapshot of a Fakemon from the user's own collection. snapshot
 // (not a live link) so edits/deletes in the private collection don't silently
 // change what's already posted publicly - republish to update it.
 async function publishFakemon(fakemonId) {
@@ -93,8 +93,8 @@ async function publishFakemon(fakemonId) {
     await publishSnapshot(mon);
 }
 
-// Publishes whatever is currently open in the editor - used by the Share
-// dropdown's "Publish to Community" option. Forces an immediate save first
+// publishes whatever is currently open in the editor - used by the share
+// dropdown's "publish to community" option. forces an immediate save first
 // so the published snapshot matches what's on screen, including a brand new
 // Fakemon that hasn't been auto-saved yet.
 async function publishCurrentEditorFakemon() {
@@ -108,17 +108,17 @@ async function publishCurrentEditorFakemon() {
 }
 
 async function publishSnapshot(mon, rulesChecked = false) {
-    // Show the rules before every Community upload, even after the user has
-    // accepted them previously. This makes the upload rules impossible to miss.
+    // show the rules before every community upload, even after the user has
+    // accepted them previously. this makes the upload rules impossible to miss.
     if (!rulesChecked) {
         openCommunityRulesModal({ requireAgreement: true, onAccept: () => publishSnapshot(mon, true) });
         return;
     }
     const client = await api.getClient();
 
-    // Client-side pre-check so the user gets a friendly "come back in Xm"
-    // message instead of a raw database error. The Supabase RLS policy
-    // (see SUPABASE_SETUP.md) is the real enforcement and can't be bypassed
+    // client-side pre-check so the user gets a friendly "come back in xm"
+    // message instead of a raw database error. the Supabase RLS policy
+    // (see Supabase_setup.md) is the real enforcement and can't be bypassed
     // by skipping this check.
     const { data: recent, error: recentError } = await client
         .from('published_mons')
@@ -149,7 +149,7 @@ async function publishSnapshot(mon, rulesChecked = false) {
     const { data: published, error } = await client.from('published_mons').insert(payload).select('id').single();
     if (error) {
         log.error('COMMUNITY', 'Publish failed', error);
-        // A 42501/RLS rejection here means the hourly cooldown was hit despite
+        // a 42501/RLS rejection here means the hourly cooldown was hit despite
         // the pre-check above (e.g. published from another tab/device).
         const friendly = /row-level security|permission denied/i.test(error.message)
             ? 'You can only publish once per hour.'
@@ -163,9 +163,9 @@ async function publishSnapshot(mon, rulesChecked = false) {
 }
 
 
-// Pushes the current state of a Fakemon the user already has published back
-// up to its existing Community Hub listing (same row, same comments) instead
-// of creating a duplicate post. Skips the hourly publish cooldown since this
+// pushes the current state of a Fakemon the user already has published back
+// up to its existing community hub listing (same row, same comments) instead
+// of creating a duplicate post. skips the hourly publish cooldown since this
 // is an edit to something already live, not a new upload.
 async function updatePublishedMon(publishedId, selectedSourceId = '') {
     if (!state.user) { api.showToast?.('Sign in to update your Community Hub listing.', 'warning'); return; }
@@ -220,7 +220,7 @@ function openCommunityUpdateModal(){const cs=ensureCommunityState(),row=cs.openM
 function closeCommunityUpdateModal(){document.getElementById('community-update-modal')?.classList.remove('active')}
 function confirmCommunityUpdate(){const cs=ensureCommunityState(),selected=document.getElementById('community-update-selected-id')?.value||'';if(!cs.openMonId||!selected){api.showToast?.('Choose a Fakemon from your collection first.','warning');return}updatePublishedMon(cs.openMonId,selected)}
 
-// Wrapper for the detail page's "Update Listing" button - inline onclick
+// wrapper for the detail page's "update listing" button - inline onclick
 function updateOpenCommunityMon() {
     openCommunityUpdateModal();
 }
@@ -236,9 +236,9 @@ async function openPublishedMonById(publishedId, options = {}) {
     return true;
 }
 
-// Owners "unpublish" their own mon; staff can remove ANY mon as a moderation
+// owners "unpublish" their own mon; staff can remove any mon as a moderation
 // action (RLS on published_mons allows is_staff() to delete any row - see
-// SUPABASE_SETUP.md). Same eq('user_id', ...) guard logic as deleteComment.
+// Supabase_setup.md). same eq('user_id', ...) guard logic as deleteComment.
 async function unpublishMon(publishedId, event) {
     if (event) event.stopPropagation();
     if (!state.user) return;
@@ -250,7 +250,7 @@ async function unpublishMon(publishedId, event) {
     api.showToast?.(api.isStaff?.() ? 'Removed by staff' : 'Removed from Community Hub', 'info');
     const cs = ensureCommunityState();
     if (cs.openMonId === publishedId) {
-        // We were viewing the mon we just unpublished - return to the grid
+        // we were viewing the mon we just unpublished - return to the grid
         // instead of leaving a blank screen. openCommunityHub() reads and
         // clears isCommunityPreview itself; don't touch it here.
         cs.openMonId = null;
@@ -263,13 +263,13 @@ async function unpublishMon(publishedId, event) {
     renderCommunityGrid();
 }
 
-// Wrapper for the detail page's Unpublish button - inline onclick handlers
+// wrapper for the detail page's unpublish button - inline onclick handlers
 // only have access to functions on `api`/`window`, not module-scoped `state`.
 function unpublishOpenCommunityMon() {
     const cs = ensureCommunityState();
     if (cs.openMonId) unpublishMon(cs.openMonId);
 }
-// ==================== COMMUNITY SHARE ROUTES ====================
+// ==================== community share routes ====================
 const COMMUNITY_HASH_PREFIX = '#community/';
 
 function communityShareUrl(publishedId) {
@@ -305,14 +305,14 @@ async function handleCommunityHashRoute() {
     return await openPublishedMonById(publishedId, { preserveHash: true });
 }
 
-// ==================== FEED ====================
-// The grid only ever renders a mon's name, types, and artwork thumbnail (see
+// ==================== feed ====================
+// the grid only ever renders a mon's name, types, and artwork thumbnail (see
 // renderCommunityGrid below) - but `fakemon_data` also carries shiny artwork,
 // a cry audio clip, the full learnset, sample sets, and evolution graph,
-// which for a published Fakemon can add up to several hundred KB or more.
-// Pulling all of that for every row of a 100-row feed (on every single
-// Community Hub open) was by far the biggest source of Supabase egress in
-// the app. We only need the slim fields here; openMonDetail() below fetches
+// which for a published Fakemon can add up to several hundred kb or more.
+// pulling all of that for every row of a 100-row feed (on every single
+// community hub open) was by far the biggest source of Supabase egress in
+// the app. we only need the slim fields here; openMonDetail() below fetches
 // the full row on demand, only for the one mon someone actually opens.
 async function fetchCommunityFeed() {
     const cs = ensureCommunityState();
@@ -339,7 +339,7 @@ async function fetchCommunityFeed() {
 
 // Supabase/PostgREST's `column->>key` selector returns each requested jsonb
 // key as its own flat top-level column (named `key`, not `fakemon_data`)
-// rather than a nested object. Every renderer in this file expects
+// rather than a nested object. every renderer in this file expects
 // `row.fakemon_data.name` etc., so this rebuilds that shape from the flat
 // columns and removes them so a slim row can't be mistaken for a full one.
 function unflattenSlimMonRow(row) {
@@ -347,7 +347,7 @@ function unflattenSlimMonRow(row) {
     return { ...rest, fakemon_data: { name, species, number, type1, type2, artwork } };
 }
 
-// ==================== COMMUNITY STATS ====================
+// ==================== community stats ====================
 async function hydrateCommunityStats(rows) {
     if (!rows.length) return rows;
     const client = await api.getClient();
@@ -376,13 +376,13 @@ async function hydrateCommunityStats(rows) {
 async function toggleCommunityLike(publishedId, event) {
     event?.preventDefault();
     event?.stopPropagation();
-    // Capture the button synchronously, before any `await`. Once a DOM event
+    // capture the button synchronously, before any `await`. once a DOM event
     // finishes dispatching, the browser nulls out event.currentTarget - and
     // since this function is async, every line after our first `await` runs
-    // *after* dispatch has already finished. Reading currentTarget down
+    // *after* dispatch has already finished. reading currentTarget down
     // there was reliably grabbing null and falling through to a full-grid
     // querySelector re-scan, which is what made liking a mon feel like the
-    // whole Community Hub was refreshing.
+    // whole community hub was refreshing.
     const btn = event?.currentTarget || document.querySelector(`.community-like-btn[onclick*="'${publishedId}'"]`);
     if (!state.user) { api.showToast?.('Sign in to like Fakemon.', 'warning'); return; }
     const client = await api.getClient();
@@ -399,7 +399,7 @@ async function toggleCommunityLike(publishedId, event) {
         row.liked_by_me = !liked;
         row.like_count = Math.max(0, Number(row.like_count || 0) + (liked ? -1 : 1));
     }
-    // Update just this card's like button in place instead of re-rendering
+    // update just this card's like button in place instead of re-rendering
     // the whole grid - calling renderCommunityGrid() here was rebuilding
     // every card's DOM (replaying every entrance animation and resetting
     // scroll position) just to reflect one heart count changing.
@@ -411,7 +411,7 @@ async function toggleCommunityLike(publishedId, event) {
     }
 }
 
-// ==================== COMMENTS ====================
+// ==================== comments ====================
 async function fetchComments(publishedId) {
     const cs = ensureCommunityState();
     try {
@@ -450,7 +450,7 @@ async function postComment(publishedId, body) {
     await fetchComments(publishedId);
     renderMonComments();
 
-    // Let the mon's owner know someone commented, unless they're commenting
+    // let the mon's owner know someone commented, unless they're commenting
     // on their own mon. openMonRow is set whenever the comment box is
     // visible (it only shows on the detail page), so it's a reliable source
     // for who owns this mon without an extra fetch.
@@ -470,8 +470,8 @@ async function postComment(publishedId, body) {
     }
 }
 
-// Staff (moderator/admin/developer) can delete any comment; everyone else
-// only their own. The .eq('user_id', ...) guard is dropped for staff since
+// staff (moderator/admin/developer) can delete any comment; everyone else
+// only their own. the .eq('user_id', ...) guard is dropped for staff since
 // RLS on mon_comments already allows is_staff() to delete any row - trying
 // to also filter by user_id here would just make staff deletes silently
 // no-op on comments they don't own.
@@ -487,7 +487,7 @@ async function deleteComment(commentId, publishedId) {
 }
 
 // ==================== UI: hub view ====================
-// ==================== COMMUNITY RULES ====================
+// ==================== community rules ====================
 const COMMUNITY_RULES_KEY = 'woogidex-community-rules-v2';
 let communityRulesPendingAction = null;
 
@@ -526,17 +526,17 @@ function acceptCommunityRules() {
 
 async function openCommunityHub() {
     exitCommunityRoute();
-    // Leaving a community-mon preview is a navigation action, not an editor
+    // leaving a community-mon preview is a navigation action, not an editor
     // save - mirrors how showCollection() treats leaving a shared-link
-    // preview. Without this guard, the editor DOM still holds whatever
+    // preview. without this guard, the editor DOM still holds whatever
     // community Fakemon was last previewed, and force-saving it here would
     // silently import it into the user's own collection.
     const wasCommunityPreview = !!state.isCommunityPreview;
     state.isCommunityPreview = false;
 
-    // Community pages are never an editor session. If we are leaving a preview,
+    // community pages are never an editor session. if we are leaving a preview,
     // discard the preview-only editor identity so it cannot become a real save
-    // target later. Only a genuinely visible editor gets a navigation autosave.
+    // target later. only a genuinely visible editor gets a navigation autosave.
     if (wasCommunityPreview) {
         if (state.autoSaveTimer) {
             clearTimeout(state.autoSaveTimer);
@@ -564,7 +564,7 @@ async function openCommunityHub() {
 
     renderCommunityGridSkeleton();
 
-    // Guard against a slower, earlier fetch resolving after a newer one and
+    // guard against a slower, earlier fetch resolving after a newer one and
     // clobbering the grid with stale data (e.g. rapid back-and-forth clicks).
     const cs = ensureCommunityState();
     const requestToken = Symbol('community-fetch');
@@ -629,7 +629,7 @@ function getCommunityDexNumber(mon) {
     return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
 }
 
-// Skeleton cards mirror the real .collection-card.community-card markup
+// skeleton cards mirror the real .collection-card.community-card markup
 // exactly (same art box, name bar, type pills, stats row, author row) so
 // there's no layout shift when real data replaces them.
 function communityCardSkeleton() {
@@ -744,11 +744,11 @@ function getCommunityViewerKey() {
     }
 }
 
-// ==================== UI: detail page ("warp" like the Share page) ====================
-// View counting calls an `increment_published_mon_view` RPC in Supabase.
-// Your project already has one, but with a single `p_published_id` param
+// ==================== UI: detail page ("warp" like the share page) ====================
+// view counting calls an `increment_published_mon_view` RPC in Supabase.
+// your project already has one, but with a single `p_published_id` param
 // (confirmed via the PostgREST 404 hint when this called a 2-arg version) -
-// so the call below matches that existing signature. If your function
+// so the call below matches that existing signature. if your function
 // doesn't dedupe repeat views from the same visitor and you want that,
 // replace it with this version instead (mirrors the notifications.js
 // pattern for documenting schema this file depends on):
@@ -760,12 +760,12 @@ function getCommunityViewerKey() {
 //     primary key (published_id, viewer_key)
 //   );
 //   alter table public.published_mon_views enable row level security;
-//   create policy "Anyone can record a view" on public.published_mon_views
+//   create policy "anyone can record a view" on public.published_mon_views
 //     for insert with check (true);
-//   create policy "Anyone can read view rows" on public.published_mon_views
+//   create policy "anyone can read view rows" on public.published_mon_views
 //     for select using (true);
 //
-//   -- Drop the old single-arg version first so PostgREST doesn't end up
+//   -- drop the old single-arg version first so PostgREST doesn't end up
 //   -- with two overloads of the same name and refuse to pick one:
 //   drop function if exists public.increment_published_mon_view(uuid);
 //   create or replace function public.increment_published_mon_view(
@@ -791,7 +791,7 @@ async function openMonDetail(publishedId, options = {}) {
     const cs = ensureCommunityState();
     let row = cs.mons.find(m => m.id === publishedId);
     if (!row) return;
-    // The feed only loads slim fields (name/types/artwork thumbnail) to keep
+    // the feed only loads slim fields (name/types/artwork thumbnail) to keep
     // egress down - fetch the full row now that someone's actually opening
     // this one mon, so the live preview board has its real learnset, sample
     // sets, shiny artwork, cry, and evolution graph.
@@ -816,9 +816,9 @@ async function openMonDetail(publishedId, options = {}) {
     const mon = row.fakemon_data || {};
     api.setPageTitle?.(mon.name ? `${mon.name} (Community)` : 'Community Hub');
 
-    // Cancel any pending editor autosave so switching into this read-only
+    // cancel any pending editor autosave so switching into this read-only
     // preview can never commit as a new collection entry, and mark this as
-    // a non-editable route the same way the Share page does.
+    // a non-editable route the same way the share page does.
     if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
     state.isCommunityPreview = true;
     state.editingId = null;
@@ -834,7 +834,7 @@ async function openMonDetail(publishedId, options = {}) {
             shinyToggle.setAttribute('onclick', 'toggleCommunityPreviewArtworkMode(event)');
             shinyToggle.removeAttribute('id');
         }
-        // Community detail is a read-only copy of the editor preview. Keep its
+        // community detail is a read-only copy of the editor preview. keep its
         // artwork toggle independent from the hidden editor board so clicks
         // always update the board the user is actually looking at.
         setCommunityPreviewArtworkMode(state.previewArtworkMode || 'normal');
@@ -875,9 +875,9 @@ async function openMonDetail(publishedId, options = {}) {
         if (viewError) throw viewError;
         if (Number.isFinite(Number(nextViewCount))) row.view_count = Number(nextViewCount);
     } catch (e) {
-        // Most likely cause: your `increment_published_mon_view` function has
+        // most likely cause: your `increment_published_mon_view` function has
         // a different signature than the call above (see the comment at the
-        // top of this section). Fail quietly in the UI - a missing view
+        // top of this section). fail quietly in the UI - a missing view
         // count should never block viewing the mon itself - but log it so
         // it's visible in devtools instead of vanishing.
         log.error('COMMUNITY', 'Failed to record view', e);
@@ -926,7 +926,7 @@ function closeMonDetail() {
     openCommunityHub();
 }
 
-// Imports the currently open community Fakemon into the signed-in user's
+// imports the currently open community Fakemon into the signed-in user's
 // own collection as a new, independent entry (same pattern as importing a
 // shared-link Fakemon).
 async function importCommunityMonToCollection() {
@@ -962,7 +962,7 @@ document.addEventListener('click', (event) => {
     if (!event.target.closest('.export-as-wrap')) closeCommunityExportMenu();
 });
 
-// Mirrors .mon-comment's real markup (avatar circle, author/time line, two
+// mirrors .mon-comment's real markup (avatar circle, author/time line, two
 // body lines of varying width) so the skeleton -> real swap doesn't shift.
 function commentSkeleton() {
     return `

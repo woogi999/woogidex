@@ -4,14 +4,14 @@ import { state, api } from './app.js';
 import { NATURE_DATA, NATURES, STAT_NAMES } from './data.js';
 import { buildTypeMenuOptions, getSdMoveByName, loadCompetitiveMoveUsefulness, renderDropdown, selectTeraType } from './editor.js';
 import { updatePreview } from './editor-core.js';
-// ==================== SAMPLE SETS ====================
-        // Competitive sample-set generator.
+// ==================== sample sets ====================
+        // competitive sample-set generator.
         //
-        // This is intentionally local/deterministic: it never calls an AI or external
-        // generation API.  The only move data it consumes is the Fakemon's current
+        // this is intentionally local/deterministic: it never calls an ai or external
+        // generation API.  the only move data it consumes is the fakemon's current
         // learnset plus the Showdown move metadata already loaded into state.sdMoves.
         //
-        // The scoring tables below are deliberately kept in one place so the generator
+        // the scoring tables below are deliberately kept in one place so the generator
         // can be tuned without rewriting the selection algorithm.
         const SAMPLE_SET_CONFIG = {
             roles: {
@@ -73,20 +73,20 @@ import { updatePreview } from './editor-core.js';
             screens: new Set(['Reflect','Light Screen','Aurora Veil'])
         };
 
-        // Setup moves that boost Speed alongside their main stat(s), used to give
-        // Quiver Dance/Shell Smash/etc. proper credit over Speed-less equivalents
-        // like Calm Mind/Nasty Plot when the Fakemon still benefits from more Speed.
+        // setup moves that boost speed alongside their main stat(s), used to give
+        // quiver dance/shell smash/etc. proper credit over speed-less equivalents
+        // like calm mind/nasty plot when the Fakemon still benefits from more speed.
         const SAMPLE_SET_SETUP_SPEED_BOOST = new Set(['Quiver Dance','Shell Smash','Shift Gear','Dragon Dance','Victory Dance']);
 
-        // Competitive-set filters. These are intentionally explicit so the generator
+        // competitive-set filters. these are intentionally explicit so the generator
         // prefers moves that actually belong on a serious set instead of merely having
         // high BP or being technically legal.
         const SAMPLE_SET_BAD_DEFAULT_MOVES = new Set([
-            // Generic/weak attacks that should never be auto-selected for a competitive
-            // sample set. These remain perfectly legal in the Fakemon's learnset and can
-            // still be selected manually. Genuinely useful tools (priority moves like
-            // Mach Punch/Bullet Punch, coverage like Aerial Ace/Snarl, trapping moves
-            // like Pursuit, etc.) are deliberately NOT in this list; their value is
+            // generic/weak attacks that should never be auto-selected for a competitive
+            // sample set. these remain perfectly legal in the fakemon's learnset and can
+            // still be selected manually. genuinely useful tools (priority moves like
+            // mach punch/bullet punch, coverage like aerial ace/snarl, trapping moves
+            // like pursuit, etc.) are deliberately not in this list; their value is
             // instead judged by their actual stats via sampleMoveIntrinsicScore.
             'Covet','Thief','Tackle','Pound','Scratch','Constrict','Present','Round','Snore',
             'Bide','Rage','Fury Attack','Fury Swipes','Take Down','Submission','Headbutt',
@@ -96,7 +96,7 @@ import { updatePreview } from './editor-core.js';
             'Struggle Bug','Infestation'
         ]);
 
-        // Additional low-value status/utility moves. The sample-set generator is
+        // additional low-value status/utility moves. the sample-set generator is
         // deliberately conservative: if a status move does not have a clear competitive
         // job, it should never be used merely to fill the fourth slot.
         const SAMPLE_SET_LOW_VALUE_UTILITY_MOVES = new Set([
@@ -110,7 +110,7 @@ import { updatePreview } from './editor-core.js';
             'Poison Gas','Smokescreen','Sand Attack','Water Sport','Mud Sport',
             'Lucky Chant','Magic Coat'
         ]);
-        // Moves whose damage also functions as a trapping effect. These are not
+        // moves whose damage also functions as a trapping effect. these are not
         // general-purpose coverage/utility: they should only appear when the set has
         // an identifiable trapping gameplan (explicit trapping move/ability).
         const SAMPLE_SET_TRAPPING_DAMAGE_MOVES = new Set([
@@ -129,22 +129,22 @@ import { updatePreview } from './editor-core.js';
 
         const SAMPLE_SET_TRAPPING_ABILITIES = /shadow tag|arena trap|magnet pull/i;
 
-        // Powerful but conditional attacks should not be treated as ordinary coverage.
-        // They become reasonable when the set explicitly supplies the condition.
-        // Moves whose normal value depends heavily on an external battle condition.
-        // These should not be treated as generic coverage unless the set itself supplies
+        // powerful but conditional attacks should not be treated as ordinary coverage.
+        // they become reasonable when the set explicitly supplies the condition.
+        // moves whose normal value depends heavily on an external battle condition.
+        // these should not be treated as generic coverage unless the set itself supplies
         // the condition (or the Pokemon has an ability that supplies it automatically).
         //
-        // Weather:
-        //   Sun  -> Solar Beam, Solar Blade, Weather Ball
-        //   Rain -> Thunder, Hurricane, Electro Shot
-        //   Snow -> Blizzard
+        // weather:
+        //   sun  -> solar beam, solar blade, weather ball
+        //   rain -> thunder, hurricane, electro shot
+        //   snow -> blizzard
         //
-        // Terrain:
-        //   Terrain Pulse, Nature Power, Rising Voltage, Grassy Glide,
-        //   Expanding Force, Psyblade
+        // terrain:
+        //   terrain pulse, nature power, rising voltage, grassy glide,
+        //   expanding force, psyblade
         //
-        // Aurora Veil is utility rather than coverage, but it is also conditional and
+        // aurora veil is utility rather than coverage, but it is also conditional and
         // is handled by the same support check below.
         const SAMPLE_SET_CONDITIONAL_COVERAGE_MOVES = new Set([
             'Solar Beam','Solar Blade','Weather Ball',
@@ -170,24 +170,24 @@ import { updatePreview } from './editor-core.js';
         const SAMPLE_SET_SELF_KO_MOVES = new Set([
             'Explosion','Self-Destruct','Misty Explosion','Final Gambit','Memento','Healing Wish','Lunar Dance'
         ]);
-        // Moves that cost the user a huge, fixed chunk of their own max HP to use
+        // moves that cost the user a huge, fixed chunk of their own max HP to use
         // (independent of recoil-from-damage-dealt, which scales with the hit and is
-        // penalized separately). These are especially bad on a set that wants to set up
+        // penalized separately). these are especially bad on a set that wants to set up
         // first and then stick around to sweep, since half their HP is gone before they
         // even get to attack with their boosted stats.
         const SAMPLE_SET_HEAVY_SELF_DAMAGE_MOVES = new Set(['Steel Beam','Mind Blown','Chloroblast','Light of Ruin']);
         const SAMPLE_SET_COVERAGE_TYPES = ['Normal','Fire','Water','Electric','Grass','Ice','Fighting','Poison','Ground','Flying','Psychic','Bug','Rock','Ghost','Dragon','Dark','Steel','Fairy'];
-        // Premium attacks that should survive competitive-usefulness filtering even when
-        // they have little/no sample-set frequency. These are not blanket auto-picks;
-        // they still have to fit the Fakemon's role, category, typing, and movepool.
+        // premium attacks that should survive competitive-usefulness filtering even when
+        // they have little/no sample-set frequency. these are not blanket auto-picks;
+        // they still have to fit the fakemon's role, category, typing, and movepool.
         const SAMPLE_SET_PREMIUM_ATTACKS = new Set([
             'V-create','Gigaton Hammer','Make It Rain','Fleur Cannon','Bolt Beak','Fishious Rend',
             'Headlong Rush','Glacial Lance','Astral Barrage','Collision Course','Electro Drift',
             'Population Bomb','Last Respects','Rage Fist','Expanding Force','Surging Strikes'
         ]);
 
-        // Strong attacks whose stat drops are especially valuable with Contrary.
-        // Keep this separate from the generic premium-attack list so Contrary can
+        // strong attacks whose stat drops are especially valuable with contrary.
+        // keep this separate from the generic premium-attack list so contrary can
         // recognize the strategic interaction rather than merely rewarding raw BP.
         const SAMPLE_SET_CONTRARY_SYNERGY_MOVES = new Set([
             'V-create','Superpower','Close Combat','Leaf Storm','Overheat',
@@ -195,7 +195,7 @@ import { updatePreview } from './editor-core.js';
             'Headlong Rush','Contrary Boost Move'
         ]);
 
-        // Generation-local memoization. The beam search evaluates the same partial
+        // generation-local memoization. the beam search evaluates the same partial
         // move combinations many times across roles; cache those pure scoring checks
         // so debug/investigation support never becomes part of the hot path.
         let sampleGenerationMemo = null;
@@ -279,7 +279,7 @@ import { updatePreview } from './editor-core.js';
                 screens: SAMPLE_SET_MOVE_TAGS.screens.has(name),
                 selfKO: /^(Explosion|Self-Destruct|Misty Explosion|Final Gambit|Memento|Healing Wish|Lunar Dance)$/.test(name)
             };
-            // Name/description fallback catches custom *status* recovery moves, but
+            // name/description fallback catches custom *status* recovery moves, but
             // deliberately avoids broad 'heal/regain' matching that can misclassify
             // offensive draining attacks as recovery.
             kinds.recovery ||= (move.category === 'Status' && /(?:recover|heals? the user|restores? the user's hp|restores? hp|regains? hp|fully restores? hp|wish|rest$)/.test(lower));
@@ -296,9 +296,9 @@ import { updatePreview } from './editor-core.js';
         }
 
         // Showdown lists basePower as 0 for moves whose damage is computed dynamically
-        // in battle (weight/HP/weather-based, etc). Falling back to 0 here would make
-        // the scoring system treat genuinely strong moves like Facade, Gyro Ball, or
-        // Stored Power as worthless. These are rough "typical case" estimates used only
+        // in battle (weight/HP/weather-based, etc). falling back to 0 here would make
+        // the scoring system treat genuinely strong moves like facade, gyro ball, or
+        // stored power as worthless. these are rough "typical case" estimates used only
         // for scoring/filtering purposes, not for anything shown to the user.
         const SAMPLE_SET_VARIABLE_BP_ESTIMATE = {
             'Low Kick': 80, 'Grass Knot': 80, 'Heavy Slam': 80, 'Heat Crash': 80,
@@ -319,7 +319,7 @@ import { updatePreview } from './editor-core.js';
             return SAMPLE_SET_VARIABLE_BP_ESTIMATE[move.name] || 0;
         }
 
-        // Standard 2-5 hit moves land ~3.1 hits on average (35/35/15/15% for 2/3/4/5
+        // standard 2-5 hit moves land ~3.1 hits on average (35/35/15/15% for 2/3/4/5
         // hits); fixed 2-hit and 3-hit moves get their real average instead.
         const SAMPLE_SET_MULTIHIT_AVG_MULT = {
             'Bullet Seed': 3.1, 'Rock Blast': 3.1, 'Icicle Spear': 3.1, 'Pin Missile': 3.1,
@@ -328,9 +328,9 @@ import { updatePreview } from './editor-core.js';
             'Gear Grind': 2, 'Double Hit': 2, 'Surging Strikes': 3
         };
 
-        // Self-contained, network-independent quality estimate for a damaging move.
-        // Folds in effective power, accuracy, priority (which is extremely valuable
-        // competitively since it bypasses Speed entirely), multi-hit averages, and
+        // self-contained, network-independent quality estimate for a damaging move.
+        // folds in effective power, accuracy, priority (which is extremely valuable
+        // competitively since it bypasses speed entirely), multi-hit averages, and
         // guaranteed drain, without relying on any external usage-stats fetch.
         function sampleMoveIntrinsicScore(move) {
             const cache = sampleGenerationMemo?.intrinsic;
@@ -409,7 +409,7 @@ import { updatePreview } from './editor-core.js';
                 return k.disruption || k.speedControl || k.screens || k.removal || k.hazard;
             });
 
-            // Use the whole stat line, not isolated thresholds. This gives the role
+            // use the whole stat line, not isolated thresholds. this gives the role
             // scorer a much better picture of what the Fakemon actually wants to do.
             const physicalAdvantage = stats.atk - stats.spa;
             const specialAdvantage = stats.spa - stats.atk;
@@ -432,8 +432,8 @@ import { updatePreview } from './editor-core.js';
                 setupSweeper: 0, hazard: 0, screens: 0
             };
 
-            // Offensive profile: reward both the stat and the existence of genuinely
-            // usable attacks of that category. A 120 Atk stat with only bad moves should
+            // offensive profile: reward both the stat and the existence of genuinely
+            // usable attacks of that category. a 120 atk stat with only bad moves should
             // not beat a 105 SpA stat with a great movepool.
             scores.physicalSweeper += Math.max(0, physicalAdvantage) * 0.55 + Math.max(0, stats.atk - 80) * 0.7;
             scores.specialSweeper += Math.max(0, specialAdvantage) * 0.55 + Math.max(0, stats.spa - 80) * 0.7;
@@ -443,7 +443,7 @@ import { updatePreview } from './editor-core.js';
             scores.wallbreaker += (goodPhysical.length + goodSpecial.length) * 3;
             scores.wallbreaker += damaging.filter(m => (m.basePower || 0) >= 100 && sampleMoveIsActuallyUseful(m)).length * 7;
 
-            // Speed is meaningful only when the offensive profile can capitalize on it.
+            // speed is meaningful only when the offensive profile can capitalize on it.
             if (fast) {
                 scores.physicalSweeper += hasPhysicalSTAB ? 10 : 3;
                 scores.specialSweeper += hasSpecialSTAB ? 10 : 3;
@@ -459,7 +459,7 @@ import { updatePreview } from './editor-core.js';
                 scores.wallbreaker += 5;
             }
 
-            // Bulk is relative to offensive stats. High bulk + high offense points to a
+            // bulk is relative to offensive stats. high bulk + high offense points to a
             // bulky attacker; high bulk without offensive tools points to defense/support.
             scores.bulkyAttacker += Math.max(0, bulk - 250) * 0.22;
             scores.bulkyAttacker += Math.max(0, Math.max(stats.atk, stats.spa) - 95) * 0.45;
@@ -471,24 +471,24 @@ import { updatePreview } from './editor-core.js';
             scores.support += utility.length * 12 + recovery.length * 10;
             scores.support += Math.max(0, bulk - 240) * 0.15;
 
-            // Recovery is a major role signal. This prevents a bulky mon with Moonlight /
-            // Synthesis / Recover from being treated as a pure sweeper just because its
-            // Attack stat is high.
+            // recovery is a major role signal. this prevents a bulky mon with moonlight /
+            // synthesis / recover from being treated as a pure sweeper just because its
+            // attack stat is high.
             if (recovery.length) {
                 if (physicalBulk >= 170 || specialBulk >= 170) scores.defensive += 18;
                 if (bulk >= 270) scores.bulkyAttacker += 10;
             }
 
-            // Likewise, Pivot only makes sense with an actual pivot move (U-turn, Volt
-            // Switch, etc.) on the learnset.
+            // likewise, pivot only makes sense with an actual pivot move (u-turn, volt
+            // switch, etc.) on the learnset.
             if (pivot.length) {
                 scores.pivot += pivot.length * 30 + Math.max(0, stats.spe - 70) * 0.35 + utility.length * 2;
             }
             scores.setupSweeper += setup.length * 30 + Math.max(0, stats.spe - 75) * 0.45;
             scores.defensive += defensiveSetup.length * 8;
             scores.bulkyAttacker += defensiveSetup.length * 4;
-            // The Hazard role only makes sense if the Fakemon actually learns a hazard
-            // move. Removal (Rapid Spin/Defog) and generic utility moves used to inflate
+            // the hazard role only makes sense if the Fakemon actually learns a hazard
+            // move. removal (rapid spin/defog) and generic utility moves used to inflate
             // this score on their own, which could win the role for a Fakemon with zero
             // hazard moves and produce a "hazard set" with no hazard in it.
             if (hazards.length) {
@@ -500,7 +500,7 @@ import { updatePreview } from './editor-core.js';
             if (stats.hp >= 100 && (stats.def >= 100 || stats.spd >= 100)) scores.defensive += 10;
             if (types.length === 2) scores.bulkyAttacker += 2;
 
-            // Ability synergy is still a nudge, but now uses the role's actual stat profile.
+            // ability synergy is still a nudge, but now uses the role's actual stat profile.
             if (/huge power|pure power|technician|guts|moxie|adaptability|strong jaw|iron fist/.test(abilityText)) {
                 scores.physicalSweeper += Math.max(0, physicalAdvantage) >= 0 ? 10 : 2;
                 scores.bulkyAttacker += Math.max(0, physicalBulk - 160) * 0.08;
@@ -524,8 +524,8 @@ import { updatePreview } from './editor-core.js';
             return scores;
         }
 
-        // Hard role feasibility: a role is a claim about the set's strategy, not a
-        // generic label. If the defining tools are absent from the learnset, that role
+        // hard role feasibility: a role is a claim about the set's strategy, not a
+        // generic label. if the defining tools are absent from the learnset, that role
         // must never be generated.
         function sampleRoleIsFeasible(profile, role) {
             const moves = profile.moves || [];
@@ -599,7 +599,7 @@ import { updatePreview } from './editor-core.js';
             const offensive = ['physicalSweeper','specialSweeper','wallbreaker','setupSweeper'].includes(role);
             const bulky = ['bulkyAttacker','defensive','support','pivot','hazard'].includes(role);
 
-            // Directly match common competitive ability archetypes to the Fakemon's actual data.
+            // directly match common competitive ability archetypes to the fakemon's actual data.
             if (/huge power|pure power/.test(n)) score += s.atk >= s.spa ? 28 : 6;
             if (/guts/.test(n)) score += offensive && s.atk >= s.spa ? 22 : 4;
             if (/moxie|beast boost/.test(n)) score += offensive && (s.atk >= 95 || s.spa >= 95) ? 20 : 5;
@@ -611,10 +611,10 @@ import { updatePreview } from './editor-core.js';
             if (/iron fist/.test(n)) score += profile.moves.some(m => /punch/i.test(m.name)) ? 20 : 0;
             if (/sharpness/.test(n)) score += profile.moves.some(m => /slash|blade|sword|cut/i.test(m.name)) ? 20 : 0;
             if (/mega launcher/.test(n)) score += profile.moves.some(m => /pulse/i.test(m.name)) ? 20 : 0;
-            // Contrary is a set-level ability. Do NOT reward it merely because the
-            // learnset contains a Contrary-friendly move; that produces the exact
-            // failure mode where Contrary is selected on one sample while V-create
-            // appears on another. The ability is only valuable when the chosen set
+            // contrary is a set-level ability. do not reward it merely because the
+            // learnset contains a contrary-friendly move; that produces the exact
+            // failure mode where contrary is selected on one sample while v-create
+            // appears on another. the ability is only valuable when the chosen set
             // actually contains a stat-dropping attack it can reverse.
             if (/contrary/.test(n)) {
                 score -= 8;
@@ -642,11 +642,11 @@ import { updatePreview } from './editor-core.js';
             if (/solar power/.test(n)) score += profile.types.includes('Fire') || profile.moves.some(m => /sun|solar/i.test(m.desc || '')) ? 18 : 2;
             if (/swift swim|chlorophyll|slush rush|sand rush/.test(n)) score += offensive && s.spe >= 70 ? 18 : 6;
 
-            // Ability/move interaction must be evaluated against the moves that will
+            // ability/move interaction must be evaluated against the moves that will
             // actually be on the generated set, not merely anything in the full learnset.
-            // This is especially important for Contrary: Swords Dance + Contrary is
-            // actively counter-synergistic, while V-create/Superpower/Leaf Storm/etc.
-            // can make Contrary excellent when their stat drops are part of the set.
+            // this is especially important for contrary: swords dance + contrary is
+            // actively counter-synergistic, while v-create/superpower/leaf storm/etc.
+            // can make contrary excellent when their stat drops are part of the set.
             const chosen = chosenMoves || [];
             const chosenNames = chosen.map(m => String(m.name || '').toLowerCase());
             const chosenText = chosen.map(m => `${m.name} ${m.desc || ''}`).join(' ').toLowerCase();
@@ -657,8 +657,8 @@ import { updatePreview } from './editor-core.js';
                 || hasChosen('Swords Dance','Nasty Plot','Calm Mind','Iron Defense','Amnesia','Acid Armor','Cotton Guard','Bulk Up','Dragon Dance','Quiver Dance','Coil','Curse','Shell Smash','Rock Polish','Agility','Autotomize');
 
             if (/contrary/.test(n)) {
-                // Only select Contrary when the actual four-move set contains a
-                // meaningful stat-dropping attack. One such move is enough to make
+                // only select contrary when the actual four-move set contains a
+                // meaningful stat-dropping attack. one such move is enough to make
                 // the ability viable; multiple compatible moves make it substantially
                 // more compelling.
                 const contraryCount = chosen.filter(m =>
@@ -691,7 +691,7 @@ import { updatePreview } from './editor-core.js';
             if (/regenerator/.test(n)) score += ['pivot','defensive','support','bulkyAttacker'].includes(role) ? 18 : 2;
             if (/unaware/.test(n)) score += ['defensive','support'].includes(role) ? 18 : -4;
 
-            // Use the actual description as a final semantic-ish deterministic signal.
+            // use the actual description as a final semantic-ish deterministic signal.
             if (bulky && /damage|power|attack|defense|special defense|speed|status|heal|recover|switch/.test(desc)) score += 2;
             if (offensive && /attack|special attack|damage|power|speed/.test(desc)) score += 2;
             return score;
@@ -720,15 +720,15 @@ import { updatePreview } from './editor-core.js';
         }
 
         function sampleMoveCompatibleWithRole(move, profile, role) {
-            // Screens are a dedicated archetype. Reflect/Light Screen/Aurora Veil are
+            // screens are a dedicated archetype. reflect/light screen/aurora veil are
             // never generic defensive utility, even if the Pokemon happens to learn one.
             if (sampleMoveKind(move).screens) {
                 if (role !== 'screens') return false;
                 if (!sampleHasScreensGameplan(profile)) return false;
             }
 
-            // A damaging move must use the offensive category the set is built around.
-            // This is a hard compatibility rule: it prevents things like Eruption from
+            // a damaging move must use the offensive category the set is built around.
+            // this is a hard compatibility rule: it prevents things like eruption from
             // appearing on a physical sweeper simply because its raw BP is high.
             if (sampleIsDamaging(move)) {
                 const category = sampleRoleAttackCategory(profile, role);
@@ -738,9 +738,9 @@ import { updatePreview } from './editor-core.js';
             return true;
         }
 
-        // Dynamic-power attacks are often represented by external usefulness data as
+        // dynamic-power attacks are often represented by external usefulness data as
         // zero because their damage is calculated from battle state instead of a fixed
-        // base power. That is not the same thing as being useless.
+        // base power. that is not the same thing as being useless.
         const SAMPLE_SET_DYNAMIC_POWER_MOVES = new Set([
             'Stored Power','Power Trip','Punishment','Gyro Ball','Electro Ball',
             'Low Kick','Grass Knot','Heavy Slam','Heat Crash','Wring Out','Crush Grip',
@@ -753,20 +753,20 @@ import { updatePreview } from './editor-core.js';
             const weights = state.sdMoveUsefulness || {};
             const exact = weights[move.name];
             if (SAMPLE_SET_DYNAMIC_POWER_MOVES.has(move.name)) {
-                // Never let a missing/zero external score mark a dynamic-power move
-                // useless. Its local BP estimate + role/set synergy decide its value.
+                // never let a missing/zero external score mark a dynamic-power move
+                // useless. its local BP estimate + role/set synergy decide its value.
                 if (exact == null || Number(exact) <= 0) return 1;
                 return Number(exact);
             }
             if (exact != null) return exact;
-            // Custom/Fakemon moves are not in Smogon data. Give them a neutral baseline
+            // custom/Fakemon moves are not in smogon data. give them a neutral baseline
             // and let the local role/coverage/ability rules decide their value.
             return 1;
         }
 
-        // Hard blacklist for sample-set generation. These moves are legal, but are
+        // hard blacklist for sample-set generation. these moves are legal, but are
         // deliberately never allowed to enter an automatically generated sample set.
-        // This prevents the final-slot fallback from turning into generic low-value
+        // this prevents the final-slot fallback from turning into generic low-value
         // utility just because the Fakemon happens to learn it.
         const SAMPLE_SET_BANNED_MOVES = new Set([
             'Safeguard', 'Mist', 'Lucky Chant', 'Sweet Scent', 'Odor Sleuth', 'Foresight',
@@ -778,7 +778,7 @@ import { updatePreview } from './editor-core.js';
 
         function sampleMoveIsBanned(move) {
             if (!move || !move.name) return true;
-            // One hard gate for all permanently banned sample-set moves.
+            // one hard gate for all permanently banned sample-set moves.
             if (SAMPLE_SET_BANNED_MOVES.has(move.name)) return true;
             if (SAMPLE_SET_BAD_DEFAULT_MOVES.has(move.name)) return true;
             if (SAMPLE_SET_LOW_VALUE_UTILITY_MOVES.has(move.name)) return true;
@@ -792,17 +792,17 @@ import { updatePreview } from './editor-core.js';
             if (SAMPLE_SET_SELF_KO_MOVES.has(move.name)) return false;
             const kind = sampleMoveKind(move);
             if (kind.hazard || kind.removal || kind.pivot || kind.setup || kind.defensiveSetup || kind.disruption || kind.speedControl || kind.screens) return true;
-            // Only status moves with explicit recovery semantics count as recovery.
+            // only status moves with explicit recovery semantics count as recovery.
             if (kind.recovery && move.category === 'Status') return true;
             if (!sampleIsDamaging(move)) return false;
             const bp = sampleEffectiveBasePower(move);
             const accuracy = move.accuracy === true || move.accuracy == null || Number(move.accuracy) >= 75;
-            // A move's own combat stats (power/accuracy/priority/secondary effects) are
+            // a move's own combat stats (power/accuracy/priority/secondary effects) are
             // the primary signal here, not ladder-usage frequency, so this stays
             // reliable even without any external usage-stats data loaded.
             const intrinsic = sampleMoveIntrinsicScore(move);
-            // Usage is a preference, not a legality/usefulness gate. Strong/signature
-            // attacks such as V-create and Gigaton Hammer must remain viable even when
+            // usage is a preference, not a legality/usefulness gate. strong/signature
+            // attacks such as v-create and gigaton hammer must remain viable even when
             // they have little or no ladder usage history.
             if (!accuracy) return (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name) && bp >= 100 && Number(move.accuracy) >= 65) || (bp >= 120 && Number(move.accuracy) >= 65);
             if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name) && bp >= 90) return true;
@@ -819,7 +819,7 @@ import { updatePreview } from './editor-core.js';
             const atk = Number(profile.stats.atk || 0);
             const spa = Number(profile.stats.spa || 0);
 
-            // Fixed-damage/attrition attacks are for Pokemon that genuinely cannot
+            // fixed-damage/attrition attacks are for Pokemon that genuinely cannot
             // threaten opponents well through normal attacks.
             return strongAttacks <= 1 && Math.max(atk, spa) < 90;
         }
@@ -827,15 +827,15 @@ import { updatePreview } from './editor-core.js';
         function sampleHasTrappingGameplan(profile, chosen, role = '') {
             const chosenNames = new Set((chosen || []).map(m => m.name));
 
-            // Shadow Tag / Arena Trap / Magnet Pull already provide the trapping
-            // mechanism. Do NOT add Fire Spin / Whirlpool / Magma Storm just because
+            // shadow tag / arena trap / magnet pull already provide the trapping
+            // mechanism. do not add fire spin / whirlpool / magma storm just because
             // one of these abilities is present.
             if (SAMPLE_SET_TRAPPING_ABILITIES.test((profile.abilities || []).join(' '))) return false;
 
-            // An explicit trapping move means trapping is deliberately part of the set.
+            // an explicit trapping move means trapping is deliberately part of the set.
             if ([...SAMPLE_SET_EXPLICIT_TRAPPING_MOVES].some(name => chosenNames.has(name))) return true;
 
-            // Very passive Pokemon may use trapping damage as their actual attrition plan.
+            // very passive Pokemon may use trapping damage as their actual attrition plan.
             return sampleIsPassiveProfile(profile, role);
         }
 
@@ -849,14 +849,14 @@ import { updatePreview } from './editor-core.js';
             const fast = Number(profile.stats.spe || 0) >= 100;
             const snowAbility = /snow warning/i.test((profile.abilities || []).join(' '));
 
-            // A Screens set is an actual archetype, not a generic support set.
-            // Normal Screens requires BOTH Reflect and Light Screen. Aurora Veil is
+            // a screens set is an actual archetype, not a generic support set.
+            // normal screens requires both reflect and light screen. aurora veil is
             // the only alternative, and it requires an actual snow-setting ability.
             const dualScreens = hasReflect && hasLightScreen;
             const veilScreens = hasAuroraVeil && snowAbility;
 
-            // It also needs a credible way to establish screens: fast enough to act
-            // before most threats or Prankster, plus a pivoting move to retain momentum.
+            // it also needs a credible way to establish screens: fast enough to act
+            // before most threats or prankster, plus a pivoting move to retain momentum.
             return (dualScreens || veilScreens) && hasPivot && (fast || prankster);
         }
 
@@ -903,23 +903,23 @@ import { updatePreview } from './editor-core.js';
         function sampleHasConditionalCoverageSupport(move, profile, chosen) {
             if (!SAMPLE_SET_CONDITIONAL_COVERAGE_MOVES.has(move.name)) return true;
 
-            // Sun-dependent attacks.
+            // sun-dependent attacks.
             if (['Solar Beam','Solar Blade','Weather Ball'].includes(move.name)) {
                 return sampleHasExternalCondition(profile, chosen, 'sun');
             }
 
-            // Rain-dependent / rain-enhanced attacks. Electro Shot is especially
+            // rain-dependent / rain-enhanced attacks. electro shot is especially
             // inappropriate as generic coverage because it normally requires rain.
             if (['Thunder','Hurricane','Electro Shot'].includes(move.name)) {
                 return sampleHasExternalCondition(profile, chosen, 'rain');
             }
 
-            // Blizzard is the snow analogue.
+            // blizzard is the snow analogue.
             if (move.name === 'Blizzard') {
                 return sampleHasExternalCondition(profile, chosen, 'snow');
             }
 
-            // Terrain-dependent moves should only be selected when the set supplies
+            // terrain-dependent moves should only be selected when the set supplies
             // a terrain or the ability supplies one automatically.
             if (['Terrain Pulse','Nature Power','Rising Voltage','Grassy Glide','Expanding Force','Psyblade'].includes(move.name)) {
                 return sampleHasExternalCondition(profile, chosen, 'terrain');
@@ -928,26 +928,26 @@ import { updatePreview } from './editor-core.js';
             return false;
         }
 
-        // These moves can be legal and occasionally useful on a hand-built set, but
+        // these moves can be legal and occasionally useful on a hand-built set, but
         // they are poor defaults for an automatically generated competitive sample set.
-        // In particular, two-turn attacks must never be allowed to masquerade as ordinary
+        // in particular, two-turn attacks must never be allowed to masquerade as ordinary
         // coverage just because their displayed BP is high.
         const SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES = new Set([
             'Bounce','Fly','Dig','Dive','Phantom Force','Shadow Force',
             'Skull Bash','Sky Attack','Razor Wind','Belch'
         ]);
 
-        // Tera Blast is not generic coverage. It is a strategic fallback for offensive
-        // sets whose movepool does not provide meaningful off-type attacks. In particular,
+        // tera blast is not generic coverage. it is a strategic fallback for offensive
+        // sets whose movepool does not provide meaningful off-type attacks. in particular,
         // never use it to fill a defensive/support/hazard set's last slot when the Pokemon
-        // already has ordinary utility such as Knock Off, recovery, hazards, removal, etc.
+        // already has ordinary utility such as knock off, recovery, hazards, removal, etc.
         const SAMPLE_SET_OFFENSIVE_TERA_ROLES = new Set([
             'physicalSweeper','specialSweeper','setupSweeper','wallbreaker'
         ]);
 
-        // Rest is legitimate on some bulky/defensive strategies, but it should not
+        // rest is legitimate on some bulky/defensive strategies, but it should not
         // consume a slot on an offensive sweeper when that slot can provide coverage
-        // or another offensive tool. Sleep Talk can still be used manually.
+        // or another offensive tool. sleep talk can still be used manually.
         const SAMPLE_SET_OFFENSIVE_NO_REST_ROLES = new Set([
             'physicalSweeper','specialSweeper','setupSweeper','wallbreaker'
         ]);
@@ -971,11 +971,11 @@ import { updatePreview } from './editor-core.js';
 
         function sampleTeraBlastAllowed(profile, role, chosen = []) {
             if (!SAMPLE_SET_OFFENSIVE_TERA_ROLES.has(role)) return false;
-            // If the movepool already gives the offensive set meaningful natural coverage,
-            // use that move instead of spending a slot on Tera Blast.
+            // if the movepool already gives the offensive set meaningful natural coverage,
+            // use that move instead of spending a slot on tera blast.
             const naturalCoverage = sampleHasNaturalCoverageOptions(profile, role);
             if (naturalCoverage.length > 0) return false;
-            // A Tera Blast already selected should not somehow justify another Tera Blast.
+            // a tera blast already selected should not somehow justify another tera blast.
             if (chosen.some(m => m.name === 'Tera Blast')) return false;
             return true;
         }
@@ -986,30 +986,30 @@ import { updatePreview } from './editor-core.js';
             if (cache?.has(key)) return cache.get(key);
             const finish = value => { if (cache) cache.set(key, value); return value; };
             if (!sampleIsDamaging(move) || profile.types.includes(move.type)) return finish(false);
-            // Never let a two-turn attack enter an automatic coverage slot.
-            // Its raw BP is not a meaningful representation of its competitive role.
+            // never let a two-turn attack enter an automatic coverage slot.
+            // its raw BP is not a meaningful representation of its competitive role.
             if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name)) return finish(false);
             if (!sampleMoveIsActuallyUseful(move)) return finish(false);
 
-            // Trapping damage is not generic coverage. Fire Spin / Whirlpool /
-            // Magma Storm / etc. need an actual trapping plan.
+            // trapping damage is not generic coverage. fire spin / whirlpool /
+            // magma storm / etc. need an actual trapping plan.
             if (SAMPLE_SET_TRAPPING_DAMAGE_MOVES.has(move.name) && !sampleHasTrappingGameplan(profile, chosen)) {
                 return finish(false);
             }
 
-            // Conditional/weather/terrain attacks should not be treated as normal
+            // conditional/weather/terrain attacks should not be treated as normal
             // coverage without the condition that makes them worthwhile.
             if (!sampleHasConditionalCoverageSupport(move, profile, chosen)) return finish(false);
 
             const bp = sampleEffectiveBasePower(move);
 
-            // Coverage gets a substantially higher quality floor than ordinary
-            // "useful" attacks. Weak attacks should not occupy an offensive coverage
+            // coverage gets a substantially higher quality floor than ordinary
+            // "useful" attacks. weak attacks should not occupy an offensive coverage
             // slot merely because they happen to hit something super-effectively.
             const premiumCoverage = SAMPLE_SET_PREMIUM_ATTACKS.has(move.name);
             if (bp < 80 && !(premiumCoverage && bp >= 70)) return finish(false);
 
-            // Air Slash is perfectly legitimate as STAB, but should not be treated as
+            // air slash is perfectly legitimate as STAB, but should not be treated as
             // strong off-type coverage merely because it is a legal damaging move.
             if (move.name === 'Air Slash' && !profile.types.includes(move.type)) return finish(false);
 
@@ -1041,8 +1041,8 @@ import { updatePreview } from './editor-core.js';
             if (move.name === 'Tera Blast' && !sampleTeraBlastAllowed(profile, role, chosen)) return -9000;
             if (kind.selfKO) return -8500;
 
-            // Trapping damage is specialized tech, not generic utility. Do not let
-            // Fire Spin/Whirlpool/etc. win simply because their raw damage/secondary
+            // trapping damage is specialized tech, not generic utility. do not let
+            // fire spin/whirlpool/etc. win simply because their raw damage/secondary
             // effect score happens to look attractive.
             if (SAMPLE_SET_TRAPPING_DAMAGE_MOVES.has(move.name) && !sampleHasTrappingGameplan(profile, chosen, role)) {
                 return -7000;
@@ -1063,9 +1063,9 @@ import { updatePreview } from './editor-core.js';
             const usefulness = sampleCompetitiveUsefulness(move);
             score += usefulness * SAMPLE_SET_CONFIG.move.usefulness;
 
-            // Knock Off is unusually valuable utility: it permanently removes an
+            // knock off is unusually valuable utility: it permanently removes an
             // opponent's item and is useful across offensive, defensive, support,
-            // hazard, and pivot sets. Do not let raw damage/BP or mediocre coverage
+            // hazard, and pivot sets. do not let raw damage/BP or mediocre coverage
             // scoring push it behind a redundant attack.
             if (move.name === 'Knock Off') {
                 score += ['defensive','support','hazard','pivot'].includes(role) ? 52 : 38;
@@ -1074,19 +1074,19 @@ import { updatePreview } from './editor-core.js';
 
             if (sampleIsDamaging(move)) {
                 if (types.includes(move.type)) score += SAMPLE_SET_CONFIG.move.stab;
-                // Coverage is a bonus only when it is genuinely good. It is never a
+                // coverage is a bonus only when it is genuinely good. it is never a
                 // requirement, so a mediocre coverage move cannot beat a useful STAB,
                 // recovery, setup, or utility move just because it is super effective.
                 score += sampleCoverageScore(move, types, chosen);
-                // Strong attacks deserve to compete on their actual combat value, not
-                // merely on usage frequency. This is especially important for legal
-                // Fakemon movepools containing moves such as V-create or Gigaton Hammer.
+                // strong attacks deserve to compete on their actual combat value, not
+                // merely on usage frequency. this is especially important for legal
+                // Fakemon movepools containing moves such as v-create or gigaton hammer.
                 const effBp = sampleEffectiveBasePower(move);
                 score += Math.min(10, effBp * 0.05);
                 if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name)) score += 24;
 
-                // V-create, Superpower, Close Combat, Boomburst, etc. are good
-                // attacks in their own right. Contrary is an optional synergy, not
+                // v-create, superpower, close combat, boomburst, etc. are good
+                // attacks in their own right. contrary is an optional synergy, not
                 // a prerequisite for selecting them.
                 if (move.name === 'V-create') score += 18;
                 if (move.name === 'Superpower' || move.name === 'Close Combat' || move.name === 'Boomburst') score += 12;
@@ -1097,7 +1097,7 @@ import { updatePreview } from './editor-core.js';
                 if (req.attack === move.category) score += 15;
                 if (!sampleMoveIsActuallyUseful(move)) score -= 25;
                 if (effBp < 60) score -= SAMPLE_SET_CONFIG.move.lowPowerPenalty;
-                // Big self-damage costs are far worse on a set that needs to survive
+                // big self-damage costs are far worse on a set that needs to survive
                 // multiple turns (setup sweepers, bulky attackers) than on a wallbreaker
                 // that's already committing to trading in one or two hits.
                 const setupReliant = ['physicalSweeper','specialSweeper','setupSweeper','bulkyAttacker'].includes(role);
@@ -1105,14 +1105,14 @@ import { updatePreview } from './editor-core.js';
                 else if ((move.flags || {}).recoil) score -= setupReliant ? 20 : 8;
             }
 
-            // Stat-aware offensive fit. The same move is worth more when it matches the
-            // Fakemon's genuinely superior attacking stat.
+            // stat-aware offensive fit. the same move is worth more when it matches the
+            // fakemon's genuinely superior attacking stat.
             if (sampleIsDamaging(move)) {
                 if (move.category === 'Physical') score += Math.max(-4, Math.min(12, (stats.atk - stats.spa) * 0.18));
                 if (move.category === 'Special') score += Math.max(-4, Math.min(12, (stats.spa - stats.atk) * 0.18));
 
-                // Contrary makes self-dropping attacks a central part of the set.
-                // Without this, a high-BP move can lose to generic STAB/utility even
+                // contrary makes self-dropping attacks a central part of the set.
+                // without this, a high-bp move can lose to generic STAB/utility even
                 // though the ability fundamentally changes how the move functions.
                 const abilityText = (profile.abilities || []).join(' ').toLowerCase();
                 if (/contrary/.test(abilityText)) {
@@ -1120,7 +1120,7 @@ import { updatePreview } from './editor-core.js';
                     const selfDrop = SAMPLE_SET_CONTRARY_SYNERGY_MOVES.has(move.name) ||
                         /(?:lowers?|drops?).*(?:user|its).*(?:attack|defen|sp\.? atk|sp\.? def|speed|stats)/i.test(moveText);
                     const directBoost = /(?:raises?|boosts?).*(?:user|its).*(?:attack|defen|sp\.? atk|sp\.? def|speed|stats)/i.test(moveText);
-                    // Contrary synergy is deliberately modest here. The move must
+                    // contrary synergy is deliberately modest here. the move must
                     // already be good on its own; this bonus simply makes the ability
                     // and move converge on the same generated set.
                     if (selfDrop) score += 28;
@@ -1170,7 +1170,7 @@ import { updatePreview } from './editor-core.js';
             if (kind.screens) score += role === 'screens' ? 55 : -7000;
             score += sampleAbilityScore(move, profile, role);
 
-            // Defensive roles should not spend slots on four attacks if they have real
+            // defensive roles should not spend slots on four attacks if they have real
             // longevity/utility available.
             if (['defensive','support','hazard'].includes(role) && sampleIsDamaging(move)) score -= 4;
             if (role === 'bulkyAttacker' && sampleIsDamaging(move)) score += 3;
@@ -1219,7 +1219,7 @@ import { updatePreview } from './editor-core.js';
             const statuses = chosen.filter(m => m.category === 'Status');
             let score = 0;
 
-            // The set should have a clear identity rather than four individually good moves.
+            // the set should have a clear identity rather than four individually good moves.
             if (['physicalSweeper','specialSweeper','setupSweeper'].includes(role)) {
                 if (setup.length) score += 28;
                 if (damaging.length >= 2) score += 22;
@@ -1258,7 +1258,7 @@ import { updatePreview } from './editor-core.js';
                 if (pivots.length) score += 8;
                 if (damaging.length >= 1) score += 14;
                 if (damaging.length > 2) score -= (damaging.length - 2) * 10;
-                // Defensive sets should strongly prefer useful utility over an off-type
+                // defensive sets should strongly prefer useful utility over an off-type
                 // attack that only looks attractive because of raw power/coverage.
                 const defensiveCoverage = coverage.length;
                 if (defensiveCoverage) score -= defensiveCoverage * 14;
@@ -1298,14 +1298,14 @@ import { updatePreview } from './editor-core.js';
                 if (damaging.length > 2) score -= (damaging.length - 2) * 12;
             }
 
-            // Knock Off is a high-priority utility slot because it removes items and
+            // knock off is a high-priority utility slot because it removes items and
             // remains useful even when the set is not trying to sweep immediately.
             if (chosen.some(m => m.name === 'Knock Off')) {
                 score += ['defensive','support','hazard','pivot'].includes(role) ? 24 : 12;
             }
 
-            // Offensive setup sets should spend their limited slots on the actual win
-            // condition. Taunt can be a legitimate fourth move, but Rest is not a default
+            // offensive setup sets should spend their limited slots on the actual win
+            // condition. taunt can be a legitimate fourth move, but rest is not a default
             // partner for a sweeper and should never crowd out natural coverage.
             if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker'].includes(role)) {
                 if (recovery.length && !['bulkyAttacker'].includes(role)) score -= recovery.length * 16;
@@ -1316,8 +1316,8 @@ import { updatePreview } from './editor-core.js';
                 if (setup.length && naturalCoverage.length && coverage.length >= 1) score += 16;
             }
 
-            // Universal redundancy control: a move is much less valuable when the set
-            // already performs the same job. This is intentionally set-level rather than
+            // universal redundancy control: a move is much less valuable when the set
+            // already performs the same job. this is intentionally set-level rather than
             // a property of the move in isolation.
             const damagingByType = new Map();
             damaging.forEach(m => damagingByType.set(m.type, (damagingByType.get(m.type) || 0) + 1));
@@ -1327,8 +1327,8 @@ import { updatePreview } from './editor-core.js';
             }
             if (stabs.length > 2) score -= (stabs.length - 2) * 18;
 
-            // Offensive sets should actively seek real coverage when the movepool has
-            // it. A third move of an existing attacking type is not an acceptable use of
+            // offensive sets should actively seek real coverage when the movepool has
+            // it. a third move of an existing attacking type is not an acceptable use of
             // a slot when a useful off-type attack exists.
             if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role)) {
                 const naturalCoverage = sampleHasNaturalCoverageOptions(profile, role);
@@ -1349,7 +1349,7 @@ import { updatePreview } from './editor-core.js';
             const key = sampleMemoKey(role, chosen);
             if (cache?.has(key)) return cache.get(key);
             const finish = value => { if (cache) cache.set(key, value); return value; };
-            // Hard constraints are checked while the set is being built. This prevents
+            // hard constraints are checked while the set is being built. this prevents
             // the search from spending its budget on branches that can never become a
             // coherent set.
             const damaging = chosen.filter(sampleIsDamaging);
@@ -1362,19 +1362,19 @@ import { updatePreview } from './editor-core.js';
             if (role === 'screens' && chosen.some(m => sampleMoveKind(m).screens) &&
                 !sampleIsScreensMoveAllowed(chosen.find(m => sampleMoveKind(m).screens), profile, role, chosen)) return finish(false);
 
-            // Coverage is optional, but once a set already has one off-type attack,
+            // coverage is optional, but once a set already has one off-type attack,
             // additional off-type attacks need a very strong reason to remain viable.
             const coverage = damaging.filter(m => !profile.types.includes(m.type));
             if (coverage.length > 2) return finish(false);
 
-            // Never allow three attacks of the same type on an automatic set. Two can
+            // never allow three attacks of the same type on an automatic set. two can
             // be justified (e.g. a primary STAB plus a stronger secondary STAB), but
             // the third slot should be coverage or useful utility instead.
             const typeCounts = new Map();
             damaging.forEach(m => typeCounts.set(m.type, (typeCounts.get(m.type) || 0) + 1));
             if ([...typeCounts.values()].some(count => count > 2)) return finish(false);
 
-            // When an offensive set has already committed to two attacks and the
+            // when an offensive set has already committed to two attacks and the
             // movepool contains legitimate natural coverage, preserve a path for that
             // coverage instead of allowing another same-type attack to dominate the beam.
             if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role) &&
@@ -1382,7 +1382,7 @@ import { updatePreview } from './editor-core.js';
                 sampleHasNaturalCoverageOptions(profile, role).length > 0 &&
                 chosen.length >= 3) return finish(false);
 
-            // A setup sweeper must actually be capable of sweeping. Do not allow the
+            // a setup sweeper must actually be capable of sweeping. do not allow the
             // beam to spend two or more slots on non-attacking utility when the movepool
             // contains good attacks/coverage.
             if (role === 'setupSweeper' && chosen.length >= 3 && kinds.some(k => k.setup)) {
@@ -1391,7 +1391,7 @@ import { updatePreview } from './editor-core.js';
                     !damaging.some(m => !profile.types.includes(m.type))) return finish(false);
             }
 
-            // Never build an offensive set around a status-heavy branch when there are
+            // never build an offensive set around a status-heavy branch when there are
             // already enough attacks to perform its intended job.
             if (['physicalSweeper','specialSweeper','setupSweeper','wallbreaker'].includes(role) &&
                 damaging.length >= 2 && chosen.filter(m => m.category === 'Status').length >= 2) return finish(false);
@@ -1400,7 +1400,7 @@ import { updatePreview } from './editor-core.js';
         }
 
         function samplePickMoves(profile, role, seed) {
-            // A zero-pivot learnset must never fall through into a generic set merely
+            // a zero-pivot learnset must never fall through into a generic set merely
             // because the pivot role happened to rank highly or tie with another role.
             if (!sampleRoleIsFeasible(profile, role)) return [];
 
@@ -1420,8 +1420,8 @@ import { updatePreview } from './editor-core.js';
 
             if (usable.length < 4) return [];
 
-            // A "Hazard Setter/Remover" set with no hazard move, or a "Pivot" set with no
-            // pivot move, is a broken/misleading suggestion. Fail rather than changing the
+            // a "hazard setter/remover" set with no hazard move, or a "pivot" set with no
+            // pivot move, is a broken/misleading suggestion. fail rather than changing the
             // set identity just to reach four moves.
             if (role === 'hazard' && !usable.some(m => sampleMoveKind(m).hazard)) return [];
             if (role === 'pivot' && !usable.some(m => sampleMoveKind(m).pivot)) return [];
@@ -1436,9 +1436,9 @@ import { updatePreview } from './editor-core.js';
                 return true;
             };
 
-            // Beam-search the set instead of greedily choosing each slot independently.
-            // Every branch is scored as a *set in progress*, so the fourth move can
-            // change the value of the first three. This is the key architectural change:
+            // beam-search the set instead of greedily choosing each slot independently.
+            // every branch is scored as a *set in progress*, so the fourth move can
+            // change the value of the first three. this is the key architectural change:
             // coverage, setup, recovery, pivots, etc. compete for the same four-slot budget.
             const candidates = usable.filter(useful);
             if (candidates.length < 4) return [];
@@ -1457,8 +1457,8 @@ import { updatePreview } from './editor-core.js';
                     for (const move of remaining) {
                         const chosen = [...stateNode.moves, move];
 
-                        // Off-type attacks are only allowed after the actual partial set
-                        // can justify them as coverage. This eliminates moves like Bounce
+                        // off-type attacks are only allowed after the actual partial set
+                        // can justify them as coverage. this eliminates moves like bounce
                         // from winning on raw BP alone.
                         if (sampleIsDamaging(move) && !profile.types.includes(move.type)) {
                             if (!sampleHasGoodCoverage(move, profile, stateNode.moves)) continue;
@@ -1480,7 +1480,7 @@ import { updatePreview } from './editor-core.js';
                         let score = stateNode.score + moveScore;
                         score += sampleSetCoherenceScore(profile, role, chosen);
 
-                        // Keep a mild preference for a distinct offensive type, but let
+                        // keep a mild preference for a distinct offensive type, but let
                         // the completed-set score decide whether a second STAB or utility
                         // move is actually better.
                         const damaging = chosen.filter(sampleIsDamaging);
@@ -1537,8 +1537,8 @@ import { updatePreview } from './editor-core.js';
             const body = profile.moves.find(m => m.name === 'Body Press');
             if (!def || !body || profile.stats.def < 95) return null;
 
-            // This is a named set idea, so its remaining slots must be selected around
-            // the Iron Defense/Cotton Guard/Acid Armor + Body Press gameplan rather than
+            // this is a named set idea, so its remaining slots must be selected around
+            // the iron defense/cotton guard/acid armor + body press gameplan rather than
             // by taking the first available recovery/coverage move.
             const base = [def, body];
             const candidates = profile.moves.filter(m =>
@@ -1614,9 +1614,9 @@ import { updatePreview } from './editor-core.js';
             if (role === 'physicalSweeper' || role === 'setupSweeper') {
                 evs.atk = 252;
                 if (hasCurse || hasSpeedDropSetup) {
-                    // Curse is not a normal speed-sweeper setup move: it actively lowers
-                    // Speed. Match the EVs to the set we actually generated instead of
-                    // blindly using the role's generic 252 Atk / 252 Spe template.
+                    // curse is not a normal speed-sweeper setup move: it actively lowers
+                    // speed. match the EVs to the set we actually generated instead of
+                    // blindly using the role's generic 252 atk / 252 spe template.
                     evs.hp = 252;
                     evs.def = 4;
                     nature = 'Adamant';
@@ -1645,7 +1645,7 @@ import { updatePreview } from './editor-core.js';
                 evs.hp = 252;
                 evs[key] = 252;
                 evs[ s.def >= s.spd ? 'def' : 'spd' ] = 4;
-                // Don't waste a nature on Speed unless the base Speed is high enough
+                // don't waste a nature on speed unless the base speed is high enough
                 // for the Fakemon to realistically use it as an offensive stat.
                 nature = key === 'atk' ? 'Adamant' : 'Modest';
             } else if (role === 'defensive') {
@@ -1683,7 +1683,7 @@ import { updatePreview } from './editor-core.js';
         }
 
         function hasHazardWeakness(types) {
-            // Stealth Rock is the main reason Boots matter in singles. Rock weakness
+            // stealth rock is the main reason boots matter in singles. rock weakness
             // (especially 2x/4x) is a meaningful signal; otherwise longevity items win.
             if (!types.length) return false;
             let mult = 1;
@@ -1708,9 +1708,9 @@ import { updatePreview } from './editor-core.js';
             const abilityText = String(ability || '').toLowerCase();
             let score = 0;
 
-            // Item choice is a property of the completed set. These are deliberately
+            // item choice is a property of the completed set. these are deliberately
             // compatibility scores rather than a chain of early returns: a set with
-            // Choice-locking, setup, recovery, etc. should be evaluated as one strategy.
+            // choice-locking, setup, recovery, etc. should be evaluated as one strategy.
             if (item === 'Leftovers') {
                 if (hasRecovery) score += 28;
                 if (bulky) score += 18;
@@ -1771,8 +1771,8 @@ import { updatePreview } from './editor-core.js';
                 if (hasRecovery) score += 5;
             }
 
-            // Do not reward an item simply because the Pokemon qualifies for it in the
-            // abstract. The final set must actually make use of the item's gameplan.
+            // do not reward an item simply because the Pokemon qualifies for it in the
+            // abstract. the final set must actually make use of the item's gameplan.
             if (item !== 'Flame Orb' && /guts/.test(abilityText)) score -= 25;
             if (item === 'Heavy-Duty Boots' && role === 'wallbreaker' && !rockWeak && !hasPivot) score -= 8;
             if ((item === 'Choice Band' || item === 'Choice Specs') && damaging.length < 2) score -= 20;
@@ -1807,10 +1807,10 @@ import { updatePreview } from './editor-core.js';
                 }))
                 .sort((a,b) => b.score - a.score || a.item.localeCompare(b.item));
 
-            // Item-first remains the rule: AV can win even when the draft currently has
-            // Status moves. But after applying the AV repair, the requested role must
-            // still exist. This prevents Pivot -> Chilly Reception -> AV -> remove Chilly
-            // Reception -> publish a fake Pivot with no pivot move.
+            // item-first remains the rule: av can win even when the draft currently has
+            // status moves. but after applying the av repair, the requested role must
+            // still exist. this prevents pivot -> chilly reception -> av -> remove chilly
+            // reception -> publish a fake pivot with no pivot move.
             for (const entry of ranked) {
                 const repaired = sampleRepairMovesForItem(profile, role, moves, entry.item);
                 if (repaired.length !== 4) continue;
@@ -1825,11 +1825,11 @@ import { updatePreview } from './editor-core.js';
             let repaired = [...(moves || [])];
             if (String(item || '').trim().toLowerCase() !== 'assault vest') return repaired;
 
-            // AV is the constraint: strip Status moves after the item has been chosen.
+            // av is the constraint: strip status moves after the item has been chosen.
             repaired = repaired.filter(m => m && m.category !== 'Status');
             if (repaired.length >= 4) return repaired.slice(0, 4);
 
-            // Refill removed slots with the best legal damaging moves from the learnset.
+            // refill removed slots with the best legal damaging moves from the learnset.
             const chosenNames = new Set(repaired.map(m => m.name));
             const candidates = (profile.moves || [])
                 .filter(m => m && m.category !== 'Status' && !chosenNames.has(m.name))
@@ -1858,7 +1858,7 @@ import { updatePreview } from './editor-core.js';
             const hasRecovery = moves.some(m => sampleMoveKind(m).recovery);
             let score = 0;
 
-            // Offensive Tera should amplify an actual attack on this exact set.
+            // offensive tera should amplify an actual attack on this exact set.
             if (stab.length) {
                 score += 34;
                 score += Math.min(18, stab.length * 8);
@@ -1866,11 +1866,11 @@ import { updatePreview } from './editor-core.js';
                 if (role === 'wallbreaker') score += 10;
             }
 
-            // A coverage Tera is only meaningful when the set actually carries that
-            // attack; never pick a Tera type from the learnset alone.
+            // a coverage tera is only meaningful when the set actually carries that
+            // attack; never pick a tera type from the learnset alone.
             if (coverage.some(m => m.type === type)) score += 20;
 
-            // Defensive Terastallization gets a small, controlled bonus for common
+            // defensive terastallization gets a small, controlled bonus for common
             // defensive types, but only when the set is actually defensive/bulky.
             if (['defensive','support','hazard','bulkyAttacker','pivot'].includes(role)) {
                 if (type === 'Steel') score += 16;
@@ -1879,7 +1879,7 @@ import { updatePreview } from './editor-core.js';
                 if (hasRecovery) score += 8;
             }
 
-            // Preserve the original typing as a fallback, not as an automatic winner.
+            // preserve the original typing as a fallback, not as an automatic winner.
             if (profile.types.includes(type)) score += originalStab.some(m => m.type === type) ? 7 : 2;
             return score;
         }
@@ -1900,7 +1900,7 @@ import { updatePreview } from './editor-core.js';
         function sampleRoleLabel(role) {
             const configured = SAMPLE_SET_CONFIG.roles[role]?.name;
             if (configured) return configured;
-            // Keep generated labels human-readable even if a role key is introduced
+            // keep generated labels human-readable even if a role key is introduced
             // later using camelCase or snake_case.
             return String(role || 'Sample Set')
                 .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
@@ -1927,20 +1927,20 @@ import { updatePreview } from './editor-core.js';
         function sampleSetIdeaIsTooSimilar(candidate, accepted) {
             return accepted.some(existing => {
                 const sim = sampleSetIdeaSimilarity(candidate, existing);
-                // Exact/near-exact sets are duplicates even if their labels differ.
+                // exact/near-exact sets are duplicates even if their labels differ.
                 if (sim.moveJaccard >= 0.75) return true;
-                // Two sets from the same role with at least half their moves and the
+                // two sets from the same role with at least half their moves and the
                 // same broad EV profile are effectively the same idea.
                 if (sim.sameRole && sim.moveJaccard >= 0.50 && sim.sameEVProfile) return true;
-                // Don't show two sets that only differ by an item while everything else
+                // don't show two sets that only differ by an item while everything else
                 // is effectively identical.
                 if (sim.moveJaccard >= 0.50 && sim.sameItem && sim.sameEVProfile) return true;
                 return false;
             });
         }
 
-        // Cache the expensive set-generation result. Opening the modal should never
-        // synchronously rebuild the beam-search on every click. The cache is keyed by
+        // cache the expensive set-generation result. opening the modal should never
+        // synchronously rebuild the beam-search on every click. the cache is keyed by
         // the current Fakemon inputs, so changing the species data automatically causes
         // a fresh generation pass.
         let sampleSetSuggestionCache = { key: '', suggestions: null };
@@ -1988,7 +1988,7 @@ import { updatePreview } from './editor-core.js';
             };
             const roleScores = sampleRoleScores(profile);
             const debugSample = typeof window !== 'undefined' && window.__sampleSetDebug === true;
-            // Debug tracing must never materially change generation cost. Keep only the
+            // debug tracing must never materially change generation cost. keep only the
             // small, diagnostic fields we need and avoid JSON cloning inside the hot loop.
             const debugProfile = debugSample ? {
                 name: profile.name,
@@ -1999,7 +1999,7 @@ import { updatePreview } from './editor-core.js';
             } : null;
             const debugTrace = debugSample ? { startedAt:new Date().toISOString(), cacheKey, profile:debugProfile, roleScores:{ ...roleScores }, roles:{}, suggestions:[] } : null;
             if (debugSample) window.__lastSampleSetGeneration = debugTrace;
-            // Infeasible roles are removed before ranking. Missing a defining mechanic
+            // infeasible roles are removed before ranking. missing a defining mechanic
             // is a hard impossibility, not merely a low score.
             const feasibleRoles = Object.keys(roleScores).filter(role => sampleRoleIsFeasible(profile, role));
             const rankedRoles = feasibleRoles.sort((a,b) => roleScores[b] - roleScores[a] || a.localeCompare(b));
@@ -2027,13 +2027,13 @@ import { updatePreview } from './editor-core.js';
                 return true;
             };
 
-            // Parametric sets (e.g. Iron Defense + Body Press) are first-class ideas,
+            // parametric sets (e.g. iron defense + body press) are first-class ideas,
             // but they do not automatically crowd out unrelated roles anymore.
             consider(generateParametricSampleSet(profile, seed ^ 0x9e3779b9), 'parametric');
 
-            // Walk the entire role ranking. We intentionally do not stop after three
+            // walk the entire role ranking. we intentionally do not stop after three
             // attempts: several top-scoring roles can collapse to the same four moves.
-            // Only genuinely distinct ideas are kept, so returning 1–3 is preferable to
+            // only genuinely distinct ideas are kept, so returning 1–3 is preferable to
             // showing three copies of the same set with different labels.
             rankedRoles.forEach((role, roleIndex) => {
                 if (suggestions.length >= 3) return;
@@ -2084,7 +2084,7 @@ import { updatePreview } from './editor-core.js';
                 debugTrace.suggestionCount = suggestions.length;
                 debugTrace.selectedCount = result.length;
                 log.debug('SAMPLE SETS','Published sample-set debug snapshot',{snapshot:'window.__lastSampleSetGeneration',roles:rankedRoles.length,results:result.length});
-                // Tracing is intentionally one-shot so leaving the inspector enabled
+                // tracing is intentionally one-shot so leaving the inspector enabled
                 // cannot accidentally make every subsequent generation slower.
                 window.__sampleSetDebug = false;
             }
@@ -2106,8 +2106,8 @@ import { updatePreview } from './editor-core.js';
             const cacheKey = getSampleSetSuggestionCacheKey();
             const hasCachedSuggestions = sampleSetSuggestionCache.key === cacheKey && Array.isArray(sampleSetSuggestionCache.suggestions);
 
-            // Never run the expensive generator in the same task that opens the modal.
-            // That used to make the second opening appear to freeze because the browser
+            // never run the expensive generator in the same task that opens the modal.
+            // that used to make the second opening appear to freeze because the browser
             // could not paint the loading state before the beam search began.
             if (hasCachedSuggestions) {
                 if (container) container.innerHTML = '<div class="sample-set-empty-message">Loading sample sets…</div>';
@@ -2123,8 +2123,8 @@ import { updatePreview } from './editor-core.js';
                 if (!modal.classList.contains('active')) return;
                 if (sampleSetGenerationInFlight) return;
                 sampleSetGenerationInFlight = true;
-                // Give the browser a paint opportunity so the loading indicator is
-                // actually visible before the CPU-heavy set search starts.
+                // give the browser a paint opportunity so the loading indicator is
+                // actually visible before the cpu-heavy set search starts.
                 requestAnimationFrame(() => {
                     setTimeout(() => {
                         try {
@@ -2268,7 +2268,7 @@ import { updatePreview } from './editor-core.js';
         }
 
         
-// ==================== SAMPLE SET AUTOCOMPLETE ====================
+// ==================== sample set autocomplete ====================
         function hideSampleSetDropdownDelayed(id) {
             setTimeout(() => { const el = document.getElementById(id); if (el) el.classList.remove('active'); }, 200);
         }
@@ -2342,14 +2342,14 @@ import { updatePreview } from './editor-core.js';
         }
         function generateShowdownExport(name, set) {
             let lines = [];
-            // Name @ Item
+            // name @ item
             if (set.item) lines.push(`${name} @ ${set.item}`);
             else lines.push(name);
-            // Ability
+            // ability
             if (set.ability) lines.push(`Ability: ${set.ability}`);
-            // Level (Showdown omits this line entirely at the default of 100)
+            // level (Showdown omits this line entirely at the default of 100)
             if (set.level && set.level !== 100) lines.push(`Level: ${set.level}`);
-            // Tera Type
+            // tera type
             if (set.teraType) lines.push(`Tera Type: ${set.teraType}`);
             // EVs
             const evParts = [];
@@ -2360,7 +2360,7 @@ import { updatePreview } from './editor-core.js';
             if (set.evs.spd) evParts.push(`${set.evs.spd} SpD`);
             if (set.evs.spe) evParts.push(`${set.evs.spe} Spe`);
             if (evParts.length) lines.push(`EVs: ${evParts.join(' / ')}`);
-            // Nature
+            // nature
             if (set.nature) lines.push(`${set.nature} Nature`);
             // IVs
             const ivParts = [];
@@ -2371,12 +2371,12 @@ import { updatePreview } from './editor-core.js';
             if (set.ivs.spd !== 31) ivParts.push(`${set.ivs.spd} SpD`);
             if (set.ivs.spe !== 31) ivParts.push(`${set.ivs.spe} Spe`);
             if (ivParts.length) lines.push(`IVs: ${ivParts.join(' / ')}`);
-            // Moves
+            // moves
             set.moves.forEach(m => { if (m) lines.push(`- ${m}`); });
             return lines.join('\n');
         }
                 
-// ==================== STAT CALCULATION ====================
+// ==================== stat calculation ====================
         function getNatureBoostLabel(nature) {
             const data = NATURE_DATA[nature];
             if (!data || data.up === data.down) return '<span style="color:var(--text-muted);">Neutral</span>';
@@ -2456,9 +2456,9 @@ import { updatePreview } from './editor-core.js';
             autoSave();
         }
 
-        // Heuristic EV spread guesser, in the spirit of Smogon's "sample set" spreads:
+        // heuristic EV spread guesser, in the spirit of smogon's "sample set" spreads:
         // pick the stronger attacking stat, decide whether this is a speed-based or
-        // bulky-based set from the Fakemon's base Speed, then dump EVs accordingly.
+        // bulky-based set from the fakemon's base speed, then dump EVs accordingly.
         function getGuessSpreadRole(set) {
             const base = getSampleSetProfile().stats;
             const evs = set?.evs || {};
@@ -2504,9 +2504,9 @@ import { updatePreview } from './editor-core.js';
                 spe: parseInt(document.getElementById('stat-spe').value) || 60
             };
 
-            // Figure out whether this set leans physical or special. Prefer looking at
-            // the actual moves chosen (ignoring Status moves); fall back to comparing
-            // base Atk vs base SpA if no damaging moves are set yet.
+            // figure out whether this set leans physical or special. prefer looking at
+            // the actual moves chosen (ignoring status moves); fall back to comparing
+            // base atk vs base SpA if no damaging moves are set yet.
             let physicalCount = 0, specialCount = 0;
             set.moves.forEach(name => {
                 if (!name) return;
@@ -2519,7 +2519,7 @@ import { updatePreview } from './editor-core.js';
             if (physicalCount || specialCount) offStat = physicalCount >= specialCount ? 'atk' : 'spa';
             else offStat = base.atk >= base.spa ? 'atk' : 'spa';
 
-            // Speedy attackers invest in Speed; slow/bulky ones dump the rest into HP.
+            // speedy attackers invest in speed; slow/bulky ones dump the rest into HP.
             const isFast = base.spe >= 90;
             const evs = { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
             evs[offStat] = 252;
@@ -2528,7 +2528,7 @@ import { updatePreview } from './editor-core.js';
                 evs.hp = 4;
             } else {
                 evs.hp = 252;
-                // Put the last 4 EVs in whichever defensive stat is weaker.
+                // PUT the last 4 EVs in whichever defensive stat is weaker.
                 evs[base.def <= base.spd ? 'def' : 'spd'] = 4;
             }
 
@@ -2553,20 +2553,20 @@ import { updatePreview } from './editor-core.js';
 
             if (direction === 'up') {
                 if (current.up === statKey) {
-                    // Toggle off - set to neutral
+                    // toggle off - set to neutral
                     newUp = statKey; newDown = statKey;
                 } else {
                     newUp = statKey;
-                    // Keep current down if it's different
+                    // keep current down if it's different
                     if (newDown === statKey) newDown = current.down;
                 }
             } else {
                 if (current.down === statKey) {
-                    // Toggle off - set to neutral
+                    // toggle off - set to neutral
                     newUp = statKey; newDown = statKey;
                 } else {
                     newDown = statKey;
-                    // Keep current up if it's different
+                    // keep current up if it's different
                     if (newUp === statKey) newUp = current.up;
                 }
             }
@@ -2574,11 +2574,11 @@ import { updatePreview } from './editor-core.js';
             const newNature = findNatureByBoosts(newUp, newDown);
             set.nature = newNature;
 
-            // Update nature select without full re-render
+            // update nature select without full re-render
             const card = document.querySelector(`.sample-set-card[data-set-index="${setIndex}"]`);
             if (card) {
                 const natureSelect = card.querySelector('.sample-set-field select');
-                // Find the nature select (it's the one with nature options)
+                // find the nature select (it's the one with nature options)
                 const selects = card.querySelectorAll('select');
                 selects.forEach(sel => {
                     if (sel.value === set.nature || Array.from(sel.options).some(o => o.value === set.nature)) {
@@ -2627,7 +2627,7 @@ import { updatePreview } from './editor-core.js';
                     }
                 }
 
-                // Update row class for styling
+                // update row class for styling
                 const row = document.getElementById(`set-${setIndex}-stat-${key}`).closest('.sample-set-stat-row');
                 if (row) {
                     row.classList.remove('stat-boosted', 'stat-reduced');
@@ -2635,14 +2635,14 @@ import { updatePreview } from './editor-core.js';
                     if (isReduced) row.classList.add('stat-reduced');
                 }
 
-                // Update + / - button states
+                // update + / - button states
                 const plusBtn = row.querySelector('.nature-plus');
                 const minusBtn = row.querySelector('.nature-minus');
                 if (plusBtn) plusBtn.classList.toggle('active', isBoosted);
                 if (minusBtn) minusBtn.classList.toggle('active', isReduced);
             });
 
-            // Update export text
+            // update export text
             const fakemonName = document.getElementById('fakemon-name').value || 'Fakemon';
             const exportText = generateShowdownExport(fakemonName, set);
             const outputEl = card.querySelector('.sample-set-output-text');
@@ -2869,7 +2869,7 @@ function updateStatDisplay(setIndex, statKey, evVal, ivVal) {
             popup.querySelector('.modal-close').onclick = close;
             document.body.appendChild(overlay);
             document.body.appendChild(popup);
-            // Double rAF so the initial (pre-.active) state paints first, guaranteeing
+            // double rAF so the initial (pre-.active) state paints first, guaranteeing
             // the transition actually runs instead of jumping straight to the end state.
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 overlay.classList.add('active');

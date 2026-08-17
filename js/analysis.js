@@ -88,44 +88,37 @@ function abilityNames(raw){
   if(raw&&typeof raw==='object')return Object.values(raw).map(x=>typeof x==='string'?x:x?.name).filter(Boolean);
   return raw?[String(raw)]:[];
 }
-// Curated, deliberately conservative lists. This is not exhaustive competitive
-// tiering of every ability - it exists so an obviously game-changing ability
-// (Speed Boost, Huge Power, weather setters, etc.) nudges the score the same
-// direction a real teambuilder would react, and an obviously crippling one
-// (Truant, Slow Start, etc.) pulls it back down instead of being ignored.
-// A small set of abilities are so competitively defining (format-warping, not
-// just "good") that they deserve a tier above STRONG_ABILITIES rather than
-// being bucketed alongside Intimidate/Regenerator. Wonder Guard, Neutralizing
-// Gas, and Good As Gold were previously entirely absent from either list, so
-// a Fakemon running one of them scored as if its ability were neutral.
-const ELITE_ABILITIES=new Set([
-  'Wonder Guard','Neutralizing Gas','Good As Gold','Magic Guard','Imposter',
-  'Parental Bond','Water Bubble','Huge Power','Pure Power','Speed Boost'
-]);
-const STRONG_ABILITIES=new Set([
-  'Drought','Drizzle','Sand Stream','Snow Warning',
-  'Intimidate','Regenerator','Prankster','Magic Bounce','Levitate','Tough Claws','Adaptability',
-  'Protean','Libero','Water Absorb','Volt Absorb','Flash Fire','Guts','Moxie','Sheer Force',
-  'Technician','Unaware','Multiscale','Poison Heal','Contrary','Simple','Beast Boost',
-  'Mold Breaker','Download','Grassy Surge','Electric Surge','Psychic Surge','Stakeout',
-  'Serene Grace','Skill Link','Triage','Orichalcum Pulse','Desolate Land','Primordial Sea',
-  'Tinted Lens','Sand Force','Solar Power'
-]);
-// Only abilities with a genuine, mechanical downside belong here (skipped turns,
-// halved stats, forced disadvantage, etc.). Purely flavorful/situational abilities
-// (Forecast, Pickup, Damp, Run Away, Honey Gather, Illuminate, Own Tempo, Justified,
-// Anger Point, ...) are competitively "do nothing" rather than "actively bad", so
-// they don't belong here - a mon running one of those isn't worse off than a mon
-// with a genuinely neutral/unlisted ability.
-const WEAK_ABILITIES=new Set([
-  'Truant','Slow Start','Defeatist','Normalize','Klutz','Stall','Wimp Out','Emergency Exit'
-]);
+// abilities are scored off Pokemon Showdown's own ability ratings (see
+// data/abilities.ts in the pokemon-showdown repo, mirrored at
+// play.pokemonshowdown.com/data/abilities.js and loaded into
+// state.sdAbilities by fetchShowdownData() in editor.js), rather than a
+// hand-curated list here - so this stays accurate as Showdown's own opinion
+// of an ability shifts between updates instead of needing a manual edit.
+//
+// Showdown rates abilities from -1 (detrimental, e.g. Truant) up to 5
+// (essential/format-defining, e.g. Arena Trap), in half-point steps. We fold
+// that onto the coarser -1/0/1/2/3 scale the rest of this file expects: a
+// true 5 is its own top band (3) - these are the handful of abilities that
+// define whole playstyles (Wonder Guard, Arena Trap, Good As Gold,
+// Neutralizing Gas) and deserve a noticeably stronger pull than a merely
+// "elite" 4-4.5 ability - 4+ is elite (2), 3+ is strong (1), -1 (a genuine
+// mechanical downside) drags the score down, and anything else - useless,
+// ineffective, merely useful, or unknown (e.g. a custom ability with no
+// Showdown entry) - is treated as neutral.
+function toShowdownId(name){
+  return String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function sdAbilityRating(name){
+  const entry=state.sdAbilities?.[toShowdownId(name)];
+  return typeof entry?.rating==='number'?entry.rating:null;
+}
 function abilityQuality(names){
   // Best-case ability chosen (competitively, a mon is built around its best ability).
-  // Returns -1 (crippling), 0 (neutral/unknown), 1 (strong), or 2 (elite/format-
-  // defining) plus which name mattered. Elite outranks strong outranks weak,
-  // regardless of set order, so a mon with both an elite and a strong ability
-  // is credited for the elite one.
+  // Returns -1 (crippling), 0 (neutral/unknown), 1 (strong), 2 (elite), or 3
+  // (format-defining, a true Showdown rating of 5) plus which name mattered.
+  // Format-defining outranks elite outranks strong outranks weak, regardless
+  // of set order, so a mon with both a format-defining and a merely elite
+  // ability is credited for the format-defining one.
   //
   // A weak ability only drags the score down when it's the mon's *only* option -
   // if it also has any other ability (even an unlisted/neutral one), a real
@@ -135,9 +128,12 @@ function abilityQuality(names){
   let weak=null;
   let allWeak=true;
   for(const n of names||[]){
-    if(ELITE_ABILITIES.has(n) && best.score<2) best={score:2,name:n};
-    else if(STRONG_ABILITIES.has(n) && best.score<1) best={score:1,name:n};
-    else if(WEAK_ABILITIES.has(n)){ if(!weak) weak=n; }
+    const rating=sdAbilityRating(n);
+    if(rating==null){ allWeak=false; continue; }
+    if(rating>=5 && best.score<3) best={score:3,name:n};
+    else if(rating>=4 && best.score<2) best={score:2,name:n};
+    else if(rating>=3 && best.score<1) best={score:1,name:n};
+    else if(rating<=-1){ if(!weak) weak=n; }
     else allWeak=false;
   }
   if(best.score===0 && weak && allWeak) return {score:-1,name:weak};
@@ -1674,7 +1670,14 @@ function intrinsicPowerProfile(tf, abilityInfo){
   // estimate, not just show up as a text bullet. abilityInfo.score is -1/0/1/2
   // from abilityQuality(); scale it into the same 0-100 space as the rest of
   // this profile.
-  const abilityBonus=abilityInfo?.score>=2?16:abilityInfo?.score===1?7:abilityInfo?.score===-1?-10:0;
+  // A -1 rating from Showdown isn't "slightly suboptimal" - it means the
+  // ability actively cripples the mon's ability to function every turn
+  // (Truant halves your action economy, Slow Start halves your offense for
+  // 5 turns, etc). A flat -10 on a 0-100 scale was getting swallowed by
+  // statPower*.68 for any mon with strong raw stats (exactly the Slaking/
+  // Regigigas case: huge stats masking a mechanically crippling ability).
+  // This needs to be large enough that no stat spread can outrun it.
+  const abilityBonus=abilityInfo?.score>=3?32:abilityInfo?.score===2?16:abilityInfo?.score===1?7:abilityInfo?.score===-1?-55:0;
 
   const extremeStatCount=[
     Number(tf.hp)>=140?1:0,
@@ -1997,7 +2000,7 @@ function buildMatchupProfile(target,pool,usage,targetProfile,generation=9){
   const unfavorableShare=rows.length?rows.filter(x=>x.score<=42).length/rows.length:0;
   return {rows,weightedScore,topWeighted,matchupPct:rows.length?percentile(rows.map(x=>x.score),weightedScore):50,good,bad,wins:rows.filter(x=>x.score>=60).length,losses:rows.filter(x=>x.score<=40).length,coverage:rows.length,favorableShare,unfavorableShare,sortedByImpact};
 }
-function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor){
+function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor,abilityInfo){
   const m=matchup?.weightedScore??50;
   const top=matchup?.topWeighted??50;
   const utility=clamp(roleScore);
@@ -2040,9 +2043,19 @@ function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor){
   // An extreme BSR combined with an actual win condition is enough to stop
   // the matchup approximation from burying a clearly broken design.
   const hasRealWinCondition=(tf.setup>=1||tf.recovery>=1||tf.offensiveTools>=5||tf.defensiveTools>=5);
-  if(bsr>=1400 && hasRealWinCondition) return 'Ubers';
-  if(bsr>=900 && tf.setup>=1 && tf.recovery>=1 && counterplay<58) return 'Ubers';
-  if(bsr>=1050 && (tf.setup>=1||tf.recovery>=1) && m>=45) return 'Ubers';
+  // A mechanically crippling ability (Truant, Slow Start, ...) is exactly the
+  // kind of thing that makes a huge raw BSR misleading - it's real-world
+  // precedent (Slaking, Regigigas) that a monster stat total does NOT mean
+  // Ubers when the ability itself prevents the mon from using those stats
+  // properly. These BSR-driven auto-Ubers shortcuts were blind to ability
+  // entirely, so a crippling ability never stopped them from firing.
+  const crippled=abilityInfo?.score===-1;
+  const formatDefining=abilityInfo?.score>=3;
+  if(!crippled){
+    if(bsr>=1400 && hasRealWinCondition) return 'Ubers';
+    if(bsr>=900 && tf.setup>=1 && tf.recovery>=1 && counterplay<58) return 'Ubers';
+    if(bsr>=1050 && (tf.setup>=1||tf.recovery>=1) && m>=45) return 'Ubers';
+  }
 
   // A flat, modest blend factor couldn't do its job: even a perfect
   // (confidence=1) match to a real OU mon's tier midpoint (~72) wasn't enough
@@ -2063,7 +2076,25 @@ function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor){
     core +
     Math.max(0,statPower-50)*.04 -
     Math.max(0,counterplay-55)*.06 +
-    (anchor ? (anchor.midpoint-core)*anchorWeight : 0)
+    (anchor ? (anchor.midpoint-core)*anchorWeight : 0) +
+    // Direct, un-diluted penalty for a crippling ability - large enough that
+    // no amount of raw stat architecture (statPower/kitPower feed into core
+    // above, and both already tried and failed to carry this penalty through
+    // when it was only applied upstream) can outrun it back into OU/Ubers.
+    // This needs to be able to take a mon that would otherwise be Ubers-
+    // caliber (core in the high 60s-70s) all the way down near ZU territory
+    // (<18) on its own - Truant/Slow Start-caliber abilities are that
+    // deal-breaking - without being a hard floor, so a mon that was already
+    // mediocre before the ability penalty can still land a band or two above
+    // absolute rock bottom rather than being artificially forced to ZU.
+    (crippled?-58:0) +
+    // Symmetric pull-up for a true format-defining (Showdown rating 5)
+    // ability - Wonder Guard, Arena Trap, Good As Gold, Neutralizing Gas -
+    // same reasoning as the crippled penalty above but the other direction.
+    // This does not by itself force Ubers (Ubers is only reachable through
+    // the BSR shortcuts above), it just gives the mon a strong, un-diluted
+    // push up through the OU-capped band structure below.
+    (formatDefining?40:0)
   );
 
   // The threshold bands below assumed `adjusted` regularly reaches into the
@@ -2108,9 +2139,9 @@ function tierAnchorFromClosest(closest,officialTiers,cfg){
   const confidence=clamp((bestScore-35)/60*100)/100;
   return {midpoint,confidence};
 }
-function estimateTier(base,closest,tierUsage,officialTiers,targetProfile,cfg,matchup,roleScore,tf,metagameFit,intrinsic){
+function estimateTier(base,closest,tierUsage,officialTiers,targetProfile,cfg,matchup,roleScore,tf,metagameFit,intrinsic,abilityInfo){
   const anchor=tierAnchorFromClosest(closest,officialTiers,cfg);
-  const tier=matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor);
+  const tier=matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor,abilityInfo);
   // statPower is counted here AND again inside intrinsic.score (which is
   // itself ~68% statPower internally) - that double-count let raw CAP stat
   // totals control roughly half of the estimated tier regardless of a mon's
@@ -2129,7 +2160,22 @@ function estimateTier(base,closest,tierUsage,officialTiers,targetProfile,cfg,mat
     clamp(intrinsic?.score??50)*.20
   );
   const scoreAnchorWeight=anchor ? Math.pow(anchor.confidence,0.6)*0.75 : 0;
-  const score=clamp(rawScore + (anchor ? (anchor.midpoint-rawScore)*scoreAnchorWeight : 0));
+  let score=clamp(rawScore + (anchor ? (anchor.midpoint-rawScore)*scoreAnchorWeight : 0));
+  // A mechanically crippling ability (Truant, Slow Start, ...) isn't a minor
+  // stat penalty - it's a hard ceiling on how good the mon can actually be,
+  // no matter how absurd the raw stats are (this is exactly the Slaking /
+  // Regigigas case: huge BST hides behind an ability that halves the mon's
+  // effective turns). Everywhere upstream this got diluted across many
+  // averaged terms, so enforce it directly here as a final, hard-to-outrun
+  // cap rather than trusting it survives the averaging above.
+  if(abilityInfo?.score===-1){
+    score=Math.min(score,22);
+  }
+  // Symmetric floor for a true format-defining ability, matching the pull-up
+  // applied to the tier band above so the displayed score doesn't undersell it.
+  if(abilityInfo?.score>=3){
+    score=Math.max(score,72);
+  }
   const reliability=clamp(48+(matchup?.coverage||0)*1.0+Math.abs((matchup?.weightedScore??50)-50)*.2+(intrinsic?.score>=80?8:0)+(anchor?anchor.confidence*10:0));
   return{
     tier,score,reliability,anchor:anchor?Math.round(anchor.midpoint):null,usageEvidence:[],weighted:{},
@@ -2382,7 +2428,11 @@ async function runFakemonAnalysis(){
     const metagameFit=metagameStatCombination==null?clamp(.45*statCombination+.25*typePct+.30*roleScore):clamp(.42*metagameStatCombination+.18*(metagameTypePct??typePct)+.18*(metagameOffPct??offPct)+.12*(metagameSpeedPct??speedPct)+.10*roleScore);
     const base=clamp(.32*statCombination+.18*typePct+.15*offensiveSynergy+.12*defensiveSynergy+.08*roleScore+.15*metagameFit);
     const abilityInfo=abilityQuality(tf.abilities);
-    const abilityAdjustedBase=clamp(base + abilityInfo.score*3);
+    // score*3 (max swing of +/-3 on a 0-100 scale) was invisible next to
+    // statCombination/typePct/etc, so a crippling ability like Truant or
+    // Slow Start never meaningfully moved this. A mechanically crippling
+    // ability should weigh as much as a mon's whole typing profile does.
+    const abilityAdjustedBase=clamp(base + (abilityInfo.score>=3?24:abilityInfo.score===2?12:abilityInfo.score===1?6:abilityInfo.score===-1?-30:0));
     const intrinsic=intrinsicPowerProfile(tf,abilityInfo);
     status.innerHTML='<span class="analysis-spinner"></span><span>Testing matchups across the selected metagame…</span>';
     // First pass uses the selected environment to estimate the tier. Once that
@@ -2392,7 +2442,7 @@ async function runFakemonAnalysis(){
     const broadMatchup=buildMatchupProfile(target,pool,usage,tf,cfg.gen);
     const closest=cheap.map(x=>({p:x.p,score:similarity(target,x.p,tf,x.f,0)})).sort((a,b)=>b.score-a.score).slice(0,8);
     const targetForTier={...tf,bulkPct,stats:t.stats,name:t.name,primaryRole:choosePrimaryRole(tf)};
-    const tier=estimateTier(abilityAdjustedBase,closest,tierUsage,officialTiers,targetForTier,cfg,broadMatchup,roleScore,tf,metagameFit,intrinsic);
+    const tier=estimateTier(abilityAdjustedBase,closest,tierUsage,officialTiers,targetForTier,cfg,broadMatchup,roleScore,tf,metagameFit,intrinsic,abilityInfo);
     const comparable=tierComparablePool(pool,tierUsage,tier.tier,officialTiers,cfg);
 
     // Never fall back to the entire generation pool while still weighting it with
@@ -2434,8 +2484,22 @@ async function runFakemonAnalysis(){
       rows:matchup.rows.length, snapshot:'window.__lastAnalysis'
     });
     const strengths=[],weaknesses=[];
-    Object.entries(statPct).sort((a,b)=>b[1]-a[1]).slice(0,2).filter(x=>x[1]>=70).forEach(([k,v])=>strengths.push(`${STAT_NAMES[k]} is ${ordinal(v)} percentile`));
-    Object.entries(statPct).sort((a,b)=>a[1]-b[1]).slice(0,2).filter(x=>x[1]<=35).forEach(([k,v])=>weaknesses.push(`${STAT_NAMES[k]} is ${ordinal(v)} percentile`));
+    // Which offensive stat this mon actually attacks with. A pure physical
+    // attacker getting "Special Attack is Nth percentile" as a strength/
+    // weakness bullet is noise (and actively misleading) - it's not a stat
+    // the set ever uses. Only suppress the *unused* side; a genuinely mixed
+    // attacker still wants both flagged.
+    const attackCategories=getMatchupAttackCategories(t,tf.moves||[]);
+    const irrelevantOffenseKey=
+      attackCategories.has('Physical') && attackCategories.has('Special') ? null
+      : attackCategories.has('Physical') ? 'spa'
+      : attackCategories.has('Special') ? 'atk'
+      : null;
+    const statPctForBullets=irrelevantOffenseKey
+      ? Object.fromEntries(Object.entries(statPct).filter(([k])=>k!==irrelevantOffenseKey))
+      : statPct;
+    Object.entries(statPctForBullets).sort((a,b)=>b[1]-a[1]).slice(0,2).filter(x=>x[1]>=70).forEach(([k,v])=>strengths.push(`${STAT_NAMES[k]} is ${ordinal(v)} percentile`));
+    Object.entries(statPctForBullets).sort((a,b)=>a[1]-b[1]).slice(0,2).filter(x=>x[1]<=35).forEach(([k,v])=>weaknesses.push(`${STAT_NAMES[k]} is ${ordinal(v)} percentile`));
     if(metagameStatCombination!=null && metagameStatCombination>=70)strengths.push(`Stat profile is ${ordinal(metagameStatCombination)}-percentile quality among usage-weighted ${esc(selectedFormat)} Pokémon`);
      if(tf.typing.resist+tf.typing.immune>=6)strengths.push(`${tf.typing.resist} resistances and ${tf.typing.immune} immunities provide strong switch-in potential`);
     if(tf.recoveryMoves>=1)strengths.push('Reliable recovery is available');
@@ -2445,7 +2509,8 @@ async function runFakemonAnalysis(){
     if(tf.hazards||tf.removal)strengths.push('Hazard utility adds team value');
     if(tf.setup)strengths.push('Setup options increase its ceiling');
     if(matchup?.weightedScore>=65)strengths.push(`Usage-weighted matchup profile is ${Math.round(matchup.weightedScore)}/100`);
-    if(abilityInfo.score>0)strengths.push(`${abilityInfo.name} is a strong ability that meaningfully raises its floor`);
+    if(abilityInfo.score>=3)strengths.push(`${abilityInfo.name} is a format-defining ability that dramatically raises its ceiling`);
+    else if(abilityInfo.score>0)strengths.push(`${abilityInfo.name} is a strong ability that meaningfully raises its floor`);
      if(intrinsic.statPower>=70)strengths.push(`CAP stat rating is ${Math.round(intrinsic.cap.BSR)} BSR (${intrinsic.cap.category})`);
     if(intrinsic.cap.PT>=140)strengths.push(`Physical tankiness is ${Math.round(intrinsic.cap.PT)}`);
     if(intrinsic.cap.ST>=140)strengths.push(`Special tankiness is ${Math.round(intrinsic.cap.ST)}`);

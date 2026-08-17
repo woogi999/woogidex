@@ -70,14 +70,21 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                 const pokedexRaw = await pokedexRes.json();
                 const learnsetsRaw = await learnsetsRes.json();
 
-                // Parse abilities
+                // parse abilities - captures Showdown's own ability rating
+                // (-1 to 5, see data/abilities.ts upstream) alongside the
+                // name/desc, so analysis.js can score abilities off Showdown's
+                // real assessment instead of a hand-curated list.
                 const abilitiesMatch = abilitiesText.match(/exports\.BattleAbilities\s*=\s*(\{[\s\S]*\});/);
                 if (abilitiesMatch) {
                     let jsonStr = abilitiesMatch[1].replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_-]*)(\s*:)/g, '$1"$2"$3');
                     const abilitiesRaw = JSON.parse(jsonStr);
                     for (const [key, a] of Object.entries(abilitiesRaw)) {
                         if (a.isNonstandard === 'Past') continue;
-                        state.sdAbilities[key] = { name: a.name || key, desc: a.shortDesc || a.desc || '' };
+                        state.sdAbilities[key] = {
+                            name: a.name || key,
+                            desc: a.shortDesc || a.desc || '',
+                            rating: typeof a.rating === 'number' ? a.rating : null
+                        };
                     }
                 }
 

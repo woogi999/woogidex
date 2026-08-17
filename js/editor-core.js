@@ -4,7 +4,7 @@ import { state, api } from './app.js';
 import { POKEMON_TYPES, TYPE_EFFECTIVENESS } from './data.js';
 import { escapeHtml, getAbilityRole, hydrateLearnsetEntry, isCustomMove, openCustomMoveModal, renderAbilities, renderCustomAbilities, renderCustomMoves, renderLearnset, showMoveDetail, sortLearnset, resetEditingCustomAbilityIndex } from './editor.js';
 import { calcStat, copySampleSetText, generateShowdownExport, renderSampleSets, sampleMoveIsActuallyUseful } from './sample-sets.js';
-// ==================== EDITOR LOGIC ====================
+// ==================== editor logic ====================
         function getNextPokedexNumber() {
     const used = new Set();
     (state.fakemonDB || []).forEach(f => {
@@ -86,7 +86,7 @@ function resetEditor() {
             document.getElementById('stat-spe').value = clampBaseStatValue(fakemon.stats?.spe ?? 60);
             document.getElementById('dex-entry1').value = fakemon.dexEntry1 || '';
             document.getElementById('dex-entry2').value = fakemon.dexEntry2 || '';
-            // Parse height string (e.g., "0.9 m" or "3.5 ft")
+            // parse height string (e.g., "0.9 m" or "3.5 ft")
             if (fakemon.height) {
                 const hMatch = fakemon.height.match(/^([\d.]+)\s*(m|ft|meters|feet)?$/i);
                 if (hMatch) {
@@ -104,7 +104,7 @@ function resetEditor() {
                 document.getElementById('height-unit').value = 'm';
                 document.getElementById('fakemon-height').dataset.lastUnit = 'm';
             }
-            // Parse weight string (e.g., "25.0 kg" or "55.1 lb")
+            // parse weight string (e.g., "25.0 kg" or "55.1 lb")
             if (fakemon.weight) {
                 const wMatch = fakemon.weight.match(/^([\d.]+)\s*(kg|lb|kilograms|pounds)?$/i);
                 if (wMatch) {
@@ -142,7 +142,7 @@ function resetEditor() {
                     name: a.name || '', source: 'custom', desc: a.desc || a.description || ''
                 }))
             ].filter(a => a.name || a.source === 'custom').slice(0, 4);
-            // Build the unified learnset. Explicitly marked custom moves are never sent
+            // build the unified learnset. explicitly marked custom moves are never sent
             // through Showdown hydration, even if their name happens to match a vanilla move.
             state.learnset = (fakemon.learnset || []).map(m => {
                 if (m && (m.source === 'custom' || m.custom === true)) {
@@ -157,7 +157,7 @@ function resetEditor() {
                 }
                 return hydrateLearnsetEntry(m);
             });
-            // Migrate legacy standalone custom moves into the unified learnset.
+            // migrate legacy standalone custom moves into the unified learnset.
             const legacyCustomMoves = Array.isArray(fakemon.customMoves) ? fakemon.customMoves : [];
             legacyCustomMoves.forEach(m => {
                 if (!m || !m.name) return;
@@ -197,7 +197,7 @@ function resetEditor() {
         }
 
         
-// ==================== STAT INPUT VALIDATION ====================
+// ==================== stat input validation ====================
         function clampBaseStatValue(value) {
             const parsed = Number.parseInt(String(value).replace(/[^0-9-]/g, ''), 10);
             if (!Number.isFinite(parsed)) return 1;
@@ -209,7 +209,7 @@ function resetEditor() {
             input.value = clampBaseStatValue(input.value);
         }
 
-// ==================== STATS ====================
+// ==================== stats ====================
         function updateEditorStats() {
             const level = parseInt(document.getElementById('editor-level').value) || 100;
             const stats = ['hp','atk','def','spa','spd','spe'];
@@ -220,10 +220,10 @@ function resetEditor() {
                 const base = clampBaseStatValue(input?.value);
                 if (input) input.value = base;
                 bst += base;
-                // Update bar fill
+                // update bar fill
                 const bar = document.getElementById('editor-bar-' + stat);
                 if (bar) bar.style.width = Math.min(base / 255 * 100, 100) + '%';
-                // Update calculated stat (neutral nature, 0 EVs, 31 IVs)
+                // update calculated stat (neutral nature, 0 EVs, 31 IVs)
                 const calc = calcStat(base, 0, 31, 'Hardy', stat, level);
                 const calcEl = document.getElementById('calc-' + stat);
                 if (calcEl) calcEl.textContent = calc;
@@ -233,11 +233,11 @@ function resetEditor() {
             autoSave();
             updateBulkComparison();
         }
-        // Legacy alias
+        // legacy alias
         function updateStats() { updateEditorStats(); }
 
         
-// ==================== SPRITE FALLBACKS ====================
+// ==================== sprite fallbacks ====================
         const pokeApiArtworkCache = new Map();
         const pokeApiArtworkPending = new Map();
 
@@ -279,7 +279,7 @@ function resetEditor() {
         }
         window.fallbackPokemonImage = fallbackPokemonImage;
 
-        // ==================== BULK COMPARISON ====================
+        // ==================== bulk comparison ====================
         function getSpriteUrl(dexId, dexRecord) {
             const raw = String(dexId || dexRecord?.id || dexRecord?.name || '').trim().toLowerCase();
             const slug = value => String(value || '')
@@ -314,12 +314,12 @@ function resetEditor() {
                 return;
             }
 
-            // Bulk is always calculated from the real level-100 in-game stat formula
-            // using maximum IVs (31) and maximum relevant EVs (252). For the
+            // bulk is always calculated from the real level-100 in-game stat formula
+            // using maximum IVs (31) and maximum relevant EVs (252). for the
             // defensive stat we use a beneficial nature, which is the maximum
-            // possible value for that stat. HP has no nature multiplier. This
+            // possible value for that stat. HP has no nature multiplier. this
             // intentionally models maximum physical/special bulk rather than
-            // multiplying base stats or using neutral/no-EV stats.
+            // multiplying base stats or using neutral/no-ev stats.
             const MAX_IV = 31;
             const MAX_EV = 252;
             const toBulkStat = (base, statKey) => {
@@ -346,7 +346,7 @@ function resetEditor() {
 
             if (includeOwn) {
                 (state.fakemonDB || []).forEach(fakemon => {
-                    // Exclude the Fakemon currently open in the editor.
+                    // exclude the Fakemon currently open in the editor.
                     if (state.editingId && String(fakemon?.id) === String(state.editingId)) return;
                     if (!fakemon || !fakemon.name || !fakemon.stats) return;
                     candidates.push({
@@ -574,7 +574,7 @@ window.togglePreviewArtworkMode = togglePreviewArtworkMode;
         window.handlePokemonCryUpload = handlePokemonCryUpload;
         window.playPokemonCry = playPokemonCry;
 
-// ==================== ART CREDIT ====================
+// ==================== art credit ====================
         function handleArtCreditInput(event) {
             const value = (event?.target?.value || '').trim();
             state.artCredit = value || null;
@@ -582,8 +582,8 @@ window.togglePreviewArtworkMode = togglePreviewArtworkMode;
             autoSave(true);
         }
 
-        // Renders the credit text as safe HTML, auto-linking a leading/trailing URL
-        // (e.g. "Art by @user - https://twitter.com/user") without allowing raw HTML injection.
+        // renders the credit text as safe HTML, auto-linking a leading/trailing URL
+        // (e.g. "art by @user - https://twitter.com/user") without allowing raw HTML injection.
         function formatArtCreditHtml(credit) {
             const escape = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
             const urlMatch = String(credit).match(/(https?:\/\/[^\s]+)/i);
@@ -612,7 +612,7 @@ window.togglePreviewArtworkMode = togglePreviewArtworkMode;
         window.hideArtCreditDelayed = hideArtCreditDelayed;
 
         
-// ==================== EGG GROUPS ====================
+// ==================== egg groups ====================
         function handleEggGroupChange() {
             updatePreview();
             autoSave();
@@ -641,13 +641,13 @@ window.togglePreviewArtworkMode = togglePreviewArtworkMode;
         }
 
         
-// ==================== GENDER BAR ====================
+// ==================== gender bar ====================
         
-// ==================== HEIGHT / WEIGHT INPUT & CONVERSION ====================
+// ==================== height / weight input & conversion ====================
 function handleHeightInput(input) {
-    // Strip any non-numeric characters except decimal point
+    // strip any non-numeric characters except decimal point
     let val = input.value;
-    // Allow only digits and at most one decimal point
+    // allow only digits and at most one decimal point
     val = val.replace(/[^0-9.]/g, '');
     const parts = val.split('.');
     if (parts.length > 2) {
@@ -680,7 +680,7 @@ function convertHeight() {
     } else {
         converted = val;
     }
-    // Round to 2 decimal places, strip trailing zeros
+    // round to 2 decimal places, strip trailing zeros
     input.value = parseFloat(converted.toFixed(2));
     input.dataset.lastUnit = newUnit;
 }
@@ -791,9 +791,9 @@ function getGenderRatioValue() {
         }
 
         
-// ==================== PREVIEW ====================
+// ==================== preview ====================
                 
-// ==================== FLAG HELPERS ====================
+// ==================== flag helpers ====================
         function getFlagLabels(flags, category) {
             if (!flags) return [];
             const labels = [];
@@ -834,7 +834,7 @@ function getGenderRatioValue() {
 
 
 
-// ==================== TYPE WEAKNESS / RESISTANCE ====================
+// ==================== type weakness / resistance ====================
 function getTypeDamageMultiplier(attackType, defendingTypes) {
     return defendingTypes.reduce((multiplier, defendingType) => {
         return multiplier * (TYPE_EFFECTIVENESS[attackType]?.[defendingType] ?? 1);
@@ -932,8 +932,8 @@ window.handlePreviewCustomMove = handlePreviewCustomMove;
 function setPreviewArtworkMode(mode) {
     state.previewArtworkMode = mode === 'shiny' && state.shinyArtworkData ? 'shiny' : 'normal';
     const activeMode = state.previewArtworkMode;
-    // Scope lookups to the board container itself rather than a bare
-    // getElementById. If any other panel/modal ever leaves a stray element
+    // scope lookups to the board container itself rather than a bare
+    // getElementById. if any other panel/modal ever leaves a stray element
     // with the same id in the DOM, document.getElementById would silently
     // grab whichever one happens to be first and the toggle would appear to
     // do nothing even though the state changed correctly underneath it.
@@ -947,8 +947,8 @@ function setPreviewArtworkMode(mode) {
     }
     const image = boardContainer?.querySelector('#board-artwork-image') || document.getElementById('board-artwork-image');
     if (!image) {
-        // The direct DOM update couldn't find its target (stale/missing node).
-        // Rather than leaving the click with no visible effect, force a full
+        // the direct DOM update couldn't find its target (stale/missing node).
+        // rather than leaving the click with no visible effect, force a full
         // board re-render, which will pick up the state we already set above.
         if (typeof updatePreview === 'function') updatePreview();
         return;
@@ -969,7 +969,7 @@ function updatePreview() {
     log.debug('PREVIEW', 'Updating Fakemon preview', { name: document.getElementById('fakemon-name')?.value || '', moves: state.learnset.length });
             renderTypeEffectiveness();
             const name = document.getElementById('fakemon-name').value || 'Unnamed Pokemon';
-            // Keep the tab title live as the name changes, matching whatever's
+            // keep the tab title live as the name changes, matching whatever's
             // in the field right now - only while the editor is actually the
             // visible view, so background preview renders (e.g. the quick
             // preview popup) don't steal the title from wherever the user
@@ -1049,7 +1049,7 @@ function updatePreview() {
                 abilitiesHtml += '</div>';
             }
 
-            // Pre-compute dex entries HTML
+            // pre-compute dex entries HTML
             let dexHtml = '';
             if (dex1 || dex2) {
                 dexHtml = '<div class="board-dex-entries-compact" style="margin-top:0;"><div class="board-section-title">Pokedex Entries</div><div class="dex-entries">';
@@ -1058,8 +1058,8 @@ function updatePreview() {
                 dexHtml += '</div></div>';
             }
 
-            // Pre-compute state.learnset HTML. Custom moves live directly inside
-            // the Learnset section now; there is no separate Custom Moves panel.
+            // pre-compute state.learnset HTML. custom moves live directly inside
+            // the learnset section now; there is no separate custom moves panel.
             let learnsetHtml = '';
             const hasLearnset = !!(physTags || specTags || statTags || customMoveTags || customMoves.length);
             if (hasLearnset) {
@@ -1079,13 +1079,13 @@ function updatePreview() {
                 learnsetHtml += '</div>';
             }
 
-            // Pre-compute sample sets HTML
+            // pre-compute sample sets HTML
             let setsHtml = '';
             if (state.sampleSets.length > 0) {
                 setsHtml = '<div class="board-section board-sets-col"><div class="board-section-title">Sample Sets</div>';
                 state.sampleSets.forEach((set, i) => {
                     const exportText = generateShowdownExport(name, set);
-                    // Escape HTML and preserve line breaks for the preview
+                    // escape HTML and preserve line breaks for the preview
                     const escapedText = exportText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     const safeText = exportText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                     setsHtml += '<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">' + (set.name || 'Set ' + (i+1)) + '</div><div class="sample-set-output" style="margin-top:0;"><button class="sample-set-copy" data-copy-text="' + safeText + '" title="Copy to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><span class="sample-set-output-text">' + escapedText + '</span></div></div>';
@@ -1159,7 +1159,7 @@ function updatePreview() {
                 </div>
             `;
             autoSave();
-            // Attach copy button listeners for preview sample sets
+            // attach copy button listeners for preview sample sets
             container.querySelectorAll('.sample-set-copy[data-copy-text]').forEach(btn => {
                 btn.onclick = () => copySampleSetText(btn.dataset.copyText);
             });

@@ -1,9 +1,9 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
 
-// Evolution / forme whiteboard. The graph is persisted with each participating
+// evolution / forme whiteboard. the graph is persisted with each participating
 // Fakemon so opening any member of a connected chain restores the same board.
-// Node size scales down on narrow/mobile viewports so boards stay usable
+// node size scales down on narrow/mobile viewports so boards stay usable
 // and draggable without nodes overflowing the visible board width.
 function getNodeSize() {
     const mobile = window.innerWidth <= 640;
@@ -81,7 +81,7 @@ function getMethodSummary(node) {
 function methodNodeId() { return `evo-method:${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
 function getMethodNodes(g) { return g.nodes.filter(isMethodNode); }
 
-// Method nodes are visual/semantic connectors between two Pokemon nodes. For
+// method nodes are visual/semantic connectors between two Pokemon nodes. for
 // stage calculation and cycle checks, collapse any chain of method nodes so
 // methods never count as extra evolution stages.
 function collapseMethodEdges(g) {
@@ -142,7 +142,7 @@ function mergeMethodNodes(nodeId, targetId) {
     const nodeMembers = g.nodes.filter(n => isMethodNode(n) && (nodeGroup ? n.mergeGroup === nodeGroup : n.id === node.id));
     const ordered = [...targetMembers, ...nodeMembers.filter(n => !targetMembers.includes(n))];
     ordered.forEach(n => n.mergeGroup = group);
-    // The node being dragged is always appended to the bottom of the stack.
+    // the node being dragged is always appended to the bottom of the stack.
     const base = targetMembers[0] || target;
     const gap = getNodeSize().h;
     ordered.forEach((n, i) => { n.x = base.x; n.y = base.y + i * gap; });
@@ -398,9 +398,9 @@ function drawEvolutionEdges() {
     const g = ensureGraph();
     const { w: NODE_W, h: NODE_H } = getNodeSize();
     const br = board.getBoundingClientRect();
-    // Use the actual rendered handle centers rather than assuming every node
-    // has the same height. Method cards intentionally have a different visual
-    // layout, and CSS can change their height at breakpoints. Reading the
+    // use the actual rendered handle centers rather than assuming every node
+    // has the same height. method cards intentionally have a different visual
+    // layout, and CSS can change their height at breakpoints. reading the
     // handle geometry keeps every wire/arrow exactly centered on its node.
     const getHandlePoint = (node, side) => {
         const el = board.querySelector(`.evo-node[data-node-id=\"${CSS.escape(node.id)}\"] .evo-handle-${side}`);
@@ -450,8 +450,8 @@ function drawEvolutionEdges() {
         visible.setAttribute('marker-end','url(#evo-arrow)');
         visible.setAttribute('pointer-events','none');
 
-        // A transparent, much wider stroke is used as the click/hover hitbox.
-        // This keeps the visual wire thin while making removal easy on touchscreens.
+        // a transparent, much wider stroke is used as the click/hover hitbox.
+        // this keeps the visual wire thin while making removal easy on touchscreens.
         const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
         hit.setAttribute('d', d);
         hit.setAttribute('class','evo-wire-hit');
@@ -575,7 +575,7 @@ function findNearestCompatibleHandle(e, sourceNodeId, sourceSide) {
         const nodeEl = handle.closest('.evo-node');
         if (!nodeEl || nodeEl.dataset.nodeId === sourceNodeId) return;
         const side = handle.classList.contains('evo-handle-left') ? 'left' : 'right';
-        // A connection must ultimately be right -> left. Either handle can be the
+        // a connection must ultimately be right -> left. either handle can be the
         // starting handle, so only reject a target that cannot form a valid pair.
         if (sourceSide === side) return;
         const r = handle.getBoundingClientRect();
@@ -759,9 +759,9 @@ function removeEvolutionNode(id) {
     g.nodes=g.nodes.filter(n=>n.id!==id);
     g.edges=g.edges.filter(e=>e.from!==id&&e.to!==id);
 
-    // Remove the node from every saved Fakemon graph as well. Otherwise an old
+    // remove the node from every saved Fakemon graph as well. otherwise an old
     // participant can later reopen its stale copy of the graph and resurrect the
-    // removed Pokémon.
+    // removed pokémon.
     (state.fakemonDB || []).forEach(f => {
         if (!f?.evolutionGraph?.nodes) return;
         const ng = clone(f.evolutionGraph);
@@ -776,7 +776,7 @@ function removeEvolutionNode(id) {
 
 function persistEvolutionGraph() {
     const g=clone(ensureGraph());
-    // Keep the graph on every saved Fakemon represented by it. This makes the tab
+    // keep the graph on every saved Fakemon represented by it. this makes the tab
     // state follow the chain when any participating Fakemon is opened later.
     const stages = calculateStages(g);
     const fakemonIds = g.nodes.filter(n=>n.kind==='fakemon'&&n.refId).map(n=>n.refId);
@@ -810,8 +810,8 @@ function sanitizeEvolutionGraphForCurrent(graph) {
     if (!Array.isArray(g.nodes)) g.nodes = [];
     if (!Array.isArray(g.edges)) g.edges = [];
     const current = currentNodeId();
-    // Keep only nodes that belong to the connected component containing the
-    // currently edited Fakemon. This prevents stale graphs copied onto older
+    // keep only nodes that belong to the connected component containing the
+    // currently edited Fakemon. this prevents stale graphs copied onto older
     // Fakemon records from resurrecting unrelated species in the editor.
     if (g.nodes.some(n => n.id === current)) {
         const adjacency = new Map();
@@ -866,7 +866,7 @@ function shareSpecialPropertiesWithChild() {
     incoming.forEach(e=>{
         const child=g.nodes.find(n=>n.id===e.from); if (!child || child.kind!=='fakemon' || !child.refId) return;
         const f=getFakemon(child.refId); if (!f) return;
-        // A forme/mega shares the common identity/evolution board with its child;
+        // a forme/mega shares the common identity/evolution board with its child;
         // don't overwrite combat stats or custom content, only the graph linkage.
         f.evolutionGraph=clone(g);
     });
@@ -903,7 +903,7 @@ if (evolutionMethodItemInput) {
 
 export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, renderEvolutionNodeChooser, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, syncEvolutionOnBasicLoad, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, updateEvolutionMethodForm, saveEvolutionMethod, removeEvolutionMethod, populateEvolutionMethodItems };
 
-// Re-layout the board when the viewport crosses the mobile breakpoint (e.g.
+// re-layout the board when the viewport crosses the mobile breakpoint (e.g.
 // on rotation), since node size and spacing depend on window width.
 let resizeTimer = null;
 window.addEventListener('resize', () => {

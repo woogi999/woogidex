@@ -2,9 +2,9 @@ import { log } from './log.js';
 import { state, api } from './app.js';
 import { renderCommentMarkdown } from './data.js';
 
-// ==================== SUPABASE CLIENT ====================
-// Loaded from CDN as an ES module - no npm/bundler needed.
-// TODO: replace with your project's values (Supabase dashboard -> Project Settings -> API).
+// ==================== Supabase client ====================
+// loaded from CDN as an es module - no npm/bundler needed.
+// TODO: replace with your project's values (Supabase dashboard -> project settings -> API).
 const SUPABASE_URL = 'https://qstbascfeolkyxtrqqwv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_B4jEJ--w0XFsgXDmQeJREA_xH1GRBsf';
 
@@ -20,20 +20,20 @@ async function getClient() {
     return supabase;
 }
 
-// Username rules: letters, numbers, underscore only, 3-20 chars.
+// username rules: letters, numbers, underscore only, 3-20 chars.
 const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,20}$/;
-// Domain used for accounts created without a real email. ".invalid" is a
-// reserved, non-routable TLD (RFC 2606) - Supabase still accepts it as a
+// domain used for accounts created without a real email. ".invalid" is a
+// reserved, non-routable tld (rfc 2606) - Supabase still accepts it as a
 // syntactically valid address for password auth, but nothing will ever be
-// delivered there. Turn OFF "Confirm email" in your Supabase project if you
-// want optional email to actually work (see SUPABASE_SETUP.md).
+// delivered there. turn off "confirm email" in your Supabase project if you
+// want optional email to actually work (see Supabase_setup.md).
 const PLACEHOLDER_EMAIL_DOMAIN = 'users.woogidex.invalid';
 const SYNTHETIC_EMAIL_DOMAIN = 'no-email.woogidex.com';
 
-// Supabase's auth.users row carries our custom fields inside user_metadata
-// (set via auth.updateUser({ data: {...} })). Flatten that onto state.user so
+// supabase's auth.users row carries our custom fields inside user_metadata
+// (set via auth.updateUser({ data: {...} })). flatten that onto state.user so
 // the rest of the app can just read state.user.displayName / .avatarUrl.
-// `username` is NOT stored here - it lives in the public `profiles` table
+// `username` is not stored here - it lives in the public `profiles` table
 // (see fetchProfile) since it needs uniqueness + rate-limit enforcement that
 // user_metadata can't provide.
 function mapUser(supabaseUser) {
@@ -89,9 +89,9 @@ async function attachProfile(user) {
     return user;
 }
 
-// ==================== ROLE / PERMISSION HELPERS ====================
-// Thin wrappers around state.user.role so the rest of the app never has to
-// think about the profiles.role string directly. Client-side checks are for
+// ==================== role / permission helpers ====================
+// thin wrappers around state.user.role so the rest of the app never has to
+// think about the profiles.role string directly. client-side checks are for
 // UI only (hide/show buttons) - the actual enforcement lives in Supabase RLS
 // policies, so a user can never truly bypass this by editing JS.
 function currentRole() {
@@ -110,16 +110,16 @@ function canDeleteAnyContent() {
     return isStaff();
 }
 
-// ==================== STATE ====================
+// ==================== state ====================
 // state.user and state.authReady are initialized inside initAuth() rather than
 // here at module top-level. auth.js and app.js import each other (app.js needs
 // initAuth/openAuthModal/etc, auth.js needs the shared state/api objects), so
 // when app.js's import of auth.js runs, auth.js executes before app.js has
-// reached its `export const state = {...}` line. Touching `state.user` here
-// at top-level would throw "Cannot access 'state' before initialization".
+// reached its `export const state = {...}` line. touching `state.user` here
+// at top-level would throw "cannot access 'state' before initialization".
 
-// ==================== INIT ====================
-// Call once on boot. Resolves after the initial session is known and
+// ==================== init ====================
+// call once on boot. resolves after the initial session is known and
 // `state.user` is populated (or confirmed null).
 function initAuth() {
     if (authInitPromise) return authInitPromise;
@@ -154,9 +154,9 @@ function initAuth() {
     return authInitPromise;
 }
 
-// ==================== ACTIONS ====================
-// Creates the auth account (with a real or placeholder email) and claims the
-// username in the public `profiles` table. If the username turns out to be
+// ==================== actions ====================
+// creates the auth account (with a real or placeholder email) and claims the
+// username in the public `profiles` table. if the username turns out to be
 // taken (race with another signup), the auth account still exists - the
 // caller should prompt the user to pick a different username via
 // updateUsername() rather than treat this as a total signup failure.
@@ -178,7 +178,7 @@ async function signUp(username, password, email, tosAccepted) {
     if (error) { log.error('AUTH', 'Sign up failed', error); throw error; }
     log.info('AUTH', 'Sign up succeeded', { username });
 
-    // Claim the username. Only possible once a session exists (i.e. email
+    // claim the username. only possible once a session exists (i.e. email
     // confirmation is off in the Supabase project, or wasn't required).
     if (data.session) {
         try {
@@ -191,9 +191,9 @@ async function signUp(username, password, email, tosAccepted) {
     return data;
 }
 
-// Resolves a username to its account's email via a security-definer RPC
+// resolves a username to its account's email via a security-definer RPC
 // (profiles.username is public, but auth.users.email is not - the RPC is the
-// one narrow, deliberate exception). Falls back to treating the identifier
+// one narrow, deliberate exception). falls back to treating the identifier
 // as an email directly if it contains "@".
 async function signIn(identifier, password) {
     const client = await getClient();
@@ -231,16 +231,16 @@ function isLoggedIn() {
     return !!state.user;
 }
 
-// ==================== USERNAME & EMAIL ====================
-// Used both for the initial claim during signup and for later changes - the
-// database (unique index + rate-limit trigger, see SUPABASE_SETUP.md) is the
+// ==================== username & email ====================
+// used both for the initial claim during signup and for later changes - the
+// database (unique index + rate-limit trigger, see Supabase_setup.md) is the
 // real authority; this just surfaces its errors in a friendly way.
 // updateDisplayName/uploadAvatar only touch auth.users (via updateUser), never
-// the profiles table - but mapUser() always sets username to ''. Replacing
+// the profiles table - but mapUser() always sets username to ''. replacing
 // state.user wholesale with mapUser(data.user) after those calls was wiping
-// the username/usernameHistory back out of local state (the DB row was still
+// the username/usernameHistory back out of local state (the db row was still
 // fine, but the profile modal would then render an empty username field,
-// looking like the save never happened). Merge instead of replace.
+// looking like the save never happened). merge instead of replace.
 function applySupabaseUser(supabaseUser) {
     const mapped = mapUser(supabaseUser);
     state.user = {
@@ -266,7 +266,7 @@ async function setUsername(username) {
         throw new Error(error.message || 'Could not update username.');
     }
     state.user.username = username;
-    // Mirror the DB trigger's rate-limit bookkeeping locally so the "N changes
+    // mirror the db trigger's rate-limit bookkeeping locally so the "n changes
     // left this week" hint is correct immediately, without waiting on a re-fetch.
     state.user.usernameHistory = [...(state.user.usernameHistory || []), new Date().toISOString()];
     updateAuthUI();
@@ -282,13 +282,13 @@ async function updateEmail(newEmail) {
     }
     const client = await getClient();
 
-    // A malformed existing email can deadlock Supabase's normal secure-email-change
-    // flow because it may require confirmation at the old address. Repair only that
+    // a malformed existing email can deadlock supabase's normal secure-email-change
+    // flow because it may require confirmation at the old address. repair only that
     // special case through the authenticated, narrowly scoped SQL RPC.
     const currentEmail = state.user.email || '';
     const currentLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentEmail);
-    // Both domains are synthetic/non-user email addresses. They must use the
-    // direct repair RPC instead of Supabase's normal email-change flow.
+    // both domains are synthetic/non-user email addresses. they must use the
+    // direct repair RPC instead of supabase's normal email-change flow.
     const currentIsPlaceholder = /@(?:users\.woogidex\.invalid|no-email\.woogidex\.com)$/i.test(currentEmail);
 
     if (currentIsPlaceholder || (state.user.hasRealEmail && !currentLooksValid)) {
@@ -315,10 +315,10 @@ async function updateEmail(newEmail) {
     return true;
 }
 
-// Reverts the account to a random, non-routable placeholder address (same
-// scheme used for username-only signups - see PLACEHOLDER_EMAIL_DOMAIN).
-// Requires a username, since without a real email that's the only way back
-// in. Supabase's default "secure email change" setting sends a confirmation
+// reverts the account to a random, non-routable placeholder address (same
+// scheme used for username-only signups - see placeholder_email_domain).
+// requires a username, since without a real email that's the only way back
+// in. supabase's default "secure email change" setting sends a confirmation
 // to the *old* real address before this takes effect; state.user.email won't
 // update until that's confirmed and the session refreshes.
 async function removeEmail() {
@@ -326,9 +326,9 @@ async function removeEmail() {
     if (!state.user.hasRealEmail) throw new Error('This account has no email on file.');
     if (!state.user.username) throw new Error('Set a username first - you need a way to sign in once your email is removed.');
 
-    // Do not call auth.updateUser({ email: ... }) here. Supabase treats that as
+    // do not call auth.updateUser({ email: ... }) here. Supabase treats that as
     // an email change, validates the destination address, and can start the
-    // secure-email-change confirmation flow. Removing an email is intentionally
+    // secure-email-change confirmation flow. removing an email is intentionally
     // handled by the narrowly scoped authenticated SQL RPC instead.
     const client = await getClient();
     const { error } = await client.rpc('remove_my_email');
@@ -340,7 +340,7 @@ async function removeEmail() {
         throw error;
     }
 
-    // Refresh the local auth user so the profile immediately reflects that it
+    // refresh the local auth user so the profile immediately reflects that it
     // no longer has a real email address.
     const { data: refreshed, error: refreshError } = await client.auth.refreshSession();
     if (refreshError) log.warn?.('AUTH', 'Session refresh after email removal failed', refreshError);
@@ -359,11 +359,11 @@ async function removeEmail() {
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2MB
 const AVATAR_BUCKET = 'avatars';
 
-// Mirrors display_name/avatar_url from auth.users.user_metadata onto the
-// public `profiles` table. Necessary because other users' clients can never
-// read someone else's user_metadata (no RLS-bypassable public API for that),
-// but profiles IS publicly readable — so profiles is what community.js's
-// live author lookups actually join against. Best-effort: failures here
+// mirrors display_name/avatar_url from auth.users.user_metadata onto the
+// public `profiles` table. necessary because other users' clients can never
+// read someone else's user_metadata (no rls-bypassable public API for that),
+// but profiles is publicly readable — so profiles is what community.js's
+// live author lookups actually join against. best-effort: failures here
 // don't block the metadata update itself from succeeding.
 async function mirrorToProfile(fields) {
     if (!state.user) return;
@@ -382,9 +382,9 @@ async function updateDisplayName(displayName) {
     return state.user;
 }
 
-// Uploads a new avatar image to the user's private folder in the "avatars"
+// uploads a new avatar image to the user's private folder in the "avatars"
 // bucket (avatars/<user_id>/avatar.<ext>), then stores its public URL on the
-// user's metadata. Overwrites any previous avatar for that user (upsert).
+// user's metadata. overwrites any previous avatar for that user (upsert).
 async function uploadAvatar(file) {
     if (!file) return null;
     if (!file.type.startsWith('image/')) throw new Error('Please choose an image file.');
@@ -401,7 +401,7 @@ async function uploadAvatar(file) {
     if (uploadError) { log.error('AUTH', 'Avatar upload failed', uploadError); throw uploadError; }
 
     const { data: { publicUrl } } = client.storage.from(AVATAR_BUCKET).getPublicUrl(path);
-    // Cache-bust so the new image shows immediately instead of a stale cached one.
+    // cache-bust so the new image shows immediately instead of a stale cached one.
     const bustedUrl = `${publicUrl}?t=${Date.now()}`;
 
     const { data, error } = await client.auth.updateUser({ data: { avatar_url: bustedUrl } });
@@ -413,7 +413,7 @@ async function uploadAvatar(file) {
 }
 
 // ==================== UI ====================
-// ==================== POLICY MODALS ====================
+// ==================== policy modals ====================
 function openTermsModal() { document.getElementById('terms-modal')?.classList.add('active'); }
 function closeTermsModal() { document.getElementById('terms-modal')?.classList.remove('active'); }
 
@@ -499,7 +499,7 @@ async function submitAuthForm() {
         if (mode === 'signup') {
             const result = await signUp(identifier, password, email, tosAccepted);
             if (!result.session) {
-                // Email confirmation required by your Supabase project settings.
+                // email confirmation required by your Supabase project settings.
                 errorEl.style.color = 'var(--success, #22c55e)';
                 errorEl.textContent = 'Check your email to confirm your account.';
                 submitBtn.disabled = false;
@@ -562,11 +562,11 @@ async function showProfileView(userId = null, options = {}) {
     }
 }
 
-// Leaving the profile page (to Collection, Community Hub, the Editor, etc.)
+// leaving the profile page (to collection, community hub, the editor, etc.)
 // should drop the #profile/username hash so the address bar matches what's
-// actually on screen. Without this, reloading or sharing the URL after
+// actually on screen. without this, reloading or sharing the URL after
 // navigating away would drop the visitor right back on a profile they'd
-// already left. Called from every place that hides #profile-view.
+// already left. called from every place that hides #profile-view.
 function exitProfileRoute() {
     if ((window.location.hash || '').startsWith('#profile/')) {
         history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
@@ -580,7 +580,7 @@ function getProfileStateEl(id) {
     return document.getElementById(id);
 }
 
-// Mirrors .profile-mon-card's real markup so it swaps to real cards
+// mirrors .profile-mon-card's real markup so it swaps to real cards
 // without any layout shift.
 function profileMonCardSkeleton() {
     return `
@@ -595,7 +595,7 @@ function profileMonCardSkeleton() {
     `;
 }
 
-// Mirrors .profile-comment's real markup.
+// mirrors .profile-comment's real markup.
 function profileCommentSkeleton() {
     return `
         <div class="profile-comment skel-card">
@@ -619,7 +619,7 @@ function renderProfileLoading() {
     getProfileStateEl('profile-loading-state')?.remove();
     getProfileStateEl('profile-load-error-state')?.remove();
     if (editEl) editEl.style.display = 'none';
-    // Keep the public layout visible and populate it with skeletons that
+    // keep the public layout visible and populate it with skeletons that
     // mirror the real elements in shape and position, rather than hiding
     // everything behind a loading message - this is what makes the
     // skeleton -> real-content swap feel seamless instead of a jump-cut.
@@ -717,17 +717,17 @@ async function loadPublicProfile(userId) {
     if (profileError) throw profileError;
     if (!profile) throw new Error('Profile not found.');
 
-    // Load the two optional public sections independently. A problem with the
+    // load the two optional public sections independently. a problem with the
     // comments table must never prevent the profile header or Fakemon gallery
     // from rendering.
     let mons = [];
     let comments = [];
     try {
-        // Same egress fix as the Community Hub feed: the gallery grid only
+        // same egress fix as the community hub feed: the gallery grid only
         // renders name/types/artwork thumbnail, so don't pull the full
         // fakemon_data blob (shiny artwork, cry audio, learnset, sample
         // sets, evolution graph) for up to 100 rows on every profile view.
-        // Clicking a card calls openPublishedMonById(), which fetches the
+        // clicking a card calls openPublishedMonById(), which fetches the
         // full row for that one mon.
         const result = await withProfileTimeout(
             client.from('published_mons')
@@ -990,7 +990,7 @@ function renderProfileComments() {
 }
 
 
-// ==================== USER HOVER CARD ====================
+// ==================== user hover card ====================
 let userHoverCardEl = null;
 let userHoverTimer = null;
 let userHoverRequest = 0;
@@ -1125,9 +1125,9 @@ async function showUserProfile(userIdOrUsername) {
         const value = String(userIdOrUsername || '').trim();
         if (!value) { api.showToast?.('Profile not found.', 'error'); return; }
 
-        // `profiles.id` is a UUID. Never send a username such as "Woogi"
+        // `profiles.id` is a UUID. never send a username such as "woogi"
         // through an `eq('id', ...)` filter: PostgREST rejects that request
-        // with HTTP 400 before we ever get a chance to fall back to username.
+        // with http 400 before we ever get a chance to fall back to username.
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
         let targetId = null;
 
@@ -1168,7 +1168,7 @@ async function handleProfileHashRoute() {
     return true;
 }
 
-// Best-effort client-side estimate of remaining username changes this week,
+// best-effort client-side estimate of remaining username changes this week,
 // purely for UX - the database trigger is the real enforcement (see setUsername).
 function usernameChangesRemainingText(history) {
     const recent = (history || []).filter(t => Date.now() - new Date(t).getTime() < 7 * 24 * 60 * 60 * 1000);
@@ -1373,7 +1373,7 @@ function updateAuthUI() {
     const sidebarAvatarImg = document.getElementById('sidebar-profile-avatar-img');
     const sidebarAvatarFallback = document.getElementById('sidebar-profile-avatar-fallback');
     const sidebarAuthBtn = document.getElementById('sidebar-auth-btn');
-    // The header no longer has sign-in/profile controls (replaced by the
+    // the header no longer has sign-in/profile controls (replaced by the
     // notifications bell) - sidebarAuthBtn/sidebarProfile below are the real
     // source of truth now. signedOutEl/signedInEl are kept optional so this
     // still works if a page (e.g. admin.html) still has them.
@@ -1415,16 +1415,16 @@ function updateAuthUI() {
     }
 }
 
-// Accounts can end up without a username - e.g. an old account created before
+// accounts can end up without a username - e.g. an old account created before
 // usernames were required, or a signup where the username claim failed (see
-// signUp's catch block, which still leaves the auth account logged in). Nudge
+// signUp's catch block, which still leaves the auth account logged in). nudge
 // those users into the profile page, focused on the username field, right
 // after we know who's signed in.
 function promptUsernameIfMissing() {
     if (!state.user || state.user.username) return;
     api.showToast?.('Please choose a username to finish setting up your account.', 'warning');
     showProfileView();
-    // Give the profile page a tick to render before focusing/scrolling to the field.
+    // give the profile page a tick to render before focusing/scrolling to the field.
     setTimeout(() => {
         const errorEl = document.getElementById('profile-username-error');
         if (errorEl) {

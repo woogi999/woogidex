@@ -1,4 +1,4 @@
-// ==================== REFERENCE DATA ====================
+// ==================== reference data ====================
         const POKEMON_TYPES = [
             'Normal','Fire','Water','Electric','Grass','Ice',
             'Fighting','Poison','Ground','Flying','Psychic','Bug',
@@ -51,8 +51,8 @@ function getCategoryIcon(category, size) {
 
 
 
-// Standard Pokémon type-effectiveness chart.
-// Values are the damage multipliers for an attacking type against a defending type.
+// standard pokémon type-effectiveness chart.
+// values are the damage multipliers for an attacking type against a defending type.
 const TYPE_EFFECTIVENESS = {
     Normal:   { Rock:0.5, Ghost:0, Steel:0.5 },
     Fire:     { Fire:0.5, Water:0.5, Grass:2, Ice:2, Bug:2, Rock:0.5, Dragon:0.5, Steel:2 },
@@ -88,9 +88,9 @@ const TYPE_EFFECTIVENESS = {
 
 
 
-// ==================== SAFE COMMENT MARKDOWN ====================
-// Lightweight markdown for user comments. HTML is always escaped first, then a
-// deliberately small set of Markdown constructs is rendered. This keeps comment
+// ==================== safe comment markdown ====================
+// lightweight markdown for user comments. HTML is always escaped first, then a
+// deliberately small set of markdown constructs is rendered. this keeps comment
 // content useful without allowing arbitrary HTML/script injection.
 function renderCommentMarkdown(value) {
     const source = String(value ?? '').replace(/\r\n?/g, '\n');
@@ -141,7 +141,7 @@ function renderCommentMarkdown(value) {
     return html.join('');
 }
 
-// ==================== STAFF ROLES & BADGES ====================
+// ==================== staff roles & badges ====================
 // `role` lives on profiles.role (one value per user, drives permissions).
 // `badges` are cosmetic/earned tags, many-per-user, stored in profile_badges.
 const ROLES = {
@@ -161,8 +161,8 @@ function canDeleteAnyContent(role) {
 }
 
 // Lucide icon names (https://lucide.dev/icons) — rendered via <i data-lucide="...">
-// so they inherit the same icon set as the rest of the site. Call
-// lucide.createIcons() after inserting any renderBadge() output into the DOM.
+// so they inherit the same icon set as the rest of the site. call
+// Lucide.createIcons() after inserting any renderBadge() output into the DOM.
 const BADGES = {
     admin:        { label: 'Admin',        icon: 'shield-check',  color: '#ef4444', tooltip: 'Site Administrator — can manage roles, badges, and delete any content' },
     developer:    { label: 'Developer',    icon: 'code-2',        color: '#a855f7', tooltip: 'Site Developer — builds and maintains the site' },
@@ -173,7 +173,7 @@ const BADGES = {
     veteran:      { label: 'Veteran',      icon: 'trophy',        color: '#f97316', tooltip: 'Long-time member' }
 };
 
-// The staff panel stores badge metadata in the `badges` table. The object is
+// the staff panel stores badge metadata in the `badges` table. the object is
 // deliberately mutable so the main site can replace its seed values with the
 // live database values without changing every renderer to become async.
 function setBadgeDefinitions(rows) {
@@ -199,9 +199,9 @@ function renderBadge(badgeKey, size) {
     return `<span class="profile-badge-tooltip" data-badge-name="${b.label}" data-badge-description="${b.tooltip}" tabindex="0"><i data-lucide="${b.icon}" class="profile-badge" style="width:${size}px;height:${size}px;color:${b.color};" aria-label="${b.label}"></i></span>`;
 }
 
-// Renders a full row of a user's badges. Accepts an array of badge keys
+// renders a full row of a user's badges. accepts an array of badge keys
 // (e.g. row.author_badges from a published mon / comment, or
-// state.user.badges). Safe to call with an empty/undefined array.
+// state.user.badges). safe to call with an empty/undefined array.
 function renderBadgeRow(badgeKeys, size) {
     if (!badgeKeys || !badgeKeys.length) return '';
     return `<span class="profile-badge-row">${badgeKeys.map(k => renderBadge(k, size)).join('')}</span>`;

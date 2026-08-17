@@ -16,13 +16,13 @@ import * as community from './community.js';
 import * as notifications from './notifications.js';
 import * as events from './events.js';
 
-// ==================== FEATURE FLAGS ====================
+// ==================== feature flags ====================
 // TODO: remove this flag (and the sidebar-events-btn hidden attribute in
-// index.html) once the Events/Contests feature is finished - this just
+// index.html) once the events/contests feature is finished - this just
 // hides the entry point without touching any of the underlying code.
 export const FEATURE_EVENTS_ENABLED = false;
 
-// ==================== SHARED STATE ====================
+// ==================== shared state ====================
 export const state = {
     sdMoves: {},
     sdAbilities: {},
@@ -61,7 +61,7 @@ export const state = {
 export const api = {};
 
 
-// ==================== DARK MODE ====================
+// ==================== dark mode ====================
         function loadDarkMode() {
             const saved = localStorage.getItem('woogidex-dark-mode');
             if (saved === 'true') {
@@ -86,7 +86,7 @@ export const api = {};
         }
         function updateDarkModeUI(isDark) {
             const btn = document.getElementById('dark-mode-btn');
-            // Look the button up by a fixed selector rather than the icon's id -
+            // look the button up by a fixed selector rather than the icon's id -
             // lucide.createIcons() swaps the <i data-lucide> element for a fresh
             // <svg>, and outerHTML-replacing it below would otherwise need to
             // keep re-guessing which element currently holds the id.
@@ -123,7 +123,7 @@ export const api = {};
         }
 
         function getUse2DSprites() {
-            // 3D/animated sprites are the default. The preference is persisted locally.
+            // 3d/animated sprites are the default. the preference is persisted locally.
             return localStorage.getItem('woogidex-use-2d-sprites') === 'true';
         }
 
@@ -233,7 +233,7 @@ export const api = {};
 
         
 
-// ==================== TOAST ====================
+// ==================== toast ====================
         function showToast(message, type = 'info') {
             log.info('TOAST', `${type}: ${message}`);
             const container = document.getElementById('toast-container');
@@ -249,7 +249,7 @@ export const api = {};
 
         
 
-// ==================== INIT HELPERS ====================
+// ==================== init helpers ====================
         function initTypeSelects() {
             const type1Menu = document.getElementById('type1-menu');
             const type2Menu = document.getElementById('type2-menu');
@@ -347,13 +347,13 @@ function closeSidebar() {
     toggle?.setAttribute('aria-expanded', 'false');
 }
 
-// ==================== URL + TITLE ROUTING ====================
-// Keeps the address bar and document title in sync with whatever view the
-// user is actually looking at. Always uses replaceState, never pushState -
+// ==================== URL + title routing ====================
+// keeps the address bar and document title in sync with whatever view the
+// user is actually looking at. always uses replaceState, never pushState -
 // this is meant to make refreshing/sharing a link land back where you were,
-// not to build a Back-button history of every click; ordinary in-app
+// not to build a back-button history of every click; ordinary in-app
 // navigation should never pile up history entries.
-// Community mon (#community/<id>) and profile (#profile/<username>) deep
+// community mon (#community/<id>) and profile (#profile/<username>) deep
 // links are richer and manage their own hash (see community.js / auth.js);
 // this only touches the hash when neither of those routes is active, so it
 // never fights them.
@@ -370,7 +370,7 @@ function setRoute(hashPath, title) {
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
 }
 
-// ==================== MODULE COORDINATION ====================
+// ==================== module coordination ====================
 log.setContext({ state, api });
 
 Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, {
@@ -385,10 +385,10 @@ Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, expor
     initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor
 });
 
-// Preserve the original inline event-handler contract.
+// preserve the original inline event-handler contract.
 Object.assign(window, api);
 
-// Dynamic edge-to-edge header: retracts on downward scroll and reveals again
+// dynamic edge-to-edge header: retracts on downward scroll and reveals again
 // when scrolling up or when the pointer reaches the very top of the screen.
 let lastScrollY = 0;
 let headerScrollTick = false;
@@ -428,7 +428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     api.initTypeSelects();
     api.initColorPicker();
     document.getElementById('sidebar-events-btn')?.toggleAttribute('hidden', !FEATURE_EVENTS_ENABLED);
-    // Paint skeleton cards immediately so the very first frame already has
+    // paint skeleton cards immediately so the very first frame already has
     // the right shape instead of an empty grid, then let auth/storage load
     // underneath it — renderCollection() below replaces it seamlessly.
     if (!window.location.hash.startsWith('#community/') && !window.location.hash.startsWith('#profile/')) {
@@ -436,7 +436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     await api.initAuth();
     await api.loadFromStorage();
-    // Load Showdown's authoritative move/ability data before rendering a shared
+    // load showdown's authoritative move/ability data before rendering a shared
     // Fakemon so its preview is fully rehydrated on the first render.
     await api.fetchShowdownData?.();
     const isCommunityRoute = await api.handleCommunityHashRoute?.();
@@ -453,10 +453,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     log.info('BOOT', 'Application ready', { fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
 });
 
-// Restores the app's other top-level views (collection/editor/community
-// hub/events) from a plain #route hash on load or Back/Forward - the richer
+// restores the app's other top-level views (collection/editor/community
+// hub/events) from a plain #route hash on load or back/forward - the richer
 // #community/<id> and #profile/<username> deep links are handled separately
-// above this, before we ever get here. Returns true if it recognized and
+// above this, before we ever get here. returns true if it recognized and
 // handled the hash, so the caller knows whether to fall back to the
 // collection as the default view.
 async function handleAppHashRoute(hash) {

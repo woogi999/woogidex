@@ -2,7 +2,7 @@ import { log } from './log.js';
 import { state, api } from './app.js';
 import { sortLearnsetEntries } from './editor.js';
 
-// ==================== IMPORT / EXPORT ====================
+// ==================== import / export ====================
         let pendingCollectionImportFile = null;
 
         function downloadJsonFile(filename, data) {
@@ -100,7 +100,7 @@ import { sortLearnsetEntries } from './editor.js';
                     parsed = parsePlainTextFakemon(text);
                 }
 
-                // Individual custom move/ability import.
+                // individual custom move/ability import.
                 if (parsed && typeof parsed === 'object' && (parsed.format === 'woogidex-custom-move' || parsed.format === 'woogidex-custom-ability' || parsed.format === 'woogidex-custom-item')) {
                     const kind = parsed.format === 'woogidex-custom-move' ? 'move' : parsed.format === 'woogidex-custom-ability' ? 'ability' : 'item';
                     const item = parsed.item;
@@ -134,7 +134,7 @@ import { sortLearnsetEntries } from './editor.js';
                     return;
                 }
 
-                // Full collection bundle includes Fakemon plus reusable libraries.
+                // full collection bundle includes Fakemon plus reusable libraries.
                 const isBundle = parsed && typeof parsed === 'object' && parsed.format === 'woogidex-collection';
                 let incomingSource = parsed;
                 let importedMoves = isBundle && Array.isArray(parsed.customMoves) ? parsed.customMoves : [];
@@ -167,7 +167,7 @@ import { sortLearnsetEntries } from './editor.js';
                     });
                     if (!Array.isArray(copy.abilities)) copy.abilities = [];
                     if (!Array.isArray(copy.eggGroups)) copy.eggGroups = String(copy.eggGroups || '').split(/\s*\/\s*|\s*,\s*/).filter(Boolean);
-                    // Collection imports always receive fresh IDs. This prevents an
+                    // collection imports always receive fresh IDs. this prevents an
                     // imported collection from overwriting anything already present.
                     copy.id = `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`;
                     copy.createdAt = now + index;
@@ -223,14 +223,14 @@ import { sortLearnsetEntries } from './editor.js';
             }
         }
 
-        // Kept as a compatibility alias for older inline handlers.
+        // kept as a compatibility alias for older inline handlers.
         function handleImport(event) {
             handleCollectionImportFile(event);
         }
 
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
-// ==================== PNG EXPORT ====================
+// ==================== PNG export ====================
         async function exportAsPNG() {
             const board = document.getElementById('pokedex-board-export');
             if (!board) { api.showToast('Nothing to export!', 'error'); return; }
@@ -249,7 +249,7 @@ import { sortLearnsetEntries } from './editor.js';
 
 
 
-        // ==================== SINGLE FAKEMON EXPORT / IMPORT ====================
+        // ==================== single Fakemon export / import ====================
         function getCurrentFakemonForExport() {
             if (typeof api.buildFakemonObject !== 'function') return null;
             return api.buildFakemonObject();
@@ -353,7 +353,7 @@ import { sortLearnsetEntries } from './editor.js';
                 return trim(lines[i]).replace(regex, '').trim();
             };
 
-            // ---------- Header ----------
+            // ---------- header ----------
             const nameLine = lines.find(line => /^Name:\s*/i.test(trim(line)));
             if (nameLine) {
                 const raw = trim(nameLine).replace(/^Name:\s*/i, '').trim();
@@ -371,7 +371,7 @@ import { sortLearnsetEntries } from './editor.js';
             const statMatch = statsText.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
             if (statMatch) ['hp','atk','def','spa','spd','spe'].forEach((key, i) => { result.stats[key] = Number(statMatch[i + 1]); });
 
-            // ---------- Abilities ----------
+            // ---------- abilities ----------
             const abilitiesIndex = findIndex(/^Abilities:\s*/i);
             const dexIndex = findIndex(/^Dex:\s*$/i);
             if (abilitiesIndex >= 0) {
@@ -389,7 +389,7 @@ import { sortLearnsetEntries } from './editor.js';
                     });
                 });
 
-                // Custom ability descriptions use: Ability Name*: Description
+                // custom ability descriptions use: ability name*: description
                 const abilityEnd = dexIndex >= 0 ? dexIndex : lines.length;
                 for (let i = abilitiesIndex + 1; i < abilityEnd; i++) {
                     const line = trim(lines[i]);
@@ -405,7 +405,7 @@ import { sortLearnsetEntries } from './editor.js';
                 }
             }
 
-            // ---------- Dex / basic details ----------
+            // ---------- dex / basic details ----------
             const entry1Index = findIndex(/^Entry 1:\s*/i);
             const entry2Index = findIndex(/^Entry 2:\s*/i);
             const heightIndex = findIndex(/^Height:\s*/i);
@@ -437,15 +437,15 @@ import { sortLearnsetEntries } from './editor.js';
             result.eggGroups = egg && !/^none$/i.test(egg) ? egg.split(/\s*\/\s*|\s*,\s*/).map(trim).filter(Boolean) : [];
             result.genderRatio = valueAfter(/^Gender Ratio:\s*/i) || '50-50';
 
-            // ---------- Learnset + custom move definitions ----------
+            // ---------- learnset + custom move definitions ----------
             if (learnIndex >= 0) {
                 const end = sampleIndex >= 0 ? sampleIndex : lines.length;
                 const learnLines = lines.slice(learnIndex + 1, end).map(trim);
                 const seen = new Set();
                 let customSectionStarted = false;
 
-                // The exporter writes all normal moves first, followed by each custom
-                // move's full definition. Once the first starred title is encountered,
+                // the exporter writes all normal moves first, followed by each custom
+                // move's full definition. once the first starred title is encountered,
                 // everything until the next starred title belongs to custom data.
                 for (const line of learnLines) {
                     if (!line) continue;
@@ -477,7 +477,7 @@ import { sortLearnsetEntries } from './editor.js';
 
                     let cursor = i + 3;
                     let flags = {};
-                    // A flag line is optional. Do not consume the description if it has no '|'.
+                    // a flag line is optional. do not consume the description if it has no '|'.
                     if (cursor < learnLines.length && learnLines[cursor] && learnLines[cursor].includes('|') && !learnLines[cursor].includes('BP')) {
                         learnLines[cursor].split('|').map(trim).filter(Boolean).forEach(flag => {
                             const key = flag.toLowerCase().replace(/[^a-z0-9]+(.)/g, (_, c) => c.toUpperCase());
@@ -504,7 +504,7 @@ import { sortLearnsetEntries } from './editor.js';
                 }
             }
 
-            // ---------- Sample sets ----------
+            // ---------- sample sets ----------
             if (sampleIndex >= 0) {
                 const sampleLines = lines.slice(sampleIndex + 1).map(trim);
                 const ignoredHeaders = new Set(['Ability:', 'Level:', 'Tera Type:', 'EVs:', 'IVs:']);
@@ -564,8 +564,8 @@ import { sortLearnsetEntries } from './editor.js';
                 }
                 if (!fakemon || typeof fakemon !== 'object' || !fakemon.name) throw new Error('Invalid Fakemon data');
 
-                // Single-Fakemon imports are for the editor only. Never use the imported
-                // JSON id to select or overwrite a collection entry. The imported data
+                // single-fakemon imports are for the editor only. never use the imported
+                // JSON id to select or overwrite a collection entry. the imported data
                 // is loaded into whichever Fakemon is currently open.
                 const currentId = state.editingId || null;
                 const currentExisting = currentId ? state.fakemonDB.find(f => f && f.id === currentId) : null;

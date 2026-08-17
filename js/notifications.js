@@ -1,13 +1,13 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
 
-// ==================== NOTIFICATIONS ====================
-// Lets someone know when another user comments on a Fakemon they've
-// published to the Community Hub, or on their profile. Replaces the header's
+// ==================== notifications ====================
+// lets someone know when another user comments on a Fakemon they've
+// published to the community hub, or on their profile. replaces the header's
 // old sign-in/profile controls (those live in the sidebar now) with a bell
 // icon + unread-count badge.
 //
-// Requires a `notifications` table in Supabase. It doesn't exist in the
+// requires a `notifications` table in Supabase. it doesn't exist in the
 // current schema yet - run this once against your project:
 //
 //   create table public.notifications (
@@ -24,11 +24,11 @@ import { state, api } from './app.js';
 //     created_at timestamptz not null default now()
 //   );
 //   alter table public.notifications enable row level security;
-//   create policy "Read own notifications" on public.notifications
+//   create policy "read own notifications" on public.notifications
 //     for select using (auth.uid() = user_id);
-//   create policy "Insert notifications for others" on public.notifications
+//   create policy "insert notifications for others" on public.notifications
 //     for insert with check (auth.uid() = actor_id and actor_id <> user_id);
-//   create policy "Update own notifications" on public.notifications
+//   create policy "update own notifications" on public.notifications
 //     for update using (auth.uid() = user_id);
 
 const POLL_INTERVAL_MS = 30000;
@@ -40,8 +40,8 @@ function ensureNotificationState() {
     return state.notifications;
 }
 
-// Called from community.js (new mon comment) and auth.js (new profile
-// comment) right after the comment itself is inserted. Silently no-ops if
+// called from community.js (new mon comment) and auth.js (new profile
+// comment) right after the comment itself is inserted. silently no-ops if
 // the notifications table isn't set up yet, so it can never block a comment
 // from posting.
 async function createNotification({ userId, type, actorId, actorName, actorAvatarUrl, targetId, targetName, preview }) {
@@ -80,8 +80,8 @@ async function fetchNotifications() {
         ns.items = data || [];
         ns.unreadCount = ns.items.filter(n => !n.read).length;
     } catch (e) {
-        // Most likely cause: the `notifications` table hasn't been created
-        // yet (see the SQL above). Fail quietly rather than toast-spamming
+        // most likely cause: the `notifications` table hasn't been created
+        // yet (see the SQL above). fail quietly rather than toast-spamming
         // on every poll.
         log.error('NOTIFICATIONS', 'Failed to load notifications', e);
     } finally {
@@ -122,7 +122,7 @@ function notificationText(n) {
     return `commented on ${escNotif(n.target_name || 'your Fakemon')}`;
 }
 
-// Mirrors the real .notification-item markup (avatar circle, one text line,
+// mirrors the real .notification-item markup (avatar circle, one text line,
 // a short time stub) so it swaps to real content without any layout jump.
 function notificationSkeleton() {
     return `
@@ -178,7 +178,7 @@ function stopNotificationPolling() {
     if (ns.pollTimer) { clearInterval(ns.pollTimer); ns.pollTimer = null; }
 }
 
-// Called from updateAuthUI() on sign-in, sign-out, and token refresh, so the
+// called from updateAuthUI() on sign-in, sign-out, and token refresh, so the
 // bell always reflects whoever is currently signed in.
 async function refreshNotifications() {
     const ns = ensureNotificationState();
@@ -259,7 +259,7 @@ async function markNotificationRead(id) {
     }
 }
 
-// Click handler for a single notification row - marks it read, closes the
+// click handler for a single notification row - marks it read, closes the
 // panel, and takes the user to the mon or profile it's about.
 async function openNotification(id) {
     const ns = ensureNotificationState();

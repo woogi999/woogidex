@@ -2,12 +2,12 @@ import { log } from './log.js';
 import { state, api } from './app.js';
 import { POKEMON_COLORS } from './data.js';
 
-// ==================== NAVIGATION ====================
+// ==================== navigation ====================
         async function showCollection() {
-            // Leaving a shared-link preview is a navigation action, not an editor
-            // save. The shared Fakemon must remain read-only unless the user
-            // explicitly chooses "Import to My Collection".
-            // Same idea for a Community Hub preview: the editor DOM may still hold
+            // leaving a shared-link preview is a navigation action, not an editor
+            // save. the shared Fakemon must remain read-only unless the user
+            // explicitly chooses "import to my collection".
+            // same idea for a community hub preview: the editor DOM may still hold
             // whatever community Fakemon was last viewed, and force-saving it here
             // would silently import it into the user's own collection.
             const wasCommunityPreview = !!state.isCommunityPreview;
@@ -27,7 +27,7 @@ import { POKEMON_COLORS } from './data.js';
             setCollectionView(collectionView || 'fakemon');
             api.setRoute?.('collection', null);
         }
-        // ==================== NEW FAKEMON FLOW ====================
+        // ==================== new Fakemon flow ====================
         async function createNewFakemon() {
             if (document.getElementById('editor-view')?.style.display !== 'none') {
                 await api.autoSave(true);
@@ -63,9 +63,9 @@ import { POKEMON_COLORS } from './data.js';
             document.getElementById('pokemon-template-modal')?.classList.remove('active');
             api.setRoute?.('editor', name || 'New Fakemon');
 
-            // Apply the vanilla data before the first editor render. The template
+            // apply the vanilla data before the first editor render. the template
             // learnset is hydrated immediately from the already-loaded Showdown
-            // move dex, so the Moves tab is fully populated without needing to
+            // move dex, so the moves tab is fully populated without needing to
             // leave and reopen the editor. PokeAPI species/lore can finish loading
             // afterward without delaying the editor itself.
             if (template) await applyPokemonTemplate(template, name);
@@ -78,8 +78,8 @@ import { POKEMON_COLORS } from './data.js';
         }
 
         function openPokemonTemplateChooser() {
-            // A name is optional when starting from a vanilla template. The
-            // selected Pokemon's name is used as the initial editor name when
+            // a name is optional when starting from a vanilla template. the
+            // selected pokemon's name is used as the initial editor name when
             // the user leaves this field blank.
             if (!state.sdLoaded || !Object.keys(state.sdPokedex || {}).length) {
                 api.showToast('Vanilla Pokemon data is still loading. Please try again in a moment.', 'info');
@@ -119,8 +119,8 @@ import { POKEMON_COLORS } from './data.js';
             const base = slug(pokemon?.baseSpecies || '');
             const forme = slug(pokemon?.forme || '');
             if (base && forme) {
-                // Showdown's sprite directory uses a few compact form tokens:
-                // Mega-X/Y => megax/megay, Alola-Totem => alolatotem, etc.
+                // showdown's sprite directory uses a few compact form tokens:
+                // mega-x/y => megax/megay, alola-totem => alolatotem, etc.
                 let suffix = forme;
                 suffix = suffix.replace(/^mega-([xy])$/, 'mega$1');
                 suffix = suffix.replace(/^alola-totem$/, 'alolatotem');
@@ -134,7 +134,7 @@ import { POKEMON_COLORS } from './data.js';
 
         function getPokemonTemplateSprite(pokemon) {
             const spriteId = getShowdownSpriteId(pokemon);
-            // The animated Showdown directory has the canonical form filenames,
+            // the animated Showdown directory has the canonical form filenames,
             // including charizard-megax and raticate-alolatotem.
             const spriteDir = typeof api.getUse2DSprites === 'function' && api.getUse2DSprites() ? 'gen5ani' : 'ani';
             return `https://play.pokemonshowdown.com/sprites/${spriteDir}/${spriteId || 'missingno'}.gif`;
@@ -267,7 +267,7 @@ import { POKEMON_COLORS } from './data.js';
             let species = null;
             try {
                 // PokeAPI's Pokemon endpoint is useful for regional/form IDs because
-                // it points back to the canonical Pokemon Species resource.
+                // it points back to the canonical Pokemon species resource.
                 try {
                     const pokemonResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${encodeURIComponent(rawId)}`);
                     if (pokemonResponse.ok) {
@@ -319,7 +319,7 @@ import { POKEMON_COLORS } from './data.js';
         async function applyPokemonTemplate(template,newName) {
             const stats=template.stats||{};
             document.getElementById('fakemon-name').value=newName;
-            // Species/genus and Pokédex lore are supplied asynchronously by PokeAPI.
+            // species/genus and pokédex lore are supplied asynchronously by PokeAPI.
             document.getElementById('fakemon-species').value='';
             document.getElementById('dex-entry1').value='';
             document.getElementById('dex-entry2').value='';
@@ -344,7 +344,7 @@ import { POKEMON_COLORS } from './data.js';
             state.abilities=getTemplateAbilities(template);
             state.learnset=getPokemonTemplateLearnset(template);
             // getPokemonTemplateLearnset intentionally stores minimal move entries.
-            // Rehydrate them immediately so type/category/power/accuracy/PP/flags/
+            // rehydrate them immediately so type/category/power/accuracy/PP/flags/
             // descriptions are available on the first render of the editor.
             if (state.sdLoaded && state.learnset.length && typeof api.rehydrateCurrentLearnsetFromShowdown === 'function') {
                 api.rehydrateCurrentLearnsetFromShowdown();
@@ -361,8 +361,8 @@ import { POKEMON_COLORS } from './data.js';
             updateGenderBar();
             api.updatePreview();
 
-            // PokeAPI's Pokemon Species resource supplies the official genus (the
-            // editor's Species / Category field) and English flavor-text entries.
+            // PokeAPI's Pokemon species resource supplies the official genus (the
+            // editor's species / category field) and english flavor-text entries.
             const speciesData = await fetchPokemonSpeciesTemplateData(template);
             if (speciesData) {
                 if (speciesData.genus) document.getElementById('fakemon-species').value = speciesData.genus;
@@ -405,7 +405,7 @@ import { POKEMON_COLORS } from './data.js';
             else document.querySelector(`.tab[onclick*="'${tabName}'"]`).classList.add('active');
             const target = document.getElementById(`tab-${tabName}`);
             target.style.display = 'block';
-            // Toggling display:none -> block does not replay a CSS animation on
+            // toggling display:none -> block does not replay a CSS animation on
             // its own, so force a reflow between removing and re-adding the
             // class - that's what makes the tab content fade/slide in fresh
             // on every switch instead of only on first render.
@@ -423,11 +423,11 @@ import { POKEMON_COLORS } from './data.js';
             }
         }
 
-// ==================== QUICK PREVIEW POPUP ====================
+// ==================== quick preview popup ====================
         function previewFakemon(id) {
             const fakemon = state.fakemonDB.find(f => f.id === id);
             if (!fakemon) return;
-            // Reuse the existing editor rendering pipeline: load the record into the
+            // reuse the existing editor rendering pipeline: load the record into the
             // (hidden) editor form, let updatePreview() render the board, then clone
             // the result into the popup instead of switching to the full editor.
             state.editingId = id;
@@ -441,7 +441,7 @@ import { POKEMON_COLORS } from './data.js';
             document.getElementById('fakemon-preview-modal').classList.add('active');
         }
 
-// ==================== CREATE MENU ====================
+// ==================== create menu ====================
         function toggleCreateMenu(event) {
             if (event) event.stopPropagation();
             const menu = document.getElementById('create-menu');
@@ -456,7 +456,7 @@ import { POKEMON_COLORS } from './data.js';
             if (!event.target.closest('.export-as-wrap')) closeCreateMenu();
         });
 
-// ==================== FOLDERS ====================
+// ==================== folders ====================
         let folderNameModalMode = 'create'; // 'create' | 'rename'
         let folderNameModalTargetId = null;
         let folderColorSelection = null;
@@ -629,7 +629,7 @@ import { POKEMON_COLORS } from './data.js';
             api.showToast(fakemon.pinned ? `"${fakemon.name}" pinned!` : `"${fakemon.name}" unpinned!`, 'success');
         }
 
-        // ---- Drag & drop wiring ----
+        // ---- drag & drop wiring ----
         let draggedFakemonId = null;
         let draggedLibraryItem = null; // { kind, id }
         function handleCardDragStart(id, event) {
@@ -669,7 +669,7 @@ import { POKEMON_COLORS } from './data.js';
             draggedLibraryItem = null;
         }
 
-// ==================== COLLECTION ====================
+// ==================== collection ====================
         let collectionView = 'fakemon';
 
         const COLLECTION_SORT_KEY = 'woogidex.collection.sort.v2';
@@ -722,7 +722,7 @@ import { POKEMON_COLORS } from './data.js';
         }
 
         function sortFakemonList(list, sortBy = 'created', sortOrder = 'desc') {
-            // Accept the old single-string mode too, so older callers/imports remain safe.
+            // accept the old single-string mode too, so older callers/imports remain safe.
             const legacy = {
                 newest: ['created','desc'], oldest: ['created','asc'],
                 'name-asc': ['name','asc'], 'name-desc': ['name','desc'],
@@ -864,7 +864,7 @@ import { POKEMON_COLORS } from './data.js';
             if (!search) items = items.filter(item => (item.folderId || null) === state.currentFolderId);
             items = sortLibraryList(items, sortPrefs.by === 'name' ? (sortPrefs.order === 'asc' ? 'name-asc' : 'name-desc') : sortPrefs.order === 'asc' ? 'oldest' : 'newest');
 
-            // Folders only show at the root level, and only while not searching.
+            // folders only show at the root level, and only while not searching.
             let folders = (!search && !state.currentFolderId) ? state.folders.filter(f => f.type === kind) : [];
             folders.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
@@ -963,10 +963,10 @@ import { POKEMON_COLORS } from './data.js';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
-        // Mirrors .collection-card's real markup (art box, number, name,
+        // mirrors .collection-card's real markup (art box, number, name,
         // type pills, BST line) so the very first paint - before storage has
         // even loaded - already has the right shape, and swapping in real
-        // cards causes no layout shift. Used once at boot, before
+        // cards causes no layout shift. used once at boot, before
         // loadFromStorage()/initAuth() resolve.
         function collectionCardSkeleton() {
             return `
@@ -1016,16 +1016,16 @@ import { POKEMON_COLORS } from './data.js';
             }
             filtered = sortFakemonList(filtered, sortPrefs.by, sortPrefs.order);
 
-            // Folders only show at the root level, and only while not searching.
+            // folders only show at the root level, and only while not searching.
             let folders = (!search && !state.currentFolderId) ? state.folders.filter(f => (f.type || 'fakemon') === 'fakemon') : [];
             folders.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
             if (filtered.length === 0 && folders.length === 0) {
                 grid.style.display = 'none';
                 empty.style.display = 'block';
-                // Reset the empty-state copy back to the Fakemon defaults: switching
-                // here from the Moves/Abilities view previously left their custom
-                // text (and "Create Move/Ability" button) in place.
+                // reset the empty-state copy back to the Fakemon defaults: switching
+                // here from the moves/abilities view previously left their custom
+                // text (and "create move/ability" button) in place.
                 empty.querySelector('h3').textContent = search ? 'No Fakemon Found' : 'No Fakemon Yet';
                 empty.querySelector('p').textContent = search ? 'Try a different search.' : 'Create your first custom Pokemon to get started!';
                 const emptyButton = empty.querySelector('button');

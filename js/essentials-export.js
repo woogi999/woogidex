@@ -1,12 +1,12 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
 
-// ==================== POKEMON ESSENTIALS EXPORT ====================
-// Generates PBS (Pokemon Base Statistics) text files for Pokemon Essentials
-// (the RPG Maker fangame engine), the same way showdown-export.js does for
-// Showdown. Targets the modern v19+ split-file PBS format: pokemon.txt
+// ==================== Pokemon Essentials export ====================
+// generates pbs (Pokemon base statistics) text files for Pokemon Essentials
+// (the rpg maker fangame engine), the same way showdown-export.js does for
+// Showdown. targets the modern v19+ split-file pbs format: pokemon.txt
 // (species/stats/moves), pokemon_metrics.txt (height/weight/kind/shape/
-// color), and pokemon_dexentries.txt (dex description). Custom moves and
+// color), and pokemon_dexentries.txt (dex description). custom moves and
 // abilities are skipped from the mechanical data for the same reason as
 // the Showdown export; Essentials needs actual script-level effect code
 // for those to do anything, not just a name in a text file.
@@ -48,7 +48,7 @@ import { state, api } from './app.js';
             const parts = ratio.split('-').map(Number);
             const male = isNaN(parts[0]) ? 50 : parts[0];
             const female = isNaN(parts[1]) ? (100 - male) : parts[1];
-            // Snap to the nearest of Essentials' standard gender-ratio buckets.
+            // snap to the nearest of essentials' standard gender-ratio buckets.
             const buckets = [
                 { female: 0, id: 'AlwaysMale' },
                 { female: 12.5, id: 'Female12.5Percent' },
@@ -67,7 +67,7 @@ import { state, api } from './app.js';
         }
 
         function essentialsMoveToken(entry) {
-            // No explicit method ('none') gets treated as a tutor move so it's
+            // no explicit method ('none') gets treated as a tutor move so it's
             // still teachable in-game instead of just disappearing.
             if (entry.learnMethod === 'level') return { bucket: 'level', level: entry.level || 1 };
             if (entry.learnMethod === 'egg') return { bucket: 'egg' };
