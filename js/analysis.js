@@ -1677,7 +1677,7 @@ function intrinsicPowerProfile(tf, abilityInfo){
   // statPower*.68 for any mon with strong raw stats (exactly the Slaking/
   // Regigigas case: huge stats masking a mechanically crippling ability).
   // This needs to be large enough that no stat spread can outrun it.
-  const abilityBonus=abilityInfo?.score>=3?32:abilityInfo?.score===2?16:abilityInfo?.score===1?7:abilityInfo?.score===-1?-55:0;
+  const abilityBonus=abilityInfo?.score>=3?32:abilityInfo?.score===2?26:abilityInfo?.score===1?7:abilityInfo?.score===-1?-55:0;
 
   const extremeStatCount=[
     Number(tf.hp)>=140?1:0,
@@ -2051,6 +2051,7 @@ function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor,abili
   // entirely, so a crippling ability never stopped them from firing.
   const crippled=abilityInfo?.score===-1;
   const formatDefining=abilityInfo?.score>=3;
+  const eliteAbility=abilityInfo?.score===2;
   if(!crippled){
     if(bsr>=1400 && hasRealWinCondition) return 'Ubers';
     if(bsr>=900 && tf.setup>=1 && tf.recovery>=1 && counterplay<58) return 'Ubers';
@@ -2094,7 +2095,14 @@ function matchupTierBand(matchup,roleScore,tf,metagameFit,intrinsic,anchor,abili
     // This does not by itself force Ubers (Ubers is only reachable through
     // the BSR shortcuts above), it just gives the mon a strong, un-diluted
     // push up through the OU-capped band structure below.
-    (formatDefining?40:0)
+    (formatDefining?40:0) +
+    // A merely "elite" (Showdown rating 4-4.9) ability was only getting a
+    // diluted +16/+18 upstream (averaged into kitPower/base among a dozen
+    // other terms), so it barely moved the actual tier decision even for a
+    // genuinely strong ability like Regenerator or Intimidate. Give it a
+    // real, un-diluted pull here too - smaller than the format-defining
+    // (rating 5) band, but no longer negligible.
+    (eliteAbility?22:0)
   );
 
   // The threshold bands below assumed `adjusted` regularly reaches into the
@@ -2175,6 +2183,8 @@ function estimateTier(base,closest,tierUsage,officialTiers,targetProfile,cfg,mat
   // applied to the tier band above so the displayed score doesn't undersell it.
   if(abilityInfo?.score>=3){
     score=Math.max(score,72);
+  } else if(abilityInfo?.score===2){
+    score=Math.max(score,58);
   }
   const reliability=clamp(48+(matchup?.coverage||0)*1.0+Math.abs((matchup?.weightedScore??50)-50)*.2+(intrinsic?.score>=80?8:0)+(anchor?anchor.confidence*10:0));
   return{
@@ -2432,7 +2442,7 @@ async function runFakemonAnalysis(){
     // statCombination/typePct/etc, so a crippling ability like Truant or
     // Slow Start never meaningfully moved this. A mechanically crippling
     // ability should weigh as much as a mon's whole typing profile does.
-    const abilityAdjustedBase=clamp(base + (abilityInfo.score>=3?24:abilityInfo.score===2?12:abilityInfo.score===1?6:abilityInfo.score===-1?-30:0));
+    const abilityAdjustedBase=clamp(base + (abilityInfo.score>=3?24:abilityInfo.score===2?18:abilityInfo.score===1?6:abilityInfo.score===-1?-30:0));
     const intrinsic=intrinsicPowerProfile(tf,abilityInfo);
     status.innerHTML='<span class="analysis-spinner"></span><span>Testing matchups across the selected metagame…</span>';
     // First pass uses the selected environment to estimate the tier. Once that
@@ -2509,6 +2519,10 @@ async function runFakemonAnalysis(){
     if(tf.hazards||tf.removal)strengths.push('Hazard utility adds team value');
     if(tf.setup)strengths.push('Setup options increase its ceiling');
     if(matchup?.weightedScore>=65)strengths.push(`Usage-weighted matchup profile is ${Math.round(matchup.weightedScore)}/100`);
+    if((matchup?.good||[]).length>=3 && matchup?.weightedScore<65){
+      const goodNames=matchup.good.slice(0,3).map(x=>x?.p?.name).filter(Boolean);
+      strengths.push(`Looks good into ${matchup.good.length} common Pokémon${goodNames.length?`, including ${goodNames.join(', ')}`:''}`);
+    }
     if(abilityInfo.score>=3)strengths.push(`${abilityInfo.name} is a format-defining ability that dramatically raises its ceiling`);
     else if(abilityInfo.score>0)strengths.push(`${abilityInfo.name} is a strong ability that meaningfully raises its floor`);
      if(intrinsic.statPower>=70)strengths.push(`CAP stat rating is ${Math.round(intrinsic.cap.BSR)} BSR (${intrinsic.cap.category})`);
@@ -2532,6 +2546,16 @@ async function runFakemonAnalysis(){
       strengths.push('Low Speed pairs with pivot moves for safe, controlled switches (slow pivoting)');
     }
     if(matchup?.weightedScore<=42)weaknesses.push(`Usage-weighted matchup profile is only ${Math.round(matchup.weightedScore)}/100`);
+    // The weightedScore check above only fires when the AVERAGE across every
+    // matchup is bad, so a mon with several genuinely rough individual
+    // matchups (exactly what's rendered in the "Looks rough into" cards
+    // below) could still show "no major weakness" if enough easy matchups
+    // balanced the average out. Surface the individual bad matchups directly
+    // instead of relying on the average to catch them.
+    if((matchup?.bad||[]).length>=3){
+      const names=matchup.bad.slice(0,3).map(x=>x?.p?.name).filter(Boolean);
+      weaknesses.push(`Looks rough into ${matchup.bad.length} common Pokémon${names.length?`, including ${names.join(', ')}`:''}`);
+    }
     if(abilityInfo.score<0)weaknesses.push(`${abilityInfo.name} is a genuinely crippling ability`);
     results.innerHTML=`
       <div class="analysis-profile panel-lite">

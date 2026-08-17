@@ -14,7 +14,7 @@ import { updatePreview } from './editor-core.js';
         // the scoring tables below are deliberately kept in one place so the generator
         // can be tuned without rewriting the selection algorithm.
         const SAMPLE_SET_CONFIG = {
-            roles: {
+            roleMeta: {
                 physicalSweeper: { name: 'Physical Sweeper', attack: 'atk', natureFast: 'Jolly', natureSlow: 'Adamant' },
                 specialSweeper: { name: 'Special Sweeper', attack: 'spa', natureFast: 'Timid', natureSlow: 'Modest' },
                 wallbreaker: { name: 'Wallbreaker', attack: null, natureFast: null, natureSlow: null },
@@ -50,7 +50,7 @@ import { updatePreview } from './editor-core.js';
                 abilitySynergy: 18,
                 signaturePenalty: 0
             },
-            roles: {
+            roleThresholds: {
                 speedSweeperMin: 80,
                 physicalAttackMin: 85,
                 specialAttackMin: 85,
@@ -541,14 +541,20 @@ import { updatePreview } from './editor-core.js';
                 return k.disruption || k.speedControl || k.screens || k.removal || k.hazard || k.pivot || k.recovery;
             });
 
+            const t = SAMPLE_SET_CONFIG.roleThresholds;
             if (role === 'pivot') return pivot.length > 0;
             if (role === 'hazard') return hazards.length > 0;
             if (role === 'screens') return sampleHasScreensGameplan(profile);
             if (role === 'setupSweeper') return setup.length > 0 && usefulDamaging.length >= 1;
-            if (role === 'physicalSweeper') return usefulDamaging.some(m => m.category === 'Physical' && profile.types.includes(m.type));
-            if (role === 'specialSweeper') return usefulDamaging.some(m => m.category === 'Special' && profile.types.includes(m.type));
-            if (role === 'wallbreaker') return usefulDamaging.length >= 2;
-            if (role === 'bulkyAttacker') return usefulDamaging.length >= 1 && (recovery.length > 0 || profile.stats.hp >= 85 || Math.max(profile.stats.def, profile.stats.spd) >= 90);
+            // A qualifying STAB move existing isn't enough on its own - the stat
+            // behind it needs to actually be worth building a set around, or this
+            // role gets offered to Fakemon whose attack stat can't do anything with
+            // the move it's being credited for (e.g. a 50 Atk mon with one weak
+            // physical STAB move getting suggested a "Physical Sweeper" set).
+            if (role === 'physicalSweeper') return profile.stats.atk >= t.physicalAttackMin && usefulDamaging.some(m => m.category === 'Physical' && profile.types.includes(m.type));
+            if (role === 'specialSweeper') return profile.stats.spa >= t.specialAttackMin && usefulDamaging.some(m => m.category === 'Special' && profile.types.includes(m.type));
+            if (role === 'wallbreaker') return usefulDamaging.length >= 2 && Math.max(profile.stats.atk, profile.stats.spa) >= t.wallbreakerPowerMin;
+            if (role === 'bulkyAttacker') return usefulDamaging.length >= 1 && (recovery.length > 0 || profile.stats.hp >= t.bulkyHpMin || Math.max(profile.stats.def, profile.stats.spd) >= Math.min(t.bulkyDefMin, t.bulkySpdMin));
             if (role === 'defensive') return recovery.length > 0 || utility.length >= 2 || removal.length > 0 || hazards.length > 0;
             if (role === 'support') return utility.length >= 2 || recovery.length > 0;
             return true;
@@ -1898,7 +1904,7 @@ import { updatePreview } from './editor-core.js';
         }
 
         function sampleRoleLabel(role) {
-            const configured = SAMPLE_SET_CONFIG.roles[role]?.name;
+            const configured = SAMPLE_SET_CONFIG.roleMeta[role]?.name;
             if (configured) return configured;
             // keep generated labels human-readable even if a role key is introduced
             // later using camelCase or snake_case.
