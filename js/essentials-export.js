@@ -281,7 +281,9 @@ A couple things worth knowing:
   moves, so they're still teachable instead of just disappearing.
 - Custom abilities are left out of the Abilities/HiddenAbilities lines
   for the same reason as custom moves; you'd need to script the effect
-  yourself and add it to your abilities data.
+  yourself and add it to your abilities data. If you wrote any of them up
+  in the ability block editor, that code is sitting in Woogidex_Abilities.txt
+  in this ZIP - paste it into your own script editor as its own section.
 - Shape and Habitat are just placeholder defaults since the editor
   doesn't track those; feel free to change them in pokemon_metrics.txt.
 `;
@@ -322,7 +324,9 @@ A couple things worth knowing:
 - Moves without a level attached in the editor got exported as tutor
   moves, so they're still teachable instead of just disappearing.
 - Custom abilities are left out of the Abilities/HiddenAbilities lines
-  for the same reason as custom moves.
+  for the same reason as custom moves. Any you wrote up in the ability
+  block editor are in Woogidex_Abilities.txt in this ZIP - paste that into
+  your own script editor as its own section.
 - Shape and Habitat are just placeholder defaults since the editor
   doesn't track those; feel free to change them in pokemon_metrics.txt.
 `;
@@ -343,6 +347,8 @@ A couple things worth knowing:
                 zip.file('pokemon.txt', `#-------------------------------\r\n${pokemonBlock}\r\n`);
                 zip.file('pokemon_metrics.txt', `#-------------------------------\r\n${metricsBlock}\r\n`);
                 zip.file('pokemon_dexentries.txt', `#-------------------------------\r\n${dexBlock}\r\n`);
+                const abilitiesScript = api.buildEssentialsAbilitiesFile ? api.buildEssentialsAbilitiesFile([fakemon]) : null;
+                if (abilitiesScript) zip.file('Woogidex_Abilities.txt', abilitiesScript);
                 zip.file('README.txt', buildReadmeTxt(fakemon));
                 const evolutionText = buildEvolutionNotesText([fakemon]);
                 if (evolutionText) zip.file('evolution_notes.txt', evolutionText);
@@ -395,6 +401,8 @@ A couple things worth knowing:
                 pbsFolder.file('pokemon.txt', join(pokemonBlocks));
                 pbsFolder.file('pokemon_metrics.txt', join(metricsBlocks));
                 pbsFolder.file('pokemon_dexentries.txt', join(dexBlocks));
+                const abilitiesScript = api.buildEssentialsAbilitiesFile ? api.buildEssentialsAbilitiesFile(fakemonList) : null;
+                if (abilitiesScript) zip.file('Woogidex_Abilities.txt', abilitiesScript);
                 zip.file('README.txt', buildCollectionReadmeTxt(fakemonList, totalSkipped));
                 const evolutionText = buildEvolutionNotesText(fakemonList);
                 if (evolutionText) zip.file('evolution_notes.txt', evolutionText);

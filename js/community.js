@@ -550,12 +550,7 @@ async function openCommunityHub() {
     closeCommunityExportMenu();
     api.exitProfileRoute?.();
 
-    document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
-    document.getElementById('editor-view') && (document.getElementById('editor-view').style.display = 'none');
-    document.getElementById('collection-view') && (document.getElementById('collection-view').style.display = 'none');
-    document.getElementById('community-detail-view') && (document.getElementById('community-detail-view').style.display = 'none');
-    document.getElementById('events-view') && (document.getElementById('events-view').style.display = 'none');
-    document.getElementById('community-view').style.display = 'block';
+    api.activateTopLevelView?.('community-view');
     api.setRoute?.('community', 'Community Hub');
 
     if (!hasAcceptedCommunityRules()) {
@@ -841,11 +836,7 @@ async function openMonDetail(publishedId, options = {}) {
     }
 
     api.exitProfileRoute?.();
-    document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
-    document.getElementById('editor-view') && (document.getElementById('editor-view').style.display = 'none');
-    document.getElementById('collection-view') && (document.getElementById('collection-view').style.display = 'none');
-    document.getElementById('community-view').style.display = 'none';
-    document.getElementById('community-detail-view').style.display = 'block';
+    api.activateTopLevelView?.('community-detail-view');
 
     document.getElementById('community-detail-title').textContent = mon.name || 'Fakemon';
     document.getElementById('community-detail-author').innerHTML = `

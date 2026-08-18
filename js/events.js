@@ -24,9 +24,7 @@ async function openEvents() {
         api.showToast('ts still under construction gng mb', 'info');
         return;
     }
-    document.querySelectorAll('#main-content > div').forEach(el => { if (el.id !== 'events-view') el.style.display='none'; });
-    const view = document.getElementById('events-view');
-    if (view) view.style.display = 'block';
+    const view = api.activateTopLevelView?.('events-view') || document.getElementById('events-view');
     api.setRoute?.('events', 'Events & Contests');
     closeContestVoting();
     await loadEventsView();

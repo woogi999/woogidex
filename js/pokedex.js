@@ -20,9 +20,7 @@ import { POKEMON_COLORS } from './data.js';
             if (!wasCommunityPreview && document.getElementById('editor-view')?.style.display !== 'none') {
                 await api.autoSave(true); // Force immediate save before leaving
             }
-            document.getElementById('profile-view') && (document.getElementById('profile-view').style.display = 'none');
-            document.getElementById('editor-view').style.display = 'none';
-            document.getElementById('collection-view').style.display = 'block';
+            api.activateTopLevelView?.('collection-view');
             document.getElementById('save-status').style.display = 'none';
             setCollectionView(collectionView || 'fakemon');
             api.setRoute?.('collection', null);
@@ -54,9 +52,7 @@ import { POKEMON_COLORS } from './data.js';
             state.editingId = null;
             api.resetEditor();
             document.getElementById('fakemon-name').value = name;
-            document.getElementById('collection-view').style.display = 'none';
-            document.getElementById('events-view') && (document.getElementById('events-view').style.display = 'none');
-            document.getElementById('editor-view').style.display = 'block';
+            api.activateTopLevelView?.('editor-view');
             document.getElementById('save-status').style.display = '';
             switchTab(document.querySelector('.tab'), 'basic');
             document.getElementById('new-fakemon-modal')?.classList.remove('active');

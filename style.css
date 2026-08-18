@@ -4971,3 +4971,393 @@ html.reduce-motion, html.reduce-motion * {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
 }
+
+
+/* ==================== ability block editor ==================== */
+.ability-code-launch { margin-top: 4px; }
+.ability-code-hint { font-size: 12px; opacity: 0.7; margin: 6px 2px 0; line-height: 1.4; }
+.ability-code-badge { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(168,85,247,.15);color:#a855f7;vertical-align:middle; }
+.ability-code-badge i { width:12px;height:12px; }
+.chooser-option-code-btn,.ability-code-open { background:none;border:none;cursor:pointer;color:var(--text-secondary,#888);padding:4px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center; }
+.chooser-option-code-btn:hover,.ability-code-open:hover { background:rgba(168,85,247,.15);color:#a855f7; }
+.chooser-option-code-btn i,.ability-code-open i { width:16px;height:16px; }
+.ability-block-intro { font-size:13px;opacity:.75;margin:4px 0 14px;line-height:1.5; }
+.ability-block-trigger-row { margin-bottom:14px; }
+.ab-trigger-hat { display:flex;align-items:center;flex-wrap:wrap;gap:10px;background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;padding:12px 18px;border-radius:16px 16px 8px 8px;font-weight:600;font-size:14px;box-shadow:0 3px 0 rgba(0,0,0,.15); }
+.ab-trigger-hat i { width:18px;height:18px;flex-shrink:0; }
+.ab-trigger-param { display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;opacity:.95; }
+.ab-trigger-param label { white-space:nowrap; }
+.ability-block-layout { display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);gap:16px;align-items:start; }
+@media(max-width:980px){.ability-block-layout{grid-template-columns:1fr}.ability-block-preview{min-height:300px}}
+
+/* A real whiteboard: the board scrolls in both directions and the blocks are
+   positioned independently instead of being forced into a vertical stack. */
+.ability-block-canvas { position:relative;min-width:0;min-height:540px;padding:0;overflow:hidden;border:1px solid var(--border);border-radius:14px;background:var(--bg-panel);box-shadow:inset 0 1px 0 rgba(255,255,255,.4); }
+.ab-board-shell { display:grid;grid-template-columns:190px minmax(0,1fr);height:clamp(540px,65vh,760px);min-height:540px; }
+.ab-palette { padding:14px 12px;border-right:1px solid var(--border);background:color-mix(in srgb,var(--bg-card) 88%,transparent);overflow:auto; }
+.ab-palette-title { font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-primary); }
+.ab-palette-help { margin:6px 0 14px;color:var(--text-muted);font-size:10px;line-height:1.45; }
+.ab-palette-group { margin-bottom:14px; }
+.ab-palette-label { margin-bottom:6px;color:var(--text-muted);font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase; }
+.ab-palette-item { width:100%;display:flex;align-items:center;gap:8px;padding:8px 9px;margin-bottom:5px;text-align:left;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text-primary);font-size:11px;line-height:1.25;cursor:pointer; }
+.ab-palette-item:hover { border-color:var(--accent);background:var(--bg-panel); }
+.ab-palette-dot { width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:#3b82f6; }
+.ab-palette-if .ab-palette-dot { background:#a855f7; }
+.ab-palette-tip { margin-top:18px;padding:9px;border:1px dashed var(--border);border-radius:8px;color:var(--text-muted);font-size:9px;line-height:1.45; }
+.ab-palette-tip strong { color:var(--text-secondary); }
+.ab-workspace-scroll { min-width:0;overflow:auto;background-color:var(--bg-panel);background-image:radial-gradient(circle,color-mix(in srgb,var(--border) 62%,transparent) 1px,transparent 1px);background-size:20px 20px;cursor:default; }
+.ab-workspace { position:relative;width:max(1100px,100%);height:max(760px,100%);min-height:100%; }
+.ab-free-container { position:relative;width:100%;height:100%;min-height:760px; }
+.ab-nested-container { position:relative;min-height:78px; }
+
+.ab-block { position:absolute;z-index:2;min-width:185px;max-width:300px;border-radius:12px;padding:10px 12px;color:#fff;font-size:12px;line-height:1.45;box-shadow:0 5px 0 rgba(0,0,0,.16),0 10px 24px rgba(0,0,0,.10);touch-action:none;user-select:none;cursor:grab;transition:box-shadow .12s ease,opacity .12s ease,outline .12s ease; }
+.ab-block:hover { box-shadow:0 6px 0 rgba(0,0,0,.16),0 14px 30px rgba(0,0,0,.13); }
+.ab-action-block { background:linear-gradient(135deg,#3b82f6,#2563eb); }
+.ab-if-block { background:linear-gradient(135deg,#a855f7,#9333ea);padding-bottom:8px; }
+.ab-block-main { display:flex;align-items:flex-start;justify-content:space-between;gap:8px; }
+.ab-block-drag { display:inline-flex;align-items:center;flex-shrink:0;cursor:grab;opacity:.7;padding-top:1px; }
+.ab-block-drag:active { cursor:grabbing; }
+.ab-block-drag i { width:14px;height:14px; }
+.ab-block-text { flex:1;min-width:0; }
+.ab-block-kind { display:inline-block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin-right:4px; }
+.ab-block-controls { display:flex;align-items:center;gap:2px;flex-shrink:0; }
+.ab-block-controls button { background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer; }
+.ab-block-controls button:hover { background:rgba(255,255,255,.34); }
+.ab-block-controls i { width:13px;height:13px; }
+.ab-block.ab-dragging { opacity:.62;z-index:50;box-shadow:0 12px 0 rgba(0,0,0,.12),0 22px 42px rgba(0,0,0,.2); }
+.ab-if-then,.ab-if-else { position:relative;margin-top:8px;padding:7px 8px 8px 12px;border-left:3px solid rgba(255,255,255,.38);min-height:78px; }
+.ab-if-label { display:block;font-size:9px;font-weight:800;text-transform:uppercase;opacity:.8;margin-bottom:4px;letter-spacing:.08em; }
+.ab-if-footer { margin-top:8px; }
+.ab-add-row { display:flex;flex-wrap:wrap;gap:6px;margin-top:6px; }
+.ab-add-chip { font-size:10px;font-weight:600;padding:4px 9px;border-radius:999px;cursor:pointer;border:1px dashed rgba(255,255,255,.42);background:rgba(255,255,255,.08);color:#fff; }
+.ab-add-chip:hover { background:rgba(255,255,255,.2); }
+.ab-add-chip.ab-add-if:hover { background:rgba(255,255,255,.2); }
+.ab-inline-input { display:inline-block;font-size:11px;font-weight:600;border-radius:6px;border:none;padding:2px 6px;margin:0 2px;background:rgba(255,255,255,.94);color:#1f2937;max-width:145px; }
+.ab-inline-number { width:54px; }
+.ab-inline-text { width:140px; }
+.ab-trigger-hat .ab-inline-input { background:rgba(255,255,255,.95); }
+
+.ability-block-preview { display:flex;flex-direction:column;min-height:540px; }
+.ability-block-preview-tabs { display:flex;gap:4px;margin-bottom:6px; }
+.ability-block-tab { font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px 8px 0 0;cursor:pointer;border:none;background:var(--bg-panel);color:var(--text-secondary); }
+.ability-block-tab.active { background:#1f2937;color:#fff; }
+.ability-block-code { flex:1;margin:0;background:#1f2937;color:#e5e7eb;padding:14px;border-radius:0 8px 8px 8px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:12px;line-height:1.55;overflow:auto;max-height:none;white-space:pre-wrap;word-break:break-word; }
+@media(max-width:720px){.ab-board-shell{grid-template-columns:1fr;height:560px}.ab-palette{max-height:165px;border-right:0;border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;overflow:auto}.ab-palette-title,.ab-palette-help{grid-column:1/-1}.ab-palette-group{margin:0}.ab-palette-tip{display:none}.ab-workspace{width:900px;height:700px}.ab-free-container{min-height:700px}.ability-block-preview{min-height:360px}}
+
+/* Ability whiteboard visibility + Scratch-like block connections */
+.ability-block-canvas { background: var(--bg-panel) !important; }
+.ab-workspace-scroll {
+    position: relative;
+    overflow: auto;
+    background-color: var(--bg-panel) !important;
+    background-image: radial-gradient(circle at 1px 1px, rgba(120,120,120,.34) 1.25px, transparent 1.35px) !important;
+    background-size: 20px 20px !important;
+}
+[data-theme="dark"] .ab-workspace-scroll {
+    background-image: radial-gradient(circle at 1px 1px, rgba(220,220,220,.22) 1.25px, transparent 1.35px) !important;
+}
+.ab-workspace { isolation: isolate; }
+.ab-board-connections {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+    overflow: visible;
+    color: #64748b;
+}
+.ab-connector-line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+    stroke-linecap: round;
+    opacity: .65;
+}
+.ab-block { z-index: 2; }
+/* subtle Scratch-style socket/tab silhouettes */
+.ab-action-block::before,
+.ab-if-block::before {
+    content: "";
+    position: absolute;
+    left: 18px;
+    top: -5px;
+    width: 28px;
+    height: 9px;
+    background: inherit;
+    border-radius: 0 0 7px 7px;
+    opacity: .96;
+}
+.ab-action-block::after,
+.ab-if-block::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -7px;
+    width: 30px;
+    height: 9px;
+    transform: translateX(-50%);
+    background: inherit;
+    clip-path: polygon(0 0, 38% 0, 38% 55%, 62% 55%, 62% 0, 100% 0, 100% 100%, 0 100%);
+}
+/* Nested stacks inside If are actual connected Scratch-like stacks, not tiny
+   independent floating boards. */
+.ab-nested-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-height: 44px;
+    padding: 2px 0 4px;
+}
+.ab-nested-container > .ab-block {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+    border-radius: 7px;
+    box-shadow: 0 2px 0 rgba(0,0,0,.14);
+    cursor: grab;
+}
+.ab-nested-container > .ab-block::before { display:none; }
+.ab-nested-container > .ab-block::after { display:none; }
+.ab-nested-container > .ab-block + .ab-block { margin-top: 3px; }
+.ab-if-then, .ab-if-else {
+    background: rgba(255,255,255,.08);
+    border-left: 4px solid rgba(255,255,255,.5);
+    border-radius: 6px;
+    padding: 8px 8px 8px 12px;
+}
+.ab-if-then .ab-add-row, .ab-if-else .ab-add-row { padding-top: 3px; }
+.ab-palette-item { user-select: none; }
+
+
+/* Scratch-style ability block catalog */
+.ab-palette-group { border-left: 3px solid var(--border); padding-left: 8px; }
+.ab-palette-events { border-left-color: #f59e0b; }
+.ab-palette-purple { border-left-color: #a855f7; }
+.ab-palette-orange { border-left-color: #f97316; }
+.ab-palette-green { border-left-color: #22c55e; }
+.ab-palette-cyan { border-left-color: #06b6d4; }
+.ab-palette-blue { border-left-color: #3b82f6; }
+.ab-palette-gray { border-left-color: #6b7280; }
+.ab-palette-item { transition: transform .1s ease, border-color .1s ease, background .1s ease; }
+.ab-palette-item:active { transform: scale(.98); }
+.ab-palette-item.active { outline: 2px solid #f59e0b; outline-offset: 1px; }
+.ab-palette-item.ab-palette-orange .ab-palette-dot { background:#f97316; }
+.ab-palette-item.ab-palette-green .ab-palette-dot { background:#22c55e; }
+.ab-palette-item.ab-palette-cyan .ab-palette-dot { background:#06b6d4; }
+.ab-palette-item.ab-palette-blue .ab-palette-dot { background:#3b82f6; }
+.ab-palette-item.ab-palette-gray .ab-palette-dot { background:#6b7280; }
+.ab-palette-item.ab-palette-purple .ab-palette-dot { background:#a855f7; }
+.ab-palette-item.ab-event-item .ab-palette-dot { background:#f59e0b; }
+.ab-category-variables { background:linear-gradient(135deg,#f97316,#ea580c); }
+.ab-category-values { background:linear-gradient(135deg,#22c55e,#16a34a); }
+.ab-category-functions { background:linear-gradient(135deg,#06b6d4,#0891b2); }
+/* These four categories previously only had their color defined for blocks
+   nested inside an event/if branch (".ab-nested-container > ..."), so a
+   block sitting loose on the open field fell back to the generic
+   .ab-action-block blue instead of its real category color. */
+.ab-category-battle-actions { background:linear-gradient(135deg,#3b82f6,#2563eb); }
+.ab-category-logic { background:linear-gradient(135deg,#a855f7,#9333ea); }
+.ab-category-other-output { background:linear-gradient(135deg,#6b7280,#4b5563); }
+.ab-category-events { background:linear-gradient(135deg,#f59e0b,#ea580c); }
+
+/* ======================================================================
+   Scratch-style block sockets / connection affordances
+   ====================================================================== */
+.ab-add-row { display:none !important; }
+
+/* Blocks have a subtle top notch and bottom tab so the connection direction
+   reads like Scratch rather than a stack of unrelated cards. */
+.ab-block { overflow: visible; }
+.ab-block-top-connector,
+.ab-block-bottom-connector {
+    position:absolute;
+    left:22px;
+    width:30px;
+    height:9px;
+    z-index:3;
+    pointer-events:none;
+}
+.ab-block-top-connector {
+    top:-7px;
+    border-radius:5px 5px 0 0;
+    background:inherit;
+    clip-path:polygon(0 100%,18% 0,82% 0,100% 100%);
+}
+.ab-block-bottom-connector {
+    bottom:-7px;
+    border-radius:0 0 5px 5px;
+    background:inherit;
+    clip-path:polygon(18% 0,82% 0,100% 100%,0 100%);
+}
+.ab-action-block::after {
+    content:"";
+    position:absolute;
+    left:27px;
+    bottom:-14px;
+    width:20px;
+    height:10px;
+    border-left:2px solid rgba(255,255,255,.34);
+    border-right:2px solid rgba(255,255,255,.34);
+    pointer-events:none;
+}
+
+/* The nested branch is a real receiving socket, not an add-button row. */
+.ab-connection-slot {
+    position:relative;
+    min-height:34px;
+    margin:8px 4px 3px 24px;
+    padding:8px 12px 8px 28px;
+    border:2px dashed rgba(255,255,255,.22);
+    border-radius:9px;
+    color:rgba(255,255,255,.52);
+    background:rgba(255,255,255,.045);
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:.03em;
+    transition:all .12s ease;
+}
+.ab-connection-slot::before {
+    content:"";
+    position:absolute;
+    left:9px;
+    top:50%;
+    width:12px;
+    height:12px;
+    transform:translateY(-50%);
+    border:2px solid currentColor;
+    border-radius:3px;
+    opacity:.7;
+}
+.ab-connection-slot .ab-slot-notch { display:none; }
+.ab-connection-slot.ab-connect-available {
+    border-color:rgba(255,255,255,.85);
+    color:#fff;
+    background:rgba(255,255,255,.15);
+    box-shadow:0 0 0 2px rgba(255,255,255,.08), inset 0 0 18px rgba(255,255,255,.06);
+    transform:translateX(2px);
+}
+.ab-connection-slot.ab-connect-available::before {
+    border-radius:50%;
+    background:currentColor;
+}
+.ab-connection-slot.ab-connect-unavailable {
+    opacity:.18;
+    filter:saturate(.3);
+}
+.ab-connection-slot.ab-drop-valid {
+    border-style:solid;
+    border-color:#fff;
+    color:#fff;
+    background:rgba(255,255,255,.20);
+    transform:scale(1.015);
+}
+.ab-connection-slot.ab-drop-invalid { opacity:.25; }
+
+/* A little inline hint while dragging, similar to Scratch's snap cues. */
+.ab-workspace.ab-connecting .ab-block { transition:opacity .12s ease, filter .12s ease; }
+.ab-workspace.ab-connecting .ab-block:not(.ab-dragging) { opacity:.82; }
+.ab-workspace.ab-connecting .ab-block.ab-dragging { opacity:.65; }
+
+/* Branches visually read as sockets/slots rather than mini boards. */
+.ab-nested-container {
+    min-height:42px;
+    padding:5px 2px 8px 0;
+    border-left:3px solid rgba(255,255,255,.18);
+    margin-left:8px;
+}
+.ab-nested-container > .ab-block {
+    position:relative !important;
+    left:auto !important;
+    top:auto !important;
+    width:calc(100% - 2px);
+    max-width:none;
+    margin:0 0 4px 0;
+}
+.ab-nested-container > .ab-block + .ab-block::before {
+    content:"";
+    position:absolute;
+    left:22px;
+    top:-7px;
+    width:30px;
+    height:9px;
+    background:inherit;
+    clip-path:polygon(18% 0,82% 0,100% 100%,0 100%);
+    pointer-events:none;
+}
+
+/* Hide the old text-oriented add controls completely if any saved render path
+   still produces one. */
+.ab-add-chip,.ab-add-row { display:none !important; }
+
+@media (max-width:720px) {
+    .ab-connection-slot { margin-left:18px; }
+}
+
+/* Multi-trigger Scratch-style event stacks */
+.ab-event-block {
+    min-width:320px;
+    max-width:380px;
+    padding:0 0 10px;
+    background:linear-gradient(135deg,#f59e0b,#ea580c);
+    border-radius:16px;
+}
+.ab-event-block > .ab-trigger-hat {
+    border-radius:16px 16px 8px 8px;
+    min-height:42px;
+    padding:10px 12px;
+    box-sizing:border-box;
+}
+.ab-event-block .ab-trigger-hat .ab-block-controls { margin-left:auto; }
+.ab-event-body { padding:0 8px 2px; }
+.ab-event-body > .ab-nested-container {
+    border-left:0;
+    margin:0;
+    padding:7px 2px 4px;
+    background:rgba(255,255,255,.06);
+    border-radius:8px;
+}
+.ab-event-body .ab-connection-slot { margin-left:10px; margin-right:10px; }
+.ab-event-block .ab-nested-container > .ab-block { background:linear-gradient(135deg,#3b82f6,#2563eb); }
+
+/* Ability editor v12: connected blocks retain their semantic Scratch colors. */
+.ab-event-block .ab-nested-container > .ab-action-block { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+.ab-event-block .ab-nested-container > .ab-if-block { background: linear-gradient(135deg,#a855f7,#9333ea); }
+.ab-event-block .ab-nested-container > .ab-category-variables { background: linear-gradient(135deg,#f97316,#ea580c); }
+.ab-event-block .ab-nested-container > .ab-category-values { background: linear-gradient(135deg,#22c55e,#16a34a); }
+.ab-event-block .ab-nested-container > .ab-category-functions { background: linear-gradient(135deg,#06b6d4,#0891b2); }
+.ab-event-block .ab-nested-container > .ab-category-battle-actions { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+.ab-event-block .ab-nested-container > .ab-category-logic { background: linear-gradient(135deg,#a855f7,#9333ea); }
+.ab-event-block .ab-nested-container > .ab-category-events { background: linear-gradient(135deg,#f59e0b,#ea580c); }
+
+/* Do not let connected stacks inherit the parent's event orange. */
+.ab-event-block .ab-nested-container > .ab-block { color:#fff; }
+
+/* The board itself is a valid detach target. Make the drop area visually obvious. */
+.ab-workspace.ab-detach-target { outline: 2px dashed rgba(59,130,246,.65); outline-offset:-6px; }
+
+/* Controls stay clickable even though the block itself is draggable. */
+.ab-block-controls, .ab-block-controls button, .ab-inline-input { position:relative; z-index:8; }
+
+/* v12: semantic Scratch colors survive when blocks are connected. */
+.ab-nested-container > .ab-category-variables { background:linear-gradient(135deg,#f97316,#ea580c) !important; }
+.ab-nested-container > .ab-category-values { background:linear-gradient(135deg,#22c55e,#16a34a) !important; }
+.ab-nested-container > .ab-category-functions { background:linear-gradient(135deg,#06b6d4,#0891b2) !important; }
+.ab-nested-container > .ab-category-battle-actions { background:linear-gradient(135deg,#3b82f6,#2563eb) !important; }
+.ab-nested-container > .ab-category-other-output { background:linear-gradient(135deg,#6b7280,#4b5563) !important; }
+.ab-nested-container > .ab-if-block { background:linear-gradient(135deg,#a855f7,#9333ea) !important; }
+.ab-nested-container > .ab-event-block { background:linear-gradient(135deg,#f59e0b,#ea580c) !important; }
+
+/* A connected block can be released anywhere on the board to detach it. */
+.ab-workspace { position:relative; }
+.ab-workspace .ab-block { user-select:none; }
+.ab-workspace .ab-block.ab-dragging { cursor:grabbing; }
+
+/* Keep controls above the draggable surface. */
+.ab-block-controls,
+.ab-block-controls button,
+.ab-inline-input { z-index:20; position:relative; }

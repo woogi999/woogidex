@@ -15,6 +15,7 @@ import * as auth from './auth.js';
 import * as community from './community.js';
 import * as notifications from './notifications.js';
 import * as events from './events.js';
+import * as abilityBlocks from './ability-blocks.js';
 
 // ==================== feature flags ====================
 // TODO: remove this flag (and the sidebar-events-btn hidden attribute in
@@ -370,13 +371,43 @@ function setRoute(hashPath, title) {
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
 }
 
+// ==================== top-level view navigation ====================
+// All full-page views live under #main-content. Keep their visibility in one
+// place so adding a new editor/page cannot leave a previously-open view
+// stranded underneath it. Modules can still perform their own async work
+// (autosave/fetching) before calling this function.
+const TOP_LEVEL_VIEW_IDS = [
+    'collection-view',
+    'editor-view',
+    'ability-block-editor-view',
+    'community-view',
+    'community-detail-view',
+    'events-view',
+    'profile-view'
+];
+
+function activateTopLevelView(viewId, options = {}) {
+    const { preserveAbilityEditor = false } = options;
+
+    if (viewId !== 'ability-block-editor-view' && !preserveAbilityEditor) {
+        api.onTopLevelNavigation?.(viewId);
+    }
+
+    TOP_LEVEL_VIEW_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = id === viewId ? 'block' : 'none';
+    });
+
+    return document.getElementById(viewId) || null;
+}
+
 // ==================== module coordination ====================
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, abilityBlocks, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, toggleSidebar, closeSidebar, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
-    setRoute, setPageTitle,
+    setRoute, setPageTitle, activateTopLevelView,
     getShowCollectionCardDate, setShowCollectionCardDate, toggleShowCollectionCardDate,
     getReduceMotion, setReduceMotion, toggleReduceMotion,
     getIncludeOwnFakemonsInRecommendedMoves, setIncludeOwnFakemonsInRecommendedMoves, toggleIncludeOwnFakemonsInRecommendedMoves,
@@ -440,7 +471,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Fakemon so its preview is fully rehydrated on the first render.
     await api.fetchShowdownData?.();
     const isCommunityRoute = await api.handleCommunityHashRoute?.();
-    const isProfileRoute = !isCommunityRoute && await api.handleProfileHashRoute?.();
+    const isProfileRoute = !isCommunityRoute && window.location.hash.startsWith('#profile/')
+        ? (api.activateTopLevelView?.('profile-view'), await api.handleProfileHashRoute?.())
+        : false;
     if (!isCommunityRoute && !isProfileRoute) {
         const handled = await handleAppHashRoute(window.location.hash || '');
         if (!handled) api.renderCollection();
@@ -460,6 +493,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 // handled the hash, so the caller knows whether to fall back to the
 // collection as the default view.
 async function handleAppHashRoute(hash) {
+    if (hash.startsWith('#ability-editor/')) {
+        const id = decodeURIComponent(hash.slice('#ability-editor/'.length));
+        api.openAbilityBlockEditor(id);
+        return true;
+    }
     if (hash.startsWith('#editor/')) {
         const id = decodeURIComponent(hash.slice('#editor/'.length));
         const fakemon = state.fakemonDB.find(f => String(f.id) === id);
@@ -475,7 +513,10 @@ async function handleAppHashRoute(hash) {
 window.addEventListener('hashchange', async () => {
     const hash = window.location.hash || '';
     if (hash.startsWith('#community/')) await api.handleCommunityHashRoute?.();
-    else if (hash.startsWith('#profile/')) await api.handleProfileHashRoute?.();
+    else if (hash.startsWith('#profile/')) {
+        api.activateTopLevelView?.('profile-view');
+        await api.handleProfileHashRoute?.();
+    }
     else await handleAppHashRoute(hash);
 });
 

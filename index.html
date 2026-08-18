@@ -110,6 +110,35 @@
                 </div>
             </div>
 
+            <!-- ability battle-effect block editor view -->
+            <div id="ability-block-editor-view" style="display:none;">
+                <div class="main-layout">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 10px; flex-wrap: wrap;">
+                            <h2 id="ability-block-editor-title" style="margin:0;">Code This Ability</h2>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="closeAbilityBlockEditor()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+                                <button class="btn btn-primary btn-sm" type="button" onclick="saveAbilityBlockEditor()">Save Ability Code</button>
+                            </div>
+                        </div>
+                        <p class="ability-block-intro">Very WIP. Code using coding blocks!
+                        </p>
+                        <div id="ability-block-trigger-row" class="ability-block-trigger-row"></div>
+                        <div class="ability-block-layout">
+                            <div class="ability-block-canvas" id="ability-block-canvas"></div>
+                            <div class="ability-block-preview">
+                                <div class="ability-block-preview-tabs">
+                                    <button type="button" class="ability-block-tab active" data-tab="sd" onclick="setAbilityBlockPreviewTab('sd')">Showdown</button>
+                                    <button type="button" class="ability-block-tab" data-tab="es" onclick="setAbilityBlockPreviewTab('es')">Essentials</button>
+                                </div>
+                                <pre class="ability-block-code" id="ability-block-code-sd"></pre>
+                                <pre class="ability-block-code" id="ability-block-code-es" style="display:none;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- editor view -->
             <div id="editor-view" style="display: none;">
                 <div class="main-layout">
@@ -1024,6 +1053,12 @@
                 <textarea id="custom-ability-desc" rows="4" placeholder="Describe what this ability does..."></textarea>
             </div>
             <input type="hidden" id="custom-ability-edit-id" value="">
+            <div class="form-group ability-code-launch">
+                <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;" onclick="openAbilityBlockEditor(document.getElementById('custom-ability-edit-id').value)">
+                    <i data-lucide="puzzle" style="width:16px;height:16px;"></i> Code Battle Effect (Blocks)
+                </button>
+                <p class="ability-code-hint">Save the ability once first, then use this to build its real battle logic with coding blocks - it exports to both Showdown and Essentials.</p>
+            </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button class="btn btn-secondary" onclick="closeModal('custom-ability-modal')">Cancel</button>
                 <button class="btn btn-primary" onclick="saveCustomAbilityLibraryEntry()">Save Ability</button>

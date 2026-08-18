@@ -1012,6 +1012,12 @@ function handleMoveKey(e) {
                         </div>`;
                 }
 
+                const libEntry = isCustom && a.customId ? (state.customAbilities || []).find(x => x.id === a.customId) : null;
+                const isCoded = !!(libEntry && libEntry.blocks && libEntry.blocks.trigger);
+                const codeBtn = isCustom && a.customId
+                    ? `<button class="ability-code-open" type="button" title="${isCoded ? 'Edit battle code' : 'Add battle code'}" onclick="event.stopPropagation(); openAbilityBlockEditor('${escapeJsString(a.customId)}')"><i data-lucide="puzzle"></i></button>`
+                    : '';
+
                 return `
                     <div class="ability-row${isCustom ? ' ability-custom' : ''}" draggable="true" data-ability-index="${i}">
                         <span class="ability-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
@@ -1019,9 +1025,11 @@ function handleMoveKey(e) {
                             <div class="ability-name-wrap">
                                 <span class="ability-name-text"${isCustom ? ` onclick="event.stopPropagation(); toggleCustomAbilityEdit(${i})" title="Click to edit"` : ''}>${escapeHtml(a.name || 'Unnamed Ability')}</span>
                                 ${roleHtml}
+                                ${isCoded ? '<span class="ability-code-badge" title="Has battle code from the block editor"><i data-lucide="puzzle"></i> Coded</span>' : ''}
                             </div>
                             <div class="ability-desc-text"${isCustom ? ` onclick="event.stopPropagation(); toggleCustomAbilityEdit(${i})" title="Click to edit"` : ''}>${escapeHtml(desc || 'No description available.')}</div>
                         </div>
+                        ${codeBtn}
                         <button class="ability-remove" type="button" onclick="event.stopPropagation(); removeAbility(${i})" title="Remove">&times;</button>
                     </div>`;
             }).join('');
@@ -2196,8 +2204,11 @@ function handleMoveKey(e) {
                         const handler = isAbility
                             ? `addExistingCustomAbility('${escapeJsString(item.id)}')`
                             : `addExistingCustomMove('${escapeJsString(item.id)}')`;
+                        const codeBadge = isAbility && item.blocks && item.blocks.trigger ? '<span class="ability-code-badge" title="Has battle code from the block editor"><i data-lucide="puzzle"></i> Coded</span>' : '';
+                        const codeBtn = isAbility ? `<button type="button" class="chooser-option-code-btn" title="Edit battle code" onclick="event.stopPropagation();openAbilityBlockEditor('${escapeJsString(item.id)}')"><i data-lucide="puzzle"></i></button>` : '';
                         return `<div class="chooser-option" onclick="${handler}">
-                            <div><strong>${escapeHtml(item.name || 'Unnamed')}</strong><span>${escapeHtml(detail)}</span></div>
+                            <div><strong>${escapeHtml(item.name || 'Unnamed')}</strong> ${codeBadge}<span>${escapeHtml(detail)}</span></div>
+                            ${codeBtn}
                             <i data-lucide="plus-circle"></i>
                         </div>`;
                     }).join('') : `<div class="custom-entity-empty">${emptyText}</div>`}

@@ -306,9 +306,11 @@ A couple things worth knowing:
 - Only moves ${fakemon.name} learns that already exist in vanilla Showdown
   made it into the learnset. Any custom moves got left out, since they'd
   need actual battle-effect code written for them to work.
-- Same deal with custom abilities; they're listed by name in pokedex.ts,
-  but won't do anything in battle unless you write them up yourself in an
-  abilities.ts file in the mod folder.
+- Custom abilities are listed by name in pokedex.ts. Any of them you wrote
+  battle code for in the ability block editor got exported to abilities.ts
+  too - just make sure that file is sitting in the mod folder alongside
+  pokedex.ts. Any without block code won't do anything in battle until you
+  write it up yourself in that same abilities.ts file.
 `;
         }
 
@@ -348,9 +350,10 @@ A couple things worth knowing:
 - Only moves that already exist in vanilla Showdown made it into each
   learnset. Custom moves got left out, since they'd need actual
   battle-effect code written for them to work.${skippedTotal ? ` (${skippedTotal} custom move${skippedTotal === 1 ? '' : 's'} skipped across your collection.)` : ''}
-- Custom abilities are still listed by name in pokedex.ts, but won't do
-  anything in battle unless you write them up yourself in an abilities.ts
-  file in the mod folder.
+- Custom abilities are still listed by name in pokedex.ts. Any you wrote
+  battle code for in the ability block editor got exported into this same
+  folder's abilities.ts; anything else needs to be written up by hand in
+  that file.
 `;
         }
 
@@ -364,6 +367,8 @@ A couple things worth knowing:
                 const zip = new JSZip();
                 zip.file('pokedex.ts', buildPokedexTs(fakemon, speciesId));
                 zip.file('learnsets.ts', buildLearnsetsTs(fakemon, speciesId));
+                const abilitiesTs = api.buildShowdownAbilitiesFile ? api.buildShowdownAbilitiesFile([fakemon]) : null;
+                if (abilitiesTs) zip.file('abilities.ts', abilitiesTs);
                 zip.file('README.txt', buildReadmeTxt(fakemon));
                 const evolutionNotes = buildEvolutionNotesText([fakemon]);
                 if (evolutionNotes) zip.file('evolution_notes.txt', evolutionNotes);
@@ -439,6 +444,8 @@ ${entries}
                 modFolder.file('pokedex.ts', buildCollectionPokedexTs(fakemonList, speciesIds));
                 const { text: learnsetsText, totalSkipped } = buildCollectionLearnsetsTs(fakemonList, speciesIds);
                 modFolder.file('learnsets.ts', learnsetsText);
+                const abilitiesTs = api.buildShowdownAbilitiesFile ? api.buildShowdownAbilitiesFile(fakemonList) : null;
+                if (abilitiesTs) modFolder.file('abilities.ts', abilitiesTs);
                 zip.file('README.txt', buildCollectionReadmeTxt(fakemonList, modId, totalSkipped));
                 const evolutionNotes = buildEvolutionNotesText(fakemonList);
                 if (evolutionNotes) zip.file('evolution_notes.txt', evolutionNotes);
