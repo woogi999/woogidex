@@ -412,7 +412,7 @@ function drawEvolutionEdges() {
         const y = (node.y || 0) + NODE_H / 2;
         return { x, y };
     };
-    svg.setAttribute('viewBox', `0 0 ${Math.max(br.width, NODE_W + 40)} ${Math.max(br.height, NODE_H + 40)}`);
+    svg.setAttribute('viewBox', `0 0 ${br.width || NODE_W + 40} ${br.height || NODE_H + 40}`);
     const defs = `<defs><marker id="evo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker></defs>`;
     svg.innerHTML = defs;
     if (handleDrag) {
@@ -774,6 +774,157 @@ function removeEvolutionNode(id) {
     renderEvolutionBoard();
 }
 
+// ==================== preview: evolution chain + forme tabs ====================
+// used by editor-core.js's updatePreview() to show a clickable evolution
+// chain below the learnset, and (for mons with a connected mega/forme
+// change) a row of tabs at the top of the preview. clicking any other
+// participant switches the editor to that Fakemon instead of just
+// previewing it.
+function getConnectedComponent(g, startId) {
+    const adjacency = new Map();
+    g.nodes.forEach(n => adjacency.set(n.id, []));
+    g.edges.forEach(e => {
+        if (!adjacency.has(e.from) || !adjacency.has(e.to)) return;
+        adjacency.get(e.from).push(e.to);
+        adjacency.get(e.to).push(e.from);
+    });
+    const seen = new Set([startId]);
+    const queue = [startId];
+    while (queue.length) {
+        const id = queue.shift();
+        for (const next of adjacency.get(id) || []) {
+            if (!seen.has(next)) { seen.add(next); queue.push(next); }
+        }
+    }
+    return seen;
+}
+
+// builds a from->to lookup of the evo method connecting two non-method,
+// non-special nodes (collapsing through a single intermediate method node),
+// so the preview chain can show "Level 16", "Fire Stone", etc. between stages.
+function getEdgeMethodMap(g) {
+    const methodIds = new Set(getMethodNodes(g).map(n => n.id));
+    const outgoing = new Map();
+    g.edges.forEach(e => { if (!outgoing.has(e.from)) outgoing.set(e.from, []); outgoing.get(e.from).push(e.to); });
+    const map = new Map();
+    g.nodes.forEach(start => {
+        if (methodIds.has(start.id)) return;
+        (outgoing.get(start.id) || []).forEach(nextId => {
+            if (methodIds.has(nextId)) {
+                (outgoing.get(nextId) || []).forEach(finalId => {
+                    if (!methodIds.has(finalId)) map.set(`${start.id}->${finalId}`, g.nodes.find(n => n.id === nextId));
+                });
+            } else {
+                map.set(`${start.id}->${nextId}`, null);
+            }
+        });
+    });
+    return map;
+}
+
+const PREVIEW_EVO_ARROW_ICON = '<svg class="preview-evo-arrow-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 12h15M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function getPreviewEvolutionChain() {
+    const g = ensureGraph();
+    const me = addCurrentNode();
+    const component = getConnectedComponent(g, me.id);
+    const stageMap = calculateStages(g);
+    const chain = g.nodes
+        .filter(n => component.has(n.id) && !isMethodNode(n) && !isSpecialNode(n))
+        .map(n => ({ id: n.id, kind: n.kind, refId: n.refId, info: getNodeInfo(n), stage: stageMap[n.id] || 1, isCurrent: n.id === me.id }))
+        .sort((a, b) => a.stage - b.stage);
+    return chain.length > 1 ? chain : [];
+}
+
+function getFormeTabBase(g, node) {
+    if (!isSpecialNode(node)) return node;
+    const neighborIds = [];
+    g.edges.forEach(e => {
+        if (e.from === node.id) neighborIds.push(e.to);
+        if (e.to === node.id) neighborIds.push(e.from);
+    });
+    const baseId = neighborIds.find(id => {
+        const n = g.nodes.find(x => x.id === id);
+        return n && !isMethodNode(n) && !isSpecialNode(n);
+    });
+    return g.nodes.find(n => n.id === baseId) || node;
+}
+
+function getPreviewFormeVariants() {
+    const g = ensureGraph();
+    const me = addCurrentNode();
+    const base = getFormeTabBase(g, me);
+    const directIds = new Set();
+    g.edges.forEach(e => {
+        if (e.from === base.id) directIds.add(e.to);
+        if (e.to === base.id) directIds.add(e.from);
+    });
+    return g.nodes
+        .filter(n => directIds.has(n.id) && isSpecialNode(n))
+        .map(n => ({ id: n.id, kind: n.kind, refId: n.refId, info: getNodeInfo(n), isMega: !!n.isMega, isFormeChange: !!n.isFormeChange }));
+}
+
+function editFakemonFromPreview(refId) {
+    if (!refId) return;
+    if (!getFakemon(refId)) { api.showToast?.("That Pokémon isn't a saved Fakemon and can't be opened in the editor.", 'info'); return; }
+    api.editFakemon?.(refId);
+}
+
+function renderPreviewEvolutionChain() {
+    const chain = getPreviewEvolutionChain();
+    if (!chain.length) return '';
+    const g = ensureGraph();
+    const edgeMethodMap = getEdgeMethodMap(g);
+    const parts = chain.map((entry, i) => {
+        const spriteUrl = entry.info.artwork || (api.getSpriteUrl ? api.getSpriteUrl(entry.info.spriteId, entry.info.record || { id: entry.info.spriteId, name: entry.info.name }) : '');
+        const clickable = !entry.isCurrent && entry.kind === 'fakemon' && entry.refId;
+        const fallbackName = entry.info.record?.baseSpecies || entry.info.refId || entry.info.name;
+        const safeName = String(entry.info.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const safeFallback = String(fallbackName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const titleText = entry.isCurrent ? 'Currently editing' : (clickable ? `Edit ${entry.info.name}` : `${entry.info.name} (vanilla Pokémon)`);
+        const typesHtml = (entry.info.types || []).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${esc(t)}</span>`).join('');
+        const metaBits = [entry.info.number, entry.info.species].filter(Boolean);
+        const node = `<button type="button" class="preview-evo-node${entry.isCurrent ? ' current' : ''}${clickable ? '' : ' not-clickable'}"` +
+            `${clickable ? ` onclick="editFakemonFromPreview('${esc(entry.refId)}')"` : ' disabled'}` +
+            ` title="${esc(titleText)}">` +
+            `<span class="preview-evo-stage">Stage ${entry.stage}</span>` +
+            `<div class="preview-evo-sprite-wrap"><img src="${esc(spriteUrl)}" alt="${esc(entry.info.name)}" onerror="window.fallbackPokemonImage && window.fallbackPokemonImage(this, '${safeName}', '${safeFallback}')"></div>` +
+            `<span class="preview-evo-name">${esc(entry.info.name)}</span>` +
+            `${metaBits.length ? `<span class="preview-evo-meta">${esc(metaBits.join(' \u00b7 '))}</span>` : ''}` +
+            `${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}` +
+            `</button>`;
+        if (i === chain.length - 1) return node;
+        const next = chain[i + 1];
+        const methodNode = edgeMethodMap.get(`${entry.id}->${next.id}`);
+        const methodLabel = methodNode ? getMethodSummary(methodNode) : '';
+        const connector = `<div class="preview-evo-connector">${methodLabel ? `<span class="preview-evo-method">${esc(methodLabel)}</span>` : ''}${PREVIEW_EVO_ARROW_ICON}</div>`;
+        return node + connector;
+    }).join('');
+    return `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div><div class="preview-evo-row">${parts}</div></div>`;
+}
+
+function renderPreviewFormeTabs() {
+    const variants = getPreviewFormeVariants();
+    if (!variants.length) return '';
+    const g = ensureGraph();
+    const me = addCurrentNode();
+    const base = getFormeTabBase(g, me);
+    const baseInfo = getNodeInfo(base);
+    const tabs = [{ id: base.id, kind: base.kind, refId: base.refId, info: baseInfo, isBase: true, isMega: !!base.isMega, isFormeChange: !!base.isFormeChange }, ...variants];
+    const tabsHtml = tabs.map(t => {
+        const active = t.id === me.id;
+        const label = t.isMega ? 'Mega' : t.isFormeChange ? 'Forme' : 'Base';
+        const clickable = !active && t.kind === 'fakemon' && t.refId;
+        return `<button type="button" class="preview-forme-tab${active ? ' active' : ''}"` +
+            `${clickable ? ` onclick="editFakemonFromPreview('${esc(t.refId)}')"` : ''}` +
+            `${active ? ' disabled' : ''}>` +
+            `<span class="preview-forme-tab-label">${esc(label)}</span>` +
+            `<span class="preview-forme-tab-name">${esc(t.info.name)}</span>` +
+            `</button>`;
+    }).join('');
+    return `<div class="preview-forme-tabs">${tabsHtml}</div>`;
+}
+
 function persistEvolutionGraph() {
     const g=clone(ensureGraph());
     // keep the graph on every saved Fakemon represented by it. this makes the tab
@@ -791,6 +942,7 @@ function persistEvolutionGraph() {
         if (current) { current.evolutionGraph=clone(g); current.evolutionStage=stages[node?.id] || 1; }
     }
     api.saveToStorage?.();
+    if (document.getElementById('editor-view')?.style.display !== 'none') api.updatePreview?.();
 }
 
 
@@ -901,7 +1053,8 @@ if (evolutionMethodItemInput) {
     evolutionMethodItemInput.addEventListener('blur', () => setTimeout(closeEvolutionMethodItemMenu, 180));
 }
 
-export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, renderEvolutionNodeChooser, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, syncEvolutionOnBasicLoad, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, updateEvolutionMethodForm, saveEvolutionMethod, removeEvolutionMethod, populateEvolutionMethodItems };
+export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, renderEvolutionNodeChooser, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, syncEvolutionOnBasicLoad, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, updateEvolutionMethodForm, saveEvolutionMethod, removeEvolutionMethod, populateEvolutionMethodItems,
+    getPreviewEvolutionChain, getPreviewFormeVariants, renderPreviewEvolutionChain, renderPreviewFormeTabs, editFakemonFromPreview };
 
 // re-layout the board when the viewport crosses the mobile breakpoint (e.g.
 // on rotation), since node size and spacing depend on window width.

@@ -1096,6 +1096,7 @@ function updatePreview() {
             const container = document.getElementById('pokedex-board-container');
             container.innerHTML = `
                 <div class="pokedex-board" id="pokedex-board-export">
+                    ${api.renderPreviewFormeTabs ? api.renderPreviewFormeTabs() : ''}
                     <div class="board-header">
                         <div class="board-number">${number || '#???'}</div>
                     </div>
@@ -1141,7 +1142,7 @@ function updatePreview() {
 
                     <!-- Bottom Row: Learnset (left) | Stats + Sample Sets stacked (right) -->
                     <div class="board-lower-row">
-                        <div class="board-learnset-slot">${learnsetHtml || ''}</div>
+                        <div class="board-learnset-slot">${learnsetHtml || ''}${api.renderPreviewEvolutionChain ? api.renderPreviewEvolutionChain() : ''}</div>
                         <div class="board-sets-slot">
                             <div class="board-section board-stats-narrow">
                                 <div class="board-section-title">Base Stats</div>

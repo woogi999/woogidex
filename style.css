@@ -5361,3 +5361,166 @@ html.reduce-motion, html.reduce-motion * {
 .ab-block-controls,
 .ab-block-controls button,
 .ab-inline-input { z-index:20; position:relative; }
+
+/* ==================== preview: evolution chain + forme tabs ==================== */
+.preview-forme-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: -4px -4px 14px -4px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-light);
+}
+.preview-forme-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary, transparent);
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: background .15s ease, border-color .15s ease, transform .1s ease;
+}
+.preview-forme-tab:hover:not(:disabled) {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+.preview-forme-tab:disabled {
+    cursor: default;
+}
+.preview-forme-tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+.preview-forme-tab.active .preview-forme-tab-label,
+.preview-forme-tab.active .preview-forme-tab-name {
+    color: #fff;
+}
+.preview-forme-tab-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.preview-forme-tab-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.board-evolution-chain {
+    margin-top: 14px;
+}
+.preview-evo-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+}
+.preview-evo-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    width: 128px;
+    padding: 12px 10px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary, transparent);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .15s ease, border-color .15s ease, transform .1s ease;
+}
+.preview-evo-node:hover:not(:disabled) {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+.preview-evo-node:disabled,
+.preview-evo-node.not-clickable {
+    cursor: default;
+    opacity: .75;
+}
+.preview-evo-node.current {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+}
+.preview-evo-stage {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.preview-evo-sprite-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+}
+.preview-evo-node img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+.preview-evo-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: center;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+.preview-evo-meta {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+.preview-evo-types {
+    display: flex;
+    gap: 4px;
+    margin-top: 2px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.preview-evo-types .type-pill {
+    font-size: 8px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    letter-spacing: .4px;
+}
+.preview-evo-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 4px;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+.preview-evo-arrow-icon {
+    display: block;
+}
+.preview-evo-method {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    background: var(--bg-secondary, transparent);
+    border: 1px solid var(--border-light);
+    border-radius: 5px;
+    padding: 1px 6px;
+}
