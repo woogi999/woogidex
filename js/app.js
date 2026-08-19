@@ -488,6 +488,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadSettings();
     if (typeof lucide !== 'undefined') lucide.createIcons();
     api.updateEditorStats();
+    api.populateStatTemplateOptions?.();
+    api.initStatBarSliders?.();
     done({ fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
     log.info('BOOT', 'Application ready', { fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
 });
