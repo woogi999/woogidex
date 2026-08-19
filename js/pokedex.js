@@ -937,7 +937,7 @@ import { POKEMON_COLORS } from './data.js';
                             <button class="card-delete-btn" onclick="deleteCustomLibraryItem('items','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
                         </div>
                         ${item.artwork ? `<div class="collection-library-artwork"><img src="${item.artwork}" alt="${escapeCollectionHtml(item.name)} artwork"></div>` : ''}
-                        <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}</div>
+                        <div class="collection-library-card-title">${escapeCollectionHtml(item.name)}${item.isMegaStone ? ' <span class="mega-stone-badge"><i data-lucide="gem" style="width:12px;height:12px;"></i> Mega Stone</span>' : ''}</div>
                         <div class="collection-library-card-desc">${escapeCollectionHtml(item.desc || 'No description')}</div>
                     </div>`;
                 }

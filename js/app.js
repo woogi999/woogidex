@@ -96,7 +96,11 @@ export const api = {};
             const iconName = isDark ? 'sun' : 'moon';
             const iconMarkup = `<i data-lucide="${iconName}" id="sidebar-dark-icon" style="width:18px;height:18px;"></i>`;
 
-            if (btn) btn.innerHTML = `<i data-lucide="${iconName}" style="width:18px;height:18px;"></i>`;
+            if (btn) {
+                btn.innerHTML = `<i data-lucide="${iconName}" style="width:20px;height:20px;"></i>`;
+                btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+                btn.setAttribute('title', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+            }
             if (sidebarBtn) {
                 const currentIcon = sidebarBtn.querySelector('[data-lucide], svg');
                 if (currentIcon) currentIcon.outerHTML = iconMarkup;
@@ -519,5 +523,23 @@ window.addEventListener('hashchange', async () => {
     }
     else await handleAppHashRoute(hash);
 });
+
+function openCreditsModal() {
+    const modal = document.getElementById('credits-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+    document.body.classList.add('modal-open');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closeCreditsModal() {
+    const modal = document.getElementById('credits-modal');
+    if (!modal) return;
+    modal.classList.remove('active');
+    document.body.classList.remove('modal-open');
+}
+
+window.openCreditsModal = openCreditsModal;
+window.closeCreditsModal = closeCreditsModal;
 
 export { loadDarkMode, toggleDarkMode, updateDarkModeUI, showToast, initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor };

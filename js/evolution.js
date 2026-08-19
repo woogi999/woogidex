@@ -57,7 +57,14 @@ const EVO_STONE_NAMES = new Set([
     'Fire Stone','Water Stone','Thunder Stone','Leaf Stone','Moon Stone',
     'Sun Stone','Shiny Stone','Dusk Stone','Dawn Stone','Ice Stone','Oval Stone'
 ]);
-function isMegaStoneName(value) { return /\bmega stone$/i.test(String(value || '').trim()); }
+function isMegaStoneName(value) {
+    const name = String(value || '').trim();
+    if (/\bmega stone$/i.test(name)) return true;
+    return (state.customItems || []).some(item =>
+        item?.isMegaStone === true &&
+        String(item.name || '').trim().toLowerCase() === name.toLowerCase()
+    );
+}
 function getDetectedItemLabel(value) {
     const item = String(value || '').trim();
     if (!item) return 'By Item';

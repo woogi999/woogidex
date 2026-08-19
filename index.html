@@ -53,6 +53,12 @@
                         <div id="notifications-list" class="notifications-list"></div>
                     </div>
                 </div>
+                <button class="dark-mode-header-btn" id="dark-mode-btn" type="button"
+                        onclick="toggleDarkMode()"
+                        aria-label="Toggle dark mode"
+                        title="Toggle dark mode">
+                    <i data-lucide="moon" style="width:20px;height:20px;"></i>
+                </button>
             </div>
         </header>
 
@@ -82,13 +88,17 @@
                 <button class="sidebar-nav-btn" type="button" onclick="openCommunityHub(); closeSidebar();"><i data-lucide="users"></i><span>Community</span></button>
                 <button class="sidebar-nav-btn" type="button" id="sidebar-events-btn" onclick="openEvents(); closeSidebar();"><i data-lucide="trophy"></i><span>Events</span></button>
                 <div class="sidebar-divider"></div>
-                <button class="sidebar-nav-btn" type="button" onclick="toggleDarkMode();"><i data-lucide="sun" id="sidebar-dark-icon"></i><span id="sidebar-dark-label">Light Mode</span></button>
                 <button class="sidebar-nav-btn" type="button" onclick="openSettings(); closeSidebar();"><i data-lucide="settings"></i><span>Settings</span></button>
+                <button class="sidebar-nav-btn" type="button" onclick="openCreditsModal(); closeSidebar();"><i data-lucide="badge-info"></i><span>Credits</span></button>
                 <div class="sidebar-divider"></div>
                 <button class="sidebar-nav-btn sidebar-auth-btn" id="sidebar-auth-btn" type="button" onclick="openAuthModal('signin'); closeSidebar();"><i data-lucide="log-in"></i><span>Sign In</span></button>
             </nav>
             <div class="sidebar-footer">
-                <span>Build your own Pokemon</span>
+                <div class="sidebar-footer-links">
+                    <button type="button" class="sidebar-footer-link" onclick="openTermsModal(); closeSidebar();">Terms of Service</button>
+                    <span aria-hidden="true">·</span>
+                    <button type="button" class="sidebar-footer-link" onclick="openCommunityRulesModal(); closeSidebar();">Community Rules</button>
+                </div>
             </div>
         </aside>
 
@@ -844,6 +854,27 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="credits-modal" onclick="if(event.target===this) closeCreditsModal()">
+        <div class="modal policy-modal credits-modal">
+            <div class="modal-header">
+                <div>
+                    <div class="policy-kicker">Woogidex</div>
+                    <h3>Credits</h3>
+                </div>
+                <button class="modal-close" onclick="closeCreditsModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p><strong>Woogidex</strong></p>
+                <p>Created by <strong>Woogi</strong><br>Lead Backend: <strong>gghrvy</strong><br>Placeholder Art &amp; Sprites: <strong>Enderwither02</strong></p>
+                <h4>Attributions</h4>
+                <p>Woogidex is a fan-made, unofficial project. Pokémon and related names, characters, and other intellectual property are owned by their respective rights holders.</p>
+                <h4>Disclaimer</h4>
+                <p>Woogidex is not affiliated with, endorsed by, or sponsored by Nintendo, The Pokémon Company, or Game Freak. This project is made for fan and non-commercial purposes.</p>
+                <p>© 2026 Woogidex · All rights reserved to their respective owners.</p>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="terms-modal" onclick="if(event.target===this) closeTermsModal()">
         <div class="modal policy-modal">
             <div class="modal-header">
@@ -1088,6 +1119,13 @@
                 <label>Description</label>
                 <textarea id="custom-item-desc" rows="4" placeholder="Describe what this item does..."></textarea>
             </div>
+            <label class="custom-item-mega-toggle">
+                <input type="checkbox" id="custom-item-is-mega-stone">
+                <span class="custom-item-mega-toggle-copy">
+                    <strong>Mega Stone</strong>
+                    <span>Mark this item as a Mega Stone for evolution and item pickers.</span>
+                </span>
+            </label>
             <input type="hidden" id="custom-item-edit-id" value="">
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button class="btn btn-secondary" onclick="closeModal('custom-item-modal')">Cancel</button>

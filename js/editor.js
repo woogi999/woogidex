@@ -2263,6 +2263,8 @@ function openCustomItemModal(id='', sampleSetTarget=null) {
     document.getElementById('custom-item-modal-title').textContent = item ? 'Edit Custom Item' : 'Create Custom Item';
     document.getElementById('custom-item-name').value = item?.name || '';
     document.getElementById('custom-item-desc').value = item?.desc || '';
+    const megaStoneToggle = document.getElementById('custom-item-is-mega-stone');
+    if (megaStoneToggle) megaStoneToggle.checked = item?.isMegaStone === true;
     const preview = document.getElementById('custom-item-artwork-preview');
     if (preview) preview.innerHTML = item?.artwork ? `<img src="${item.artwork}" alt="Item artwork">` : '<span class="placeholder">ITEM</span>';
     modal.classList.add('active');
@@ -2273,6 +2275,7 @@ function saveCustomItemLibraryEntry() {
     if (!name) { api.showToast('Please enter an item name!', 'error'); return; }
     const desc = document.getElementById('custom-item-desc')?.value.trim() || '';
     const artwork = document.getElementById('custom-item-artwork-preview')?.querySelector('img')?.src || '';
+    const isMegaStone = document.getElementById('custom-item-is-mega-stone')?.checked === true;
     let id = document.getElementById('custom-item-edit-id')?.value || '';
     if (!Array.isArray(state.customItems)) state.customItems = [];
     let item;
@@ -2282,10 +2285,10 @@ function saveCustomItemLibraryEntry() {
     }
     if (!id) {
         id = 'ci_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-        item = { id, name, desc, artwork, source:'custom', custom:true };
+        item = { id, name, desc, artwork, isMegaStone, source:'custom', custom:true };
         state.customItems.push(item);
     } else {
-        Object.assign(item, { name, desc, artwork, source:'custom', custom:true });
+        Object.assign(item, { name, desc, artwork, isMegaStone, source:'custom', custom:true });
     }
     const target = pendingSampleSetItemTarget;
     pendingSampleSetItemTarget = null;
