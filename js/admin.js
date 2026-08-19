@@ -65,16 +65,31 @@ function showToast(msg, kind) {
 function icons() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
 
 // ==================== SIGN IN / OUT ====================
+// see js/auth.js's signIn for why this no longer calls email_for_username
+// directly - same fix, duplicated here since this file is deliberately
+// standalone (see header comment above).
 async function signIn(identifier, password) {
     const client = await getClient();
-    let email = identifier.trim();
-    if (!email.includes('@')) {
-        const { data: resolvedEmail, error: rpcError } = await client.rpc('email_for_username', { input_username: email });
-        if (rpcError || !resolvedEmail) throw new Error('Invalid username or password.');
-        email = resolvedEmail;
+    const trimmed = identifier.trim();
+
+    if (trimmed.includes('@')) {
+        const { error } = await client.auth.signInWithPassword({ email: trimmed, password });
+        if (error) throw new Error('Invalid username or password.');
+        return;
     }
-    const { error } = await client.auth.signInWithPassword({ email, password });
-    if (error) throw new Error('Invalid username or password.');
+
+    const { data: result, error: fnError } = await client.functions.invoke('login-with-identifier', {
+        body: { identifier: trimmed, password }
+    });
+    if (fnError || !result?.ok || !result?.session) {
+        throw new Error(result?.error || 'Invalid username or password.');
+    }
+
+    const { error: setError } = await client.auth.setSession({
+        access_token: result.session.access_token,
+        refresh_token: result.session.refresh_token,
+    });
+    if (setError) throw new Error('Invalid username or password.');
 }
 
 async function handleSignInSubmit(e) {
