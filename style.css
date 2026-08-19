@@ -386,7 +386,7 @@
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
-            z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; backdrop-filter: none; -webkit-backdrop-filter: none;
+            z-index: 11000; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; backdrop-filter: none; -webkit-backdrop-filter: none;
         }
         .modal-overlay.active { opacity: 1; pointer-events: all; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
         .modal {
@@ -5570,3 +5570,25 @@ html.reduce-motion, html.reduce-motion * {
     text-underline-offset:2px;
 }
 .sidebar-footer-link:hover { color:var(--text-primary); }
+
+/* ==================== updates modal ==================== */
+.updates-modal .modal-body { padding: 16px 20px 20px; }
+.update-entry { padding: 16px 0; border-bottom: 1px solid var(--border-light); }
+.update-entry:first-child { padding-top: 2px; }
+.update-entry:last-child { border-bottom: 0; padding-bottom: 2px; }
+.update-entry-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.update-entry-header h4 { margin:3px 0 0; font-size:17px; color:var(--text-primary); }
+.update-entry-header time { flex:0 0 auto; font-size:11px; color:var(--text-muted); padding-top:3px; white-space:nowrap; }
+.update-entry-kicker { font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+.update-entry-latest .update-entry-kicker::after { content:'LATEST'; margin-left:8px; padding:2px 6px; border-radius:999px; background:var(--accent); color:#fff; font-size:8px; letter-spacing:.06em; }
+.update-entry ul { margin:10px 0 0 18px; padding:0; color:var(--text-secondary); }
+.update-entry li { margin:6px 0; line-height:1.5; }
+.updates-empty-state { min-height:260px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:var(--text-muted); }
+.updates-empty-state svg { width:34px; height:34px; margin-bottom:10px; color:var(--accent); }
+.updates-empty-state h4 { margin:0 0 5px; color:var(--text-primary); font-size:16px; }
+.updates-empty-state p { margin:0; max-width:320px; font-size:13px; line-height:1.5; }
+@media (max-width:600px) {
+    .updates-modal .modal-body { padding:14px 16px 18px; }
+    .update-entry-header { flex-direction:column; gap:4px; }
+    .update-entry-header time { padding-top:0; }
+}

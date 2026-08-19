@@ -1,0 +1,13 @@
+# Woogidex Updates
+#
+# Add the newest UPDATE block first.
+# Each update can have any number of item= lines.
+# Keep each value on one line.
+
+UPDATE
+version=v1.0.0
+date=August 19, 2026
+title=Woogidex Updates System
+item=Added a dedicated Updates section to the menu.
+item=Updates are now loaded from this editable text file.
+END

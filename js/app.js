@@ -1,4 +1,5 @@
 import { log } from './log.js';
+const { openUpdatesModal, closeUpdatesModal, renderUpdates, loadUpdates } = window;
 import { POKEMON_TYPES, POKEMON_COLORS } from './data.js';
 import * as data from './data.js';
 import * as editor from './editor.js';
@@ -409,6 +410,7 @@ function activateTopLevelView(viewId, options = {}) {
 log.setContext({ state, api });
 
 Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, abilityBlocks, {
+    openUpdatesModal, closeUpdatesModal, renderUpdates, loadUpdates,
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, toggleSidebar, closeSidebar, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,
     setRoute, setPageTitle, activateTopLevelView,
