@@ -590,12 +590,26 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
 
             // Conservative typo correction. Short names get a tighter threshold;
             // longer names can tolerate a few transpositions/typos.
-            const threshold = normalized.length <= 4 ? 1 : normalized.length <= 7 ? 2 : 3;
-            const ratioThreshold = normalized.length <= 5 ? 0.34 : 0.38;
+            const threshold = normalized.length <= 4 ? 1 : normalized.length <= 7 ? 2 : 4;
+            const ratioThreshold = normalized.length <= 5 ? 0.4 : 0.45;
             if (best.distance <= threshold && best.ratio <= ratioThreshold) {
                 return { move: best.move, corrected: true, distance: best.distance };
             }
             return { move: null, corrected: false, distance: best.distance };
+        }
+
+        function normalizeMoveCategoryInput(value) {
+            const v = String(value || '').trim().toLowerCase();
+            if (v.startsWith('phys')) return 'Physical';
+            if (v.startsWith('spec')) return 'Special';
+            if (v.startsWith('stat')) return 'Status';
+            return 'Status';
+        }
+
+        function normalizeMoveTypeInput(value) {
+            const v = String(value || '').trim().toLowerCase();
+            const match = POKEMON_TYPES.find(t => t.toLowerCase() === v);
+            return match || 'Normal';
         }
 
         function parseMoveImportText(text) {
@@ -624,7 +638,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
             const flagText = flags.length ? flags.join(' | ') : 'None';
             const description = (move.desc || move.description || '').trim();
             return [
-                `${move.name} *`,
+                `${move.name} !`,
                 `${move.category || 'Status'} | ${move.type || 'Normal'}`,
                 `${move.basePower || 0} BP | ${accText} ACC | ${move.pp || 10} PP`,
                 flagText,
@@ -669,7 +683,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
         function getExportableMovesText(sort, order) {
             const selected = sort && order ? { sort, order } : getMoveSortOptions();
             const entries = sortLearnsetEntries(state.learnset, selected.sort, selected.order);
-            const names = entries.map(move => `${move.name}${isCustomMove(move) ? '*' : ''}`);
+            const names = entries.map(move => `${move.name}${isCustomMove(move) ? '!' : ''}`);
             const customBlocks = entries.filter(isCustomMove).map(formatCustomMoveForImportExport);
             return names.join('\n') + (customBlocks.length ? `\n\n${customBlocks.join('\n\n')}` : '');
         }
@@ -694,10 +708,21 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
             api.showToast(`Exported ${count} move${count === 1 ? '' : 's'} to the text box.`, 'success');
         }
 
+        function stripCustomMoveMarker(line) {
+            // Accepts the current "!" custom-move marker as well as the legacy
+            // "*" marker, with or without a space before it, so older exports
+            // and hand-typed lists still import cleanly.
+            const trimmed = String(line || '').trim();
+            const match = trimmed.match(/^(.*?)\s*[!*]$/);
+            if (!match) return { isCustom: false, name: trimmed };
+            return { isCustom: true, name: match[1].trim() };
+        }
+
         function parseCustomMoveImportBlock(lines, startIndex) {
             const header = String(lines[startIndex] || '').trim();
-            if (!header.endsWith('*')) return null;
-            const name = header.slice(0, -1).trim();
+            const headerParsed = stripCustomMoveMarker(header);
+            if (!headerParsed.isCustom) return null;
+            const name = headerParsed.name;
             if (!name) return { nextIndex: startIndex + 1, move: null };
 
             const details = [];
@@ -705,7 +730,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
             while (i < lines.length && details.length < 4) {
                 const line = String(lines[i] || '').trim();
                 if (!line) { i++; continue; }
-                if (line.endsWith('*') && details.length < 3) break;
+                if (details.length < 3 && stripCustomMoveMarker(line).isCustom) break;
                 details.push(line);
                 i++;
             }
@@ -742,8 +767,8 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
                 nextIndex: i,
                 move: {
                     name,
-                    type: categoryType[1] || 'Normal',
-                    category: categoryType[0] || 'Status',
+                    type: normalizeMoveTypeInput(categoryType[1]),
+                    category: normalizeMoveCategoryInput(categoryType[0]),
                     basePower: parseStat(stats[0], 0),
                     accuracy: acc,
                     pp,
@@ -780,8 +805,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
             // Read only the first section as the ordered move-name list.
             nameLines.forEach(line => {
                 parseMoveImportText(line).forEach(entry => {
-                    const isCustom = entry.endsWith('*');
-                    const cleanName = (isCustom ? entry.slice(0, -1) : entry).trim();
+                    const { isCustom, name: cleanName } = stripCustomMoveMarker(entry);
                     if (!cleanName) return;
                     const key = normalizeMoveLookupName(cleanName);
                     if (importedByKey.has(key) || customKeys.has(key)) return;
@@ -803,7 +827,7 @@ import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-cor
             for (let i = 0; i < detailLines.length;) {
                 const line = detailLines[i].trim();
                 if (!line) { i++; continue; }
-                if (!line.endsWith('*')) { invalid++; i++; continue; }
+                if (!stripCustomMoveMarker(line).isCustom) { invalid++; i++; continue; }
                 const parsed = parseCustomMoveImportBlock(detailLines, i);
                 if (!parsed || !parsed.move) { invalid++; i++; continue; }
                 const key = normalizeMoveLookupName(parsed.move.name);
@@ -2588,4 +2612,4 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
 
         
 
-export { sortLearnsetEntries, resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, openMoveBrowserModal, filterMoveBrowser, addMoveFromBrowser, toggleMoveBrowserFlag, clearMoveBrowserFilters, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestAbility, findClosestMove, findClosestMoveForImport, parseMoveImportText, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, formatLearnMethodLabel, showGeneratedLearnsetSummary, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, selectMoveBrowserTypeFilter, selectMoveBrowserCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };
+export { sortLearnsetEntries, resetEditingCustomAbilityIndex, getAbilityRole, fetchShowdownData, filterAbilities, filterMoves, renderDropdown, openMoveBrowserModal, filterMoveBrowser, addMoveFromBrowser, toggleMoveBrowserFlag, clearMoveBrowserFilters, hideAbilityDropdownDelayed, hideMoveDropdownDelayed, toggleLevelInput, handleAbilityKey, findClosestAbility, findClosestMove, findClosestMoveForImport, parseMoveImportText, stripCustomMoveMarker, normalizeMoveCategoryInput, normalizeMoveTypeInput, openMoveImportExportModal, exportMovesToText, importMovesFromText, handleMoveKey, addMoveFromInput, addAbility, openCustomAbilityChooser, openCustomAbilityLibraryModal, saveCustomAbilityLibraryEntry, addExistingCustomAbility, editCustomAbilityLibrary, updateAbility, toggleCustomAbilityEdit, finishCustomAbilityEdit, removeAbility, moveAbility, renderAbilities, showAbilityDetail, getSdMoveByName, hydrateLearnsetEntry, rehydrateCurrentLearnsetFromShowdown, addLearnsetMove, removeLearnsetMove, updateMoveMethod, updateMoveLevel, sortLearnset, renderLearnset, buildDonutSVG, renderLearnsetChart, clearLearnsetFilters, addUniversalMoves, getFakemonStats, getFakemonProfile, findSimilarPokemon, classifyLearnsetSource, buildSimilarMovePools, classifyMoveRole, generateMoveRecommendations, openRecommendMovesModal, renderRecommendMovesModal, selectRecommendedMove, generateLearnset, formatLearnMethodLabel, showGeneratedLearnsetSummary, clearMoveset, showMoveDetail, updateCustomAbility, removeCustomAbility, renderCustomAbilities, buildTypeMenuOptions, setTypeDropdownValue, buildCatMenuOptions, setCatDropdownValue, selectCustomMoveType, selectCustomMoveCategory, selectLearnsetTypeFilter, selectLearnsetCategoryFilter, selectMoveBrowserTypeFilter, selectMoveBrowserCategoryFilter, openCustomMoveChooser, addExistingCustomMove, editCustomMoveLibrary, openCustomMoveModal, saveCustomMove, removeCustomMove, renderCustomMoves, getCustomItemLibrary, openCustomItemModal, saveCustomItemLibraryEntry, editCustomItemLibrary, processCustomItemArtworkFile, handleCustomItemArtworkUpload, handleCustomItemArtworkDragOver, handleCustomItemArtworkDragLeave, handleCustomItemArtworkDrop, renderCustomMoveShowcase, selectTeraType, loadCompetitiveMoveUsefulness, escapeHtml, isCustomMove };
