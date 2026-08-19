@@ -1,6 +1,6 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
-import { sortLearnsetEntries } from './editor.js';
+import { sortLearnsetEntries, normalizeMoveCategoryInput, normalizeMoveTypeInput } from './editor.js';
 
 // ==================== import / export ====================
         let pendingCollectionImportFile = null;
@@ -380,7 +380,7 @@ import { sortLearnsetEntries } from './editor.js';
                 const normalNames = abilityGroups[0] ? abilityGroups[0].split(/\s*\/\s*/).map(trim).filter(Boolean) : [];
                 const specialNames = abilityGroups.slice(1).flatMap(group => group.split(/\s*\/\s*/).map(trim).filter(Boolean));
                 [...normalNames, ...specialNames].slice(0, 4).forEach(name => {
-                    const custom = name.endsWith('*');
+                    const custom = /[!*]$/.test(name);
                     result.abilities.push({
                         name: custom ? trim(name.slice(0, -1)) : name,
                         source: custom ? 'custom' : 'sd',
@@ -389,12 +389,13 @@ import { sortLearnsetEntries } from './editor.js';
                     });
                 });
 
-                // custom ability descriptions use: ability name*: description
+                // custom ability descriptions use: ability name!: description
+                // (legacy exports used "ability name*: description")
                 const abilityEnd = dexIndex >= 0 ? dexIndex : lines.length;
                 for (let i = abilitiesIndex + 1; i < abilityEnd; i++) {
                     const line = trim(lines[i]);
                     if (!line) continue;
-                    const match = line.match(/^(.+?)\*:\s*(.*)$/);
+                    const match = line.match(/^(.+?)[!*]:\s*(.*)$/);
                     if (!match) continue;
                     const ability = result.abilities.find(a => a.name.toLowerCase() === trim(match[1]).toLowerCase());
                     if (ability) {
@@ -445,11 +446,12 @@ import { sortLearnsetEntries } from './editor.js';
                 let customSectionStarted = false;
 
                 // the exporter writes all normal moves first, followed by each custom
-                // move's full definition. once the first starred title is encountered,
-                // everything until the next starred title belongs to custom data.
+                // move's full definition. once the first marked title is encountered,
+                // everything until the next marked title belongs to custom data.
+                // accepts the current "!" marker as well as the legacy "*" marker.
                 for (const line of learnLines) {
                     if (!line) continue;
-                    if (line.endsWith('*')) {
+                    if (/[!*]$/.test(line)) {
                         customSectionStarted = true;
                         const name = trim(line.slice(0, -1));
                         if (name && !seen.has(name.toLowerCase())) {
@@ -467,7 +469,7 @@ import { sortLearnsetEntries } from './editor.js';
 
                 for (let i = 0; i < learnLines.length; i++) {
                     const title = learnLines[i];
-                    if (!title.endsWith('*')) continue;
+                    if (!/[!*]$/.test(title)) continue;
                     const name = trim(title.slice(0, -1));
                     const categoryType = learnLines[i + 1] || '';
                     const bpLine = learnLines[i + 2] || '';
@@ -490,7 +492,7 @@ import { sortLearnsetEntries } from './editor.js';
                     const move = {
                         name,
                         source:'custom', custom:true, learnMethod:'none', level:null,
-                        category:trim(categoryMatch[1]), type:trim(categoryMatch[2]),
+                        category:normalizeMoveCategoryInput(categoryMatch[1]), type:normalizeMoveTypeInput(categoryMatch[2]),
                         basePower: /^-$/.test(trim(bpMatch[1])) ? 0 : (parseInt(bpMatch[1], 10) || 0),
                         accuracy: /^-$/.test(accuracyText) ? true : (parseFloat(accuracyText.replace('%','')) || 100),
                         pp: /^-$/.test(trim(bpMatch[3])) ? 0 : (parseInt(bpMatch[3], 10) || 0),
@@ -624,13 +626,13 @@ import { sortLearnsetEntries } from './editor.js';
                 const isCustom = a.source === 'custom' || a.custom === true;
                 return { ...a, role, isCustom };
             });
-            const normalAbilities = abilitySlots.filter(a => !a.role).map(a => `${a.name}${a.isCustom ? '*' : ''}`);
+            const normalAbilities = abilitySlots.filter(a => !a.role).map(a => `${a.name}${a.isCustom ? '!' : ''}`);
             const hiddenAbility = abilitySlots.find(a => a.role === 'Hidden');
             const eventAbility = abilitySlots.find(a => a.role === 'Event');
             const abilityParts = [];
             if (normalAbilities.length) abilityParts.push(normalAbilities.join(' / '));
-            if (hiddenAbility) abilityParts.push(`// ${hiddenAbility.name}${hiddenAbility.isCustom ? '*' : ''}`);
-            if (eventAbility) abilityParts.push(`// ${eventAbility.name}${eventAbility.isCustom ? '*' : ''}`);
+            if (hiddenAbility) abilityParts.push(`// ${hiddenAbility.name}${hiddenAbility.isCustom ? '!' : ''}`);
+            if (eventAbility) abilityParts.push(`// ${eventAbility.name}${eventAbility.isCustom ? '!' : ''}`);
 
             const lines = [];
             lines.push(`Name: ${name}, the ${species}`);
@@ -641,7 +643,7 @@ import { sortLearnsetEntries } from './editor.js';
             lines.push('');
 
             abilityEntries.filter(a => a.source === 'custom' || a.custom === true).forEach(a => {
-                lines.push(`${a.name}${a.source === 'custom' || a.custom === true ? '*' : ''}: ${a.desc || a.description || ''}`);
+                lines.push(`${a.name}${a.source === 'custom' || a.custom === true ? '!' : ''}: ${a.desc || a.description || ''}`);
                 lines.push('');
             });
 
@@ -666,10 +668,10 @@ import { sortLearnsetEntries } from './editor.js';
             vanillaMoves.forEach(m => lines.push(m));
 
             const customMoves = learnset.filter(m => m && m.name && (m.source === 'custom' || m.custom === true));
-            customMoves.forEach(m => lines.push(`${m.name}*`));
+            customMoves.forEach(m => lines.push(`${m.name}!`));
             if (customMoves.length) lines.push('');
             customMoves.forEach((m, index) => {
-                lines.push(`${m.name}*`);
+                lines.push(`${m.name}!`);
                 lines.push(`${m.category || 'Status'} | ${m.type || 'Normal'}`);
                 const acc = (m.accuracy === true || m.accuracy === undefined) ? '-' : (m.accuracy === false ? '-' : `${m.accuracy}%`);
                 lines.push(`${m.basePower || '-'} BP | ${acc} ACC | ${m.pp || '-'} PP`);
