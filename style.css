@@ -3999,6 +3999,24 @@
     color: #fff; font-size: 11px; font-weight: 700;
 }
 
+/* ---- community card: evolution family badge ---- */
+/* shown when a post bundles more than one evolution stage / mega / forme -
+   see community.js collectEvolutionFamily() and renderCommunityEvoBadge().
+   the detail page's own evolution chain reuses your existing .preview-evo-*
+   styles as-is (see board-evolution-chain above), so it needs no CSS here. */
+.community-card-evo-badge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
 .mon-detail-comments-heading { margin: 4px 0 10px; font-size: 14px; }
 .share-view-shell .community-card-author { margin-top: 6px; }
 .share-view-shell .mon-detail-comments,

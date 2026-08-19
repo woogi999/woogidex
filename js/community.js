@@ -82,6 +82,68 @@ function ensureCommunityState() {
     return state.community;
 }
 
+// ==================== evolution family bundling ====================
+// when a Fakemon has evolution stages (or mega/forme variants), each one is
+// its own record in the user's local collection with its own copy of the
+// shared evolutionGraph (see evolution.js persistEvolutionGraph). publishing
+// only the one mon someone clicked "publish" on meant the other stages -
+// which the graph references by *local* fakemonDB id - never made it to the
+// Community Hub at all, so a visitor could never see the full chain.
+//
+// this walks the mon's saved evolutionGraph, resolves every fakemon-kind
+// node back to the full record in state.fakemonDB, and returns the whole
+// family in stage order so it can be published together as one upload.
+function collectEvolutionFamily(mon) {
+    const graph = mon?.evolutionGraph;
+    if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length < 2) {
+        return [{ mon, stage: mon?.evolutionStage || 1, isMega: !!mon?.isMega, isFormeChange: !!mon?.isFormeChange }];
+    }
+    const stages = api.calculateEvolutionStages?.(graph) || {};
+    const seen = new Set();
+    const members = [];
+    graph.nodes.forEach(node => {
+        if (node.kind !== 'fakemon' || !node.refId) return;
+        if (seen.has(String(node.refId))) return;
+        const f = String(node.refId) === String(mon.id) ? mon : (state.fakemonDB || []).find(x => String(x.id) === String(node.refId));
+        if (!f) return; // a vanilla Pokémon node, or a stage that isn't (or is no longer) in this user's collection
+        seen.add(String(node.refId));
+        members.push({ mon: f, stage: stages[node.id] || f.evolutionStage || 1, isMega: !!node.isMega, isFormeChange: !!node.isFormeChange });
+    });
+    if (!members.some(m => String(m.mon.id) === String(mon.id))) {
+        members.push({ mon, stage: mon.evolutionStage || 1, isMega: !!mon.isMega, isFormeChange: !!mon.isFormeChange });
+    }
+    members.sort((a, b) => a.stage - b.stage || String(a.mon.name || '').localeCompare(String(b.mon.name || '')));
+    return members;
+}
+
+// small denormalized summary of every member of a family, embedded on the
+// single published_mons row so the grid card can render evolution/mega/forme
+// thumbnails without any extra fetch.
+function buildFamilySnapshotsPayload(family) {
+    return family.map(({ mon: f, stage, isMega, isFormeChange }) => ({
+        sourceId: String(f.id),
+        name: f.name || 'Unnamed',
+        number: f.number || '',
+        artwork: f.artwork || null,
+        type1: f.type1 || '',
+        type2: f.type2 || '',
+        stage, isMega, isFormeChange
+    }));
+}
+
+// the *full* record for every family member, so clicking a stage/mega/forme
+// in the detail view can swap the live preview board to that mon entirely
+// client-side - same post, same comments/likes/views, just a different
+// snapshot on display. kept out of the slim feed query (openMonDetail's
+// `select('*')` is what actually loads this).
+function buildFamilyFullPayload(family) {
+    return family.map(({ mon: f, stage, isMega, isFormeChange }) => ({
+        sourceId: String(f.id),
+        mon: f,
+        stage, isMega, isFormeChange
+    }));
+}
+
 // ==================== publish / unpublish ====================
 // publishes a snapshot of a Fakemon from the user's own collection. snapshot
 // (not a live link) so edits/deletes in the private collection don't silently
@@ -137,6 +199,13 @@ async function publishSnapshot(mon, rulesChecked = false) {
         }
     }
 
+    // gather every evolution stage / mega / forme reachable from this mon's
+    // saved evolution graph so the whole family goes up as ONE post - a
+    // single published_mons row, with the other stages riding along as
+    // embedded snapshots rather than separate rows.
+    const family = collectEvolutionFamily(mon);
+    const isFamily = family.length > 1;
+
     const payload = {
         user_id: state.user.id,
         author_name: state.user.displayName || state.user.username || state.user.email,
@@ -144,7 +213,10 @@ async function publishSnapshot(mon, rulesChecked = false) {
         author_role: state.user.role || 'user',
         author_badges: state.user.badges || [],
         source_fakemon_id: String(mon.id),
-        fakemon_data: mon
+        fakemon_data: mon,
+        evolution_stage: mon.evolutionStage || 1,
+        family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
+        family_full: isFamily ? buildFamilyFullPayload(family) : []
     };
     const { data: published, error } = await client.from('published_mons').insert(payload).select('id').single();
     if (error) {
@@ -158,8 +230,9 @@ async function publishSnapshot(mon, rulesChecked = false) {
         return;
     }
     const copied = published?.id ? await copyCommunityShareLink(published.id, true) : false;
-    api.showToast?.(`${mon.name} published to the Community Hub!${copied ? ' Share link copied.' : ''}`, 'success');
-    log.info('COMMUNITY', 'Published', { id: published?.id, name: mon.name });
+    const extra = isFamily ? ` (with its ${family.length - 1} other evolution stage${family.length - 1 === 1 ? '' : 's'})` : '';
+    api.showToast?.(`${mon.name} published to the Community Hub!${extra}${copied ? ' Share link copied.' : ''}`, 'success');
+    log.info('COMMUNITY', 'Published', { id: published?.id, name: mon.name, familySize: family.length });
 }
 
 
@@ -181,13 +254,21 @@ async function updatePublishedMon(publishedId, selectedSourceId = '') {
     const mon = state.fakemonDB.find(f => String(f.id) === String(selectedSourceId));
     if (!mon) { api.showToast?.('Could not find that Fakemon in your collection.', 'error'); return; }
 
+    // re-walk the evolution graph from the newly-selected mon so the family
+    // bundled with this post reflects its current stages/megas/formes too.
+    const family = collectEvolutionFamily(mon);
+    const isFamily = family.length > 1;
+
     const payload = {
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
         author_badges: state.user.badges || [],
         fakemon_data: mon,
-        source_fakemon_id: String(mon.id)
+        source_fakemon_id: String(mon.id),
+        evolution_stage: mon.evolutionStage || 1,
+        family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
+        family_full: isFamily ? buildFamilyFullPayload(family) : []
     };
     const { error } = await client.from('published_mons').update(payload).eq('id', publishedId);
     if (error) {
@@ -195,6 +276,7 @@ async function updatePublishedMon(publishedId, selectedSourceId = '') {
         api.showToast?.('Could not update the listing: ' + error.message, 'error');
         return;
     }
+
     closeCommunityUpdateModal();
     api.showToast?.(`${mon.name}'s Community Hub listing was updated!`, 'success');
     log.info('COMMUNITY', 'Updated published listing', { id: publishedId, name: mon.name });
@@ -321,7 +403,7 @@ async function fetchCommunityFeed() {
         const client = await api.getClient();
         const { data, error } = await client
             .from('published_mons')
-            .select('id, user_id, published_at, activity_at, view_count, source_fakemon_id, author_name, author_avatar_url, author_role, author_badges, fakemon_data->>name, fakemon_data->>species, fakemon_data->>number, fakemon_data->>type1, fakemon_data->>type2, fakemon_data->>artwork')
+            .select('id, user_id, published_at, activity_at, view_count, source_fakemon_id, author_name, author_avatar_url, author_role, author_badges, family_snapshots, evolution_stage, fakemon_data->>name, fakemon_data->>species, fakemon_data->>number, fakemon_data->>type1, fakemon_data->>type2, fakemon_data->>artwork')
             .order('activity_at', { ascending: false })
             .limit(100);
         if (error) throw error;
@@ -705,6 +787,7 @@ function renderCommunityGrid() {
                 ${canDelete ? `<button class="card-delete-btn community-unpublish-btn" onclick="unpublishMon('${row.id}', event); event.stopPropagation();" title="${isMine ? 'Unpublish' : 'Remove (staff)'}"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>` : ''}
                 <div class="card-art">${mon.artwork ? `<img src="${mon.artwork}" alt="${escapeHtml(mon.name)}" draggable="false">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">'}</div>
                 <div class="card-name">${escapeHtml(mon.name)}</div>
+                ${renderCommunityEvoBadge(row)}
                 <div class="card-types">
                     ${mon.type1 ? `<span class="type-badge ${type1Class}">${mon.type1}</span>` : ''}
                     ${mon.type2 ? `<span class="type-badge ${type2Class}">${mon.type2}</span>` : ''}
@@ -722,6 +805,72 @@ function renderCommunityGrid() {
             </div>
         `;
     }).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// small text-only badge shown on a community card when this post bundles
+// an evolution family (or mega/forme variants) - no per-stage interaction
+// on the card itself, just a hint that there's more to see once opened.
+function renderCommunityEvoBadge(row) {
+    const members = Array.isArray(row.family_snapshots) ? row.family_snapshots : [];
+    if (members.length < 2) return '';
+    const stages = new Set(members.filter(m => !m.isMega && !m.isFormeChange).map(m => m.stage || 1));
+    const hasMega = members.some(m => m.isMega);
+    const hasForme = members.some(m => m.isFormeChange);
+    const bits = [];
+    if (stages.size > 1) bits.push(`${stages.size}-Stage`);
+    if (hasMega) bits.push('Has Mega');
+    if (hasForme) bits.push('Has Forme Change');
+    if (!bits.length) bits.push(`${members.length} Forms`);
+    return `<span class="community-card-evo-badge">${escapeHtml(bits.join(' \u00b7 '))}</span>`;
+}
+
+// tiny arrow glyph between evolution-chain nodes - same icon as the local
+// editor's own preview-evo-connector (evolution.js PREVIEW_EVO_ARROW_ICON).
+const COMMUNITY_EVO_ARROW_ICON = '<svg class="preview-evo-arrow-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 12h15M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// detail-page evolution chain strip - deliberately reuses the exact same
+// markup/classes as the local editor's own renderPreviewEvolutionChain()
+// (evolution.js) so a bundled community post looks identical to the
+// evolution chain you see while editing, just read-only and cross-mon.
+// clicking a non-active node calls switchCommunityPreviewMon() to swap the
+// live preview board in place - never navigates away, since it's all still
+// the same post/comments/likes/views. self-creates its container (right
+// after #community-detail-author) the first time it's needed - add
+// <div id="community-detail-evo-strip"></div> there yourself if you'd
+// rather control exactly where it sits.
+function renderCommunityDetailEvoStrip(row) {
+    let container = document.getElementById('community-detail-evo-strip');
+    if (!container) {
+        const author = document.getElementById('community-detail-author');
+        if (!author?.parentNode) return;
+        container = document.createElement('div');
+        container.id = 'community-detail-evo-strip';
+        author.parentNode.insertBefore(container, author.nextSibling);
+    }
+    const members = Array.isArray(row.family_full) ? row.family_full : [];
+    if (members.length < 2) { container.innerHTML = ''; container.style.display = 'none'; return; }
+    container.style.display = '';
+    const activeId = ensureCommunityState().openMonActiveSourceId || String(row.source_fakemon_id || '');
+    const ordered = members.slice().sort((a, b) => (a.stage || 1) - (b.stage || 1));
+    const parts = ordered.map((entry, i) => {
+        const mon = entry.mon || {};
+        const isCurrent = entry.sourceId === activeId;
+        const label = entry.isMega ? 'Mega' : (entry.isFormeChange ? 'Forme' : `Stage ${entry.stage || 1}`);
+        const typesHtml = [mon.type1, mon.type2].filter(Boolean).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${escapeHtml(t)}</span>`).join('');
+        const metaBits = [mon.number, mon.species].filter(Boolean);
+        const titleText = isCurrent ? 'Currently viewing' : `View ${mon.name || 'this stage'}`;
+        const node = `<button type="button" class="preview-evo-node${isCurrent ? ' current' : ''}" ${isCurrent ? 'disabled' : `onclick="switchCommunityPreviewMon('${escapeHtml(entry.sourceId)}')"`} title="${escapeHtml(titleText)}">
+            <span class="preview-evo-stage">${escapeHtml(label)}</span>
+            <div class="preview-evo-sprite-wrap">${mon.artwork ? `<img src="${escapeHtml(mon.artwork)}" alt="${escapeHtml(mon.name || '')}">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="">'}</div>
+            <span class="preview-evo-name">${escapeHtml(mon.name || 'Unnamed')}</span>
+            ${metaBits.length ? `<span class="preview-evo-meta">${escapeHtml(metaBits.join(' \u00b7 '))}</span>` : ''}
+            ${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}
+        </button>`;
+        if (i === ordered.length - 1) return node;
+        return node + `<div class="preview-evo-connector">${COMMUNITY_EVO_ARROW_ICON}</div>`;
+    }).join('');
+    container.innerHTML = `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div><div class="preview-evo-row">${parts}</div></div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -782,6 +931,49 @@ function getCommunityViewerKey() {
 //   $$;
 //   grant execute on function public.increment_published_mon_view(uuid, text) to anon, authenticated;
 //   -- and swap the .rpc() call below back to passing both p_published_id and p_viewer_key.
+// renders a Fakemon snapshot into the read-only community preview board.
+// shared by openMonDetail (first load) and switchCommunityPreviewMon
+// (clicking an evolution/mega/forme chip) so both stay in sync.
+function renderCommunityPreviewBoard(mon) {
+    if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
+    state.isCommunityPreview = true;
+    state.editingId = null;
+    api.loadFakemonIntoEditor(mon);
+    api.updatePreview?.();
+
+    const source = document.getElementById('pokedex-board-container');
+    const target = document.getElementById('community-detail-board');
+    if (source && target) {
+        target.innerHTML = source.innerHTML.replace(/id="pokedex-board-export"/g, 'id="pokedex-board-community"');
+        const shinyToggle = target.querySelector('#board-artwork-shiny-toggle');
+        if (shinyToggle) {
+            shinyToggle.setAttribute('onclick', 'toggleCommunityPreviewArtworkMode(event)');
+            shinyToggle.removeAttribute('id');
+        }
+        // community detail is a read-only copy of the editor preview. keep its
+        // artwork toggle independent from the hidden editor board so clicks
+        // always update the board the user is actually looking at.
+        setCommunityPreviewArtworkMode(state.previewArtworkMode || 'normal');
+    }
+    api.setPageTitle?.(mon.name ? `${mon.name} (Community)` : 'Community Hub');
+    const titleEl = document.getElementById('community-detail-title');
+    if (titleEl) titleEl.textContent = mon.name || 'Fakemon';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// clicking an evolution stage / mega / forme chip on a bundled post swaps
+// the live preview board to that mon - same post underneath (same id, same
+// comments/likes/views), just a different snapshot on display.
+function switchCommunityPreviewMon(sourceId) {
+    const cs = ensureCommunityState();
+    const row = cs.openMonRow;
+    const entry = (row?.family_full || []).find(m => m.sourceId === String(sourceId));
+    if (!entry || cs.openMonActiveSourceId === String(sourceId)) return;
+    cs.openMonActiveSourceId = String(sourceId);
+    renderCommunityPreviewBoard(entry.mon);
+    renderCommunityDetailEvoStrip(row);
+}
+
 async function openMonDetail(publishedId, options = {}) {
     const cs = ensureCommunityState();
     let row = cs.mons.find(m => m.id === publishedId);
@@ -808,42 +1000,25 @@ async function openMonDetail(publishedId, options = {}) {
     cs.openMonId = publishedId;
     cs.openMonRow = row;
     if (!options.preserveHash) history.replaceState(null, '', communityShareUrl(publishedId));
-    const mon = row.fakemon_data || {};
-    api.setPageTitle?.(mon.name ? `${mon.name} (Community)` : 'Community Hub');
 
-    // cancel any pending editor autosave so switching into this read-only
-    // preview can never commit as a new collection entry, and mark this as
-    // a non-editable route the same way the share page does.
-    if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
-    state.isCommunityPreview = true;
-    state.editingId = null;
-    api.loadFakemonIntoEditor(mon);
-    api.updatePreview?.();
+    // if opened via an evolution/mega/forme chip (options.stage), show that
+    // family member's snapshot first instead of the post's default mon.
+    const familyFull = Array.isArray(row.family_full) ? row.family_full : [];
+    const preselect = options.stage ? familyFull.find(m => m.sourceId === String(options.stage)) : null;
+    const mon = preselect ? preselect.mon : (row.fakemon_data || {});
+    cs.openMonActiveSourceId = preselect ? preselect.sourceId : String(row.source_fakemon_id || '');
 
-    const source = document.getElementById('pokedex-board-container');
-    const target = document.getElementById('community-detail-board');
-    if (source && target) {
-        target.innerHTML = source.innerHTML.replace(/id="pokedex-board-export"/g, 'id="pokedex-board-community"');
-        const shinyToggle = target.querySelector('#board-artwork-shiny-toggle');
-        if (shinyToggle) {
-            shinyToggle.setAttribute('onclick', 'toggleCommunityPreviewArtworkMode(event)');
-            shinyToggle.removeAttribute('id');
-        }
-        // community detail is a read-only copy of the editor preview. keep its
-        // artwork toggle independent from the hidden editor board so clicks
-        // always update the board the user is actually looking at.
-        setCommunityPreviewArtworkMode(state.previewArtworkMode || 'normal');
-    }
+    renderCommunityPreviewBoard(mon);
 
     api.exitProfileRoute?.();
     api.activateTopLevelView?.('community-detail-view');
 
-    document.getElementById('community-detail-title').textContent = mon.name || 'Fakemon';
     document.getElementById('community-detail-author').innerHTML = `
         ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
         <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">Published by ${escapeHtml(row.author_name)}</span>
         ${renderBadgeRow(row.author_badges, 13)}
     `;
+    renderCommunityDetailEvoStrip(row);
 
     const isMine = state.user && row.user_id === state.user.id;
     const canDelete = isMine || api.isStaff?.();
@@ -1015,4 +1190,5 @@ export {
     openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment, handleCommunityHashRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
     importCommunityMonToCollection, toggleCommunityExportMenu, closeCommunityExportMenu, toggleCommunityLike, openCommunityUpdateModal, closeCommunityUpdateModal, confirmCommunityUpdate,
     renderCommunityGridSkeleton, renderCommentsSkeleton, selectCommunityUpdateMon, sortCommunityUpdateCollection, filterCommunityUpdateCollection,
+    switchCommunityPreviewMon,
 };

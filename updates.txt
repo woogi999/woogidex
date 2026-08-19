@@ -4,6 +4,14 @@
 # Each update can have any number of item= lines.
 # Keep each value on one line.
 
+
+UPDATE
+version=v1.0.1
+date=August 20, 2026
+title=some stuff
+item=Added support for evo / mega / forme uploads in community tabs
+item=Some updates
+
 UPDATE
 version=v1.0.0
 date=August 19, 2026
