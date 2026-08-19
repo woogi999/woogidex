@@ -209,6 +209,179 @@ function resetEditor() {
             input.value = clampBaseStatValue(input.value);
         }
 
+// ==================== stat templates ====================
+        // Quick-start stat spreads for common competitive/thematic archetypes.
+        // Base stat total is left up to the user afterward - these are just
+        // starting shapes, not a "correct" BST for any particular tier.
+        const STAT_TEMPLATES = [
+            { id: 'balanced',      label: 'Balanced',        stats: { hp: 80, atk: 80,  def: 80,  spa: 80,  spd: 80,  spe: 80  } },
+            { id: 'glass-cannon',  label: 'Glass Cannon',    stats: { hp: 55, atk: 130, def: 55,  spa: 60,  spd: 60,  spe: 110 } },
+            { id: 'special-glass', label: 'Special Attacker', stats: { hp: 60, atk: 55,  def: 60,  spa: 130, spd: 65,  spe: 100 } },
+            { id: 'physical-wall', label: 'Physical Wall',   stats: { hp: 110,atk: 60,  def: 140, spa: 55,  spd: 80,  spe: 45  } },
+            { id: 'special-wall',  label: 'Special Wall',    stats: { hp: 110,atk: 60,  def: 80,  spa: 55,  spd: 140, spe: 45  } },
+            { id: 'mixed-tank',    label: 'Mixed Tank',      stats: { hp: 100,atk: 85,  def: 90,  spa: 85,  spd: 90,  spe: 60  } },
+            { id: 'speedster',     label: 'Speedster',       stats: { hp: 60, atk: 90,  def: 55,  spa: 60,  spd: 65,  spe: 130 } },
+            { id: 'trick-room',    label: 'Trick Room',      stats: { hp: 110,atk: 120, def: 90,  spa: 70,  spd: 90,  spe: 25  } },
+            { id: 'support',       label: 'Bulky Support',   stats: { hp: 95, atk: 55,  def: 95,  spa: 65,  spd: 105, spe: 55  } },
+            { id: 'pivot',         label: 'Fast Pivot',      stats: { hp: 70, atk: 75,  def: 70,  spa: 75,  spd: 70,  spe: 115 } },
+            { id: 'legendary',     label: 'Legendary (High BST)', stats: { hp: 106,atk: 130, def: 90,  spa: 110, spd: 90,  spe: 104 } },
+            { id: 'starter-final', label: 'Starter (Fully Evolved)', stats: { hp: 78, atk: 84,  def: 78,  spa: 109, spd: 85,  spe: 100 } },
+            { id: 'little-cup',    label: 'Little Cup (Low BST)', stats: { hp: 40, atk: 50,  def: 40,  spa: 45,  spd: 40,  spe: 55  } }
+        ];
+
+        function populateStatTemplateOptions() {
+            const select = document.getElementById('stat-template-select');
+            if (!select) return;
+            select.innerHTML = '<option value="">Choose a template…</option>' +
+                STAT_TEMPLATES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+            if (!select.dataset.bstSyncBound) {
+                select.dataset.bstSyncBound = 'true';
+                select.addEventListener('change', () => {
+                    const bstInput = document.getElementById('stat-template-bst');
+                    const template = STAT_TEMPLATES.find(t => t.id === select.value);
+                    if (bstInput) bstInput.placeholder = template
+                        ? `BST ${Object.values(template.stats).reduce((a, b) => a + b, 0)}`
+                        : 'BST';
+                });
+            }
+        }
+
+        function applyStatTemplate() {
+            const select = document.getElementById('stat-template-select');
+            const templateId = select?.value;
+            if (!templateId) {
+                api.showToast?.('Pick a stat template first.', 'info');
+                return;
+            }
+            const template = STAT_TEMPLATES.find(t => t.id === templateId);
+            if (!template) return;
+
+            const statKeys = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
+            const defaultBst = statKeys.reduce((sum, k) => sum + template.stats[k], 0);
+
+            const bstInput = document.getElementById('stat-template-bst');
+            const rawTarget = bstInput?.value?.trim();
+            const targetBst = rawTarget ? clampTemplateBstValue(rawTarget) : defaultBst;
+            if (rawTarget && bstInput) bstInput.value = targetBst;
+
+            const scaledStats = scaleStatsToBst(template.stats, statKeys, targetBst);
+
+            statKeys.forEach(stat => {
+                const input = document.getElementById('stat-' + stat);
+                if (input) input.value = scaledStats[stat];
+            });
+            updateEditorStats();
+
+            const actualBst = statKeys.reduce((sum, k) => sum + scaledStats[k], 0);
+            api.showToast?.(`Applied "${template.label}" (BST ${actualBst}).`, 'success');
+        }
+
+        // clamps a user-typed target BST to a sane range: at least 6 (1 per
+        // stat, the minimum a base stat can be) and at most 1530 (255 per stat).
+        function clampTemplateBstValue(value) {
+            const parsed = Number.parseInt(String(value).replace(/[^0-9-]/g, ''), 10);
+            if (!Number.isFinite(parsed)) return 6 * 100;
+            return Math.max(6, Math.min(1530, parsed));
+        }
+
+        // scales a template's stat spread so its total matches targetBst as
+        // closely as possible while keeping the template's relative proportions
+        // and respecting the 1-255 base stat bounds. uses the largest-remainder
+        // method so the rounded stats sum to targetBst exactly whenever that's
+        // achievable within the per-stat bounds.
+        function scaleStatsToBst(templateStats, statKeys, targetBst) {
+            const sourceTotal = statKeys.reduce((sum, k) => sum + templateStats[k], 0) || 1;
+            const scale = targetBst / sourceTotal;
+
+            const raw = {};
+            const floor = {};
+            const remainder = [];
+            statKeys.forEach(stat => {
+                const scaled = Math.max(1, Math.min(255, templateStats[stat] * scale));
+                raw[stat] = scaled;
+                floor[stat] = Math.max(1, Math.min(255, Math.floor(scaled)));
+                remainder.push({ stat, frac: scaled - Math.floor(scaled) });
+            });
+
+            let currentTotal = statKeys.reduce((sum, k) => sum + floor[k], 0);
+            let deficit = targetBst - currentTotal;
+
+            // distribute the remaining +1s to the stats with the largest
+            // fractional remainder first (largest-remainder rounding).
+            remainder.sort((a, b) => b.frac - a.frac);
+            for (const { stat } of remainder) {
+                if (deficit <= 0) break;
+                if (floor[stat] < 255) { floor[stat] += 1; deficit -= 1; }
+            }
+            // if we overshot the achievable range (e.g. target too high/low
+            // for the bounds), spread the remaining difference wherever there's
+            // still room, in original stat order.
+            if (deficit > 0) {
+                for (const stat of statKeys) {
+                    while (deficit > 0 && floor[stat] < 255) { floor[stat] += 1; deficit -= 1; }
+                    if (deficit <= 0) break;
+                }
+            } else if (deficit < 0) {
+                for (const stat of statKeys) {
+                    while (deficit < 0 && floor[stat] > 1) { floor[stat] -= 1; deficit += 1; }
+                    if (deficit >= 0) break;
+                }
+            }
+
+            return floor;
+        }
+
+// ==================== stat bar sliders ====================
+        // lets the stat bar itself act as a draggable slider: clicking or
+        // dragging anywhere along the bar sets that stat to the corresponding
+        // value (1-255), in addition to typing directly into the number input.
+        function statValueFromPointer(barEl, clientX) {
+            const rect = barEl.getBoundingClientRect();
+            const ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
+            const clamped = Math.max(0, Math.min(1, ratio));
+            return clampBaseStatValue(Math.round(clamped * 255));
+        }
+
+        function setStatFromBar(barEl, clientX) {
+            const stat = barEl.closest('.editor-stat-row')?.dataset?.stat;
+            if (!stat) return;
+            const input = document.getElementById('stat-' + stat);
+            if (!input) return;
+            input.value = statValueFromPointer(barEl, clientX);
+            updateEditorStats();
+        }
+
+        function initStatBarSliders() {
+            document.querySelectorAll('.editor-stat-bar-bg').forEach(barEl => {
+                if (barEl.dataset.sliderBound) return;
+                barEl.dataset.sliderBound = 'true';
+
+                let dragging = false;
+
+                const onMove = (event) => {
+                    if (!dragging) return;
+                    const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+                    setStatFromBar(barEl, clientX);
+                };
+                const onUp = () => {
+                    if (!dragging) return;
+                    dragging = false;
+                    barEl.classList.remove('dragging');
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                };
+
+                barEl.addEventListener('pointerdown', (event) => {
+                    dragging = true;
+                    barEl.classList.add('dragging');
+                    setStatFromBar(barEl, event.clientX);
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                    event.preventDefault();
+                });
+            });
+        }
+
 // ==================== stats ====================
         function updateEditorStats() {
             const level = parseInt(document.getElementById('editor-level').value) || 100;
@@ -1171,4 +1344,4 @@ function updatePreview() {
 
 
 
-export { getNextPokedexNumber, resetEditor, loadFakemonIntoEditor, setPreviewArtworkMode, setCollectionShinyPreview, toggleCollectionShinyPreview, updateCollectionShinyPreviewUI, updateEditorStats, updateStats, getSpriteUrl, updateBulkComparison, handleArtworkUpload, handleArtworkDragOver, handleArtworkDragLeave, handleArtworkDrop, handleEggGroupChange, getEggGroupValue, setEggGroupValue, getGenderRatioValue, setGenderRatioValue, toggleGenderless, genderSliderChanged, genderMaleInputChanged, genderFemaleInputChanged, updateGenderBar, getFlagLabels, renderMoveTag, updatePreview, handleHeightInput, handleWeightInput, convertHeight, convertWeight, getHeightDisplay, getWeightDisplay, getTypeDamageMultiplier, renderTypeEffectiveness };
+export { getNextPokedexNumber, resetEditor, loadFakemonIntoEditor, setPreviewArtworkMode, setCollectionShinyPreview, toggleCollectionShinyPreview, updateCollectionShinyPreviewUI, updateEditorStats, updateStats, getSpriteUrl, updateBulkComparison, STAT_TEMPLATES, populateStatTemplateOptions, applyStatTemplate, initStatBarSliders, scaleStatsToBst, clampTemplateBstValue, handleArtworkUpload, handleArtworkDragOver, handleArtworkDragLeave, handleArtworkDrop, handleEggGroupChange, getEggGroupValue, setEggGroupValue, getGenderRatioValue, setGenderRatioValue, toggleGenderless, genderSliderChanged, genderMaleInputChanged, genderFemaleInputChanged, updateGenderBar, getFlagLabels, renderMoveTag, updatePreview, handleHeightInput, handleWeightInput, convertHeight, convertWeight, getHeightDisplay, getWeightDisplay, getTypeDamageMultiplier, renderTypeEffectiveness };

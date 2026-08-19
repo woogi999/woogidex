@@ -390,9 +390,19 @@
 </div>
 
                         <div id="tab-stats" class="tab-content" style="display: none;">
-                            <div class="form-group">
-                                <label>Level</label>
-                                <input type="number" id="editor-level" min="1" max="100" value="100" oninput="updateEditorStats()" style="width:80px;">
+                            <div class="stat-toolbar-row">
+                                <div class="form-group stat-toolbar-level">
+                                    <label>Level</label>
+                                    <input type="number" id="editor-level" min="1" max="100" value="100" oninput="updateEditorStats()" style="width:80px;">
+                                </div>
+                                <div class="form-group stat-toolbar-template">
+                                    <label>Stat Template</label>
+                                    <div class="stat-template-row">
+                                        <select id="stat-template-select" class="stat-template-select"></select>
+                                        <input type="number" id="stat-template-bst" class="stat-template-bst-input" min="6" max="1530" step="1" placeholder="BST" title="Target Base Stat Total for the template (leave blank to use its default BST)">
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="applyStatTemplate()">Apply Template</button>
+                                    </div>
+                                </div>
                             </div>
                             <div id="editor-stat-bars">
                                 <div class="editor-stat-row" data-stat="hp">
@@ -879,7 +889,7 @@
             </div>
             <div class="modal-body policy-body">
                 <p><strong>Woogidex</strong></p>
-                <p>Created by <strong>Woogi</strong><br>Lead Backend: <strong>gghrvy</strong><br>Placeholder Art &amp; Sprites: <strong>Enderwither02</strong></p>
+                <p>Created by <strong><a href="https://github.com/woogi999" target="_blank" rel="noopener noreferrer" class="credits-link">Woogi</a></strong><br>Lead Backend: <strong><a href="https://github.com/gghrvy" target="_blank" rel="noopener noreferrer" class="credits-link">gghrvy</a></strong><br>Placeholder Art &amp; Sprites: <strong>Enderwither02</strong></p>
                 <h4>Attributions</h4>
                 <p>Woogidex is a fan-made, unofficial project. Pokémon and related names, characters, and other intellectual property are owned by their respective rights holders.</p>
                 <h4>Disclaimer</h4>
