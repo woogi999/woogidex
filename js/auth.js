@@ -191,21 +191,37 @@ async function signUp(username, password, email, tosAccepted) {
     return data;
 }
 
-// resolves a username to its account's email via a security-definer RPC
-// (profiles.username is public, but auth.users.email is not - the RPC is the
-// one narrow, deliberate exception). falls back to treating the identifier
-// as an email directly if it contains "@".
+// email logins go straight to Supabase as before. username logins go
+// through the login-with-identifier edge function instead of the old
+// email_for_username RPC - that RPC returned the real email address to
+// whoever called it, with no auth check, which meant anyone could harvest
+// every user's email by calling it directly with any username. the edge
+// function does the username->email lookup AND the sign-in server-side and
+// only ever returns a session or a generic failure - the email itself
+// never appears in any response this client (or anyone else) receives.
 async function signIn(identifier, password) {
     const client = await getClient();
-    let email = identifier.trim();
-    if (!email.includes('@')) {
-        const { data: resolvedEmail, error: rpcError } = await client.rpc('email_for_username', { input_username: email });
-        if (rpcError) { log.error('AUTH', 'Username lookup failed', rpcError); throw new Error('Invalid username or password.'); }
-        if (!resolvedEmail) throw new Error('Invalid username or password.');
-        email = resolvedEmail;
+    const trimmed = identifier.trim();
+
+    if (trimmed.includes('@')) {
+        const { data, error } = await client.auth.signInWithPassword({ email: trimmed, password });
+        if (error) { log.error('AUTH', 'Sign in failed', error); throw new Error('Invalid username or password.'); }
+        return data;
     }
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
-    if (error) { log.error('AUTH', 'Sign in failed', error); throw new Error('Invalid username or password.'); }
+
+    const { data: result, error: fnError } = await client.functions.invoke('login-with-identifier', {
+        body: { identifier: trimmed, password }
+    });
+    if (fnError || !result?.ok || !result?.session) {
+        log.error('AUTH', 'Sign in failed', fnError || result);
+        throw new Error(result?.error || 'Invalid username or password.');
+    }
+
+    const { data, error: setError } = await client.auth.setSession({
+        access_token: result.session.access_token,
+        refresh_token: result.session.refresh_token,
+    });
+    if (setError) { log.error('AUTH', 'Session hydration failed', setError); throw new Error('Invalid username or password.'); }
     return data;
 }
 
