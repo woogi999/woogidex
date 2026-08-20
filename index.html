@@ -191,7 +191,12 @@
                         <div id="tab-basic" class="tab-content">
                             <div class="form-group">
                                 <label>Pokemon Name</label>
-                                <input type="text" id="fakemon-name" placeholder="e.g., Flareon" oninput="updatePreview()">
+                                <div class="name-input-row">
+                                    <input type="text" id="fakemon-name" placeholder="e.g., Flareon" oninput="updatePreview()">
+                                    <button type="button" id="name-roll-btn" class="name-roll-btn" title="Suggest a name based on this Fakemon's type, ability, and species" onclick="openNameRollPopover(event)">
+                                        <i data-lucide="dices"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div class="form-group species-evo-row">
                                 <div class="species-field-wrap">

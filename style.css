@@ -5049,6 +5049,44 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96
 .form-group label { transition: color 0.15s ease; }
 .form-group:focus-within label { color: var(--text-primary); }
 
+/* ==================== name generator dice button ==================== */
+.name-input-row { display: flex; align-items: stretch; gap: 8px; }
+.name-input-row input { flex: 1; min-width: 0; }
+.name-roll-btn {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    width: 40px; border: 1px solid var(--border); border-radius: 9px;
+    background: var(--bg-input); color: var(--text-secondary); cursor: pointer;
+    transition: border-color .15s ease, color .15s ease, transform .15s ease, background .15s ease;
+}
+.name-roll-btn:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+.name-roll-btn:active { transform: translateY(0) scale(.94); }
+.name-roll-btn svg { width: 17px; height: 17px; }
+
+.name-roll-popover {
+    z-index: 1200; width: 220px; max-width: calc(100vw - 16px);
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 12px 28px rgba(0,0,0,.18); padding: 8px; animation: fadeInUp .18s ease both;
+}
+.name-roll-popover-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 4px 6px; font: 700 10px/1 'JetBrains Mono', monospace;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted);
+}
+.name-roll-reroll {
+    display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+    border: none; border-radius: 7px; background: transparent; color: var(--text-secondary); cursor: pointer;
+    transition: background .15s ease, color .15s ease, transform .15s ease;
+}
+.name-roll-reroll:hover { background: var(--bg-input); color: var(--accent); transform: rotate(20deg); }
+.name-roll-reroll svg { width: 14px; height: 14px; }
+.name-roll-list { display: flex; flex-direction: column; gap: 3px; }
+.name-roll-option {
+    text-align: left; padding: 7px 9px; border: none; border-radius: 8px;
+    background: transparent; color: var(--text-primary); font: 600 13px 'Exo 2', sans-serif;
+    cursor: pointer; transition: background .12s ease, padding-left .12s ease;
+}
+.name-roll-option:hover { background: var(--bg-input); padding-left: 12px; color: var(--accent); }
+
 .color-option { transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.18s ease, box-shadow 0.18s ease; }
 .color-option.selected { animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
