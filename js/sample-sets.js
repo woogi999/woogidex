@@ -170,6 +170,12 @@ import { updatePreview } from './editor-core.js';
         const SAMPLE_SET_SELF_KO_MOVES = new Set([
             'Explosion','Self-Destruct','Misty Explosion','Final Gambit','Memento','Healing Wish','Lunar Dance'
         ]);
+        // moves that are legal and can be genuinely useful (Rest is a great move on
+        // real Pokemon), but should never be picked by the automatic sample-set
+        // generator specifically. kept separate from SAMPLE_SET_BANNED_MOVES because
+        // that list also affects sampleMoveIsBanned()/manual-move legality messaging;
+        // this one only ever gates automatic set-building move pools.
+        const SAMPLE_SET_AUTOGEN_BANNED_MOVES = new Set(['Rest']);
         // moves that cost the user a huge, fixed chunk of their own max HP to use
         // (independent of recoil-from-damage-dealt, which scales with the hit and is
         // penalized separately). these are especially bad on a set that wants to set up
@@ -420,10 +426,10 @@ import { updatePreview } from './editor-core.js';
             const fast = speed >= 100;
             const veryFast = speed >= 115;
             const slow = speed <= 65;
-            const hasPhysicalSTAB = physical.some(m => types.includes(m.type) && sampleMoveIsActuallyUseful(m));
-            const hasSpecialSTAB = special.some(m => types.includes(m.type) && sampleMoveIsActuallyUseful(m));
-            const goodPhysical = physical.filter(sampleMoveIsActuallyUseful);
-            const goodSpecial = special.filter(sampleMoveIsActuallyUseful);
+            const hasPhysicalSTAB = physical.some(m => types.includes(m.type) && sampleMoveIsActuallyUseful(m, profile));
+            const hasSpecialSTAB = special.some(m => types.includes(m.type) && sampleMoveIsActuallyUseful(m, profile));
+            const goodPhysical = physical.filter(m => sampleMoveIsActuallyUseful(m, profile));
+            const goodSpecial = special.filter(m => sampleMoveIsActuallyUseful(m, profile));
             const abilityText = abilities.join(' ').toLowerCase();
 
             const scores = {
@@ -441,7 +447,7 @@ import { updatePreview } from './editor-core.js';
             scores.specialSweeper += goodSpecial.length * 7 + (hasSpecialSTAB ? 12 : 0);
             scores.wallbreaker += Math.max(0, stats.atk - 90) * 0.55 + Math.max(0, stats.spa - 90) * 0.55;
             scores.wallbreaker += (goodPhysical.length + goodSpecial.length) * 3;
-            scores.wallbreaker += damaging.filter(m => (m.basePower || 0) >= 100 && sampleMoveIsActuallyUseful(m)).length * 7;
+            scores.wallbreaker += damaging.filter(m => (m.basePower || 0) >= 100 && sampleMoveIsActuallyUseful(m, profile)).length * 7;
 
             // speed is meaningful only when the offensive profile can capitalize on it.
             if (fast) {
@@ -736,7 +742,16 @@ import { updatePreview } from './editor-core.js';
             // a damaging move must use the offensive category the set is built around.
             // this is a hard compatibility rule: it prevents things like eruption from
             // appearing on a physical sweeper simply because its raw BP is high.
-            if (sampleIsDamaging(move)) {
+            //
+            // pivot moves are exempt from this: a pivot move's job is the switch
+            // utility (momentum/chip), not raw offensive alignment, so U-turn/Volt
+            // Switch/Flip Turn must never be excluded from a pivot set just because
+            // the Fakemon's better attacking stat happens to be the other category.
+            // Without this exemption, a Fakemon whose only pivot move is the "wrong"
+            // category for its higher attacking stat could never build a pivot set
+            // at all (or lose that pivot move during selection), which is exactly
+            // the "pivot sets end up with no pivot move" bug.
+            if (sampleIsDamaging(move) && !sampleMoveKind(move).pivot) {
                 const category = sampleRoleAttackCategory(profile, role);
                 if (category !== 'either' && move.category !== category) return false;
             }
@@ -1040,7 +1055,7 @@ import { updatePreview } from './editor-core.js';
         function sampleIsPassiveProfile(profile, role) {
             if (!['defensive','support','hazard'].includes(role)) return false;
 
-            const damaging = profile.moves.filter(m => sampleIsDamaging(m) && sampleMoveIsActuallyUseful(m));
+            const damaging = profile.moves.filter(m => sampleIsDamaging(m) && sampleMoveIsActuallyUseful(m, profile, role));
             const strongAttacks = damaging.filter(m => (m.basePower || 0) >= 80).length;
             const atk = Number(profile.stats.atk || 0);
             const spa = Number(profile.stats.spa || 0);
@@ -1171,13 +1186,6 @@ import { updatePreview } from './editor-core.js';
             'physicalSweeper','specialSweeper','setupSweeper','wallbreaker'
         ]);
 
-        // rest is legitimate on some bulky/defensive strategies, but it should not
-        // consume a slot on an offensive sweeper when that slot can provide coverage
-        // or another offensive tool. sleep talk can still be used manually.
-        const SAMPLE_SET_OFFENSIVE_NO_REST_ROLES = new Set([
-            'physicalSweeper','specialSweeper','setupSweeper','wallbreaker'
-        ]);
-
         function sampleHasNaturalCoverageOptions(profile, role) {
             const cache = sampleGenerationMemo?.naturalCoverage;
             const key = role || '';
@@ -1215,7 +1223,7 @@ import { updatePreview } from './editor-core.js';
             // never let a two-turn attack enter an automatic coverage slot.
             // its raw BP is not a meaningful representation of its competitive role.
             if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name)) return finish(false);
-            if (!sampleMoveIsActuallyUseful(move)) return finish(false);
+            if (!sampleMoveIsActuallyUseful(move, profile)) return finish(false);
 
             // trapping damage is not generic coverage. fire spin / whirlpool /
             // magma storm / etc. need an actual trapping plan.
@@ -1263,7 +1271,7 @@ import { updatePreview } from './editor-core.js';
             if (!sampleMoveCompatibleWithRole(move, profile, role)) return -10000;
             if (SAMPLE_SET_BAD_DEFAULT_MOVES.has(move.name)) return -9000;
             if (SAMPLE_SET_NEVER_AUTO_COVERAGE_MOVES.has(move.name) && move.name === 'Belch') return -9000;
-            if (move.name === 'Rest' && SAMPLE_SET_OFFENSIVE_NO_REST_ROLES.has(role)) return -9000;
+            if (SAMPLE_SET_AUTOGEN_BANNED_MOVES.has(move.name)) return -9000;
             if (move.name === 'Tera Blast' && !sampleTeraBlastAllowed(profile, role, chosen)) return -9000;
             if (kind.selfKO) return -8500;
 
@@ -1321,7 +1329,7 @@ import { updatePreview } from './editor-core.js';
                 else if (typeof move.accuracy === 'number') score += (move.accuracy / 100) * SAMPLE_SET_CONFIG.move.accuracy;
                 if (move.priority > 0) score += SAMPLE_SET_CONFIG.move.priority;
                 if (req.attack === move.category) score += 15;
-                if (!sampleMoveIsActuallyUseful(move)) score -= 25;
+                if (!sampleMoveIsActuallyUseful(move, profile, role)) score -= 25;
                 if (effBp < 60) score -= SAMPLE_SET_CONFIG.move.lowPowerPenalty;
                 // big self-damage costs are far worse on a set that needs to survive
                 // multiple turns (setup sweepers, bulky attackers) than on a wallbreaker
@@ -1625,15 +1633,29 @@ import { updatePreview } from './editor-core.js';
             return finish(true);
         }
 
-        function samplePickMoves(profile, role, seed) {
+        // roles whose entire identity depends on picking a specific move *kind*
+        // (a hazard move, a pivot move). the beam search below scores a completed
+        // set, but nothing stopped a mid-search prune from throwing away every
+        // branch that still contained that required move before slot 4 was ever
+        // reached, if enough non-required branches simply out-scored it in the
+        // meantime (e.g. two strong STAB attacks out-scoring U-turn on raw
+        // power). sampleSetPartialViability rejects a branch for lacking the
+        // required kind only once chosen.length >= 3, which is too late to save
+        // a required-kind branch that already got beam-pruned at slot 1 or 2.
+        const SAMPLE_SET_ROLE_REQUIRED_KIND = { hazard: 'hazard', pivot: 'pivot' };
+
+        function samplePickMoves(profile, role, seed, options = {}) {
             // a zero-pivot learnset must never fall through into a generic set merely
             // because the pivot role happened to rank highly or tie with another role.
             if (!sampleRoleIsFeasible(profile, role)) return [];
 
+            const noStatus = !!options.noStatus;
             const rng = sampleSetRng(seed);
             const compatible = profile.moves.filter(m =>
                 m.name &&
                 !sampleMoveIsBanned(m) &&
+                !SAMPLE_SET_AUTOGEN_BANNED_MOVES.has(m.name) &&
+                (!noStatus || m.category !== 'Status') &&
                 sampleMoveCompatibleWithRole(m, profile, role)
             );
             const clean = compatible.filter(m =>
@@ -1730,6 +1752,31 @@ import { updatePreview } from './editor-core.js';
                 next.sort((a, b) => b.score - a.score ||
                     a.moves.map(m => m.name).join('|').localeCompare(b.moves.map(m => m.name).join('|')));
                 beam = next.slice(0, beamWidth);
+
+                // a role like 'pivot' or 'hazard' is defined by carrying a specific
+                // move kind. if every branch that includes that kind got outscored
+                // by branches that don't (e.g. two big STAB attacks beating U-turn
+                // on raw power), the required kind can get pruned out of the beam
+                // entirely before slot 4 - at which point sampleSetPartialViability's
+                // "must have it by chosen.length >= 3" check has nothing left to
+                // approve, and samplePickMoves returns [] even though a perfectly
+                // valid pivot/hazard set existed in the candidate pool. Guarantee at
+                // least one surviving branch that still has a path to the required
+                // kind, every slot, so it's never pruned away before it gets its turn.
+                const requiredKind = SAMPLE_SET_ROLE_REQUIRED_KIND[role];
+                if (requiredKind && slot < 3) {
+                    const beamHasPath = beam.some(node =>
+                        node.moves.some(m => sampleMoveKind(m)[requiredKind]) ||
+                        candidates.some(m => sampleMoveKind(m)[requiredKind] && !node.moves.some(c => c.name === m.name))
+                    );
+                    if (!beamHasPath) {
+                        const bestWithRequired = next
+                            .filter(node => node.moves.some(m => sampleMoveKind(m)[requiredKind]) ||
+                                candidates.some(m => sampleMoveKind(m)[requiredKind] && !node.moves.some(c => c.name === m.name)))
+                            .sort((a, b) => b.score - a.score)[0];
+                        if (bestWithRequired) beam[beam.length - 1] = bestWithRequired;
+                    }
+                }
                 if (!beam.length) return [];
             }
 
@@ -1772,6 +1819,7 @@ import { updatePreview } from './editor-core.js';
                 !sampleMoveIsBanned(m) &&
                 !SAMPLE_SET_SELF_KO_MOVES.has(m.name) &&
                 !SAMPLE_SET_BAD_DEFAULT_MOVES.has(m.name) &&
+                !SAMPLE_SET_AUTOGEN_BANNED_MOVES.has(m.name) &&
                 m.name !== 'Tera Blast' &&
                 !sampleIsTwoTurnAttack(m) &&
                 sampleMoveCompatibleWithRole(m, profile, 'defensive')
@@ -1788,20 +1836,19 @@ import { updatePreview } from './editor-core.js';
                     if (sampleIsDamaging(b) && !profile.types.includes(b.type) && !sampleHasGoodCoverage(b, profile, moves.slice(0, 3))) continue;
                     const ability = sampleChooseAbility(profile, 'defensive', moves);
                     const item = sampleChooseItem(profile, 'defensive', moves, ability);
-                    const repairedMoves = sampleRepairMovesForItem(profile, 'defensive', moves, item, seed);
-                    const teraType = sampleChooseTera(profile, 'defensive', repairedMoves, ability);
-                    let score = sampleSetCoherenceScore(profile, 'defensive', repairedMoves);
-                    score += repairedMoves.reduce((total, move, index) => total + sampleMoveScore(move, profile, 'defensive', repairedMoves.slice(0, index)), 0);
+                    const teraType = sampleChooseTera(profile, 'defensive', moves, ability);
+                    let score = sampleSetCoherenceScore(profile, 'defensive', moves);
+                    score += moves.reduce((total, move, index) => total + sampleMoveScore(move, profile, 'defensive', moves.slice(0, index)), 0);
                     score += sampleAbilityFitScore(
                         (profile.abilityDetails || []).find(x => x.name === ability) || {name: ability, desc: ''},
                         profile,
                         'defensive',
-                        repairedMoves
+                        moves
                     );
-                    score += sampleItemFitScore(item, profile, 'defensive', repairedMoves, ability) * 0.5;
-                    score += sampleTeraFitScore(teraType, profile, 'defensive', repairedMoves, ability) * 0.25;
+                    score += sampleItemFitScore(item, profile, 'defensive', moves, ability) * 0.5;
+                    score += sampleTeraFitScore(teraType, profile, 'defensive', moves, ability) * 0.25;
                     score += sampleSetRng(seed)() * 0.0001;
-                    if (!best || score > best.score) best = { moves: repairedMoves, ability, item, teraType, score };
+                    if (!best || score > best.score) best = { moves, ability, item, teraType, score };
                 }
             }
 
@@ -1979,10 +2026,23 @@ import { updatePreview } from './editor-core.js';
                 if (hasRecovery || hasStatus) score -= 15;
             }
             if (item === 'Assault Vest') {
-                if (damaging.length >= 3) score += 28;
-                if (!hasStatus && !hasSetup) score += 18;
-                if (bulky) score += 10;
-                if (hasRecovery) score -= 35;
+                // Assault Vest is a hard constraint (no status moves at all), not a
+                // preference. A set that was built because it genuinely needs a
+                // status move (Toxic, Thunder Wave, Roost, Stealth Rock, a status
+                // pivot move, etc.) must never have Assault Vest win the item slot
+                // and silently strip that move out from under it - that set's
+                // identity depends on it. Disqualify AV outright here; a dedicated,
+                // AV-only move search (generateAssaultVestSampleSet) is what
+                // generates the actual AV set suggestion, with the "no status"
+                // constraint applied from the very first move pick instead of
+                // being bolted on after the fact.
+                if (hasStatus) score -= 1000;
+                else {
+                    if (damaging.length >= 3) score += 28;
+                    if (!hasSetup) score += 18;
+                    if (bulky) score += 10;
+                    if (hasRecovery) score -= 35;
+                }
             }
             if (item === 'Flame Orb') {
                 if (/guts/.test(abilityText)) score += 80;
@@ -2010,13 +2070,51 @@ import { updatePreview } from './editor-core.js';
             return ['physicalSweeper','specialSweeper','setupSweeper','wallbreaker','bulkyAttacker','pivot'].includes(role);
         }
 
-        function sampleItemIsCompatibleWithMoves(item, moves) {
-            const selected = moves || [];
-            const itemName = String(item || '').trim().toLowerCase();
-            if (itemName === 'assault vest') {
-                return selected.every(m => m && (m.category === 'Physical' || m.category === 'Special'));
+        // Assault Vest eligible roles: whatever the item is actually built for whatever the item is actually built for
+        // (an all-out-attacking set that can shrug off a special hit) - setup,
+        // defensive, support, hazard, and screens roles all lean on status moves
+        // as their core gameplan, so AV was never a fit for them to begin with.
+        const SAMPLE_SET_ASSAULT_VEST_ROLES = ['wallbreaker', 'bulkyAttacker', 'physicalSweeper', 'specialSweeper', 'pivot'];
+
+        // Builds a genuine, from-scratch Assault Vest set: picks the best AV-eligible
+        // role for this Fakemon, then runs samplePickMoves with noStatus baked in from
+        // the very first move pick, so the result never depended on a status move to
+        // begin with. Returns null (rather than a broken/half-built set) if nothing
+        // AV-eligible works out - e.g. a Fakemon whose only decent roles are setup or
+        // support-based genuinely has no good Assault Vest set, and that's fine.
+        function generateAssaultVestSampleSet(profile, roleScores, seed) {
+            const eligible = SAMPLE_SET_ASSAULT_VEST_ROLES
+                .filter(role => sampleRoleIsFeasible(profile, role))
+                .sort((a, b) => (roleScores[b] || 0) - (roleScores[a] || 0) || a.localeCompare(b));
+
+            for (const role of eligible) {
+                const moves = samplePickMoves(profile, role, seed, { noStatus: true });
+                if (moves.length !== 4) continue;
+                // belt-and-suspenders: samplePickMoves already excludes status moves
+                // when noStatus is set, but a pivot set's required move could in
+                // theory only exist as a status move (Parting Shot/Teleport/Chilly
+                // Reception) for some learnsets - reject rather than publish a
+                // "pivot" set with no pivot move.
+                if (role === 'pivot' && !moves.some(m => sampleMoveKind(m).pivot)) continue;
+                if (role === 'hazard' && !moves.some(m => sampleMoveKind(m).hazard)) continue;
+
+                const { evs, nature } = sampleChooseNatureEVs(profile, role, moves);
+                const ability = sampleChooseAbility(profile, role, moves);
+                const teraType = sampleChooseTera(profile, role, moves, ability);
+                return {
+                    name: `Assault Vest ${sampleRoleLabel(role)}`,
+                    role: sampleRoleLabel(role),
+                    item: 'Assault Vest',
+                    ability,
+                    nature,
+                    evs,
+                    ivs: { hp:31, atk:31, def:31, spa:31, spd:31, spe:31 },
+                    moves: moves.map(m => m.name),
+                    teraType,
+                    level: 100
+                };
             }
-            return true;
+            return null;
         }
 
         function sampleChooseItem(profile, role, chosenMoves, chosenAbility = '') {
@@ -2026,51 +2124,22 @@ import { updatePreview } from './editor-core.js';
                 'Choice Band','Choice Specs','Assault Vest','Flame Orb',
                 'Rocky Helmet','Light Clay'
             ];
-            const ranked = candidates
+            // item selection never mutates the moveset. A set was already built
+            // around a specific gameplan (a role's beam search chose its 4 moves
+            // for a reason - a status pivot, a hazard, a recovery move); the item
+            // is picked to fit that gameplan, not the other way around. Assault
+            // Vest scores itself out (see sampleItemFitScore) whenever the actual
+            // moves include a status move, so it naturally loses here to Leftovers/
+            // Boots/etc. on any set that needs one - it never gets a chance to
+            // silently strip that move out. A genuine Assault Vest set is instead
+            // built from scratch by generateAssaultVestSampleSet, which excludes
+            // status moves from its candidate pool from the very first pick.
+            return candidates
                 .map((item, index) => ({
                     item,
                     score: sampleItemFitScore(item, profile, role, moves, chosenAbility) - index * 0.001
                 }))
-                .sort((a,b) => b.score - a.score || a.item.localeCompare(b.item));
-
-            // item-first remains the rule: av can win even when the draft currently has
-            // status moves. but after applying the av repair, the requested role must
-            // still exist. this prevents pivot -> chilly reception -> av -> remove chilly
-            // reception -> publish a fake pivot with no pivot move.
-            for (const entry of ranked) {
-                const repaired = sampleRepairMovesForItem(profile, role, moves, entry.item);
-                if (repaired.length !== 4) continue;
-                if (role === 'pivot' && !repaired.some(m => sampleMoveKind(m).pivot)) continue;
-                if (role === 'hazard' && !repaired.some(m => sampleMoveKind(m).hazard)) continue;
-                return entry.item;
-            }
-            return ranked[0]?.item || 'Leftovers';
-        }
-
-        function sampleRepairMovesForItem(profile, role, moves, item, seed = 0) {
-            let repaired = [...(moves || [])];
-            if (String(item || '').trim().toLowerCase() !== 'assault vest') return repaired;
-
-            // av is the constraint: strip status moves after the item has been chosen.
-            repaired = repaired.filter(m => m && m.category !== 'Status');
-            if (repaired.length >= 4) return repaired.slice(0, 4);
-
-            // refill removed slots with the best legal damaging moves from the learnset.
-            const chosenNames = new Set(repaired.map(m => m.name));
-            const candidates = (profile.moves || [])
-                .filter(m => m && m.category !== 'Status' && !chosenNames.has(m.name))
-                .filter(m => sampleMoveIsActuallyUseful(m, profile, role))
-                .map((m, index) => ({
-                    move: m,
-                    score: sampleMoveScore(m, profile, role, repaired) - index * 0.001
-                }))
-                .sort((a,b) => b.score - a.score || a.move.name.localeCompare(b.move.name));
-
-            for (const entry of candidates) {
-                if (repaired.length >= 4) break;
-                repaired.push(entry.move);
-            }
-            return repaired.slice(0, 4);
+                .sort((a,b) => b.score - a.score || a.item.localeCompare(b.item))[0]?.item || 'Leftovers';
         }
 
         function sampleTeraFitScore(type, profile, role, moves, ability = '') {
@@ -2271,22 +2340,11 @@ import { updatePreview } from './editor-core.js';
                 }
                 const { evs, nature } = sampleChooseNatureEVs(profile, role, moves);
                 const ability = sampleChooseAbility(profile, role, moves);
+                // item selection no longer mutates the moveset (see sampleChooseItem):
+                // a set that needs a status move keeps it, and Assault Vest simply
+                // never wins the item slot for that set.
                 const item = sampleChooseItem(profile, role, moves, ability);
-                const repairedMoves = sampleRepairMovesForItem(profile, role, moves, item, seed);
-                if (repairedMoves.length !== 4) return;
-                if (role === 'pivot' && !repairedMoves.some(m => sampleMoveKind(m).pivot)) {
-                    if (debugTrace) debugTrace.roles[role].rejected = 'item-repair-removed-pivot-move';
-                    return;
-                }
-                if (role === 'hazard' && !repairedMoves.some(m => sampleMoveKind(m).hazard)) {
-                    if (debugTrace) debugTrace.roles[role].rejected = 'item-repair-removed-hazard-move';
-                    return;
-                }
-                const teraType = sampleChooseTera(profile, role, repairedMoves, ability);
-                if (!sampleItemIsCompatibleWithMoves(item, repairedMoves)) {
-                    if (debugTrace) debugTrace.roles[role].rejected = 'item-move-incompatible-after-repair';
-                    return;
-                }
+                const teraType = sampleChooseTera(profile, role, moves, ability);
                 const candidate = {
                     name: sampleRoleLabel(role),
                     role: sampleRoleLabel(role),
@@ -2295,13 +2353,19 @@ import { updatePreview } from './editor-core.js';
                     nature,
                     evs,
                     ivs: { hp:31, atk:31, def:31, spa:31, spd:31, spe:31 },
-                    moves: repairedMoves.map(m => m.name),
+                    moves: moves.map(m => m.name),
                     teraType,
                     level: 100
                 };
                 if (debugTrace) debugTrace.roles[role].candidate = sampleDebugSet(candidate);
                 consider(candidate, `role:${role}`);
             });
+
+            // Assault Vest is its own dedicated idea, not a mutation of a status-based
+            // set. It gets its own beam search (generateAssaultVestSampleSet) with "no
+            // status moves" applied as a hard constraint from the very first move pick,
+            // over the role that best fits an all-out-attacking AV set for this Fakemon.
+            consider(generateAssaultVestSampleSet(profile, roleScores, seed ^ 0x2545f491), 'assault-vest');
 
             const result = suggestions.slice(0, 3);
             if (debugTrace) {
