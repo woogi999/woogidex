@@ -18,6 +18,7 @@ import * as notifications from './notifications.js';
 import * as events from './events.js';
 import * as abilityBlocks from './ability-blocks.js';
 import * as nameRoll from './name-roll.js';
+import * as fieldRoll from './field-roll.js';
 
 // ==================== feature flags ====================
 // TODO: remove this flag (and the sidebar-events-btn hidden attribute in
@@ -410,7 +411,7 @@ function activateTopLevelView(viewId, options = {}) {
 // ==================== module coordination ====================
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, abilityBlocks, nameRoll, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, events, abilityBlocks, nameRoll, fieldRoll, {
     openUpdatesModal, closeUpdatesModal, renderUpdates, loadUpdates,
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, toggleSidebar, closeSidebar, getFadeUselessMoves, setFadeUselessMoves, toggleFadeUselessMoves,
     getIncludeOwnFakemonsInBulkComparison, setIncludeOwnFakemonsInBulkComparison, toggleIncludeOwnFakemonsInBulkComparison,

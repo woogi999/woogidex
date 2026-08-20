@@ -201,7 +201,12 @@
                             <div class="form-group species-evo-row">
                                 <div class="species-field-wrap">
                                     <label>Species / Category</label>
-                                    <input type="text" id="fakemon-species" placeholder="e.g., Flame Pokemon" oninput="updatePreview()">
+                                    <div class="name-input-row">
+                                        <input type="text" id="fakemon-species" placeholder="e.g., Flame Pokemon" oninput="updatePreview()">
+                                        <button type="button" id="species-roll-btn" class="name-roll-btn" title="Suggest a species/category based on this Fakemon's type" onclick="openSpeciesRollPopover(event)">
+                                            <i data-lucide="dices"></i>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="species-evo-toggles">
                                     <label class="compact-toggle-label" title="This Fakemon is a Mega Evolution">
@@ -213,6 +218,12 @@
                                         <span>Is a Forme Change</span>
                                     </label>
                                 </div>
+                            </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font:700 12px 'Exo 2',sans-serif;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;">Typing</span>
+                                <button type="button" id="types-roll-btn" class="name-roll-btn" style="width:32px;height:32px;" title="Roll random types" onclick="openTypesRollPopover(event)">
+                                    <i data-lucide="dices"></i>
+                                </button>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
@@ -288,6 +299,12 @@
                                 <label>Pokedex Entry 2</label>
                                 <textarea id="dex-entry2" placeholder="Second Pokedex description..." oninput="updatePreview()"></textarea>
                             </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font:700 12px 'Exo 2',sans-serif;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;">Height &amp; Weight</span>
+                                <button type="button" id="measurements-roll-btn" class="name-roll-btn" style="width:32px;height:32px;" title="Roll a random height and weight" onclick="openHeightWeightRollPopover(event)">
+                                    <i data-lucide="dices"></i>
+                                </button>
+                            </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Height</label>
@@ -314,6 +331,12 @@
                                 <label>Pokedex Colour</label>
                                 <div class="color-options" id="color-options"></div>
                                 <input type="hidden" id="fakemon-color" value="">
+                            </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font:700 12px 'Exo 2',sans-serif;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;">Egg Groups</span>
+                                <button type="button" id="egg-roll-btn" class="name-roll-btn" style="width:32px;height:32px;" title="Roll random egg groups" onclick="openEggGroupRollPopover(event)">
+                                    <i data-lucide="dices"></i>
+                                </button>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
