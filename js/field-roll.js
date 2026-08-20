@@ -39,7 +39,7 @@ function getEffectiveZoom(el) {
     return zoom;
 }
 
-function renderFieldRollPopover(anchorBtn, generate, formatLabel, onApply) {
+function renderFieldRollPopover(point, generate, formatLabel, onApply) {
     closeFieldRollPopover();
     const options = generate();
     const pop = document.createElement('div');
@@ -57,18 +57,25 @@ function renderFieldRollPopover(anchorBtn, generate, formatLabel, onApply) {
     `;
     document.body.appendChild(pop);
 
-    const rect = anchorBtn.getBoundingClientRect();
+    // point.x/point.y are real (post-zoom) viewport pixels captured at click
+    // time. pop.offsetWidth/offsetHeight, and any top/left we assign, live
+    // in the *local* pre-zoom coordinate space of the popover's zoomed
+    // ancestors - they get scaled by `zoom` again on render. Convert
+    // everything to the same (real viewport) units before doing the math,
+    // then divide the final result back down by the zoom factor so it
+    // renders in the right spot. The position is computed once from the
+    // click point and never updated from later mouse movement - it doesn't
+    // follow the cursor.
     const zoom = getEffectiveZoom(pop);
     pop.style.position = 'fixed';
 
     const place = () => {
         const realWidth = pop.offsetWidth * zoom;
-        const desiredLeft = Math.min(
-            Math.max(8, rect.right - realWidth),
-            window.innerWidth - realWidth - 8
-        );
-        pop.style.top = `${(rect.bottom + 6) / zoom}px`;
-        pop.style.left = `${desiredLeft / zoom}px`;
+        const realHeight = pop.offsetHeight * zoom;
+        const left = Math.min(Math.max(8, point.x), window.innerWidth - realWidth - 8);
+        const top = Math.min(Math.max(8, point.y), window.innerHeight - realHeight - 8);
+        pop.style.top = `${top / zoom}px`;
+        pop.style.left = `${left / zoom}px`;
     };
     place();
     requestAnimationFrame(place);
@@ -80,7 +87,7 @@ function renderFieldRollPopover(anchorBtn, generate, formatLabel, onApply) {
         });
     });
     pop.querySelector('.name-roll-reroll')?.addEventListener('click', () => {
-        renderFieldRollPopover(anchorBtn, generate, formatLabel, onApply);
+        renderFieldRollPopover(point, generate, formatLabel, onApply);
     });
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -88,6 +95,15 @@ function renderFieldRollPopover(anchorBtn, generate, formatLabel, onApply) {
     setTimeout(() => document.addEventListener('click', onOutsideClick), 0);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
+}
+
+function pointFromEvent(event, fallbackBtnId) {
+    if (event && typeof event.clientX === 'number') {
+        return { x: event.clientX, y: event.clientY + 10 };
+    }
+    const btn = event?.currentTarget || document.getElementById(fallbackBtnId);
+    const rect = btn?.getBoundingClientRect();
+    return rect ? { x: rect.left, y: rect.bottom + 6 } : { x: 20, y: 20 };
 }
 
 function shuffle(arr) {
@@ -141,9 +157,8 @@ function rollSpeciesOptions() {
 
 function openSpeciesRollPopover(event) {
     event?.stopPropagation();
-    const btn = event?.currentTarget || document.getElementById('species-roll-btn');
-    if (!btn) return;
-    renderFieldRollPopover(btn, rollSpeciesOptions, label => label, (value) => {
+    const point = pointFromEvent(event, 'species-roll-btn');
+    renderFieldRollPopover(point, rollSpeciesOptions, label => label, (value) => {
         const input = document.getElementById('fakemon-species');
         if (!input) return;
         input.value = value;
@@ -175,10 +190,9 @@ function rollTypeOptions() {
 
 function openTypesRollPopover(event) {
     event?.stopPropagation();
-    const btn = event?.currentTarget || document.getElementById('types-roll-btn');
-    if (!btn) return;
+    const point = pointFromEvent(event, 'types-roll-btn');
     renderFieldRollPopover(
-        btn,
+        point,
         rollTypeOptions,
         opt => opt.type2 ? `${opt.type1} / ${opt.type2}` : opt.type1,
         (opt) => {
@@ -216,10 +230,9 @@ function toDisplayUnit(valueM, kind) {
 
 function openHeightWeightRollPopover(event) {
     event?.stopPropagation();
-    const btn = event?.currentTarget || document.getElementById('measurements-roll-btn');
-    if (!btn) return;
+    const point = pointFromEvent(event, 'measurements-roll-btn');
     renderFieldRollPopover(
-        btn,
+        point,
         rollHeightWeightOptions,
         opt => {
             const h = toDisplayUnit(opt.heightM, 'height');
@@ -277,10 +290,9 @@ function rollEggGroupOptions() {
 
 function openEggGroupRollPopover(event) {
     event?.stopPropagation();
-    const btn = event?.currentTarget || document.getElementById('egg-roll-btn');
-    if (!btn) return;
+    const point = pointFromEvent(event, 'egg-roll-btn');
     renderFieldRollPopover(
-        btn,
+        point,
         rollEggGroupOptions,
         opt => opt.egg2 ? `${opt.egg1} / ${opt.egg2}` : opt.egg1,
         (opt) => {
