@@ -205,6 +205,11 @@ async function publishSnapshot(mon, rulesChecked = false) {
     // embedded snapshots rather than separate rows.
     const family = collectEvolutionFamily(mon);
     const isFamily = family.length > 1;
+    // diagnostic: if you expected this mon to bundle its evolutions but this
+    // logs size 1, the mon's saved evolutionGraph isn't reaching this
+    // function with resolvable sibling stages - check that mon.evolutionGraph
+    // exists and that its other stages are in state.fakemonDB.
+    console.info('[COMMUNITY] Publishing', mon.name, '- family size:', family.length, family.map(f => f.mon?.name));
 
     const payload = {
         user_id: state.user.id,
@@ -829,28 +834,24 @@ function renderCommunityEvoBadge(row) {
 // editor's own preview-evo-connector (evolution.js PREVIEW_EVO_ARROW_ICON).
 const COMMUNITY_EVO_ARROW_ICON = '<svg class="preview-evo-arrow-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 12h15M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-// detail-page evolution chain strip - deliberately reuses the exact same
-// markup/classes as the local editor's own renderPreviewEvolutionChain()
-// (evolution.js) so a bundled community post looks identical to the
-// evolution chain you see while editing, just read-only and cross-mon.
-// clicking a non-active node calls switchCommunityPreviewMon() to swap the
-// live preview board in place - never navigates away, since it's all still
-// the same post/comments/likes/views. self-creates its container (right
-// after #community-detail-author) the first time it's needed - add
-// <div id="community-detail-evo-strip"></div> there yourself if you'd
-// rather control exactly where it sits.
-function renderCommunityDetailEvoStrip(row) {
-    let container = document.getElementById('community-detail-evo-strip');
-    if (!container) {
-        const author = document.getElementById('community-detail-author');
-        if (!author?.parentNode) return;
-        container = document.createElement('div');
-        container.id = 'community-detail-evo-strip';
-        author.parentNode.insertBefore(container, author.nextSibling);
-    }
+// builds the same evolution-chain markup as the local editor's own
+// renderPreviewEvolutionChain() (evolution.js), for a bundled community
+// post. returns '' for a normal single-mon post. clicking a non-active node
+// calls switchCommunityPreviewMon() to swap the live preview board in place
+// - never navigates away, since it's all still the same post/comments/
+// likes/views.
+function buildCommunityEvoStripHtml(row) {
     const members = Array.isArray(row.family_full) ? row.family_full : [];
-    if (members.length < 2) { container.innerHTML = ''; container.style.display = 'none'; return; }
-    container.style.display = '';
+    if (members.length < 2) {
+        // this is expected for a normal single-mon post - but if you just
+        // published something with evolutions and still see this, either the
+        // Supabase migration (family_full/family_snapshots columns) hasn't
+        // been run, or this particular post predates it and needs republishing.
+        if (row.family_snapshots?.length > 1 && !members.length) {
+            console.warn('[COMMUNITY] This post has family_snapshots but no family_full data - it was likely published before the family_full column/migration existed. Republish it to backfill.');
+        }
+        return '';
+    }
     const activeId = ensureCommunityState().openMonActiveSourceId || String(row.source_fakemon_id || '');
     const ordered = members.slice().sort((a, b) => (a.stage || 1) - (b.stage || 1));
     const parts = ordered.map((entry, i) => {
@@ -870,8 +871,7 @@ function renderCommunityDetailEvoStrip(row) {
         if (i === ordered.length - 1) return node;
         return node + `<div class="preview-evo-connector">${COMMUNITY_EVO_ARROW_ICON}</div>`;
     }).join('');
-    container.innerHTML = `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div><div class="preview-evo-row">${parts}</div></div>`;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div><div class="preview-evo-row">${parts}</div></div>`;
 }
 
 function getCommunityViewerKey() {
@@ -934,7 +934,7 @@ function getCommunityViewerKey() {
 // renders a Fakemon snapshot into the read-only community preview board.
 // shared by openMonDetail (first load) and switchCommunityPreviewMon
 // (clicking an evolution/mega/forme chip) so both stay in sync.
-function renderCommunityPreviewBoard(mon) {
+function renderCommunityPreviewBoard(mon, row) {
     if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
     state.isCommunityPreview = true;
     state.editingId = null;
@@ -954,6 +954,18 @@ function renderCommunityPreviewBoard(mon) {
         // artwork toggle independent from the hidden editor board so clicks
         // always update the board the user is actually looking at.
         setCommunityPreviewArtworkMode(state.previewArtworkMode || 'normal');
+
+        // the editor's own board puts the evolution chain inside
+        // .board-learnset-slot, right after the learnset (see editor-core.js).
+        // api.renderPreviewEvolutionChain() comes back empty here because this
+        // preview isn't tied to a live-edited Fakemon (state.editingId is
+        // null), so we inject our own version into that same slot to match
+        // its placement exactly.
+        if (row) {
+            const slot = target.querySelector('.board-learnset-slot');
+            const stripHtml = buildCommunityEvoStripHtml(row);
+            if (slot && stripHtml) slot.insertAdjacentHTML('beforeend', stripHtml);
+        }
     }
     api.setPageTitle?.(mon.name ? `${mon.name} (Community)` : 'Community Hub');
     const titleEl = document.getElementById('community-detail-title');
@@ -970,8 +982,7 @@ function switchCommunityPreviewMon(sourceId) {
     const entry = (row?.family_full || []).find(m => m.sourceId === String(sourceId));
     if (!entry || cs.openMonActiveSourceId === String(sourceId)) return;
     cs.openMonActiveSourceId = String(sourceId);
-    renderCommunityPreviewBoard(entry.mon);
-    renderCommunityDetailEvoStrip(row);
+    renderCommunityPreviewBoard(entry.mon, row);
 }
 
 async function openMonDetail(publishedId, options = {}) {
@@ -1008,7 +1019,7 @@ async function openMonDetail(publishedId, options = {}) {
     const mon = preselect ? preselect.mon : (row.fakemon_data || {});
     cs.openMonActiveSourceId = preselect ? preselect.sourceId : String(row.source_fakemon_id || '');
 
-    renderCommunityPreviewBoard(mon);
+    renderCommunityPreviewBoard(mon, row);
 
     api.exitProfileRoute?.();
     api.activateTopLevelView?.('community-detail-view');
@@ -1018,7 +1029,6 @@ async function openMonDetail(publishedId, options = {}) {
         <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">Published by ${escapeHtml(row.author_name)}</span>
         ${renderBadgeRow(row.author_badges, 13)}
     `;
-    renderCommunityDetailEvoStrip(row);
 
     const isMine = state.user && row.user_id === state.user.id;
     const canDelete = isMine || api.isStaff?.();
