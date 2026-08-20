@@ -128,14 +128,20 @@ function pickFamilyDisplayMember(family) {
 }
 
 // small denormalized summary of every member of a family, embedded on the
-// single published_mons row so the grid card can render evolution/mega/forme
-// thumbnails without any extra fetch.
+// single published_mons row so the grid card's evo badge (renderCommunityEvoBadge)
+// can tell "3-Stage"/"Has Mega"/etc apart without any extra fetch. deliberately
+// excludes artwork - renderCommunityEvoBadge only ever reads stage/isMega/
+// isFormeChange, and family_full below already carries full artwork (plus
+// everything else) for whichever stage someone actually opens. embedding full
+// artwork here too meant every publish/update sent that same image data 2-3x
+// over (once per family member here, once again per member in family_full),
+// which was ballooning update requests for anything with real artwork on more
+// than one stage.
 function buildFamilySnapshotsPayload(family) {
     return family.map(({ mon: f, stage, isMega, isFormeChange }) => ({
         sourceId: String(f.id),
         name: f.name || 'Unnamed',
         number: f.number || '',
-        artwork: f.artwork || null,
         type1: f.type1 || '',
         type2: f.type2 || '',
         stage, isMega, isFormeChange
@@ -278,16 +284,21 @@ async function updatePublishedMon(publishedId, selectedSourceId = '') {
     // bundled with this post reflects its current stages/megas/formes too.
     const family = collectEvolutionFamily(mon);
     const isFamily = family.length > 1;
-    const display = isFamily ? pickFamilyDisplayMember(family) : { mon };
+    // unlike publishSnapshot, never run this through pickFamilyDisplayMember -
+    // the whole point of the update modal is the user explicitly choosing
+    // which family member should be the face of the listing. overriding that
+    // back to "whichever stage is last" made picking a mon in the modal look
+    // like it did nothing (the listing kept showing its old display member).
+    const selfEntry = family.find(f => String(f.mon.id) === String(mon.id)) || { mon };
 
     const payload = {
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
         author_badges: state.user.badges || [],
-        fakemon_data: display.mon,
-        source_fakemon_id: String(display.mon.id),
-        evolution_stage: display.stage || display.mon.evolutionStage || 1,
+        fakemon_data: mon,
+        source_fakemon_id: String(mon.id),
+        evolution_stage: selfEntry.stage || mon.evolutionStage || 1,
         family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
         family_full: isFamily ? buildFamilyFullPayload(family) : []
     };

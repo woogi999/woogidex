@@ -93,7 +93,11 @@ function contestPanel(c, phase) {
     return '';
 }
 
-function getFakemonImage(data){ return data?.artwork?.normal || data?.artwork?.url || data?.image || data?.sprite || ''; }
+// `artwork` is a plain base64 data-URI string on a Fakemon record (see
+// editor-core.js's FileReader assignment / community.js's usage) - not an
+// object with .normal/.url. those never matched anything on real data, so
+// every contest entry's art silently fell through to the placeholder icon.
+function getFakemonImage(data){ return data?.artwork || data?.image || data?.sprite || ''; }
 function shuffle(items){ const a=[...items]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 
 async function startContestVoting(contestId){
@@ -158,3 +162,15 @@ function toggleContestSubmit(id){EVENTS_STATE.expanded.add(id);renderEvents();se
 function toggleContestResults(id){EVENTS_STATE.expanded.add(id);renderEvents();}
 
 window.openEvents=openEvents;window.loadEventsView=loadEventsView;window.toggleContestDetails=toggleContestDetails;window.toggleContestSubmit=toggleContestSubmit;window.toggleContestResults=toggleContestResults;window.submitContestEntry=submitContestEntry;window.openContestSignIn=openContestSignIn;window.startContestVoting=startContestVoting;window.jumpContestVote=jumpContestVote;window.setContestVoteScore=setContestVoteScore;window.setContestVoteRemarks=setContestVoteRemarks;window.saveAndNextContestVote=saveAndNextContestVote;window.submitContestBallot=submitContestBallot;window.closeContestVoting=closeContestVoting;
+
+// also export through the module system, not just window.* above - every
+// other feature module gets merged into the shared `api` object (see
+// Object.assign(api, ..., events, ...) in app.js), and app.js's own hash
+// router calls api.openEvents?.() for the #events route. without these
+// exports that call was always a silent no-op since api.openEvents didn't
+// exist.
+export {
+    openEvents, loadEventsView, toggleContestDetails, toggleContestSubmit, toggleContestResults,
+    submitContestEntry, openContestSignIn, startContestVoting, jumpContestVote, setContestVoteScore,
+    setContestVoteRemarks, saveAndNextContestVote, submitContestBallot, closeContestVoting,
+};
