@@ -116,6 +116,17 @@ function collectEvolutionFamily(mon) {
     return members;
 }
 
+// picks which family member should be the "face" of the post - its card
+// thumbnail and the mon shown when the post is first opened. always the
+// final evolution stage (megas/formes never count as "later" than their
+// base stage), falling back to whichever mon was actually published if the
+// family is somehow all megas/formes with no plain stages.
+function pickFamilyDisplayMember(family) {
+    const stagesOnly = family.filter(m => !m.isMega && !m.isFormeChange);
+    const pool = stagesOnly.length ? stagesOnly : family;
+    return pool.reduce((best, m) => (m.stage > best.stage ? m : best), pool[0]);
+}
+
 // small denormalized summary of every member of a family, embedded on the
 // single published_mons row so the grid card can render evolution/mega/forme
 // thumbnails without any extra fetch.
@@ -211,15 +222,19 @@ async function publishSnapshot(mon, rulesChecked = false) {
     // exists and that its other stages are in state.fakemonDB.
     console.info('[COMMUNITY] Publishing', mon.name, '- family size:', family.length, family.map(f => f.mon?.name));
 
+    // the card/default preview always shows the LAST evolution stage, not
+    // necessarily whichever mon in the chain was clicked "publish" on.
+    const display = isFamily ? pickFamilyDisplayMember(family) : { mon };
+
     const payload = {
         user_id: state.user.id,
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
         author_badges: state.user.badges || [],
-        source_fakemon_id: String(mon.id),
-        fakemon_data: mon,
-        evolution_stage: mon.evolutionStage || 1,
+        source_fakemon_id: String(display.mon.id),
+        fakemon_data: display.mon,
+        evolution_stage: display.stage || display.mon.evolutionStage || 1,
         family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
         family_full: isFamily ? buildFamilyFullPayload(family) : []
     };
@@ -263,15 +278,16 @@ async function updatePublishedMon(publishedId, selectedSourceId = '') {
     // bundled with this post reflects its current stages/megas/formes too.
     const family = collectEvolutionFamily(mon);
     const isFamily = family.length > 1;
+    const display = isFamily ? pickFamilyDisplayMember(family) : { mon };
 
     const payload = {
         author_name: state.user.displayName || state.user.username || state.user.email,
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
         author_badges: state.user.badges || [],
-        fakemon_data: mon,
-        source_fakemon_id: String(mon.id),
-        evolution_stage: mon.evolutionStage || 1,
+        fakemon_data: display.mon,
+        source_fakemon_id: String(display.mon.id),
+        evolution_stage: display.stage || display.mon.evolutionStage || 1,
         family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
         family_full: isFamily ? buildFamilyFullPayload(family) : []
     };
