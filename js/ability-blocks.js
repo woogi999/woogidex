@@ -376,7 +376,13 @@ const MOVE_PROPERTY_OPTIONS = [
     {value:'flags.pulse',label:'Pulse flag'},
     {value:'flags.bullet',label:'Bullet flag'},
     {value:'flags.powder',label:'Powder flag'},
-    {value:'flags.recharge',label:'Recharge flag'}
+    {value:'flags.recharge',label:'Recharge flag'},
+    {value:'flags.wind',label:'Wind flag'},
+    {value:'flags.heal',label:'Heal flag'},
+    {value:'flags.protect',label:'Protect flag'},
+    {value:'flags.reflectable',label:'Reflectable flag'},
+    {value:'flags.defrost',label:'Defrost flag'},
+    {value:'flags.dance',label:'Dance flag'}
 ];
 const BATTLE_EFFECT_PROPERTIES = VOLATILE_PROPERTY_OPTIONS;
 const BATTLE_EFFECT_OPS = [
@@ -722,7 +728,9 @@ Object.assign(CONDITIONS, {
         label: 'move has flag __', params: [{key:'flag',type:'select',options:[
             {value:'contact',label:'Contact'}, {value:'bite',label:'Bite'}, {value:'bullet',label:'Bullet'},
             {value:'sound',label:'Sound'}, {value:'powder',label:'Powder'}, {value:'punch',label:'Punch'},
-            {value:'pulse',label:'Pulse'}, {value:'recharge',label:'Recharge'}
+            {value:'pulse',label:'Pulse'}, {value:'recharge',label:'Recharge'}, {value:'wind',label:'Wind'},
+            {value:'heal',label:'Heal'}, {value:'protect',label:'Protect'}, {value:'reflectable',label:'Reflectable'},
+            {value:'defrost',label:'Defrost'}, {value:'dance',label:'Dance'}
         ],default:'contact'}],
         sd: (c,p) => `${c.moveVar || 'move'}.flags['${p.flag || 'contact'}']`,
         es: (c,p) => `${c.moveVar || 'move'}.flags[:${String(p.flag || 'contact').toUpperCase()}]`
