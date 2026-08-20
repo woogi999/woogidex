@@ -791,7 +791,227 @@ import { updatePreview } from './editor-core.js';
             return false;
         }
 
-        function sampleMoveIsActuallyUseful(move, profile = null, role = null) {
+        // ----- Pokemon Showdown teambuilder "usually useless moves" model -----
+        // Ported from BattleMoveSearch.moveIsNotUseless() in
+        // play.pokemonshowdown.com/src/battle-dex-search.ts. That's the exact
+        // logic Showdown's own teambuilder uses to decide whether a move goes
+        // under "Moves" or gets demoted to "Usually useless moves" for a given
+        // species. We don't have gen-specific formats/doubles here (Fakemon are
+        // always evaluated as a modern-gen, singles, non-hackmons context), so
+        // this ports the generation-agnostic switch-case + move-list rules,
+        // which is the part that actually applies to a custom species.
+        const toShowdownId = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        const SHOWDOWN_GOOD_STATUS_MOVES = new Set([
+            'acidarmor','agility','aromatherapy','auroraveil','autotomize','banefulbunker','batonpass','bellydrum','bulkup','burningbulwark','calmmind','chillyreception','clangoroussoul','coil','cottonguard','courtchange','curse','defog','destinybond','detect','disable','dragondance','encore','extremeevoboost','filletaway','geomancy','glare','haze','healbell','healingwish','healorder','heartswap','honeclaws','kingsshield','leechseed','lightscreen','lovelykiss','lunardance','magiccoat','maxguard','memento','milkdrink','moonlight','morningsun','nastyplot','naturesmadness','noretreat','obstruct','painsplit','partingshot','perishsong','protect','quiverdance','recover','reflect','reflecttype','rest','revivalblessing','roar','rockpolish','roost','shedtail','shellsmash','shiftgear','shoreup','silktrap','slackoff','sleeppowder','sleeptalk','softboiled','spikes','spikyshield','spore','stealthrock','stickyweb','strengthsap','substitute','switcheroo','swordsdance','synthesis','tailglow','tailwind','taunt','thunderwave','tidyup','toxic','transform','trick','victorydance','whirlwind','willowisp','wish','yawn'
+        ]);
+        const SHOWDOWN_GOOD_WEAK_MOVES = new Set([
+            'accelerock','acrobatics','aquacutter','avalanche','barbbarrage','bonemerang','bouncybubble','bulletpunch','buzzybuzz','ceaselessedge','circlethrow','clearsmog','doubleironbash','dragondarts','dragontail','drainingkiss','endeavor','facade','firefang','flipturn','flowertrick','freezedry','frustration','geargrind','gigadrain','grassknot','gyroball','icefang','iceshard','iciclespear','infernalparade','knockoff','lastrespects','lowkick','machpunch','mortalspin','mysticalpower','naturesmadness','nightshade','nuzzle','pikapapow','populationbomb','psychocut','psyshieldbash','pursuit','quickattack','ragefist','rapidspin','return','rockblast','ruination','saltcure','scorchingsands','seismictoss','shadowclaw','shadowsneak','sizzlyslide','stoneaxe','storedpower','stormthrow','suckerpunch','superfang','surgingstrikes','tachyoncutter','tailslap','thunderclap','tripleaxel','tripledive','twinbeam','uturn','vacuumwave','veeveevolley','voltswitch','watershuriken','weatherball'
+        ]);
+        const SHOWDOWN_BAD_STRONG_MOVES = new Set([
+            'belch','burnup','crushclaw','dragonrush','dreameater','eggbomb','firepledge','flyingpress','futuresight','grasspledge','hyperbeam','hyperfang','hyperspacehole','jawlock','landswrath','megakick','megapunch','mistyexplosion','muddywater','nightdaze','pollenpuff','rockclimb','selfdestruct','shelltrap','skyuppercut','slam','strength','submission','synchronoise','takedown','thrash','uproar','waterpledge'
+        ]);
+
+        // set-level context (ability/item) isn't always known at the point
+        // sampleMoveIsActuallyUseful is called - most callers only have the
+        // profile and are asking "could this move be useful at all". When an
+        // explicit ability/item isn't supplied, a move that Showdown gates on a
+        // specific ability/item is treated as useful if ANY ability the Fakemon
+        // actually has would make it so, mirroring how the teambuilder shows the
+        // move as soon as it's plausible for that species.
+        function sampleShowdownAbilityIds(profile, set) {
+            if (set && set.ability) return [toShowdownId(set.ability)];
+            const names = (profile?.abilities || []).map(a => a?.name).filter(Boolean);
+            return names.length ? names.map(toShowdownId) : [''];
+        }
+
+        // returns true/false when this move is explicitly ability/item/species
+        // gated by Showdown's model, or null when it falls through to the
+        // generic power/accuracy/flag rules below.
+        function sampleShowdownMoveNotUselessForAbility(id, species, moveNames, abilityid, itemid) {
+            switch (id) {
+            case 'fakeout': case 'flamecharge': case 'nuzzle': case 'poweruppunch': case 'trailblaze':
+                return abilityid !== 'sheerforce';
+            case 'solarbeam': case 'solarblade':
+                return ['desolateland','drought','chlorophyll','orichalcumpulse'].includes(abilityid) || itemid === 'powerherb';
+            case 'dynamicpunch': case 'grasswhistle': case 'inferno': case 'sing':
+                return abilityid === 'noguard';
+            case 'aerialace':
+                return ['technician','toughclaws'].includes(abilityid) && !moveNames.includes('bravebird');
+            case 'ancientpower':
+                return ['serenegrace','technician'].includes(abilityid) || !moveNames.includes('powergem');
+            case 'aquajet':
+                return !moveNames.includes('jetpunch');
+            case 'aurawheel':
+                return species.baseSpecies === 'Morpeko';
+            case 'axekick':
+                return !moveNames.includes('highjumpkick');
+            case 'barrier':
+                return !moveNames.includes('acidarmor');
+            case 'bellydrum':
+                return moveNames.includes('aquajet') || moveNames.includes('jetpunch') || moveNames.includes('extremespeed') ||
+                    ['iceface','unburden'].includes(abilityid);
+            case 'bulletseed':
+                return ['skilllink','technician'].includes(abilityid);
+            case 'chillingwater':
+                return !moveNames.includes('scald');
+            case 'counter': case 'mirrorcoat':
+                return (species.baseStats.hp || 0) >= 65;
+            case 'dazzlinggleam':
+                return !moveNames.includes('alluringvoice');
+            case 'dualwingbeat':
+                return abilityid === 'technician' || !moveNames.includes('drillpeck');
+            case 'electroshot':
+                return true;
+            case 'feint':
+                return abilityid === 'refrigerate';
+            case 'futuresight':
+                return true;
+            case 'grassyglide':
+                return abilityid === 'grassysurge';
+            case 'gyroball':
+                return (species.baseStats.spe || 0) <= 60;
+            case 'headbutt':
+                return abilityid === 'serenegrace';
+            case 'hex':
+                return !moveNames.includes('infernalparade');
+            case 'hyperspacefury':
+                return species.id === 'hoopaunbound';
+            case 'hypnosis':
+                return abilityid === 'baddreams';
+            case 'icepunch':
+                return !moveNames.includes('icespinner') || ['sheerforce','ironfist'].includes(abilityid) || itemid === 'punchingglove';
+            case 'iciclecrash':
+                return !moveNames.includes('mountaingale');
+            case 'iciclespear':
+                return true;
+            case 'icywind':
+                return species.baseSpecies === 'Keldeo';
+            case 'incinerate':
+                return !moveNames.includes('flamethrower') && !moveNames.includes('mysticalfire') && !moveNames.includes('burningjealousy');
+            case 'infestation':
+                return moveNames.includes('stickyweb');
+            case 'irondefense':
+                return !moveNames.includes('acidarmor') && !moveNames.includes('barrier');
+            case 'irontail':
+                return !moveNames.includes('ironhead') && !moveNames.includes('gunkshot') && !moveNames.includes('poisonjab');
+            case 'jumpkick':
+                return !moveNames.includes('highjumpkick') && !moveNames.includes('axekick');
+            case 'lastresort':
+                return true;
+            case 'leafblade':
+                return true;
+            case 'leechlife':
+                return true;
+            case 'magiccoat':
+                return true;
+            case 'meteorbeam':
+                return true;
+            case 'mysticalfire':
+                return !moveNames.includes('flamethrower');
+            case 'naturepower':
+                return false;
+            case 'nightslash':
+                return !moveNames.includes('crunch') && !moveNames.includes('knockoff');
+            case 'outrage':
+                return !moveNames.includes('glaiverush');
+            case 'petaldance':
+                return abilityid === 'owntempo';
+            case 'phantomforce':
+                return !moveNames.includes('poltergeist') && !moveNames.includes('shadowclaw');
+            case 'poisonfang':
+                return (species.types || []).includes('Poison') && !moveNames.includes('gunkshot') && !moveNames.includes('poisonjab');
+            case 'raindance':
+                return false;
+            case 'relicsong':
+                return species.id === 'meloetta';
+            case 'refresh':
+                return !moveNames.includes('aromatherapy') && !moveNames.includes('healbell');
+            case 'risingvoltage':
+                return abilityid === 'electricsurge' || abilityid === 'hadronengine';
+            case 'rocktomb':
+                return abilityid === 'technician';
+            case 'selfdestruct':
+                return !moveNames.includes('explosion');
+            case 'shadowpunch':
+                return abilityid === 'ironfist' && !moveNames.includes('ragefist');
+            case 'shelter':
+                return !moveNames.includes('acidarmor') && !moveNames.includes('irondefense');
+            case 'skyuppercut':
+                return false;
+            case 'smackdown':
+                return (species.types || []).includes('Ground');
+            case 'smartstrike':
+                return (species.types || []).includes('Steel') && !moveNames.includes('ironhead');
+            case 'soak':
+                return abilityid === 'unaware';
+            case 'steelwing':
+                return !moveNames.includes('ironhead');
+            case 'stompingtantrum':
+                return !moveNames.includes('earthquake') && !moveNames.includes('drillrun');
+            case 'stunspore':
+                return !moveNames.includes('thunderwave');
+            case 'sunnyday':
+                return false;
+            case 'technoblast':
+                return itemid.endsWith('drive') || itemid === 'dousedrive';
+            case 'teleport':
+                return true;
+            case 'temperflare':
+                return !moveNames.includes('flareblitz') && !moveNames.includes('pyroball') && !moveNames.includes('sacredfire') &&
+                    !moveNames.includes('bitterblade') && !moveNames.includes('firepunch');
+            case 'terrainpulse': case 'waterpulse':
+                return ['megalauncher','technician'].includes(abilityid) && !moveNames.includes('originpulse');
+            case 'toxicspikes':
+                return abilityid !== 'toxicdebris';
+            case 'triattack':
+                return true;
+            case 'trickroom':
+                return (species.baseStats.spe || 0) <= 100;
+            case 'wildcharge':
+                return !moveNames.includes('supercellslam');
+            case 'zapcannon':
+                return abilityid === 'noguard';
+            default:
+                return null;
+            }
+        }
+
+        // Fakemon don't carry a fixed weight stat in this editor, so
+        // heatcrash/heavyslam (weight-gated on Showdown) skip the ability-gate
+        // pass below and fall through to the generic power/accuracy rules.
+        function sampleShowdownMoveIsNotUseless(move, profile, set) {
+            const id = toShowdownId(move.name);
+            const species = { baseStats: profile?.stats || {}, types: profile?.types || [], baseSpecies: '', id: '' };
+            const moveNames = (profile?.moves || []).map(m => toShowdownId(m.name));
+            const itemid = set && set.item ? toShowdownId(set.item) : '';
+            const abilityIds = sampleShowdownAbilityIds(profile, set);
+
+            if (id !== 'heatcrash' && id !== 'heavyslam') {
+                const perAbility = abilityIds.map(abilityid => sampleShowdownMoveNotUselessForAbility(id, species, moveNames, abilityid, itemid));
+                const decided = perAbility.filter(v => v !== null);
+                if (decided.length) return decided.some(Boolean);
+            }
+
+            if (move.category === 'Status' && (String(move.status || '').toLowerCase() === 'slp' || id === 'yawn')) {
+                return false;
+            }
+            if (move.category === 'Status') {
+                return SHOWDOWN_GOOD_STATUS_MOVES.has(id);
+            }
+            const bp = Number(move.basePower || 0);
+            if (bp < 75) {
+                const isTechnician = abilityIds.includes('technician');
+                return SHOWDOWN_GOOD_WEAK_MOVES.has(id) || (isTechnician && bp === 60);
+            }
+            if (id === 'skydrop') return true;
+            if (move.flags && move.flags.charge) return itemid === 'powerherb';
+            if (move.flags && move.flags.recharge) return false;
+            if (move.flags && move.flags.slicing && abilityIds.includes('sharpness')) return true;
+            return !SHOWDOWN_BAD_STRONG_MOVES.has(id);
+        }
+
+        function sampleMoveIsActuallyUseful(move, profile = null, role = null, set = null) {
             if (!move || !move.name) return false;
             if (sampleMoveIsBanned(move)) return false;
             if (SAMPLE_SET_BAD_DEFAULT_MOVES.has(move.name)) return false;
@@ -800,21 +1020,21 @@ import { updatePreview } from './editor-core.js';
             if (kind.hazard || kind.removal || kind.pivot || kind.setup || kind.defensiveSetup || kind.disruption || kind.speedControl || kind.screens) return true;
             // only status moves with explicit recovery semantics count as recovery.
             if (kind.recovery && move.category === 'Status') return true;
-            if (!sampleIsDamaging(move)) return false;
-            const bp = sampleEffectiveBasePower(move);
-            const accuracy = move.accuracy === true || move.accuracy == null || Number(move.accuracy) >= 75;
-            // a move's own combat stats (power/accuracy/priority/secondary effects) are
-            // the primary signal here, not ladder-usage frequency, so this stays
-            // reliable even without any external usage-stats data loaded.
-            const intrinsic = sampleMoveIntrinsicScore(move);
-            // usage is a preference, not a legality/usefulness gate. strong/signature
-            // attacks such as v-create and gigaton hammer must remain viable even when
-            // they have little or no ladder usage history.
-            if (!accuracy) return (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name) && bp >= 100 && Number(move.accuracy) >= 65) || (bp >= 120 && Number(move.accuracy) >= 65);
-            if (SAMPLE_SET_PREMIUM_ATTACKS.has(move.name) && bp >= 90) return true;
-            // ~58 roughly corresponds to a clean 60bp always-hit move, a 72bp neutral
-            // attack, or a 40bp priority move; comfortably below strong STAB attacks.
-            return intrinsic >= 58;
+            // signature/premium attacks stay viable regardless of Showdown's generic
+            // classification, as long as they still clear a real power/accuracy bar.
+            if (sampleIsDamaging(move) && SAMPLE_SET_PREMIUM_ATTACKS.has(move.name)) {
+                const bp = sampleEffectiveBasePower(move);
+                const accuracy = move.accuracy === true || move.accuracy == null || Number(move.accuracy) >= 65;
+                if (accuracy && bp >= 90) return true;
+            }
+            if (!profile) {
+                // no profile context (types/stats/movepool) to run the Showdown
+                // ability/species-gated rules against - fall back to its own
+                // combat stats via the intrinsic scorer.
+                if (!sampleIsDamaging(move)) return SHOWDOWN_GOOD_STATUS_MOVES.has(toShowdownId(move.name));
+                return sampleMoveIntrinsicScore(move) >= 58;
+            }
+            return sampleShowdownMoveIsNotUseless(move, profile, set);
         }
 
         function sampleIsPassiveProfile(profile, role) {
