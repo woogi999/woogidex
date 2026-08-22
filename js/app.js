@@ -20,12 +20,6 @@ import * as abilityBlocks from './ability-blocks.js';
 import * as nameRoll from './name-roll.js';
 import * as fieldRoll from './field-roll.js';
 
-// ==================== feature flags ====================
-// TODO: remove this flag (and the sidebar-events-btn hidden attribute in
-// index.html) once the events/contests feature is finished - this just
-// hides the entry point without touching any of the underlying code.
-export const FEATURE_EVENTS_ENABLED = false;
-
 // ==================== shared state ====================
 export const state = {
     sdMoves: {},
@@ -466,7 +460,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     log.info('BOOT', 'DOMContentLoaded fired');
     api.initTypeSelects();
     api.initColorPicker();
-    document.getElementById('sidebar-events-btn')?.toggleAttribute('hidden', !FEATURE_EVENTS_ENABLED);
     // paint skeleton cards immediately so the very first frame already has
     // the right shape instead of an empty grid, then let auth/storage load
     // underneath it — renderCollection() below replaces it seamlessly.

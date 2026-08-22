@@ -106,18 +106,33 @@
         <div id="main-content">
             <!-- events / contest view -->
             <div id="events-view" style="display:none;">
-                <div class="events-shell">
-                    <div class="events-hero panel">
-                        <div>
-                            <div class="events-kicker">COMPETITIONS</div>
-                            <h2>Events &amp; Contests</h2>
-                            <p>Check the available contests first, then submit one of your own Fakemon while submissions are open.</p>
+                <div class="panel">
+                    <div class="collection-title-row">
+                        <div class="collection-title-left">
+                            <h2 class="collection-heading">Events &amp; Contests</h2>
                         </div>
-                        <button class="btn btn-secondary btn-sm" type="button" onclick="loadEventsView()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh</button>
+                        <div class="collection-header-actions">
+                            <button class="btn btn-secondary btn-sm" type="button" onclick="loadEventsView()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh</button>
+                        </div>
                     </div>
                     <div id="events-status" class="events-status"></div>
                     <div id="events-list" class="events-list"></div>
                     <div id="contest-voting-view" class="contest-voting-view" style="display:none;"></div>
+                </div>
+            </div>
+
+            <!-- contest entry picker: pick a Fakemon from your collection to submit -->
+            <div class="modal-overlay" id="contest-mon-picker-modal">
+                <div class="modal contest-mon-picker-modal-box">
+                    <div class="modal-header">
+                        <h3 id="contest-mon-picker-title">Choose a Fakemon</h3>
+                        <button class="modal-close" onclick="closeModal('contest-mon-picker-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+                    </div>
+                    <div class="search-bar">
+                        <input type="text" id="contest-mon-picker-search" placeholder="Search your Fakemon..." oninput="filterContestMonPicker()">
+                    </div>
+                    <div id="contest-mon-picker-grid" class="collection-grid contest-mon-picker-grid"></div>
+                    <div id="contest-mon-picker-empty" class="community-empty" style="display:none;">No Fakemon match your search.</div>
                 </div>
             </div>
 

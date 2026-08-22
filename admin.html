@@ -17,7 +17,8 @@
     /* Admin-only additions — everything else (colors, .btn, .panel, .modal,
        .form-group, .role-tag, .profile-badge) comes from style.css so this
        page stays visually identical to the rest of the site. */
-    .admin-shell { max-width: 900px; margin: 0 auto; padding: 0 20px 80px; }
+    .admin-shell { max-width: 900px; margin: 0 auto; padding: 112px 20px 80px; }
+    @media (max-width: 700px) { .admin-shell { padding-top: 96px; } }
 
     .admin-gate-wrap { max-width: 380px; margin: 60px auto; }
     .admin-gate-msg { text-align: center; padding: 8px 4px 20px; }
@@ -149,6 +150,9 @@
                 </div>
             </div>
             <div class="header-actions">
+                <button class="dark-mode-header-btn" id="admin-dark-toggle" type="button" onclick="window.adminToggleDarkMode()" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i data-lucide="moon" id="admin-dark-icon" style="width:20px;height:20px;"></i>
+                </button>
                 <div id="admin-signed-out-actions" style="display:none;">
                     <a href="index.html" class="btn btn-secondary btn-sm">Back to site</a>
                 </div>
@@ -261,11 +265,31 @@
                 <div class="form-group"><label>Event</label><select id="admin-contest-event-id" required></select></div>
                 <div class="form-group"><label>Contest title</label><input id="admin-contest-title" required></div>
                 <div class="form-group"><label>Description</label><textarea id="admin-contest-description" rows="3"></textarea></div>
+                <div class="form-group"><label>Rules</label><textarea id="admin-contest-rules" rows="4" placeholder="e.g. one entry must be an original design, no reused sprites, keep it SFW…"></textarea></div>
                 <div class="admin-icon-color-row"><div class="form-group" style="flex:1"><label>Submission deadline</label><input id="admin-contest-submission-deadline" type="datetime-local"></div><div class="form-group" style="flex:1"><label>Voting starts</label><input id="admin-contest-voting-start" type="datetime-local"></div></div>
                 <div class="admin-icon-color-row"><div class="form-group" style="flex:1"><label>Voting deadline</label><input id="admin-contest-voting-deadline" type="datetime-local"></div><div class="form-group" style="flex:1"><label>Results time</label><input id="admin-contest-results-at" type="datetime-local"></div></div>
-                <div class="form-group"><label>Phase</label><select id="admin-contest-phase"><option value="draft">Draft</option><option value="submission">Submission</option><option value="voting">Voting</option><option value="results">Results</option><option value="closed">Closed</option></select></div>
+                <div class="admin-icon-color-row">
+                    <div class="form-group" style="flex:1"><label>Phase</label><div class="admin-phase-row"><select id="admin-contest-phase"><option value="draft">Draft</option><option value="submission">Submission</option><option value="voting">Voting</option><option value="results">Results</option><option value="closed">Closed</option></select><button type="button" class="btn btn-secondary btn-sm" onclick="window.adminForcePhase()" title="Immediately set the contest to this phase, overriding normal progression">Force Phase</button></div></div>
+                    <div class="form-group" style="flex:1"><label>Max submissions per user</label><input id="admin-contest-max-subs" type="number" min="1" step="1" value="1"></div>
+                </div>
+                <div class="form-group">
+                    <label>Winner criteria</label>
+                    <div class="admin-winner-criteria">
+                        <label class="admin-checkbox-row"><input type="checkbox" id="admin-contest-wc-topn-enabled" onchange="window.adminToggleWcField('topn')"> Top <input type="number" id="admin-contest-wc-topn" min="1" step="1" class="admin-wc-num" disabled> submissions</label>
+                        <label class="admin-checkbox-row"><input type="checkbox" id="admin-contest-wc-toppct-enabled" onchange="window.adminToggleWcField('toppct')"> Top <input type="number" id="admin-contest-wc-toppct" min="1" max="100" step="1" class="admin-wc-num" disabled> % of submissions</label>
+                        <label class="admin-checkbox-row"><input type="checkbox" id="admin-contest-wc-minscore-enabled" onchange="window.adminToggleWcField('minscore')"> Any submission scoring at least <input type="number" id="admin-contest-wc-minscore" min="1" max="100" step="1" class="admin-wc-num" disabled> % of possible points</label>
+                    </div>
+                    <p class="admin-section-sub" style="margin:6px 0 0;">A submission wins if it meets ANY checked criterion. Check "top 3" and "70%+" together to mean the top 3 make it, plus anyone else who cleared 70%. Leave everything unchecked to default to top 3. The "% of possible points" is that entry's competitive+design points added up across every voter, out of (voter count × 20) possible.</p>
+                </div>
                 <div class="admin-modal-actions"><button type="button" class="btn btn-secondary" onclick="window.adminCloseContestForm()">Cancel</button><button type="submit" class="btn btn-primary">Save contest</button></div>
             </form>
+        </div>
+    </div>
+    <div id="admin-submissions-modal" class="modal-overlay">
+        <div class="modal admin-voters-modal">
+            <div class="modal-header"><h3 id="admin-submissions-modal-title">Contest Submissions</h3><button class="modal-close" type="button" onclick="window.adminCloseSubmissionsModal()"><i data-lucide="x"></i></button></div>
+            <div class="admin-voters-toolbar"><span id="admin-submissions-summary">Loading…</span></div>
+            <div id="admin-submissions-modal-list" class="admin-voters-modal-list"></div>
         </div>
     </div>
 
@@ -325,4 +349,27 @@
 </body>
 </html><style>
 .admin-voters-modal{max-width:760px;width:min(92vw,760px)}.admin-voters-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;color:var(--text-muted);font-size:12px}.admin-voters-modal-list{max-height:60vh;overflow:auto}.admin-voter-card{width:100%;display:grid;grid-template-columns:38px minmax(0,1fr) 20px;align-items:center;gap:10px;padding:11px 8px;border:0;border-top:1px solid var(--border);background:transparent;color:var(--text-primary);text-align:left;cursor:pointer}.admin-voter-card:hover{background:var(--bg-panel)}.admin-voter-card span:nth-child(2){min-width:0}.admin-voter-card small,.admin-voter-detail-head small{display:block;color:var(--text-muted);font-size:11px;margin-top:2px}.admin-voter-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:800}.admin-voter-detail-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}.admin-response-row{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:9px;background:var(--bg-panel)}.admin-response-row>div:first-child{display:flex;justify-content:space-between;gap:12px}.admin-response-row p{margin:9px 0 0;color:var(--text-secondary);white-space:pre-wrap}.admin-response-scores{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.admin-response-scores span{padding:4px 8px;border-radius:8px;background:var(--bg-card);font-size:11px;color:var(--text-muted)}
+
+/* the page-level `.admin-section-sub { margin: -8px 0 14px }` rule above is
+   tuned for a <p> sitting right under an .admin-section-head row. admin.js
+   reuses the same class name for the little subtitle stacked directly under
+   a <strong> inside each event/contest row, where that negative top margin
+   pulls it up and over the title instead. reset it there. */
+.admin-contest-event .admin-section-sub, .admin-contest-row .admin-section-sub { margin: 3px 0 0; }
+.admin-contest-event > .admin-section-head > div > strong { display: block; }
+.admin-contest-row > div:first-child > strong { display: block; margin-bottom: 1px; }
+.admin-phase-row { display: flex; gap: 8px; align-items: center; }
+.admin-phase-row select { flex: 1; min-width: 0; }
+.admin-phase-row .btn { white-space: nowrap; flex-shrink: 0; }
+.admin-winner-criteria { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.admin-winner-criteria .admin-checkbox-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.admin-checkbox-row input.admin-wc-num { width: 64px; height: auto; padding: 5px 8px; accent-color: initial; }
+.admin-wc-num:disabled { opacity: .5; }
+.admin-submission-row { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 10px 8px; border-top: 1px solid var(--border); }
+.admin-submission-row:first-child { border-top: 0; }
+.admin-submission-thumb { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; background: var(--bg-panel); display: flex; align-items: center; justify-content: center; color: var(--text-muted); flex-shrink: 0; }
+.admin-submission-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.admin-submission-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.admin-submission-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-submission-info small { color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
 </style>

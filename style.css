@@ -4533,17 +4533,20 @@
 .header.header-retracted { transform: translateY(calc(-100% - 2px)); box-shadow:none; }
 
 /* ==================== events / contests ==================== */
-.events-shell { max-width:1100px; margin:0 auto; padding:18px 0 70px; min-width:0; }
 .events-hero { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:24px; margin-bottom:18px; min-width:0; }
 .events-kicker { font-size:10px; font-weight:800; letter-spacing:.16em; color:var(--text-muted); margin-bottom:5px; }
 .events-hero h2 { margin:0 0 5px; font-size:28px; }
 .events-hero p { color:var(--text-secondary); font-size:13px; margin:0; max-width:720px; line-height:1.5; }
 .events-status { min-height:20px; margin:8px 0 12px; color:var(--text-muted); font-size:12px; }
-.events-list { display:flex; flex-direction:column; gap:18px; min-width:0; }
-.event-card { padding:20px; min-width:0; overflow:visible; }
+.events-list { display:flex; flex-direction:column; min-width:0; }
+/* one event's title + contest list, stacked directly under the next inside
+   the same outer .panel (no nested boxes) - see collection-view for the
+   pattern this matches. */
+.event-group { padding:18px 0; border-top:1px solid var(--border); min-width:0; }
+.event-group:first-child { padding-top:0; border-top:0; }
 .event-card-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:16px; min-width:0; }
 .event-card-head > div { min-width:0; }
-.event-card h3 { margin:0 0 5px; font-size:20px; }
+.event-card-head h3 { margin:0 0 5px; font-size:20px; }
 .event-card-description { color:var(--text-secondary); font-size:13px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
 .event-date { color:var(--text-muted); font-size:11px; margin-top:7px; overflow-wrap:anywhere; }
 .contest-list { display:flex; flex-direction:column; gap:12px; min-width:0; }
@@ -4572,7 +4575,7 @@
 .contest-remarks { display:block; width:100%; min-height:100px; margin-top:12px; resize:vertical; }
 .contest-vote-list { display:flex; flex-direction:column; gap:12px; margin-top:12px; min-width:0; }
 .contest-vote-row { display:block; width:100%; min-width:0; border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--bg-panel); overflow:visible; }
-@media (max-width:700px) { .events-shell { padding-top:12px; } .events-hero,.event-card-head { flex-direction:column; align-items:flex-start; } .events-hero { padding:18px; } .contest-submit-grid,.contest-rating-grid { grid-template-columns:1fr; } .contest-stars { gap:0; } .contest-star { padding:1px; } }
+@media (max-width:700px) { .events-hero,.event-card-head { flex-direction:column; align-items:flex-start; } .events-hero { padding:18px; } .contest-submit-grid,.contest-rating-grid { grid-template-columns:1fr; } .contest-stars { gap:0; } .contest-star { padding:1px; } }
 
 /* ==================== edge-to-edge dynamic header ==================== */
 body { padding-top: 0; }
@@ -4605,8 +4608,6 @@ body { padding-top: 0; }
 .app-container { padding-top: 0 !important; }
 
 /* ==================== event / contest UX ==================== */
-.event-card { box-shadow: 0 8px 24px rgba(0,0,0,.04); }
-.event-card + .event-card { margin-top: 0; }
 .contest-card { transition: border-color .18s ease, box-shadow .18s ease, background .18s ease; }
 .contest-card:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 8px 22px rgba(0,0,0,.05); }
 .contest-card-actions { margin-top: 14px !important; padding-top: 12px; border-top: 1px solid var(--border-light); }
@@ -4664,8 +4665,7 @@ body { padding-top: 0; }
     .admin-icon-color-row .form-group { width:100% !important; }
 }
 
-/* final event layout + full-width header corrections */
-.events-shell { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 18px 0 70px !important; }
+/* full-width header corrections */
 .events-hero, .events-list { width: 100%; }
 .header { top: 0 !important; left: 0 !important; right: 0 !important; inset-block-start: 0 !important; margin: 0 !important; border-top: 0 !important; border-left: 0 !important; border-right: 0 !important; border-radius: 0 !important; z-index: 5000 !important; }
 .header::after { left: 0 !important; right: 0 !important; }
@@ -4677,9 +4677,61 @@ body { padding-top: 0; }
 @media (max-width: 700px) { .admin-contest-event .admin-section-head > div:last-child { width:100%; justify-content:flex-start; } .admin-contest-row { flex-direction:column !important; } .admin-contest-row > div:last-child { width:100%; justify-content:flex-start; } }
 
 /* contest voting workspace */
-.events-shell{width:100%;max-width:none;}
 .contest-card-top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;min-width:0}.contest-card-top>div{min-width:0}.contest-card-top h4{margin:0 0 6px}.contest-meta{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:12px;color:var(--text-muted);font-size:12px}.contest-card-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.contest-panel-actions{margin-top:12px}.contest-voting-layout{display:grid;grid-template-columns:minmax(220px,280px) minmax(0,1fr);gap:18px;align-items:start}.contest-vote-queue{position:sticky;top:90px;max-height:calc(100vh - 110px);overflow:auto}.contest-vote-queue h4{margin:0 0 10px}.contest-vote-queue-item{width:100%;display:grid;grid-template-columns:28px minmax(0,1fr) 20px;align-items:center;gap:8px;text-align:left;background:transparent;color:var(--text-primary);border:1px solid transparent;border-radius:10px;padding:9px;cursor:pointer}.contest-vote-queue-item:hover{background:var(--bg-panel);border-color:var(--border)}.contest-vote-queue-item.is-current{border-color:var(--accent);background:var(--accent-glow)}.contest-vote-queue-item.is-done{background:color-mix(in srgb,var(--success) 14%,transparent);border-color:color-mix(in srgb,var(--success) 35%,var(--border));}.contest-vote-queue-item.is-done i{color:var(--success)}.contest-vote-queue-item strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.contest-vote-current-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.06)}.contest-vote-mon-preview{display:flex;gap:18px;align-items:center;padding-bottom:18px;border-bottom:1px solid var(--border);margin-bottom:18px}.contest-vote-mon-preview img,.contest-vote-mon-placeholder{width:150px;height:150px;object-fit:contain;border-radius:14px;background:var(--bg-panel);flex-shrink:0}.contest-vote-mon-placeholder{display:flex;align-items:center;justify-content:center;color:var(--text-muted)}.contest-vote-mon-preview h3{margin:4px 0 6px}.contest-vote-navigation{display:flex;justify-content:space-between;gap:10px;margin-top:14px}.contest-final-submit{margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:16px}.contest-final-submit p{margin:4px 0 0;color:var(--text-muted);font-size:12px}.contest-final-submit button:disabled{opacity:.45;cursor:not-allowed;transform:none}.contest-stars{display:flex;gap:2px;flex-wrap:wrap}.contest-star{width:30px;height:30px;border:0;background:transparent;color:var(--text-muted);cursor:pointer;padding:2px;border-radius:6px}.contest-star:hover,.contest-star.active{color:#f5b942;background:rgba(245,185,66,.12)}.contest-rating-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.contest-rating-box{padding:12px;border:1px solid var(--border);border-radius:12px}.contest-rating-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:7px}.contest-remarks{width:100%;min-height:100px;margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input);color:var(--text-primary);resize:vertical;font-family:inherit}.contest-voting-view{width:100%}
 @media(max-width:800px){.contest-voting-layout{grid-template-columns:1fr}.contest-vote-queue{position:static;max-height:none;display:flex;overflow-x:auto;gap:8px}.contest-vote-queue h4{display:none}.contest-vote-queue-item{min-width:170px}.contest-vote-mon-preview{align-items:flex-start;flex-direction:column}.contest-vote-mon-preview img,.contest-vote-mon-placeholder{width:120px;height:120px}.contest-rating-grid{grid-template-columns:1fr}.contest-final-submit{align-items:stretch;flex-direction:column}}
+
+/* contest phase progress rail */
+.contest-progress { display:flex; align-items:center; gap:0; margin-top:12px; }
+.contest-progress-step { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--text-muted); padding:4px 0; }
+.contest-progress-step.is-done { color:var(--success); }
+.contest-progress-step.is-current { color:var(--accent); }
+.contest-progress-sep { flex:1 1 auto; height:2px; background:var(--border); margin:0 8px; border-radius:2px; }
+.contest-meta span { display:inline-flex; align-items:center; gap:5px; }
+.contest-meta span i { width:12px; height:12px; flex-shrink:0; }
+.contest-meta em { font-style:normal; color:var(--text-secondary); }
+
+/* contest results podium */
+.contest-results-panel h5 { display:flex; align-items:center; gap:7px; }
+.contest-results-panel h5 i { width:16px; height:16px; color:#f5b942; }
+.contest-results-list { display:flex; flex-direction:column; gap:9px; margin-top:12px; }
+.contest-result-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--bg-panel); min-width:0; }
+.contest-results-criteria { color:var(--text-muted); font-size:11.5px; margin:2px 0 12px; }
+.contest-result-rank { flex:0 0 30px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:var(--text-muted); }
+.contest-result-rank i { width:20px; height:20px; }
+.contest-result-winner { border-color:color-mix(in srgb, #f5b942 45%, var(--border)); background:color-mix(in srgb, #f5b942 10%, var(--bg-panel)); }
+.contest-result-winner .contest-result-rank i { color:#f5b942; }
+.contest-result-winner-chip { display:inline-flex; align-items:center; padding:2px 7px; margin-left:6px; border-radius:999px; background:color-mix(in srgb, #f5b942 22%, transparent); color:#a9781a; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
+[data-theme="dark"] .contest-result-winner-chip { color:#f5b942; }
+.contest-result-avatar { flex:0 0 44px; width:44px; height:44px; border-radius:10px; overflow:hidden; background:var(--bg-input); display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
+.contest-result-avatar img { width:100%; height:100%; object-fit:contain; }
+.contest-result-info { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.contest-result-info strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.contest-result-info span { font-size:11px; color:var(--text-muted); }
+.contest-result-scores { flex:0 0 auto; display:flex; gap:12px; font-size:11px; color:var(--text-muted); }
+.contest-result-scores b { color:var(--text-primary); font-size:12px; }
+.contest-result-total b { color:var(--accent); }
+@media (max-width:640px) { .contest-result-row { flex-wrap:wrap; } .contest-result-scores { flex-basis:100%; justify-content:space-between; padding-left:56px; } }
+
+/* contest rules block, and a user's own entries during submission */
+.contest-rules { margin-bottom:14px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--bg-panel); }
+.contest-rules h5 { display:flex; align-items:center; gap:7px; margin:0 0 6px; }
+.contest-rules h5 i { width:15px; height:15px; color:var(--text-muted); }
+.contest-rules p { margin:0; color:var(--text-secondary); font-size:12.5px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.contest-my-entries { margin-bottom:14px; }
+.contest-my-entries h5 { margin:0 0 8px; }
+.contest-my-entry { display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border); }
+.contest-my-entry:first-of-type { border-top:0; }
+.contest-my-entry-thumb { flex:0 0 36px; width:36px; height:36px; border-radius:8px; overflow:hidden; background:var(--bg-input); display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
+.contest-my-entry-thumb img { width:100%; height:100%; object-fit:contain; }
+.contest-my-entry span { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; font-size:13px; }
+
+/* contest entry picker modal - same card look as My Collection, just smaller
+   and read-only (pick a card = submit it, no edit/pin/export actions). */
+.contest-mon-picker-modal-box { max-width:680px; width:min(92vw,680px); max-height:85vh; }
+.contest-mon-picker-grid { grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:12px; margin-top:0; max-height:55vh; overflow-y:auto; padding-right:2px; }
+.contest-mon-picker-grid .collection-card { padding:12px; }
+.contest-mon-picker-grid .collection-card .card-art { height:90px; margin-bottom:8px; }
+.contest-mon-picker-grid .collection-card .card-name { font-size:13.5px; }
 
 
 /* no-art placeholder */

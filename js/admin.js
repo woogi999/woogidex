@@ -52,6 +52,35 @@ async function loadBadges() {
 
 function $(id) { return document.getElementById(id); }
 
+// ==================== dark mode ====================
+// shares index.html's localStorage key so a preference set on either page
+// carries over to the other; kept self-contained per this file's own
+// "deliberately standalone" rule above rather than importing app.js.
+function updateDarkModeIcon(isDark) {
+    const icon = $('admin-dark-icon');
+    if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+function loadDarkMode() {
+    const isDark = localStorage.getItem('woogidex-dark-mode') === 'true';
+    if (isDark) document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    updateDarkModeIcon(isDark);
+}
+function toggleDarkMode() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('woogidex-dark-mode', 'false');
+        updateDarkModeIcon(false);
+    } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('woogidex-dark-mode', 'true');
+        updateDarkModeIcon(true);
+    }
+}
+loadDarkMode();
+
 function showToast(msg, kind) {
     const el = $('admin-toast');
     if (!el) return;
@@ -474,12 +503,13 @@ async function toggleMonsList(btn, userId) {
 }
 
 async function deleteMon(monId, userId) {
-    if (!confirm('Remove this published Fakemon from the Community Hub? This cannot be undone.')) return;
+    const reason = prompt('Remove this published Fakemon from the Community Hub. This cannot be undone.\n\nReason (sent to the owner in their notifications):');
+    if (reason === null) return;
     const client = await getClient();
-    // admin_delete_published_mon is a SECURITY DEFINER RPC (see
-    // BADGES_UNIFIED_SETUP.sql) — real enforcement is still the
-    // published_mons DELETE RLS policy staff already satisfy directly.
-    const { error } = await client.rpc('admin_delete_published_mon', { mon_id: monId });
+    // admin_delete_published_mon is a SECURITY DEFINER RPC — it checks
+    // my_can_delete_any() itself, then deletes the row and notifies the
+    // owner with the reason we pass it.
+    const { error } = await client.rpc('admin_delete_published_mon', { mon_id: monId, p_reason: reason.trim() });
     if (error) {
         showToast('Could not delete: ' + error.message, 'error');
         return;
@@ -510,8 +540,17 @@ function renderContestAdmin(){
     el.innerHTML = contestAdmin.events.length ? contestAdmin.events.map(e=>`<div class="admin-contest-event"><div class="admin-section-head"><div><strong>${escapeHtml(e.title)}</strong><div class="admin-section-sub">${escapeHtml(e.description||'')} · ${fmtDate(e.starts_at)} → ${fmtDate(e.ends_at)}</div></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="window.adminEditEvent('${e.id}')">Edit</button><button class="btn btn-primary btn-sm" onclick="window.adminAddContest('${e.id}')">Add contest</button><button class="btn btn-danger btn-sm" onclick="window.adminDeleteEvent('${e.id}')">Delete event</button></div></div><div>${contestAdmin.contests.filter(c=>c.event_id===e.id).map(renderContestAdminRow).join('')||'<div class="admin-empty">No contests yet.</div>'}</div></div>`).join('') : '<div class="admin-empty">No events yet.</div>';
     icons();
 }
+function describeWinnerCriteria(wc){
+    wc = wc || {};
+    const parts = [];
+    if (wc.top_n) parts.push(`top ${wc.top_n}`);
+    if (wc.top_percent) parts.push(`top ${wc.top_percent}%`);
+    if (wc.min_score_percent) parts.push(`≥${wc.min_score_percent}% score`);
+    return parts.length ? parts.join(' or ') : 'top 3 (default)';
+}
 function renderContestAdminRow(c){
-    return `<div class="admin-contest-row"><div><strong>${escapeHtml(c.title)}</strong><div class="admin-section-sub">Phase: ${escapeHtml(c.phase)} · submissions ${fmtDate(c.submission_deadline)} · voting ${fmtDate(c.voting_start)} → ${fmtDate(c.voting_deadline)}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" onclick="window.adminEditContest('${c.id}')">Edit</button><button class="btn btn-secondary btn-sm" onclick="window.adminViewContestVotes('${c.id}')">View voters</button><button class="btn btn-danger btn-sm" onclick="window.adminDeleteContest('${c.id}')">Delete contest</button></div><div id="admin-voters-${c.id}" class="admin-empty" style="display:none;grid-column:1/-1;"></div></div>`;
+    const maxSubs = c.max_submissions_per_user || 1;
+    return `<div class="admin-contest-row"><div><strong>${escapeHtml(c.title)}</strong><div class="admin-section-sub">Phase: ${escapeHtml(c.phase)} · submissions ${fmtDate(c.submission_deadline)} · voting ${fmtDate(c.voting_start)} → ${fmtDate(c.voting_deadline)}</div><div class="admin-section-sub">Max ${maxSubs} submission${maxSubs===1?'':'s'} per user · Winners: ${escapeHtml(describeWinnerCriteria(c.winner_criteria))}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" onclick="window.adminEditContest('${c.id}')">Edit</button><button class="btn btn-secondary btn-sm" onclick="window.adminViewContestSubmissions('${c.id}')">View submissions</button><button class="btn btn-secondary btn-sm" onclick="window.adminViewContestVotes('${c.id}')">View voters</button><button class="btn btn-danger btn-sm" onclick="window.adminDeleteContest('${c.id}')">Delete contest</button></div></div>`;
 }
 function openEventForm(id){ const e=id?contestAdmin.events.find(x=>x.id===id):null; $('admin-event-form-title').textContent=e?'Edit Event':'Create Event'; $('admin-event-id').value=e?.id||''; $('admin-event-title').value=e?.title||''; $('admin-event-description').value=e?.description||''; $('admin-event-starts').value=toInputDate(e?.starts_at); $('admin-event-ends').value=toInputDate(e?.ends_at); $('admin-event-form-modal').classList.add('active'); }
 function closeEventForm(){ $('admin-event-form-modal')?.classList.remove('active'); }
@@ -549,9 +588,46 @@ async function deleteContest(id){
 }
 
 async function submitEventForm(ev){ ev.preventDefault(); const client=await getClient(); const id=$('admin-event-id').value; const payload={title:$('admin-event-title').value.trim(),description:$('admin-event-description').value.trim(),starts_at:fromInputDate('admin-event-starts'),ends_at:fromInputDate('admin-event-ends'),created_by:state.me.id}; const {error}=id?await client.from('contest_events').update(payload).eq('id',id):await client.from('contest_events').insert(payload); if(error)return showToast(error.message,'error'); closeEventForm(); await loadContestAdmin(); showToast('Event saved','success'); }
-function openContestForm(id,eventId){ const c=id?contestAdmin.contests.find(x=>x.id===id):null; $('admin-contest-form-title').textContent=c?'Edit Contest':'Create Contest'; $('admin-contest-id').value=c?.id||''; $('admin-contest-event-id').innerHTML=contestAdmin.events.map(e=>`<option value="${e.id}">${escapeHtml(e.title)}</option>`).join(''); $('admin-contest-event-id').value=c?.event_id||eventId||''; $('admin-contest-title').value=c?.title||''; $('admin-contest-description').value=c?.description||''; $('admin-contest-submission-deadline').value=toInputDate(c?.submission_deadline); $('admin-contest-voting-start').value=toInputDate(c?.voting_start); $('admin-contest-voting-deadline').value=toInputDate(c?.voting_deadline); $('admin-contest-results-at').value=toInputDate(c?.results_at); $('admin-contest-phase').value=c?.phase||'draft'; $('admin-contest-form-modal').classList.add('active'); }
+function wcField(idBase, value){
+    const enabled = value !== null && value !== undefined;
+    $(`admin-contest-wc-${idBase}-enabled`).checked = enabled;
+    $(`admin-contest-wc-${idBase}`).value = enabled ? value : '';
+    $(`admin-contest-wc-${idBase}`).disabled = !enabled;
+}
+function toggleWcField(idBase){
+    const enabled = $(`admin-contest-wc-${idBase}-enabled`).checked;
+    const input = $(`admin-contest-wc-${idBase}`);
+    input.disabled = !enabled;
+    if (enabled && !input.value) input.focus();
+}
+function openContestForm(id,eventId){ const c=id?contestAdmin.contests.find(x=>x.id===id):null; $('admin-contest-form-title').textContent=c?'Edit Contest':'Create Contest'; $('admin-contest-id').value=c?.id||''; $('admin-contest-event-id').innerHTML=contestAdmin.events.map(e=>`<option value="${e.id}">${escapeHtml(e.title)}</option>`).join(''); $('admin-contest-event-id').value=c?.event_id||eventId||''; $('admin-contest-title').value=c?.title||''; $('admin-contest-description').value=c?.description||''; $('admin-contest-rules').value=c?.rules||''; $('admin-contest-submission-deadline').value=toInputDate(c?.submission_deadline); $('admin-contest-voting-start').value=toInputDate(c?.voting_start); $('admin-contest-voting-deadline').value=toInputDate(c?.voting_deadline); $('admin-contest-results-at').value=toInputDate(c?.results_at); $('admin-contest-phase').value=c?.phase||'draft'; $('admin-contest-max-subs').value=c?.max_submissions_per_user||1; const wc=c?.winner_criteria||{top_n:3}; wcField('topn',wc.top_n??null); wcField('toppct',wc.top_percent??null); wcField('minscore',wc.min_score_percent??null); $('admin-contest-form-modal').classList.add('active'); }
 function closeContestForm(){ $('admin-contest-form-modal')?.classList.remove('active'); }
-async function submitContestForm(ev){ ev.preventDefault(); const client=await getClient(); const id=$('admin-contest-id').value; const payload={event_id:$('admin-contest-event-id').value,title:$('admin-contest-title').value.trim(),description:$('admin-contest-description').value.trim(),created_by:state.me.id,submission_deadline:fromInputDate('admin-contest-submission-deadline'),voting_start:fromInputDate('admin-contest-voting-start'),voting_deadline:fromInputDate('admin-contest-voting-deadline'),results_at:fromInputDate('admin-contest-results-at'),phase:$('admin-contest-phase').value}; const {error}=id?await client.from('contests').update(payload).eq('id',id):await client.from('contests').insert(payload); if(error)return showToast(error.message,'error'); closeContestForm(); await loadContestAdmin(); showToast('Contest saved','success'); }
+async function submitContestForm(ev){
+    ev.preventDefault();
+    const client=await getClient();
+    const id=$('admin-contest-id').value;
+    const winner_criteria={};
+    if($('admin-contest-wc-topn-enabled').checked && $('admin-contest-wc-topn').value) winner_criteria.top_n=parseInt($('admin-contest-wc-topn').value,10);
+    if($('admin-contest-wc-toppct-enabled').checked && $('admin-contest-wc-toppct').value) winner_criteria.top_percent=parseInt($('admin-contest-wc-toppct').value,10);
+    if($('admin-contest-wc-minscore-enabled').checked && $('admin-contest-wc-minscore').value) winner_criteria.min_score_percent=parseInt($('admin-contest-wc-minscore').value,10);
+    if(!Object.keys(winner_criteria).length) winner_criteria.top_n=3;
+    const maxSubs=Math.max(1,parseInt($('admin-contest-max-subs').value,10)||1);
+    const payload={event_id:$('admin-contest-event-id').value,title:$('admin-contest-title').value.trim(),description:$('admin-contest-description').value.trim(),rules:$('admin-contest-rules').value.trim(),created_by:state.me.id,submission_deadline:fromInputDate('admin-contest-submission-deadline'),voting_start:fromInputDate('admin-contest-voting-start'),voting_deadline:fromInputDate('admin-contest-voting-deadline'),results_at:fromInputDate('admin-contest-results-at'),phase:$('admin-contest-phase').value,max_submissions_per_user:maxSubs,winner_criteria};
+    const {error}=id?await client.from('contests').update(payload).eq('id',id):await client.from('contests').insert(payload);
+    if(error)return showToast(error.message,'error');
+    closeContestForm(); await loadContestAdmin(); showToast('Contest saved','success');
+}
+async function forcePhase(){
+    const id=$('admin-contest-id').value;
+    if(!id) return showToast('Save the contest once first, then you can force its phase.','warning');
+    const phase=$('admin-contest-phase').value;
+    if(!confirm(`Force this contest's phase to "${phase}" right now? This overrides normal automatic progression and takes effect immediately.`)) return;
+    const client=await getClient();
+    const {error}=await client.from('contests').update({phase}).eq('id',id);
+    if(error) return showToast(error.message,'error');
+    showToast(`Phase forced to ${phase}`,'success');
+    await loadContestAdmin();
+}
 let adminVotersState = { contestId:null, contestTitle:'', voters:[] };
 async function viewContestVotes(contestId){
     const contest = contestAdmin.contests.find(c=>c.id===contestId);
@@ -590,6 +666,55 @@ function renderVoterList(){
     list.innerHTML=adminVotersState.voters.map((v,i)=>`<button type="button" class="admin-voter-card" onclick="window.adminOpenVoterResponse(${i})"><span class="admin-voter-avatar">${escapeHtml((v.profile?.display_name||v.profile?.username||'?').slice(0,1).toUpperCase())}</span><span><strong>${escapeHtml(v.profile?.display_name||v.profile?.username||v.voter_id)}</strong><small>@${escapeHtml(v.profile?.username||'unknown')} · submitted ${fmtDate(v.submitted_at)}</small></span><i data-lucide="chevron-right"></i></button>`).join('')||'<div class="admin-empty">No completed ballots yet.</div>';
     if(typeof lucide!=='undefined')lucide.createIcons();
 }
+let adminSubmissionsState = { contestId:null, contestTitle:'', submissions:[] };
+const submissionImage = d => d?.artwork || d?.image || d?.sprite || '';
+async function viewContestSubmissions(contestId){
+    const contest = contestAdmin.contests.find(c=>c.id===contestId);
+    const modal=$('admin-submissions-modal'); if(!modal)return;
+    adminSubmissionsState={contestId,contestTitle:contest?.title||'Contest',submissions:[]};
+    $('admin-submissions-modal-title').textContent=`Submissions — ${contest?.title||'Contest'}`;
+    $('admin-submissions-summary').textContent='Loading…';
+    $('admin-submissions-modal-list').innerHTML='<div class="admin-empty">Loading submissions…</div>';
+    modal.classList.add('active');
+    try{
+        const client=await getClient();
+        const {data:subs,error:se}=await client.from('contest_submissions').select('id,user_id,fakemon_data,submitted_at').eq('contest_id',contestId).order('submitted_at',{ascending:false});
+        if(se)throw se;
+        const ids=[...new Set((subs||[]).map(s=>s.user_id))];
+        const {data:profiles,error:pe}=ids.length?await client.from('profiles').select('id,username,display_name').in('id',ids):{data:[],error:null};
+        if(pe)throw pe;
+        const pm=Object.fromEntries((profiles||[]).map(p=>[p.id,p]));
+        adminSubmissionsState.submissions=(subs||[]).map(s=>({...s,profile:pm[s.user_id]||null}));
+        $('admin-submissions-summary').textContent=`${adminSubmissionsState.submissions.length} submission${adminSubmissionsState.submissions.length===1?'':'s'}`;
+        renderSubmissionsList();
+    }catch(e){$('admin-submissions-summary').textContent='Could not load submissions';$('admin-submissions-modal-list').innerHTML=`<div class="admin-empty">${escapeHtml(e.message||e)}</div>`;}
+}
+function renderSubmissionsList(){
+    const list=$('admin-submissions-modal-list'); if(!list)return;
+    list.innerHTML=adminSubmissionsState.submissions.length?adminSubmissionsState.submissions.map(s=>{
+        const d=s.fakemon_data||{}; const img=submissionImage(d);
+        const name=s.profile?.display_name||s.profile?.username||s.user_id;
+        return `<div class="admin-submission-row">
+          <div class="admin-submission-thumb">${img?`<img src="${escapeHtml(img)}" alt="">`:'<i data-lucide="image"></i>'}</div>
+          <div class="admin-submission-info"><strong>${escapeHtml(d.name||'Unnamed Fakemon')}</strong><small>by ${escapeHtml(name)}${s.profile?.username?` (@${escapeHtml(s.profile.username)})`:''} · ${fmtDate(s.submitted_at)}</small></div>
+          <button class="btn btn-danger btn-sm" type="button" onclick="window.adminDeleteSubmission('${s.id}')"><i data-lucide="trash-2"></i></button>
+        </div>`;
+    }).join('') : '<div class="admin-empty">No submissions yet.</div>';
+    if(typeof lucide!=='undefined')lucide.createIcons();
+}
+async function deleteSubmission(id){
+    const reason = prompt('Remove this submission from the contest. This also removes any votes cast on it.\n\nReason (sent to the entrant in their notifications):');
+    if(reason===null) return;
+    const client=await getClient();
+    const {error}=await client.rpc('admin_delete_contest_submission',{p_submission_id:id,p_reason:reason.trim()});
+    if(error){ showToast(error.message,'error'); return; }
+    adminSubmissionsState.submissions=adminSubmissionsState.submissions.filter(s=>s.id!==id);
+    $('admin-submissions-summary').textContent=`${adminSubmissionsState.submissions.length} submission${adminSubmissionsState.submissions.length===1?'':'s'}`;
+    renderSubmissionsList();
+    showToast('Submission removed','success');
+}
+function closeSubmissionsModal(){ $('admin-submissions-modal')?.classList.remove('active'); }
+
 function exportVotersJson(){
     const payload={contest_id:adminVotersState.contestId,contest_title:adminVotersState.contestTitle,exported_at:new Date().toISOString(),voters:adminVotersState.voters.map(v=>({voter_id:v.voter_id,username:v.profile?.username||null,display_name:v.profile?.display_name||null,submitted_at:v.submitted_at,responses:v.responses.map(r=>({submission_id:r.submission_id,competitive_score:r.competitive_score,design_score:r.design_score,remarks:r.remarks||'',created_at:r.created_at}))}))};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`contest-${adminVotersState.contestId}-voters.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
@@ -627,6 +752,12 @@ window.adminRenderVoterList = renderVoterList;
 window.adminExportVotersJson = exportVotersJson;
 window.adminDeleteEvent = deleteEvent;
 window.adminDeleteContest = deleteContest;
+window.adminToggleWcField = toggleWcField;
+window.adminForcePhase = forcePhase;
+window.adminToggleDarkMode = toggleDarkMode;
+window.adminViewContestSubmissions = viewContestSubmissions;
+window.adminCloseSubmissionsModal = closeSubmissionsModal;
+window.adminDeleteSubmission = deleteSubmission;
 
 $('admin-signin-form').addEventListener('submit', handleSignInSubmit);
 init();

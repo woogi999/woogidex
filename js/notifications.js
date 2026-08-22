@@ -16,7 +16,7 @@ import { state, api } from './app.js';
 //     actor_id uuid references auth.users(id) on delete set null,              -- who triggered it
 //     actor_name text,
 //     actor_avatar_url text,
-//     type text not null,                 -- 'mon_comment' | 'profile_comment'
+//     type text not null,                 -- 'mon_comment' | 'profile_comment' | 'mon_deleted' | 'contest_submission_deleted'
 //     target_id text,                     -- published_mons.id, or the profile owner's user id
 //     target_name text,                   -- mon name, shown in the notification text
 //     preview text,                       -- first ~140 chars of the comment
@@ -119,6 +119,8 @@ function timeAgo(dateStr) {
 
 function notificationText(n) {
     if (n.type === 'profile_comment') return 'commented on your profile';
+    if (n.type === 'mon_deleted') return `removed your Fakemon "${escNotif(n.target_name || 'submission')}" from the Community Hub`;
+    if (n.type === 'contest_submission_deleted') return `removed your contest entry "${escNotif(n.target_name || 'submission')}"`;
     return `commented on ${escNotif(n.target_name || 'your Fakemon')}`;
 }
 
