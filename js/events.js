@@ -20,9 +20,22 @@ function findContest(contestId) {
     return EVENTS_STATE.events.flatMap(e => e.contests || []).find(c => c.id === contestId);
 }
 
+// the displayed phase must never be "ahead of" or "behind" contests.phase in
+// the database - the RLS policies gating submissions/votes check that column
+// directly, so if this ever disagreed with it, actions the UI offers would
+// get rejected server-side (see the contest_submissions RLS violation this
+// was written to fix). dates are only used to auto-advance FORWARD out of
+// whichever phase is currently set, once that phase's own deadline passes -
+// never to fall back to an earlier phase the admin has already moved past
+// (e.g. forcing "voting" early, before submission_deadline arrives).
 function effectivePhase(c) {
-    if (c.phase === 'draft' || c.phase === 'closed') return c.phase;
+    if (c.phase === 'draft' || c.phase === 'closed' || c.phase === 'results') return c.phase;
     const now = Date.now();
+    if (c.phase === 'voting') {
+        if (c.voting_deadline && now >= new Date(c.voting_deadline).getTime()) return 'results';
+        return 'voting';
+    }
+    // c.phase === 'submission' (the normal starting phase)
     if (c.voting_start && now >= new Date(c.voting_start).getTime()) {
         if (c.voting_deadline && now >= new Date(c.voting_deadline).getTime()) return 'results';
         return 'voting';
@@ -79,27 +92,39 @@ function phaseProgress(phase) {
     return `<div class="contest-progress">${PHASE_STEPS.map((step, i) => `<span class="contest-progress-step ${i < idx ? 'is-done' : ''} ${i === idx ? 'is-current' : ''}">${phaseLabel(step)}</span>`).join('<span class="contest-progress-sep"></span>')}</div>`;
 }
 
+// mirrors the window check submit_contest_ballot / cast_contest_vote / the
+// contest_votes RLS policy all enforce server-side: phase='voting' alone
+// isn't enough to actually cast a vote if voting_start hasn't arrived yet
+// (or voting_deadline has already passed).
+function votingWindowOpen(c) {
+    const now = Date.now();
+    if (c.voting_start && now < new Date(c.voting_start).getTime()) return false;
+    if (c.voting_deadline && now > new Date(c.voting_deadline).getTime()) return false;
+    return true;
+}
+
 function renderContest(c) {
     const phase = effectivePhase(c);
     const open = EVENTS_STATE.expanded.has(c.id);
     const maxSubs = c.max_submissions_per_user || 1;
     const mySubs = state.user ? (c.submissions || []).filter(s => s.user_id === state.user.id) : [];
     const canSubmit = !!state.user && phase === 'submission' && mySubs.length < maxSubs;
-    const canVote = !!state.user && phase === 'voting' && c.submissions?.some(s => s.user_id !== state.user.id);
+    const votingOpen = phase === 'voting' && votingWindowOpen(c);
+    const canVote = !!state.user && votingOpen && c.submissions?.some(s => s.user_id !== state.user.id);
     return `<div class="contest-card">
       <div class="contest-card-top"><div><h4>${esc(c.title)}</h4><div class="contest-description">${esc(c.description || '')}</div></div><span class="contest-phase ${phaseClass(phase)}">${phaseLabel(phase)}</span></div>
       ${phaseProgress(phase)}
       <div class="contest-meta">
         <span><i data-lucide="images"></i> ${c.submissions?.length||0} submission${c.submissions?.length===1?'':'s'}</span>
         <span><i data-lucide="send"></i> Submit by ${fmt(c.submission_deadline)}${phase==='submission' && c.submission_deadline ? ` <em>(${relTime(c.submission_deadline)})</em>` : ''}</span>
-        <span><i data-lucide="star"></i> Vote ${fmt(c.voting_start)} → ${fmt(c.voting_deadline)}${phase==='voting' && c.voting_deadline ? ` <em>(${relTime(c.voting_deadline)})</em>` : ''}</span>
+        <span><i data-lucide="star"></i> Vote ${fmt(c.voting_start)} → ${fmt(c.voting_deadline)}${phase==='voting' && c.voting_start && !votingOpen && Date.now() < new Date(c.voting_start).getTime() ? ` <em>(opens ${relTime(c.voting_start)})</em>` : phase==='voting' && c.voting_deadline ? ` <em>(${relTime(c.voting_deadline)})</em>` : ''}</span>
       </div>
       <div class="contest-card-actions">
         ${canSubmit ? `<button class="btn btn-primary btn-sm" type="button" onclick="openContestMonPicker('${c.id}')"><i data-lucide="send"></i> ${mySubs.length ? 'Submit another' : 'Join &amp; Submit'}</button>` : ''}
         ${!state.user && phase === 'submission' ? `<button class="btn btn-primary btn-sm" type="button" onclick="openContestSignIn('${c.id}')"><i data-lucide="log-in"></i> Sign in to join</button>` : ''}
         ${mySubs.length ? `<span class="contest-phase"><i data-lucide="check"></i> ${mySubs.length}${maxSubs>1?`/${maxSubs}`:''} entered</span>` : ''}
         ${canVote ? `<button class="btn btn-primary btn-sm" type="button" onclick="startContestVoting('${c.id}')"><i data-lucide="star"></i> Vote in this contest</button>` : ''}
-        ${!state.user && phase === 'voting' && c.submissions?.length ? `<button class="btn btn-primary btn-sm" type="button" onclick="openContestSignIn('${c.id}')"><i data-lucide="log-in"></i> Sign in to vote</button>` : ''}
+        ${!state.user && votingOpen && c.submissions?.length ? `<button class="btn btn-primary btn-sm" type="button" onclick="openContestSignIn('${c.id}')"><i data-lucide="log-in"></i> Sign in to vote</button>` : ''}
         ${phase === 'results' ? `<button class="btn btn-secondary btn-sm" type="button" onclick="toggleContestResults('${c.id}')"><i data-lucide="trophy"></i> Results</button>` : ''}
         <button class="btn btn-secondary btn-sm" type="button" onclick="toggleContestDetails('${c.id}')"><i data-lucide="${open ? 'chevron-up' : 'chevron-down'}"></i> ${open ? 'Hide details' : 'View details'}</button>
       </div>
@@ -128,7 +153,15 @@ function contestPanel(c, phase) {
         if (mySubs.length >= maxSubs) return `<div class="contest-submit-panel">${rulesBlock(c)}${mine}<p class="contest-description">You've used all ${maxSubs} of your entries for this contest. Withdraw one above to submit something different.</p></div>`;
         return `<div class="contest-submit-panel">${rulesBlock(c)}${mine}${maxSubs>1?`<p class="contest-description">${mySubs.length}/${maxSubs} entries used.</p>`:''}<div class="contest-panel-actions"><button class="btn btn-primary btn-sm" type="button" onclick="openContestMonPicker('${c.id}')"><i data-lucide="images"></i> Choose a Fakemon to Submit</button></div></div>`;
     }
-    if (phase === 'voting') return `<div class="contest-submit-panel">${rulesBlock(c)}<h5>Voting is open</h5><p class="contest-description">${c.submissions?.length||0} Fakemon entered · voting closes ${fmt(c.voting_deadline)}. Vote on every eligible entry - your voting order is randomized for this session.</p></div>`;
+    if (phase === 'voting') {
+        const open = votingWindowOpen(c);
+        const status = open
+            ? `${c.submissions?.length||0} Fakemon entered · voting closes ${fmt(c.voting_deadline)}. Vote on every eligible entry - your voting order is randomized for this session.`
+            : (c.voting_start && Date.now() < new Date(c.voting_start).getTime()
+                ? `Voting hasn't started yet - it opens ${fmt(c.voting_start)} (${relTime(c.voting_start)}).`
+                : `Voting has closed.`);
+        return `<div class="contest-submit-panel">${rulesBlock(c)}<h5>${open ? 'Voting is open' : 'Voting'}</h5><p class="contest-description">${status}</p></div>`;
+    }
     if (phase === 'results') return rulesBlock(c) + renderResultsPanel(c);
     return rulesBlock(c);
 }
@@ -316,6 +349,7 @@ async function startContestVoting(contestId){
     if(!state.user) return openContestSignIn(contestId);
     const contest = findContest(contestId);
     if(!contest) return;
+    if(!votingWindowOpen(contest)) return api.showToast?.(contest.voting_start && Date.now() < new Date(contest.voting_start).getTime() ? 'Voting hasn\'t opened yet.' : 'Voting has closed.', 'info');
     const eligible=(contest.submissions||[]).filter(s=>s.user_id!==state.user.id);
     if(!eligible.length) return api.showToast?.('There are no eligible entries to vote on.', 'info');
     try {
