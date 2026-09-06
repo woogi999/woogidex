@@ -1,4 +1,4 @@
-<img width="1019" height="343" alt="woogidex_icon" src="https://github.com/user-attachments/assets/babf850a-8043-41d5-aece-380676c3a56e" />
+<img width="1019" height="343" alt="woogidex_icon" src="https://github.com/user-attachments/assets/78e38332-dfce-4ab5-b92a-8d7955316862" />
 
 A browser-based toolkit for making, sharing, and battling with Fakemon.
 
