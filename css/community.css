@@ -1,0 +1,638 @@
+/* ==================== community ====================
+   the Community Hub: cards, family badges, preview board, cry controls.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+.community-loading, .community-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary, #888);
+    font-size: 14px;
+}
+.community-card { cursor: pointer; position: relative; }
+.community-unpublish-btn {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text-secondary, #888);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: opacity 0.2s, background 0.2s, color 0.2s, border-color 0.2s;
+}
+.community-card:hover .community-unpublish-btn { opacity: 1; }
+.community-unpublish-btn:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.community-unpublish-btn:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
+.community-card-stats {
+    display:flex; align-items:center; gap:10px; margin-top:9px;
+}
+.community-stat-btn {
+    display:inline-flex; align-items:center; gap:4px; border:0; background:transparent;
+    color:var(--text-muted, #888); padding:2px 0; font:inherit; font-size:11px; cursor:pointer;
+}
+.community-stat-btn svg { width:14px; height:14px; stroke-width:1.8; }
+.community-stat-btn:hover { color:var(--text-primary); }
+.community-stat-static { cursor:default; }
+.community-like-btn.liked { color:#ef4444; }
+.community-like-btn.liked svg { fill:currentColor; }
+.community-card-author {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 8px; font-size: 12px; color: var(--text-secondary, #888);
+}
+.community-mini-avatar {
+    width: 20px; height: 20px; border-radius: 50%; object-fit: cover;
+    flex-shrink: 0; background: var(--accent, #6366f1);
+}
+.community-mini-avatar-fallback {
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px; font-weight: 700;
+}
+
+/* ---- community card: evolution family badge ---- */
+/* shown when a post bundles more than one evolution stage/mega/forme; detail
+   page's chain reuses .preview-evo-* styles as-is, so no CSS needed there */
+.community-card-evo-badge {
+    display: inline-block;
+    margin: 4px 0 6px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
+.mon-detail-comments-heading { margin: 4px 0 10px; font-size: 14px; }
+.share-view-shell .community-card-author { margin-top: 6px; }
+.share-view-shell .mon-detail-comments,
+.share-view-shell .mon-detail-comment-box,
+.share-view-shell .mon-detail-signin-hint,
+.share-view-shell .mon-detail-comments-heading {
+    margin-left: 4px;
+    margin-right: 4px;
+}
+.mon-detail-comments { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.mon-comment { font-size: 13px; }
+.mon-comment-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.mon-comment-author { font-weight: 600; }
+.mon-comment-time { font-size: 11px; color: var(--text-secondary, #888); margin-left: auto; }
+.mon-comment-delete { background: none; border: none; cursor: pointer; color: var(--text-secondary, #888); padding: 2px; }
+.mon-comment-delete:hover { color: var(--danger, #ef4444); }
+.mon-comment-body { color: var(--text-primary, #eee); white-space: pre-wrap; word-break: break-word; }
+.mon-detail-comment-box { display: flex; gap: 8px; align-items: flex-end; }
+.mon-detail-comment-box textarea {
+    flex: 1; min-height: 44px; max-height: 120px; resize: vertical;
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #444);
+    background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;
+}
+.mon-detail-signin-hint { font-size: 13px; color: var(--text-secondary, #888); }
+.mon-detail-signin-hint a { color: var(--accent, #6366f1); }
+
+.profile-field-hint { font-size: 11px; color: var(--text-secondary, #888); margin-top: 4px; }
+.profile-email-actions {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+}
+.profile-email-actions .profile-email-save-btn,
+.profile-email-actions .profile-email-remove-btn {
+    flex: 1 1 0;
+    width: auto;
+    margin-top: 0;
+    justify-content: center;
+    text-align: center;
+}
+
+/* ==================== community preview responsive board ====================
+   the detail page's board is a clone of the editor preview's markup; give it
+   the same responsive sizing/zoom and prevent horizontal page overflow. */
+#community-detail-board {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+#community-detail-board .pokedex-board {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+@media (max-width: 768px) {
+    #community-detail-board .pokedex-board {
+        padding: clamp(12px, 3vw, 22px);
+        border-radius: 14px;
+        zoom: 0.90;
+        width: 111.111% !important;
+    }
+}
+@media (max-width: 640px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.82;
+        width: 121.951% !important;
+    }
+}
+@media (max-width: 520px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.76;
+        width: 131.579% !important;
+    }
+}
+@media (max-width: 420px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.70;
+        width: 142.857% !important;
+    }
+}
+@media (max-width: 360px) {
+    #community-detail-board .pokedex-board {
+        zoom: 0.64;
+        width: 156.25% !important;
+    }
+}
+
+/* collection / community sorting controls */
+.collection-controls, .community-controls { align-items: center; }
+.community-controls #community-search-input { min-width: 180px; flex: 1 1 240px; }
+.community-controls select, #collection-sort-by, #collection-sort-order { max-width: 190px; }
+@media (max-width: 640px) {
+    .community-controls { flex-wrap: wrap; }
+    .community-controls #community-search-input { flex: 1 1 100%; width: 100%; }
+    .community-controls select { flex: 1 1 calc(50% - 5px); max-width: none; }
+    #collection-sort-by, #collection-sort-order { flex: 1 1 0; min-width: 0; }
+}
+
+/* Pokemon cry upload / preview controls */
+.cry-upload-zone { position:relative; min-height:78px; display:flex; align-items:center; justify-content:center; border:1px dashed var(--border); border-radius:10px; background:var(--bg-input); color:var(--text-secondary); cursor:pointer; transition:border-color .15s ease, background .15s ease; overflow:hidden; }
+.cry-upload-zone:hover { border-color:var(--accent); background:var(--bg-panel); }
+.cry-upload-zone input[type="file"] { display:none; }
+.cry-upload-content { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:14px 60px 14px 14px; text-align:center; pointer-events:none; }
+.cry-upload-content span { font:600 12px 'Exo 2',sans-serif; color:var(--text-primary); }
+.cry-upload-content small { font:500 10px 'Exo 2',sans-serif; color:var(--text-muted); }
+.cry-remove-btn { right:8px; bottom:8px; }
+.board-artwork-mode { flex-direction:column; gap:6px; }
+.auth-terms-check { display:flex; align-items:flex-start; gap:8px; font-size:12px; line-height:1.45; color:var(--text-secondary); cursor:pointer; }
+.auth-terms-check input { margin-top:3px; accent-color:var(--accent); }
+.inline-link-btn { border:0; background:none; padding:0; color:var(--info); text-decoration:underline; font:inherit; cursor:pointer; }
+.policy-modal { max-width:620px; }
+.policy-body { line-height:1.5; }
+.policy-body ul { margin:12px 0 16px 20px; display:flex; flex-direction:column; gap:7px; }
+.policy-body p { margin-bottom:12px; }
+
+/* policy and rules modals */
+.policy-modal { width:min(620px, calc(100vw - 28px)); max-height:min(82vh, 760px); overflow:hidden; border-radius:16px; }
+.policy-modal .modal-header { padding:18px 20px; background:var(--bg-card); border-bottom:1px solid var(--border-light); }
+.policy-modal .modal-body { max-height:calc(82vh - 78px); overflow-y:auto; padding:20px; }
+/* only strip body padding when the sticky footer is present (it supplies its own); Credits modal has no footer and still needs body padding */
+.policy-modal .modal-body:has(.policy-actions) { padding-bottom:0; }
+.credits-link { color: inherit; text-decoration: none; }
+.credits-link:hover, .credits-link:focus, .credits-link:visited, .credits-link:active { color: inherit; text-decoration: underline; }
+.policy-body { color:var(--text-secondary); line-height:1.55; }
+.policy-body p { margin:0 0 14px; }
+.policy-body ul { margin:10px 0 18px; padding-left:20px; display:flex; flex-direction:column; gap:9px; }
+.policy-body li::marker { color:var(--accent); }
+.auth-terms-row { margin:4px 0 14px; padding:11px 12px; background:var(--bg-panel); border:1px solid var(--border-light); border-radius:10px; }
+.auth-terms-check { align-items:flex-start; }
+.auth-terms-check input { width:16px; height:16px; flex:0 0 16px; cursor:pointer; }
+.inline-link-btn { display:inline; vertical-align:baseline; }
+
+/* shared consent-panel style, used by both the Community Rules agreement and the site-transfer "don't show again" box */
+.policy-check-row { padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); }
+.policy-check-row .auth-terms-check { color:var(--text-primary); }
+@media (max-width:640px) {
+    .policy-modal { width:calc(100vw - 20px); max-height:88vh; }
+    .policy-modal .modal-body { max-height:calc(88vh - 72px); padding:16px 16px 0; }
+}
+
+/* account policy and community rules usability fixes */
+.auth-signup-note {
+    margin: 2px 0 14px;
+    padding: 11px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+}
+.auth-signup-note strong { color: var(--text-primary); }
+.policy-modal { display:flex; flex-direction:column; }
+.policy-modal .modal-header { flex:0 0 auto; }
+.policy-modal .modal-body { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+/* shared sticky footer for all policy modals. background must be FLAT, not a
+   gradient -- a fade let scrolling text show through and look transparent.
+   negative side margins bleed it across the body's padding to span full width. */
+.policy-actions {
+    position:sticky; bottom:0; z-index:3;
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:10px;
+    margin:18px -20px 0; padding:14px 20px 20px;
+    background:var(--bg-card);
+    border-top:1px solid var(--border-light);
+}
+/* full width above the buttons so the checkbox and the button it gates stay visible together */
+.policy-actions .policy-check-row { flex:1 1 100%; }
+@media (max-width:640px) {
+    .policy-modal { max-height:90vh; }
+    .policy-modal .modal-body { max-height:none; }
+    .policy-actions { margin:16px -16px 0; padding:12px 16px 16px; }
+    .policy-actions .btn { flex:1 1 100%; }
+}
+
+/* ==================== hub landing page ====================
+   the page the Community Hub opens onto; #community-browse below it is the
+   original listing, unchanged, with a shelf-and-hero layer in front of it.
+   ==================== */
+.community-landing {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.community-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.community-hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.community-hero-title {
+    margin: 0;
+    font-size: clamp(22px, 3.4vw, 32px);
+    line-height: 1.15;
+}
+
+.community-hero-sub {
+    margin: 0;
+    max-width: 62ch;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.community-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.community-hero-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-light);
+}
+
+.community-hero-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.community-hero-stat strong {
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+}
+
+.community-hero-stat span {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.community-landing-section + .community-landing-section { margin-top: 18px; }
+
+.community-landing-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.community-landing-section-head h3 {
+    margin: 0 0 2px;
+    font-size: 16px;
+}
+
+.community-landing-section-head p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.community-landing-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.community-landing-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    transition: transform .15s ease, border-color .15s ease;
+}
+
+.community-landing-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+}
+
+.community-landing-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border-radius: 10px;
+    background: var(--bg-panel);
+    overflow: hidden;
+}
+
+.community-landing-art img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.community-landing-name {
+    font-weight: 600;
+    font-size: 14px;
+    /* names are user-supplied; a long one must not stretch the grid column */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.community-landing-types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.community-landing-stats {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.community-landing-stats span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.community-landing-author {
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.community-landing-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 36px 16px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.community-landing-empty p {
+    margin: 0;
+    max-width: 44ch;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+    .community-landing-row { grid-template-columns: repeat(2, 1fr); }
+    .community-hero-top { flex-direction: column; align-items: flex-start; }
+}
+
+/* ---- the hub's tab bar ---- */
+/* prevents "My uploads" wrapping to two lines and standing taller than the other tabs */
+#community-tabs .tab { white-space: nowrap; }
+
+.community-tabs-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+/* ---- my uploads ---- */
+.community-uploads-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.community-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+}
+
+.community-upload-art {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: var(--bg-panel);
+    overflow: hidden;
+}
+
+.community-upload-art img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.community-upload-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
+
+.community-upload-info strong {
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.community-upload-info > span {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.community-upload-stats {
+    display: flex;
+    gap: 12px;
+}
+
+.community-upload-stats span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.community-upload-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .community-upload-row { flex-wrap: wrap; }
+    .community-upload-actions { width: 100%; }
+}
+
+/* ---- the hub's contest shelf ---- */
+.community-contest-section .community-landing-section-head h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.community-contest-row {
+    display: grid;
+    /* auto-fill not auto-fit: auto-fit would stretch 1-2 contest cards into a banner-sized track */
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px;
+}
+
+.community-contest-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 14px;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    background: var(--accent-glow);
+    color: var(--text-primary);
+    transition: transform .15s ease;
+}
+
+.community-contest-card:hover { transform: translateY(-2px); }
+
+.community-contest-phase {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.community-contest-card strong {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.community-contest-event,
+.community-contest-count {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* ---- hub polish ---- */
+/* soft accent wash gives the hero panel a front door without an image asset */
+.community-hero {
+    background:
+        radial-gradient(120% 140% at 0% 0%, var(--accent-glow) 0%, transparent 55%),
+        var(--bg-card);
+}
+
+.community-landing-section-head h3 { letter-spacing: -.01em; }
+
+/* cards carry their own border, so the shelf doesn't need one too */
+.community-landing-card {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+
+.community-landing-card:hover {
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .1);
+}
+
+.community-landing-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* boxing each stat makes the strip read as a row of facts, not loose numbers */
+.community-hero-stat {
+    padding: 10px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: var(--bg-panel);
+}
+
+/* ==================== the detail page's stat strip ====================
+   likes/comments/views under the author line; heart reuses .community-like-btn
+   so liked state and tap animation aren't duplicated.
+   ==================== */
+.community-detail-stats {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 8px;
+}
+
+.community-detail-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.community-detail-stat svg { width: 15px; height: 15px; }
+
+/* only the heart is a control, so only it reacts to the pointer */
+button.community-detail-stat { cursor: pointer; transition: color .15s ease; }
+button.community-detail-stat:hover { color: #ef4444; }
+
+button.community-detail-stat:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+}

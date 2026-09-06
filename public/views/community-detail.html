@@ -1,0 +1,41 @@
+<!-- ==================== community-detail-view ====================
+     A single published Fakemon, with its comments
+
+     Loaded into index.html by js/core/views.js the first time this page
+     is opened. It is a fragment, not a document: no <html>, <head> or
+     <body>, and the outer <div id="community-detail-view"> lives in index.html so the
+     router can toggle it before this file has been fetched.
+
+     Inline onclick handlers still work -- every module assigns its
+     exports onto window, so the contract is unchanged by the move.
+     ==================== -->
+<div class="share-view-shell">
+    <div class="share-view-header">
+        <div>
+            <div class="share-view-kicker">Community Fakémon</div>
+            <h2 id="community-detail-title">Fakemon</h2>
+            <div class="community-card-author" id="community-detail-author"></div>
+            <!-- rendered by renderCommunityDetailStats() in js/features/community.js -->
+            <div class="community-detail-stats" id="community-detail-stats"></div>
+        </div>
+        <div class="share-view-actions">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="closeMonDetail()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="copyOpenCommunityShareLink()"><i data-lucide="link" style="width:14px;height:14px;"></i> Copy Share Link</button>
+            <button class="btn btn-secondary btn-sm" id="community-detail-update-btn" type="button" onclick="updateOpenCommunityMon()" style="display:none;" title="Update this Community Hub listing from one of your Fakemon"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Update Listing</button>
+            <button class="btn btn-secondary btn-sm community-unpublish-inline" id="community-detail-unpublish-btn" type="button" onclick="unpublishOpenCommunityMon()" style="display:none;">Unpublish</button>
+        </div>
+    </div>
+    <div id="community-detail-board"></div>
+
+    <div class="section-divider"></div>
+    <h4 class="mon-detail-comments-heading">Comments</h4>
+    <div id="mon-detail-comments" class="mon-detail-comments"></div>
+    <div id="mon-detail-comment-box" class="mon-detail-comment-box" style="display:none;">
+        <textarea id="mon-detail-comment-input" placeholder="Say something nice…" maxlength="1000"></textarea>
+        <button class="btn btn-primary" onclick="submitMonComment()">Post</button>
+    </div>
+    <p id="mon-detail-comment-signin-hint" class="mon-detail-signin-hint" style="display:none;">
+        <a href="#" onclick="openAuthModal('signin'); return false;">Sign in</a> to leave a comment.
+    </p>
+</div>
+

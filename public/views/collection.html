@@ -1,0 +1,74 @@
+<!-- ==================== collection-view ====================
+     My Collection: folders, the Fakemon grid and the custom library
+
+     Loaded into index.html by js/core/views.js the first time this page
+     is opened. It is a fragment, not a document: no <html>, <head> or
+     <body>, and the outer <div id="collection-view"> lives in index.html so the
+     router can toggle it before this file has been fetched.
+
+     Inline onclick handlers still work -- every module assigns its
+     exports onto window, so the contract is unchanged by the move.
+     ==================== -->
+<div class="panel">
+    <div class="collection-title-row" id="collection-header-row">
+        <div class="collection-title-left">
+            <h2 class="collection-heading" id="collection-heading"><span class="breadcrumb-root" onclick="openFolder(null)">My Collection</span></h2>
+            <select id="collection-view-select" class="collection-view-select" aria-label="Collection view" onchange="setCollectionView(this.value)">
+                <option value="fakemon">Fakemon</option>
+                <option value="moves">Moves</option>
+                <option value="abilities">Abilities</option>
+                <option value="items">Items</option>
+            </select>
+        </div>
+        <div class="collection-header-actions">
+            <button class="btn btn-secondary btn-sm" id="collection-layout-toggle" type="button" onclick="toggleCollectionLayout()" title="Toggle list / grid view" aria-label="Toggle list or grid view" aria-pressed="false">
+                <i data-lucide="list" aria-hidden="true"></i>
+            </button>
+            <button class="btn btn-secondary btn-sm collection-shiny-toggle" id="collection-shiny-toggle" type="button" onclick="toggleCollectionShinyPreview()" title="Show shiny artwork in your collection" aria-label="Toggle shiny artwork in collection" aria-pressed="false">
+                <i data-lucide="sparkles" aria-hidden="true"></i>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="collection-import-btn" onclick="openImportModal()">Import</button>
+            <div class="export-as-wrap">
+                <button class="btn btn-primary btn-sm" id="collection-export-btn" type="button" onclick="toggleCollectionExportMenu(event)">Export Collection <span style="font-size:10px;">▼</span></button>
+                <div id="collection-export-menu" class="export-as-menu" style="display:none;">
+                    <button class="export-as-menu-item" type="button" onclick="exportCollection(); closeCollectionExportMenu();">Export as JSON</button>
+                    <button class="export-as-menu-item" type="button" onclick="exportCollectionAsShowdownMod(); closeCollectionExportMenu();">Export as Showdown Mod</button>
+                    <button class="export-as-menu-item" type="button" onclick="exportCollectionAsEssentialsMod(); closeCollectionExportMenu();">Export as Essentials Mod</button>
+                    <button class="export-as-menu-item" type="button" onclick="exportCollectionAsPlainTextZip(); closeCollectionExportMenu();">Export as Plain Text (.zip)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search your Fakemon..." oninput="filterCollection()">
+        <select id="collection-sort-by" onchange="changeCollectionSort()" aria-label="Sort collection by">
+            <option value="created">Date Added</option>
+            <option value="name">Name</option>
+            <option value="number">Pokédex Number</option>
+            <option value="bst">BST</option>
+            <option value="updated">Last Updated</option>
+        </select>
+        <select id="collection-sort-order" onchange="changeCollectionSort()" aria-label="Sort direction">
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+        </select>
+        <div class="export-as-wrap">
+            <button class="btn btn-primary" type="button" onclick="toggleCreateMenu(event)">Create <span style="font-size:10px;">▼</span></button>
+            <div id="create-menu" class="export-as-menu" style="display:none;">
+                <button class="export-as-menu-item" id="create-fakemon-menu-item" type="button" onclick="createNewFakemon(); closeCreateMenu();">＋ New Fakemon</button>
+                <button class="export-as-menu-item" id="create-folder-menu-item" type="button" onclick="createFolder(); closeCreateMenu();">＋ New Folder</button>
+                <button class="export-as-menu-item" id="create-move-menu-item" type="button" onclick="openCustomMoveModal(); closeCreateMenu();">＋ New Custom Move</button>
+                <button class="export-as-menu-item" id="create-ability-menu-item" type="button" onclick="openCustomAbilityLibraryModal(); closeCreateMenu();">＋ New Custom Ability</button>
+                <button class="export-as-menu-item" id="create-item-menu-item" type="button" onclick="openCustomItemModal(); closeCreateMenu();">＋ New Custom Item</button>
+            </div>
+        </div>
+    </div>
+    <div id="collection-grid" class="collection-grid"></div>
+    <div id="empty-collection" class="empty-state" style="display: none;">
+        <div class="icon">?</div>
+        <h3>No Fakemon Yet</h3>
+        <p>Create your first custom Pokemon to get started!</p>
+        <button class="btn btn-primary" onclick="createNewFakemon()" style="margin-top: 16px;">Create Fakemon</button>
+    </div>
+</div>
+

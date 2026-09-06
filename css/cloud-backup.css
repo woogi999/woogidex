@@ -1,0 +1,268 @@
+/* ==================== cloud backup ====================
+   Settings > Data cloud rows, limit meters, Fakemon picker modal, and the
+   "backed up" badge on collection cards. Scoped to cloud-* / card-cloud-*.
+   Picker modal reuses .community-update-modal's shell, adding a multi-select
+   grid instead of single-select.
+   ==================== */
+
+/* ---- limit meters ---- */
+.cloud-meters {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+}
+
+.settings-cloud-meters {
+    /* the settings rows are a two-column grid; a meter wants the full width */
+    flex: 1;
+}
+
+/* without this margin, the last meter's hint text runs under the Select all / Clear buttons */
+#cloud-backup-meters {
+    margin: 4px 0 16px;
+}
+
+.cloud-backup-modal .community-update-controls {
+    flex-wrap: wrap;
+}
+
+.cloud-meter-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.cloud-meter-head span:last-child {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+.cloud-meter-track {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-light);
+    overflow: hidden;
+}
+
+.cloud-meter-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    /* a bar that jumps is hard to read as "this went up by one" */
+    transition: width .25s ease, background-color .25s ease;
+}
+
+/* three color bands so the meter warns before it's completely full */
+.cloud-meter.is-high .cloud-meter-fill { background: var(--warning); }
+.cloud-meter.is-full .cloud-meter-fill { background: var(--danger); }
+
+.cloud-meter-hint {
+    margin-top: 5px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
+/* ---- the picker's kind tabs ---- */
+.cloud-backup-tabs {
+    margin-bottom: 12px;
+}
+
+/* tightened padding so 4 tabs + count pills fit on one row in the narrower modal */
+.cloud-backup-tabs .tab {
+    white-space: nowrap;
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+/* visible even on inactive tabs, so cost is shown regardless of which tab you're on */
+.cloud-tab-count {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-light);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+.cloud-backup-tabs .tab.active .cloud-tab-count {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.cloud-backup-tabs .tab:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+/* ---- the picker modal ---- */
+.cloud-pick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 10px;
+    max-height: 46vh;
+    overflow-y: auto;
+    padding: 4px;
+    margin: 12px 0;
+}
+
+.cloud-pick-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    transition: border-color .15s ease, background-color .15s ease;
+}
+
+.cloud-pick-card:hover { border-color: var(--accent); }
+
+.cloud-pick-card.selected {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+}
+
+.cloud-pick-check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text-muted);
+}
+
+.cloud-pick-card.selected .cloud-pick-check {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+}
+
+.cloud-pick-art {
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--bg-panel);
+    overflow: hidden;
+}
+
+.cloud-pick-art img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* moves/abilities/items have no artwork; icon fills the same-size box so the grid doesn't reflow between tabs */
+.cloud-pick-art-icon { color: var(--text-muted); }
+
+.cloud-pick-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.cloud-pick-info strong {
+    font-size: 13px;
+    /* names are user-supplied and can be long; the card must not stretch */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cloud-pick-info > span {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.cloud-pick-note {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.cloud-pick-note.is-saved { color: var(--success); }
+.cloud-pick-note.is-stale { color: var(--warning); }
+
+.cloud-pick-empty {
+    grid-column: 1 / -1;
+    padding: 28px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.cloud-over-limit { color: var(--danger); }
+
+/* ---- the collection card badge ---- */
+/* anchored to .card-art, not the whole card, so it sits in the artwork's own corner; .card-actions is opposite (top-right) so the two never collide */
+.card-cloud-badge {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--success);
+    pointer-events: none;
+}
+
+/* list row's 34px thumbnail is too small for the grid card's badge size */
+.collection-list-card .card-cloud-badge {
+    width: 13px;
+    height: 13px;
+    bottom: 2px;
+    right: 2px;
+    border-radius: 4px;
+    border-width: 1px;
+}
+
+.collection-list-card .card-cloud-badge svg {
+    width: 8px;
+    height: 8px;
+}
+
+@media (max-width: 600px) {
+    .cloud-pick-grid {
+        grid-template-columns: 1fr;
+        max-height: 40vh;
+    }
+}
+
+/* unlimited allowance has no track to fill, so accent color on the count signals "different" instead */
+.cloud-meter.is-unlimited .cloud-meter-head span:last-child {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}

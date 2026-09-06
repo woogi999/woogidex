@@ -1,0 +1,21 @@
+<!-- ==================== legal-view ====================
+     The Privacy Policy and the Terms of Service, at /privacy and /terms.
+
+     One page serves both: the document itself is Markdown under
+     public/legal/, fetched and rendered into #legal-doc by
+     js/features/legal.js, which also fills in #legal-title. There is no
+     document-specific markup here on purpose -- adding a third policy needs a
+     file and a route, not another view.
+
+     Loaded into index.html by js/core/views.js. It is a fragment, not a
+     document: no <html>, <head> or <body>, and the outer
+     <div id="legal-view"> lives in index.html so the router can toggle it
+     before this file has been fetched.
+     ==================== -->
+<div class="panel legal-panel">
+    <div class="legal-header">
+        <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+        <h2 class="legal-title" id="legal-title">Loading…</h2>
+    </div>
+    <div class="legal-doc" id="legal-doc"></div>
+</div>

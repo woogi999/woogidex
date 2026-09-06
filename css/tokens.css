@@ -1,0 +1,140 @@
+/* ==================== tokens ====================
+   design tokens, reset, app shell and header.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+:root {
+            /* slight warm/cream tint instead of the previous cool blue-gray, kept subtle so it still reads neutral */
+            --bg-dark: #f5f3ef;
+            --bg-card: #fefdfc;
+            --bg-panel: #f8f7f5;
+            --bg-input: #fdfdfc;
+            --accent: #7c5cff;
+            --accent-glow: rgba(124,92,255,0.14);
+            --accent-shadow: color-mix(in srgb, var(--accent-dark) 55%, transparent);
+            --text-primary: #1d2433;
+            --text-secondary: #55607a;
+            --text-muted: #8b94a8;
+            --border: #e6e2da;
+            --border-light: #efede9;
+            --success: #2d8a3e;
+            --danger: #c0392b;
+            --warning: #b8860b;
+            --info: #2c5aa0;
+            /* warm gray, a shade darker than border, used for "chunky ink" surfaces (panels/cards/buttons/modals);
+               shadow is derived via color-mix() so the two can't drift apart */
+            --nb-ink: #6f695d;
+            --nb-shadow: color-mix(in srgb, var(--nb-ink) 45%, transparent);
+            /* half a pixel off the "full" ink border keeps the hard-edged look without too much ink competing with dense grids of art */
+            --nb-border-w: 2.5px;
+            /* darker shade of brand purple for a primary button's border; the fill stays plain accent */
+            --accent-dark: #5a3fd6;
+
+            /* --- spacing scale --- six fixed steps instead of ad-hoc values, so panels/cards/toolbars share one rhythm */
+            --sp-1: 4px;
+            --sp-2: 6px;
+            --sp-3: 10px;
+            --sp-4: 14px;
+            --sp-5: 20px;
+            --sp-6: 28px;
+
+            /* --- control metrics ---
+               one height for every toolbar control, so selects/buttons/inputs line up without per-element nudging */
+            --ctl-h: 34px;
+            --ctl-h-sm: 28px;
+            --ctl-r: 9px;
+
+            /* --- surface radii --- */
+            --panel-r: 14px;
+            --card-r: 11px;
+
+            /* --- the app's one content column --- */
+            --shell-max: 1680px;
+        }
+        [data-theme="dark"] {
+            /* neutral charcoal grays rather than blue-violet, so surfaces don't compete with the brand purple */
+            --bg-dark: #121214;
+            --bg-card: #1b1b1e;
+            --bg-panel: #222226;
+            --bg-input: #19191c;
+            /* same accent hue as light mode; only the surfaces around it shift between themes */
+            --accent: #7c5cff;
+            --accent-glow: rgba(124,92,255,0.22);
+            --accent-shadow: color-mix(in srgb, var(--accent-dark) 65%, transparent);
+            --text-primary: #eeeef0;
+            --text-secondary: #adadb4;
+            --text-muted: #75757c;
+            --border: #38383e;
+            --border-light: #2a2a2e;
+            --success: #3dbb52;
+            --danger: #e74c3c;
+            --warning: #f0c040;
+            --info: #5b8ee0;
+            /* muted neutral gray, a shade lighter than panel colors, dampened rather than a bright outline */
+            --nb-ink: #414146;
+            --nb-shadow: color-mix(in srgb, var(--nb-ink) 55%, transparent);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Exo 2', sans-serif;
+            background-color: var(--bg-dark);
+            /* Pokedex "tech grid" backdrop, scrolling slowly left */
+            background-image:
+                linear-gradient(var(--border-light) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border-light) 1px, transparent 1px);
+            background-size: 28px 28px;
+            animation: gridScrollX 60s linear infinite;
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        [data-theme="dark"] body {
+            background-image:
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+        }
+        @keyframes gridScrollX {
+            from { background-position: 0 0; }
+            to { background-position: -280px 0; }
+        }
+        /* focus visibility for the app's keyboard-navigable controls */
+        .btn:focus-visible, .tab:focus-visible, .sidebar-nav-btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .app-container {
+            position: relative;
+            z-index: 1;
+            max-width: var(--shell-max);
+            margin: 0 auto;
+            padding: 0 var(--sp-5) var(--sp-6);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .logo { display: flex; align-items: center; gap: 15px; }
+        .logo-icon {
+            width: 50px; height: 50px;
+            background: linear-gradient(135deg, var(--accent), var(--text-secondary));
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .logo h1 {
+            font-size: 28px; font-weight: 800;
+            background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .logo span { font-size: 13px; color: var(--text-muted); font-weight: 400; display: block; margin-top: -4px; }
+        .header-actions { display: flex; gap: 10px; align-items: center; }
+

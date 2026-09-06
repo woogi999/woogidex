@@ -1,0 +1,12 @@
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  X-Frame-Options: DENY
+
+# content-hashed bundle filenames change whenever their content does, so it's
+# safe (and the whole point of the hash) to cache these forever - the browser
+# never needs to re-validate a file whose name already encodes its content.
+/bundle/*
+  Cache-Control: public, max-age=31536000, immutable

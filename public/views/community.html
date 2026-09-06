@@ -1,0 +1,109 @@
+<!-- ==================== community-view ====================
+     The Community Hub: a landing page, the browsable listing, events and
+     contests, and your own uploads.
+
+     Loaded into index.html by js/core/views.js the first time this page
+     is opened. It is a fragment, not a document: no <html>, <head> or
+     <body>, and the outer <div id="community-view"> lives in index.html so the
+     router can toggle it before this file has been fetched.
+
+     Four panels, one route. The hub used to open straight onto a search bar
+     and a wall of every Fakemon ever published, which is a good page to
+     arrive at only if you already knew what you were looking for. The
+     landing panel is what you get instead.
+
+     Events and contests used to be a separate top-level tab. They are the
+     same activity as the rest of this page (people publishing Fakemon for
+     other people to look at and judge), and splitting them meant a contest
+     could run without anyone browsing the hub ever noticing. They are a panel
+     here now; /events still resolves, and openEvents() lands on it.
+
+     Inline onclick handlers still work: every module assigns its exports onto
+     window, so the contract is unchanged by the move.
+     ==================== -->
+<div class="community-tabs-row">
+    <div class="tabs" id="community-tabs">
+        <button class="tab active" type="button" data-panel="landing" onclick="showCommunityPanel('landing')">Hub</button>
+        <button class="tab" type="button" data-panel="browse" onclick="showCommunityPanel('browse')">Browse</button>
+        <button class="tab" type="button" data-panel="events" onclick="showCommunityPanel('events')">Events</button>
+        <button class="tab" type="button" data-panel="uploads" onclick="showCommunityPanel('uploads')">My uploads</button>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="closeCommunityHub()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back to collection</button>
+</div>
+
+<div id="community-landing" class="community-landing">
+    <div class="panel community-hero">
+        <h2 class="community-hero-title">See what trainers are making</h2>
+        <p class="community-hero-sub">Every Fakémon here was designed by someone in this community. Browse them, leave a comment, or publish one of your own.</p>
+        <div class="community-hero-actions">
+            <button class="btn btn-primary" onclick="showCommunityPanel('browse')"><i data-lucide="layout-grid" style="width:16px;height:16px;"></i> Browse Fakémon</button>
+            <button class="btn btn-secondary" onclick="showCommunityPanel('uploads')"><i data-lucide="upload" style="width:16px;height:16px;"></i> Publish yours</button>
+        </div>
+        <!-- filled in by renderCommunityLanding() in js/features/community.js -->
+        <div id="community-hero-stats" class="community-hero-stats"></div>
+    </div>
+
+    <!-- sections written whole by renderCommunityLanding(); left empty here
+         so a slow feed shows a skeleton rather than headings above nothing -->
+    <div id="community-landing-sections"></div>
+</div>
+
+<div id="community-browse" class="panel" style="display:none;">
+    <div class="collection-title-row" id="community-header-row">
+        <div class="collection-title-left">
+            <h2 class="collection-heading">Browse Fakémon</h2>
+        </div>
+    </div>
+    <div class="search-bar community-controls">
+        <input type="text" id="community-search-input" placeholder="Search the community hub..." oninput="filterCommunity()" aria-label="Search the community hub">
+        <select id="community-sort-by" onchange="changeCommunitySort()" aria-label="Sort the community hub by">
+            <option value="activity">Activity</option>
+            <option value="likes">Total likes</option>
+            <option value="comments">Total comments</option>
+            <option value="views">Total views</option>
+            <option value="published">Date published</option>
+            <option value="name">Name</option>
+            <option value="author">Creator</option>
+            <option value="number">Pokédex number</option>
+        </select>
+        <select id="community-sort-order" onchange="changeCommunitySort()" aria-label="Community sort direction">
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="community-layout-toggle" type="button" onclick="toggleCommunityLayout()" title="Toggle list / grid view" aria-label="Toggle list or grid view" aria-pressed="false">
+            <i data-lucide="list" aria-hidden="true"></i>
+        </button>
+    </div>
+    <div id="community-grid" class="collection-grid"></div>
+</div>
+
+<!-- ids match what js/core/events.js looks up, unchanged when this markup
+     moved here from views/events.html -->
+<div id="community-events" class="panel" style="display:none;">
+    <div class="collection-title-row">
+        <div class="collection-title-left">
+            <h2 class="collection-heading">Events and contests</h2>
+        </div>
+        <div class="collection-header-actions">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="loadEventsView()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh</button>
+        </div>
+    </div>
+    <div id="events-status" class="events-status"></div>
+    <div id="events-list" class="events-list"></div>
+    <div id="contest-voting-view" class="contest-voting-view" style="display:none;"></div>
+</div>
+
+<!-- your own listings, and where you publish from, rather than leaving the
+     hub for the collection page's share menu -->
+<div id="community-uploads" class="panel" style="display:none;">
+    <div class="collection-title-row">
+        <div class="collection-title-left">
+            <h2 class="collection-heading">My uploads</h2>
+        </div>
+        <div class="collection-header-actions">
+            <button class="btn btn-primary btn-sm" type="button" onclick="openCommunityPublishModal()"><i data-lucide="upload" style="width:14px;height:14px;"></i> Publish a Fakémon</button>
+        </div>
+    </div>
+    <div id="community-uploads-meter" class="cloud-meters"></div>
+    <div id="community-uploads-list" class="community-uploads-list"></div>
+</div>

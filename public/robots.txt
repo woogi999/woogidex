@@ -1,0 +1,116 @@
+# Woogidex
+#
+# Ordinary search engines are welcome: being findable is the point of a public
+# gallery. What is not welcome is bulk collection of other people's artwork,
+# so the crawlers below -- the ones that exist to harvest images and text for
+# model training or to resell scraped content -- are refused outright.
+#
+# NOTE: robots.txt is only honoured at the root of a domain. If this site is
+# served from a GitHub Pages project path (woogi999.github.io/woogidex/), then
+# crawlers read woogi999.github.io/robots.txt and never see this file -- it has
+# to live in the user-pages repo instead. The <meta name="robots"> tag in
+# index.html applies either way.
+#
+# This file is a request, not a fence. A crawler that ignores robots.txt will
+# ignore this too. It is here because the well-behaved majority do honour it,
+# and because a written refusal is what makes later action possible.
+
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /js/
+Disallow: /supabase/
+
+# ---- AI training / dataset crawlers: refused ----
+User-agent: GPTBot
+Disallow: /
+
+User-agent: OAI-SearchBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: Meta-ExternalAgent
+Disallow: /
+
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+User-agent: Perplexity-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+User-agent: Omgilibot
+Disallow: /
+
+User-agent: Omgili
+Disallow: /
+
+User-agent: ImagesiftBot
+Disallow: /
+
+User-agent: img2dataset
+Disallow: /
+
+User-agent: Scrapy
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: DataForSeoBot
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
+
+User-agent: cohere-ai
+Disallow: /
+
+User-agent: cohere-training-data-crawler
+Disallow: /
+
+User-agent: TimpiBot
+Disallow: /
+
+User-agent: YouBot
+Disallow: /

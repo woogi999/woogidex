@@ -1,0 +1,147 @@
+/* ==================== notifications ====================
+   notification bell, panel and the header account menu.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+        .notifications-wrap { position: relative; }
+        .notifications-bell-btn {
+            position: relative; width: 40px; height: 40px; border-radius: 10px;
+            border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-primary);
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .notifications-bell-btn:hover { background: var(--border-light); }
+        .dark-mode-header-btn {
+            width:40px; height:40px; border-radius:10px;
+            border:1px solid var(--border); background:var(--bg-panel); color:var(--text-primary);
+            display:flex; align-items:center; justify-content:center; cursor:pointer;
+            transition:background .2s, border-color .2s, transform .15s ease;
+        }
+        .dark-mode-header-btn:hover { background:var(--border-light); }
+        .dark-mode-header-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+        .notifications-badge {
+            position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
+            border-radius: 999px; background: var(--accent); color: #fff;
+            font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+            display: flex; align-items: center; justify-content: center;
+            border: 2px solid var(--bg-card);
+            animation: badgePulse 2s ease-in-out infinite;
+        }
+        @keyframes badgePulse {
+            0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+            50% { box-shadow: 0 0 0 6px transparent; }
+        }
+        .notifications-panel {
+            position: absolute; top: calc(100% + 10px); right: 0; z-index: 1000;
+            width: 340px; max-width: calc(100vw - 32px); max-height: 420px;
+            background: var(--bg-card);
+            border: 2px solid var(--nb-ink); border-radius: 10px;
+            box-shadow: 6px 6px 0 var(--nb-shadow); display: flex; flex-direction: column; overflow: hidden;
+        }
+        .notifications-panel-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 14px; border-bottom: 1px solid var(--border);
+            font-weight: 700; font-size: 14px;
+        }
+        .notifications-mark-all-btn {
+            background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600;
+            cursor: pointer; padding: 4px 6px; border-radius: 6px;
+        }
+        .notifications-mark-all-btn:hover { background: var(--border-light); }
+        .notifications-list { overflow-y: auto; flex: 1 1 auto; }
+        .notifications-empty {
+            padding: 28px 16px; text-align: center; color: var(--text-secondary, #888); font-size: 13px;
+        }
+        .notification-item {
+            display: flex; align-items: flex-start; gap: 10px; width: 100%;
+            padding: 12px 14px; border: none; border-bottom: 1px solid var(--border);
+            background: none; text-align: left; cursor: pointer; position: relative;
+            transition: background 0.15s;
+        }
+        .notification-item:last-child { border-bottom: none; }
+        .notification-item:hover { background: var(--bg-panel); }
+        .notification-item.unread { background: var(--accent-glow, rgba(99,102,241,0.08)); }
+        .notification-avatar {
+            width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+            background: var(--accent, #6366f1);
+        }
+        .notification-avatar-fallback {
+            display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 13px;
+        }
+        .notification-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+        .notification-text { font-size: 13px; line-height: 1.4; color: var(--text-primary); }
+        .notification-preview {
+            font-size: 12px; color: var(--text-secondary, #888); font-style: italic;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .notification-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .notification-dot {
+            position: absolute; top: 14px; right: 12px; width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent, #6366f1); flex-shrink: 0;
+        }
+
+        /* ==================== header account menu ==================== */
+        .header-signin-btn {
+            padding: 9px 16px; border-radius: 10px; border: 1px solid var(--border);
+            background: var(--bg-panel); color: var(--text-primary); font: 600 13px 'Exo 2', sans-serif;
+            cursor: pointer; transition: background 0.2s, border-color 0.2s;
+        }
+        .header-signin-btn:hover { background: var(--border-light); }
+        .header-profile-wrap { position: relative; }
+        .header-profile-btn {
+            width: 40px; height: 40px; border-radius: 50%; padding: 0;
+            border: 1px solid var(--border); background: var(--bg-panel); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: border-color 0.2s, box-shadow 0.15s;
+        }
+        .header-profile-btn:hover { border-color: var(--accent); }
+        .header-profile-btn[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .header-profile-avatar {
+            width: 100%; height: 100%; border-radius: 50%; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--accent); color: #fff; font-weight: 800; font-size: 15px;
+        }
+        .header-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .header-profile-popover {
+            position: absolute; top: calc(100% + 10px); right: 0; z-index: 1000;
+            width: 260px; max-width: calc(100vw - 32px);
+            background: var(--bg-card);
+            border: 2px solid var(--nb-ink); border-radius: 10px;
+            box-shadow: 6px 6px 0 var(--nb-shadow); padding: 8px;
+            animation: fadeInUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: top right;
+        }
+        .header-profile-popover-identity { display: flex; align-items: center; gap: 10px; padding: 6px 8px 10px; }
+        .header-profile-popover-avatar {
+            width: 38px; height: 38px; border-radius: 50%; flex: 0 0 38px; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--accent); color: #fff; font-weight: 800;
+        }
+        .header-profile-popover-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .header-profile-popover-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+        .header-profile-popover-copy strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .header-profile-popover-copy small { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .header-profile-popover-divider { height: 1px; background: var(--border-light); margin: 4px 0; }
+        .header-profile-popover-item {
+            width: 100%; border: none; background: transparent; color: var(--text-primary);
+            padding: 9px 8px; display: flex; align-items: center; gap: 10px; border-radius: 9px;
+            font: 600 13px 'Exo 2', sans-serif; cursor: pointer; text-align: left; transition: background 0.15s;
+        }
+        .header-profile-popover-item svg { width: 16px; height: 16px; color: var(--text-secondary); flex: 0 0 auto; }
+        .header-profile-popover-item:hover { background: var(--bg-panel); }
+        .header-profile-popover-danger { color: var(--danger); }
+        .header-profile-popover-danger svg { color: var(--danger); }
+
+        .btn {
+            /* one height for every toolbar control (css/tokens.css's --ctl-h scale) so buttons and selects line up without nudging */
+            height: var(--ctl-h);
+            padding: 0 var(--sp-4);
+            border: var(--nb-border-w) solid var(--nb-ink);
+            border-radius: var(--ctl-r);
+            box-shadow: 4px 4px 0 var(--nb-shadow);
+            font-family: 'Exo 2', sans-serif; font-weight: 700; font-size: 13px;
+            letter-spacing: 0.01em; line-height: 1;
+            cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.15s ease;
+            display: inline-flex; align-items: center; justify-content: center;
+            gap: var(--sp-2); white-space: nowrap;
+        }

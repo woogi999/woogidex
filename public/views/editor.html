@@ -1,0 +1,463 @@
+<!-- ==================== editor-view ====================
+     The Fakemon editor and its live Pokedex board preview
+
+     Loaded into index.html by js/core/views.js the first time this page
+     is opened. It is a fragment, not a document: no <html>, <head> or
+     <body>, and the outer <div id="editor-view"> lives in index.html so the
+     router can toggle it before this file has been fetched.
+
+     Inline onclick handlers still work -- every module assigns its
+     exports onto window, so the contract is unchanged by the move.
+     ==================== -->
+                <div class="editor-stack">
+                    <div class="editor-preview-col">
+                        <div class="editor-actionbar">
+                            <div class="editor-actionbar-group">
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="publishCurrentEditorFakemon()">Publish to Community</button>
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
+                                <div class="export-as-wrap">
+                                <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
+                                <div id="export-as-menu" class="export-as-menu" style="display:none;">
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeExportMenu();">Export as PNG</button>
+                                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeExportMenu();">Export as Plain Text</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeExportMenu();">Export as JSON</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportShowdownMod(); closeExportMenu();">Export as Showdown Mod</button>
+                                    <button class="export-as-menu-item" type="button" onclick="exportEssentialsMod(); closeExportMenu();">Export as Essentials Mod</button>
+                                </div>
+                                </div>
+                                <input type="file" id="fakemon-import-file" accept=".json,.txt,application/json,text/plain" style="display:none;" onchange="handleFakemonImport(event)">
+                            </div>
+                        </div>
+                        <div id="pokedex-board-container"></div>
+                    </div>
+
+                    <div class="panel editor-form-col">
+                        <div class="tabs">
+                            <button class="tab active" onclick="switchTab(this, 'basic')">Basic Info</button>
+                            <button class="tab" onclick="switchTab(this, 'stats')">Stats, Abilities, &amp; Evos</button>
+                            <button class="tab" onclick="switchTab(this, 'moves')">Moves & Sets</button>
+                            <button class="tab" onclick="switchTab(this, 'analysis')">Analysis</button>
+                        </div>
+
+                        <div id="tab-analysis" class="tab-content" style="display:none;">
+                            <div class="analysis-shell"><div class="analysis-status">Loading analysis tools…</div></div>
+                        </div>
+
+                        <div id="tab-basic" class="tab-content">
+                            <div class="form-group">
+                                <label>Pokemon Name</label>
+                                <div class="name-input-row">
+                                    <input type="text" id="fakemon-name" placeholder="e.g., Flareon" oninput="updatePreview()">
+                                    <button type="button" id="name-roll-btn" class="name-roll-btn" title="Suggest a name based on this Fakemon's type, ability, and species" onclick="openNameRollPopover(event)">
+                                        <i data-lucide="dices"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-group species-evo-row">
+                                <div class="species-field-wrap">
+                                    <label>Species / Category</label>
+                                    <div class="name-input-row">
+                                        <input type="text" id="fakemon-species" placeholder="e.g., Flame Pokemon" oninput="updatePreview()">
+                                        <button type="button" id="species-roll-btn" class="name-roll-btn" title="Suggest a species/category based on this Fakemon's type" onclick="openSpeciesRollPopover(event)">
+                                            <i data-lucide="dices"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="species-evo-toggles">
+                                    <label class="compact-toggle-label" title="This Fakemon is a Mega Evolution">
+                                        <input type="checkbox" id="fakemon-is-mega" onchange="toggleEvolutionMode('mega', this.checked)">
+                                        <span>Is Mega Evolution</span>
+                                    </label>
+                                    <label class="compact-toggle-label" title="This Fakemon is a forme change">
+                                        <input type="checkbox" id="fakemon-is-forme" onchange="toggleEvolutionMode('forme', this.checked)">
+                                        <span>Is a Forme Change</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font:700 12px 'Exo 2',sans-serif;color:var(--text-secondary);letter-spacing:.4px;">Typing</span>
+                                <button type="button" id="types-roll-btn" class="name-roll-btn" style="width:32px;height:32px;" title="Roll random types" onclick="openTypesRollPopover(event)">
+                                    <i data-lucide="dices"></i>
+                                </button>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Type 1</label>
+                                    <div class="type-dropdown" id="type1-dropdown">
+                                        <button class="type-dropdown-trigger" onclick="toggleTypeDropdown('type1')" type="button">
+                                            <span class="type-dropdown-value" id="type1-value">Select Type</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="type-dropdown-menu" id="type1-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="fakemon-type1" value="">
+                                </div>
+                                <div class="form-group">
+                                    <label>Type 2 (Optional)</label>
+                                    <div class="type-dropdown" id="type2-dropdown">
+                                        <button class="type-dropdown-trigger" onclick="toggleTypeDropdown('type2')" type="button">
+                                            <span class="type-dropdown-value" id="type2-value">None</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="type-dropdown-menu" id="type2-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="fakemon-type2" value="">
+                                </div>
+                            </div>
+                            <div id="type-effectiveness-analysis" class="type-effectiveness-analysis"></div>
+                            <div class="form-group">
+                                <label>Pokedex Number</label>
+                                <input type="text" id="fakemon-number" placeholder="e.g., #001" oninput="updatePreview()">
+                            </div>
+                            <div class="form-group">
+                                <label>Artwork</label>
+                                <div class="artwork-upload-combined" id="artwork-upload-zone"
+                                     onclick="if (!event.target.closest('button')) document.getElementById('artwork-upload').click()"
+                                     ondragover="handleArtworkDragOver(event)"
+                                     ondragleave="handleArtworkDragLeave(event)"
+                                     ondrop="handleArtworkDrop(event)"
+                                     title="Click or drag an image here to upload artwork">
+                                    <div class="artwork-mode-tabs" role="tablist" aria-label="Artwork type">
+                                <button type="button" class="artwork-mode-tab active" id="artwork-mode-normal" onclick="setArtworkMode('normal'); event.stopPropagation()"><i data-lucide="image" aria-hidden="true"></i><span>Normal</span></button>
+                                <button type="button" class="artwork-mode-tab" id="artwork-mode-shiny" onclick="setArtworkMode('shiny'); event.stopPropagation()"><i data-lucide="sparkles" aria-hidden="true"></i><span>Shiny</span></button>
+                            </div>
+                            <div class="artwork-preview" id="artwork-preview"><img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork"></div>
+                            <input type="file" id="artwork-upload" accept="image/*" onchange="handleArtworkUpload(event)">
+                            <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span id="artwork-upload-label">Click or drag artwork here</span></div>
+                            <button type="button" class="artwork-remove-btn" id="artwork-remove-btn" onclick="removeCurrentArtwork(event)" hidden>Remove artwork</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Art Credit (Optional)</label>
+                                <input type="text" id="art-credit-input" placeholder="e.g., Art by @username" oninput="handleArtCreditInput(event)">
+                                <small style="display:block;margin-top:4px;color:var(--text-secondary,#888);">Shown as a small credit button next to the artwork on the pokedex board. Artwork must be drawn by a person; AI-generated images are not allowed on Woogidex.</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Pokemon Cry</label>
+                                <div class="cry-upload-zone" id="cry-upload-zone" onclick="if (!event.target.closest('button')) document.getElementById('cry-upload').click()" title="Click to upload a Pokemon cry (max 2 MB)">
+                                    <input type="file" id="cry-upload" accept="audio/*" onchange="handlePokemonCryUpload(event)">
+                                    <div class="cry-upload-content">
+                                        <i data-lucide="volume-2" style="width:18px;height:18px;"></i>
+                                        <span id="cry-upload-label">Click to upload a Pokemon cry</span>
+                                        <small>Audio only · Max 2 MB</small>
+                                    </div>
+                                    <button type="button" class="artwork-remove-btn cry-remove-btn" id="cry-remove-btn" onclick="removePokemonCry(event)" hidden>Remove cry</button>
+                                </div>
+                            </div>
+
+
+                            <div class="form-group">
+                                <label>Pokedex Entry 1</label>
+                                <textarea id="dex-entry1" placeholder="First Pokedex description..." oninput="updatePreview()"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Pokedex Entry 2</label>
+                                <textarea id="dex-entry2" placeholder="Second Pokedex description..." oninput="updatePreview()"></textarea>
+                            </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font:700 12px 'Exo 2',sans-serif;color:var(--text-secondary);letter-spacing:.4px;">Height &amp; Weight</span>
+                                <button type="button" id="measurements-roll-btn" class="name-roll-btn" style="width:32px;height:32px;" title="Roll a random height and weight" onclick="openHeightWeightRollPopover(event)">
+                                    <i data-lucide="dices"></i>
+                                </button>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Height</label>
+                                    <div class="measurement-input-wrap">
+                                        <input type="text" id="fakemon-height" placeholder="e.g., 0.9" oninput="handleHeightInput(this); updatePreview()" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*">
+                                        <select id="height-unit" onchange="convertHeight(); updatePreview()">
+                                            <option value="m">meters</option>
+                                            <option value="ft">feet</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Weight</label>
+                                    <div class="measurement-input-wrap">
+                                        <input type="text" id="fakemon-weight" placeholder="e.g., 25.0" oninput="handleWeightInput(this); updatePreview()" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*">
+                                        <select id="weight-unit" onchange="convertWeight(); updatePreview()">
+                                            <option value="kg">kilograms</option>
+                                            <option value="lb">pounds</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Pokedex Colour</label>
+                                <div class="color-options" id="color-options"></div>
+                                <input type="hidden" id="fakemon-color" value="">
+                            </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font:700 12px 'Exo 2',sans-serif;color:var(--text-secondary);letter-spacing:.4px;">Egg Groups</span>
+                                <button type="button" id="egg-roll-btn" class="name-roll-btn" style="width:32px;height:32px;" title="Roll random egg groups" onclick="openEggGroupRollPopover(event)">
+                                    <i data-lucide="dices"></i>
+                                </button>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Egg Group 1</label>
+                                    <select id="fakemon-egg1" onchange="updatePreview()">
+                                        <option value="">None</option>
+                                        <option value="Monster">Monster</option>
+                                        <option value="Water 1">Water 1</option>
+                                        <option value="Bug">Bug</option>
+                                        <option value="Flying">Flying</option>
+                                        <option value="Field">Field</option>
+                                        <option value="Fairy">Fairy</option>
+                                        <option value="Grass">Grass</option>
+                                        <option value="Human-Like">Human-Like</option>
+                                        <option value="Water 3">Water 3</option>
+                                        <option value="Mineral">Mineral</option>
+                                        <option value="Amorphous">Amorphous</option>
+                                        <option value="Water 2">Water 2</option>
+                                        <option value="Ditto">Ditto</option>
+                                        <option value="Dragon">Dragon</option>
+                                        <option value="Undiscovered">Undiscovered</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Egg Group 2</label>
+                                    <select id="fakemon-egg2" onchange="updatePreview()">
+                                        <option value="">None</option>
+                                        <option value="Monster">Monster</option>
+                                        <option value="Water 1">Water 1</option>
+                                        <option value="Bug">Bug</option>
+                                        <option value="Flying">Flying</option>
+                                        <option value="Field">Field</option>
+                                        <option value="Fairy">Fairy</option>
+                                        <option value="Grass">Grass</option>
+                                        <option value="Human-Like">Human-Like</option>
+                                        <option value="Water 3">Water 3</option>
+                                        <option value="Mineral">Mineral</option>
+                                        <option value="Amorphous">Amorphous</option>
+                                        <option value="Water 2">Water 2</option>
+                                        <option value="Ditto">Ditto</option>
+                                        <option value="Dragon">Dragon</option>
+                                        <option value="Undiscovered">Undiscovered</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Gender Ratio</label>
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <input type="checkbox" id="gender-genderless" onchange="toggleGenderless(); updateGenderBar(); updatePreview()" style="width:auto;">
+                                    <label for="gender-genderless" style="margin:0; font-weight:400; cursor:pointer;">Genderless</label>
+                                </div>
+                                <div id="gender-ratio-controls">
+                                    <input type="range" id="gender-slider" min="0" max="100" step="0.1" value="50"
+                                        oninput="genderSliderChanged(); updateGenderBar(); updatePreview()"
+                                        style="width:100%; accent-color:#3b82f6;">
+                                    <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                                        <div style="flex:1; display:flex; align-items:center; gap:6px;">
+                                            <span style="color:#3b82f6; font-weight:600; font-size:13px;"><span style="color:#3b82f6;font-weight:600;font-size:13px;">Male</span></span>
+                                            <input type="number" id="gender-male-input" min="0" max="100" step="0.1" value="50"
+                                                oninput="genderMaleInputChanged(); updateGenderBar(); updatePreview()"
+                                                style="width:70px;">
+                                            <span style="font-size:13px;">%</span>
+                                        </div>
+                                        <div style="flex:1; display:flex; align-items:center; gap:6px; justify-content:flex-end;">
+                                            <span style="font-size:13px;">%</span>
+                                            <input type="number" id="gender-female-input" min="0" max="100" step="0.1" value="50"
+                                                oninput="genderFemaleInputChanged(); updateGenderBar(); updatePreview()"
+                                                style="width:70px;">
+                                            <span style="color:#ec4899; font-weight:600; font-size:13px;"><span style="color:#ec4899;font-weight:600;font-size:13px;">Female</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="gender-bar" id="gender-bar-preview">
+                                    <div class="male" style="width: 50%"></div>
+                                    <div class="female" style="width: 50%"></div>
+                                </div>
+                            </div>
+
+</div>
+
+                        <div id="tab-stats" class="tab-content" style="display: none;">
+                            <div class="stat-toolbar-row">
+                                <div class="form-group stat-toolbar-level">
+                                    <label>Level</label>
+                                    <input type="number" id="editor-level" min="1" max="100" value="100" oninput="updateEditorStats()" style="width:80px;">
+                                </div>
+                                <div class="form-group stat-toolbar-template">
+                                    <label>Stat Template</label>
+                                    <div class="stat-template-row">
+                                        <select id="stat-template-select" class="stat-template-select"></select>
+                                        <input type="number" id="stat-template-bst" class="stat-template-bst-input" min="6" max="1530" step="1" placeholder="BST" title="Target Base Stat Total for the template (leave blank to use its default BST)">
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="applyStatTemplate()">Apply Template</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="editor-stat-bars">
+                                <div class="editor-stat-row" data-stat="hp">
+                                    <span class="editor-stat-label">HP</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill hp" id="editor-bar-hp" style="width:0%"></div></div>
+                                        <input type="number" id="stat-hp" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-hp">-</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="atk">
+                                    <span class="editor-stat-label">ATK</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill atk" id="editor-bar-atk" style="width:0%"></div></div>
+                                        <input type="number" id="stat-atk" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-atk">-</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="def">
+                                    <span class="editor-stat-label">DEF</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill def" id="editor-bar-def" style="width:0%"></div></div>
+                                        <input type="number" id="stat-def" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-def">-</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="spa">
+                                    <span class="editor-stat-label">SPA</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spa" id="editor-bar-spa" style="width:0%"></div></div>
+                                        <input type="number" id="stat-spa" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-spa">-</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="spd">
+                                    <span class="editor-stat-label">SPD</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spd" id="editor-bar-spd" style="width:0%"></div></div>
+                                        <input type="number" id="stat-spd" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-spd">-</span>
+                                </div>
+                                <div class="editor-stat-row" data-stat="spe">
+                                    <span class="editor-stat-label">SPE</span>
+                                    <div class="editor-stat-bar-wrap">
+                                        <div class="editor-stat-bar-bg"><div class="editor-stat-bar-fill spe" id="editor-bar-spe" style="width:0%"></div></div>
+                                        <input type="number" id="stat-spe" min="1" max="255" value="60" class="editor-stat-input" oninput="updateEditorStats()" min="1" max="255" step="1" inputmode="numeric" oninput="enforceBaseStatInput(this); updateEditorStats()">
+                                    </div>
+                                    <span class="editor-stat-calc" id="calc-spe">-</span>
+                                </div>
+                            </div>
+                            <div class="bst-display">
+                                <div class="label">Base Stat Total</div>
+                                <div class="value" id="bst-value">360</div>
+                            </div>
+                            <div id="bulk-comparison" class="bulk-comparison"></div>
+                            <div class="section-divider"></div>
+                            <div class="form-group">
+                                <label>Abilities <span style="font-size:11px;color:var(--text-muted);font-weight:500;text-transform:none;letter-spacing:0;">(up to 4)</span></label>
+                                <div class="autocomplete-container">
+                                    <input type="text" id="ability-input" placeholder="Search abilities..." 
+                                        oninput="filterAbilities(this.value)" onkeydown="handleAbilityKey(event)" onblur="hideAbilityDropdownDelayed()">
+                                    <div class="autocomplete-dropdown" id="ability-dropdown"></div>
+                                </div>
+                                <p style="font-size:12px;color:var(--text-muted);margin:8px 0;">Drag the abilities to reorder. If you have more than 1 ability, the last one will be the Hidden Ability. If you have 4, the 3rd one is the Hidden Ability, the last one is Event Ability.</p>
+                                <div id="abilities-list"></div>
+                                <button class="btn btn-secondary btn-sm" onclick="openCustomAbilityChooser()" style="margin-top:8px;">＋ Add Custom Ability</button>
+                            </div>
+
+                            <div class="section-divider"></div>
+                            <div class="evolution-section">
+                                <div class="evolution-section-header">
+                                    <div>
+                                        <div class="section-title">Evolutions and formes</div>
+                                        <div id="evolution-status" class="evolution-status">1 Pokémon · 0 connections</div>
+                                    </div>
+                                    <div class="evolution-toolbar">
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('fakemon')">＋ Add Fakemon</button>
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('vanilla')">＋ Add Vanilla Pokémon</button>
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionMethodEditor()">＋ Add Evo Method</button>
+                                    </div>
+                                </div>
+                                <div id="evolution-board" class="evolution-board">
+                                    <svg class="evo-wires" aria-hidden="true"></svg>
+                                </div>
+                                <div class="evolution-help">Drag Pokémon to arrange them. Drag from a <strong>right handle</strong> to a <strong>left handle</strong> to connect them. Hover a connection and click the scissors to sever it. Stages are calculated automatically.</div>
+                            </div>
+
+                        </div>
+
+
+
+                        <div id="tab-moves" class="tab-content" style="display: none;">
+                            <div class="form-group">
+                                <label>Learnset</label>
+                                <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Add your moves here!</p>
+                                <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                                    <input type="text" id="learnset-search" placeholder="Search learnset..." style="flex:1;min-width:140px;" oninput="renderLearnset()">
+                                    <div class="type-dropdown" id="learnset-filter-type-dropdown" style="width:130px;">
+                                        <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('learnset-filter-type')">
+                                            <span class="type-dropdown-value" id="learnset-filter-type-value">All Types</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="type-dropdown-menu" id="learnset-filter-type-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="learnset-filter-type" value="">
+                                    <div class="cat-dropdown" id="learnset-filter-category-dropdown" style="width:150px;">
+                                        <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('learnset-filter-category')">
+                                            <span class="cat-dropdown-value" id="learnset-filter-category-value">All Categories</span>
+                                            <span class="type-dropdown-arrow">▼</span>
+                                        </button>
+                                        <div class="cat-dropdown-menu" id="learnset-filter-category-menu"></div>
+                                    </div>
+                                    <input type="hidden" id="learnset-filter-category" value="">
+                                    <select id="learnset-sort" style="width:130px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="renderLearnset()">
+                                        <option value="default">Sort: Default</option>
+                                        <option value="name">Sort: Name</option>
+                                        <option value="type">Sort: Type</option>
+                                        <option value="power">Sort: Power</option>
+                                        <option value="category">Sort: Category</option>
+                                    </select>
+                                    <select id="learnset-order" style="width:100px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="renderLearnset()">
+                                        <option value="desc">Desc ▼</option>
+                                        <option value="asc">Asc ▲</option>
+                                    </select>
+                                    <button class="btn btn-secondary btn-sm" onclick="clearLearnsetFilters()" title="Clear all filters">Clear</button>
+                                </div>
+                                <div id="learnset-list"></div>
+                                <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+                                    <div class="autocomplete-container" style="flex:1;">
+                                        <input type="text" id="move-input" placeholder="Search moves..." 
+                                            oninput="filterMoves(this.value)" onkeydown="handleMoveKey(event)" onblur="hideMoveDropdownDelayed()">
+                                        <div class="autocomplete-dropdown" id="move-dropdown"></div>
+                                    </div>
+                                    <select id="move-method" style="width:90px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="toggleLevelInput()">
+                                        <option value="none">-</option>
+                                        <option value="level">Level</option>
+                                        <option value="tm">TM</option>
+                                        <option value="egg">Egg</option>
+                                    </select>
+                                    <input type="number" id="move-level" placeholder="Lv" min="1" max="100" style="width:64px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:13px;display:none;">
+                                    <button class="btn btn-secondary btn-sm" onclick="addMoveFromInput()">Add</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openMoveBrowserModal()" title="Browse all moves with filters">Browse Moves</button>
+                                </div>
+                                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+                                    <button class="btn btn-secondary btn-sm" onclick="openCustomMoveChooser()">+ Add Custom Move</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="addUniversalMoves()">+ Add Universal Moves</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openMoveImportExportModal()">Import / Export Moves</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openRecommendMovesModal()">Recommend Moves</button>
+                                    <button class="btn btn-danger btn-sm" onclick="clearMoveset()" style="margin-left:auto;">Clear Moveset</button>
+                                </div>
+                                <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light);">
+                                    <div style="display:flex;justify-content:center;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                                        <select id="learnset-chart-group" style="width:150px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="renderLearnsetChart()">
+                                            <option value="type">By Type</option>
+                                            <option value="category">By Category</option>
+                                            <option value="method">By Learn Method</option>
+                                        </select>
+                                    </div>
+                                    <div id="learnset-chart-wrap" style="display:flex;gap:20px;align-items:center;justify-content:center;flex-wrap:wrap;"></div>
+                                </div>
+                            </div>
+                            <div class="section-divider"></div>
+                            <div class="form-group">
+                                <label>Sample Sets</label>
+                                <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Build competitive sets in Showdown export format</p>
+                                <div id="sample-sets-list"></div>
+                                <button class="sample-set-add" onclick="addSampleSet()">+ Add Sample Set</button>
+                            </div>
+                        </div>
+
+                        <div class="section-divider"></div>
+                    </div>
+                </div>

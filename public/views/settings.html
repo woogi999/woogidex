@@ -1,0 +1,258 @@
+<!-- ==================== settings-view ====================
+     Settings, as its own page rather than a modal.
+
+     Loaded into index.html by js/core/views.js the first time this page is
+     opened. It is a fragment, not a document: no <html>, <head> or <body>,
+     and the outer <div id="settings-view"> lives in index.html so the router
+     can toggle it before this file has been fetched.
+
+     Every input id and onchange handler here is unchanged from the old
+     settings-modal markup, so js/core/app.js's updateSettingsUI(),
+     js/features/oauth.js's updateConnectedAccountsUI() and
+     js/features/account-deletion.js's updateAccountDeletionUI() all keep
+     working without edits -- they look elements up by id, not by which
+     container currently holds them.
+
+     Inline onclick handlers still work -- every module assigns its exports
+     onto window, so the contract is unchanged by the move.
+     ==================== -->
+<div class="settings-page-shell">
+    <div class="settings-page-header">
+        <button class="btn btn-secondary btn-sm" type="button" onclick="closeSettingsPage()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+        <h2>Settings</h2>
+    </div>
+
+    <div class="panel settings-page-panel">
+        <div class="tabs" id="settings-tabs">
+            <button class="tab active" type="button" onclick="switchSettingsTab(this, 'appearance')">Appearance</button>
+            <button class="tab" type="button" onclick="switchSettingsTab(this, 'editor')">Editor &amp; Tools</button>
+            <button class="tab" type="button" id="settings-tab-account-btn" style="display:none;" onclick="switchSettingsTab(this, 'account')">Account</button>
+            <button class="tab" type="button" onclick="switchSettingsTab(this, 'data')">Data</button>
+        </div>
+
+        <div id="settings-tab-appearance" class="tab-content settings-list">
+            <div class="settings-group">
+                <div class="settings-group-title"><span>Look &amp; feel</span></div>
+                <label class="settings-row" for="settings-dark-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Dark mode</span>
+                        <span class="settings-desc">Switch the whole site to a dark color scheme.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-dark-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleDarkMode()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-reduce-motion-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Reduce motion</span>
+                        <span class="settings-desc">Turn off animations and transitions across the site.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-reduce-motion-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleReduceMotion()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-sidebar-blur-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Blur &amp; dim effects</span>
+                        <span class="settings-desc">Darken and blur the page behind the sidebar, modals, and other overlays.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-sidebar-blur-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleOverlayBlur()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-2d-sprites-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Use 2D sprites</span>
+                        <span class="settings-desc">Show flat sprites instead of animated 3D models.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-2d-sprites-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleUse2DSprites()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+            </div>
+            <div class="settings-group">
+                <div class="settings-group-title"><span>Collection</span></div>
+                <label class="settings-row" for="settings-card-date-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Show creation date on cards</span>
+                        <span class="settings-desc">Display when each Fakemon was created on its collection card.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-card-date-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleShowCollectionCardDate()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-always-show-actions-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Always show card action buttons</span>
+                        <span class="settings-desc">Keep pin, edit, export and delete visible on every card instead of only on hover.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-always-show-actions-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleAlwaysShowCardActions()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+            </div>
+        </div>
+
+        <div id="settings-tab-editor" class="tab-content settings-list" style="display:none;">
+            <div class="settings-group">
+                <div class="settings-group-title"><span>Editor</span></div>
+                <label class="settings-row" for="settings-fade-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Fade out usually useless moves</span>
+                        <span class="settings-desc">Dim moves in the movepool that rarely see competitive use.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-fade-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleFadeUselessMoves()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-autoplay-cry-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Autoplay Pokemon cry</span>
+                        <span class="settings-desc">Play a Fakemon's uploaded cry automatically when you open it to edit or preview.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-autoplay-cry-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleAutoplayCry()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-confirm-delete-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Confirm before deleting a Fakemon</span>
+                        <span class="settings-desc">Ask "Are you sure?" before a delete goes through. Turn off to delete in one click.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-confirm-delete-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleConfirmBeforeDelete()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+            </div>
+            <div class="settings-group">
+                <div class="settings-group-title"><span>Comparison tools</span></div>
+                <label class="settings-row" for="settings-own-bulk-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Include own Fakemon in Bulk Comparison</span>
+                        <span class="settings-desc">Let your own collection show up alongside official Pokemon.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-own-bulk-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInBulkComparison()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <label class="settings-row" for="settings-own-recommended-toggle">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Include own Fakemon in Recommended Moves</span>
+                        <span class="settings-desc">Factor your own collection into move recommendations.</span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-own-recommended-toggle" class="settings-toggle-input" type="checkbox" onchange="toggleIncludeOwnFakemonsInRecommendedMoves()">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+            </div>
+        </div>
+
+        <div id="settings-tab-account" class="tab-content settings-list" style="display:none;">
+            <div class="settings-group">
+                <div class="settings-group-title"><span>Profile</span></div>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Edit your profile</span>
+                        <span class="settings-desc">Change your display name, bio, avatar, username and badges.</span>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeSettingsPage(); showProfileView(); editOwnProfile();">Edit Profile</button>
+                </div>
+            </div>
+            <!-- signed-in only; filled in by oauth.js's updateConnectedAccountsUI(),
+                 which only shows a provider once the project reports it enabled -->
+            <div class="settings-group connected-accounts-group" id="settings-connections-group" style="display:none;">
+                <div class="settings-group-title"><span>Connected Accounts</span></div>
+                <div class="connected-accounts-list" id="settings-connections-list"></div>
+            </div>
+            <!-- signed-in only; wording/button swap between Delete/Cancel is set
+                 from updateAccountDeletionUI() in account-deletion.js, hence no onclick here -->
+            <div class="settings-group" id="settings-account-group" style="display:none;">
+                <div class="settings-group-title"><span>Danger Zone</span></div>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Delete account</span>
+                        <span class="settings-desc" id="settings-delete-account-desc"></span>
+                    </span>
+                    <button type="button" class="btn btn-danger btn-sm" id="settings-delete-account-btn">Delete Account</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="settings-tab-data" class="tab-content settings-list" style="display:none;">
+            <div class="settings-group">
+                <div class="settings-group-title"><span>Data</span></div>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Check for lost Fakemon</span>
+                        <span class="settings-desc">Look for a backup copy of any Fakemon that went missing from your collection.</span>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="manualCheckForLostFakemon()">Check Now</button>
+                </div>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Export your collection</span>
+                        <span class="settings-desc">Download every Fakemon you own as a backup file you can re-import later. Available from My Collection &rarr; Export Collection.</span>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeSettingsPage(); showCollection();">Go to Collection</button>
+                </div>
+            </div>
+
+            <!-- signed-in only; shown/hidden/filled in by refreshCloudBackupUI()
+                 in cloud-save.js. Limits are enforced server-side in Postgres
+                 by enforce_collection_quota(), not by these buttons. -->
+            <div class="settings-group" id="settings-cloud-group" style="display:none;">
+                <div class="settings-group-title"><span>Cloud Backup</span></div>
+                <!-- filled in by renderCloudMeters(); shown as bars since both
+                     numbers are server-enforced ceilings -->
+                <div class="settings-row settings-row-static">
+                    <div id="settings-cloud-meters" class="cloud-meters settings-cloud-meters"></div>
+                </div>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Back up to your account</span>
+                        <span class="settings-desc">Keep a private copy of your collection on our server so you can get it back on a new device or after clearing your browser. Only you can see it, and it is separate from publishing to the community hub. You choose exactly which Fakémon, moves, abilities and items go in, up to the allowance shown above.</span>
+                        <span class="settings-desc" id="settings-cloud-status"></span>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openCloudBackupModal('upload')">Choose &amp; Back Up</button>
+                </div>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Restore from your backup</span>
+                        <span class="settings-desc">Copies the entries you tick onto this device. Anything already here is left alone unless you tick it, in which case the backed-up version replaces it. Nothing is ever deleted.</span>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="settings-cloud-restore-btn" onclick="openCloudBackupModal('restore')">Choose &amp; Restore</button>
+                </div>
+                <!-- hidden unless a badge grants it AND the site-wide switch is on -->
+                <label class="settings-row" id="settings-cloud-auto-row" for="settings-cloud-auto-toggle" style="display:none;">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Keep my backup up to date automatically</span>
+                        <span class="settings-desc">Re-uploads the entries you already picked whenever you edit them, a few minutes after you stop. It never adds anything you did not choose, and a Fakémon you delete here does leave the backup, so it is a mirror of your picks rather than a second collection.</span>
+                        <span class="settings-desc" id="settings-cloud-auto-status"></span>
+                    </span>
+                    <span class="settings-switch-wrap">
+                        <input id="settings-cloud-auto-toggle" class="settings-toggle-input" type="checkbox" onchange="setCloudAutoBackup(this.checked)">
+                        <span class="settings-toggle-slider"></span>
+                    </span>
+                </label>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Delete your backup</span>
+                        <span class="settings-desc">Removes the copy stored on our server. Your collection on this device is untouched.</span>
+                    </span>
+                    <button type="button" class="btn btn-danger btn-sm" id="settings-cloud-delete-btn" style="display:none;" onclick="deleteCloudBackup()">Delete Backup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

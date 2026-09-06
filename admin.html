@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- kept out of search engines / casual discovery; not a security measure
+     by itself (see admin.js), just stops it showing up in search -->
+<meta name="robots" content="noindex, nofollow">
+<title>woogidex :: staff</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- not style.css -- the panel should never be mistaken at a glance for the
+     site it moderates, see the header of admin.css -->
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+<header class="term-header">
+    <div class="term-brand">
+        <a href="index.html" class="logo-button" style="display:flex;align-items:center;">
+            <img src="assets/woogidex_icon.png" alt="Woogidex" style="height:38px;width:auto;object-fit:contain;">
+        </a>
+        <span id="term-build">Staff panel</span>
+    </div>
+    <div class="term-header-actions">
+        <span class="term-whoami" id="admin-signed-in-actions" style="display:none;">
+            <b id="admin-whoami-name"></b>
+        </span>
+        <button class="icon-btn" id="admin-dark-toggle" type="button" onclick="window.adminToggleDarkMode()" aria-label="Toggle dark mode" title="Toggle dark mode">
+            <i data-lucide="moon" id="admin-dark-icon"></i>
+        </button>
+        <a href="index.html" class="btn btn-sm">exit</a>
+        <button class="btn btn-sm" id="admin-signout-btn" type="button" onclick="window.adminSignOut()" style="display:none;">sign out</button>
+    </div>
+</header>
+
+<div class="term-shell">
+
+    <!-- ===== signed out ===== -->
+    <div id="admin-gate-signedout" class="admin-gate-wrap" style="display:none;">
+        <div class="panel">
+            <div class="admin-gate-msg">
+                <i data-lucide="terminal"></i>
+                <strong>authentication required</strong>
+                <p>Sign in with a staff account to continue.</p>
+            </div>
+            <p class="auth-modal-error" id="admin-signin-error"></p>
+            <form id="admin-signin-form">
+                <div class="form-group">
+                    <label for="admin-signin-identifier">username or email</label>
+                    <input type="text" id="admin-signin-identifier" autocomplete="username" placeholder="identifier">
+                </div>
+                <div class="form-group">
+                    <label for="admin-signin-password">password</label>
+                    <input type="password" id="admin-signin-password" autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary" id="admin-signin-btn" style="width:100%;justify-content:center;">authenticate</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== forbidden ===== -->
+    <div id="admin-gate-forbidden" class="admin-gate-wrap" style="display:none;">
+        <div class="panel">
+            <div class="admin-gate-msg">
+                <i data-lucide="shield-x"></i>
+                <strong>access denied</strong>
+                <p>This account holds no staff permissions.</p>
+            </div>
+            <button class="btn" onclick="window.adminSignOut()" style="width:100%;justify-content:center;">sign out</button>
+        </div>
+    </div>
+
+    <!-- ===== panel ===== -->
+    <div id="admin-panel" style="display:none;">
+
+        <nav class="admin-tabs" id="admin-tabs" role="tablist">
+            <button type="button" class="admin-tab active" data-tab="users" onclick="window.adminSwitchTab('users')">users</button>
+            <button type="button" class="admin-tab" data-tab="comments" onclick="window.adminSwitchTab('comments')">comments</button>
+            <button type="button" class="admin-tab" data-tab="filter" id="admin-tab-filter" onclick="window.adminSwitchTab('filter')">filter</button>
+            <button type="button" class="admin-tab" data-tab="history" id="admin-tab-history" onclick="window.adminSwitchTab('history')">mod log</button>
+            <button type="button" class="admin-tab" data-tab="badges" id="admin-tab-badges" onclick="window.adminSwitchTab('badges')">badges</button>
+            <button type="button" class="admin-tab" data-tab="events" id="admin-tab-events" onclick="window.adminSwitchTab('events')">events</button>
+            <button type="button" class="admin-tab" data-tab="limits" id="admin-tab-limits" onclick="window.adminSwitchTab('limits')">limits</button>
+        </nav>
+
+        <!-- ---------- users ---------- -->
+        <div class="admin-section" data-tab-panel="users">
+            <div class="admin-section-head"><h3>accounts</h3></div>
+            <p class="admin-section-sub">Search an account to manage badges, read everything it has posted, inspect its sign-in addresses, and issue moderation actions. Each control is gated on the specific badge permission it needs, and nobody can act on an account whose rank matches or exceeds their own.</p>
+            <form id="admin-search-form" class="admin-search-bar">
+                <input id="admin-search-input" type="text" placeholder="username / display name / email" autocomplete="off">
+                <button type="submit" class="btn btn-primary">search</button>
+            </form>
+            <div id="admin-results"></div>
+        </div>
+
+        <!-- ---------- comments ---------- -->
+        <div class="admin-section" data-tab-panel="comments" style="display:none;">
+            <div class="admin-section-head">
+                <h3>comment stream</h3>
+                <button type="button" class="btn btn-sm" onclick="window.adminLoadRecentComments()">reload</button>
+            </div>
+            <p class="admin-section-sub">Every comment on the site, newest first: Fakemon comments and profile comments together. Deleting one notifies its author with your reason and records the deletion in the mod log.</p>
+            <form class="admin-search-bar" onsubmit="event.preventDefault();window.adminLoadRecentComments()">
+                <input id="admin-comment-search" type="text" placeholder="grep comment text or author" autocomplete="off">
+                <button type="submit" class="btn btn-primary">search</button>
+            </form>
+            <div id="admin-comments-list"></div>
+        </div>
+
+        <!-- ---------- content filter ---------- -->
+        <div class="admin-section" data-tab-panel="filter" style="display:none;">
+            <div class="admin-section-head">
+                <h3>content filter</h3>
+                <button type="button" class="btn btn-primary btn-sm" id="admin-add-term-btn" onclick="window.adminAddTerm()">+ rule</button>
+            </div>
+            <p class="admin-section-sub">POSIX regular expressions, matched case-insensitively against every comment, profile and published Fakemon. <strong>block</strong> refuses the post and counts a strike; <strong>flag</strong> lets it through and records it. Strikes escalate on their own: warning &rarr; 24h mute &rarr; 7d mute &rarr; 30d suspension &rarr; permanent.</p>
+
+            <div class="admin-filter-tester">
+                <label for="admin-filter-test-input">test a phrase against the live rules</label>
+                <div class="admin-search-bar">
+                    <input id="admin-filter-test-input" type="text" placeholder="paste something a user might write" oninput="window.adminTestTermDebounced()">
+                </div>
+                <div id="admin-filter-test-result" class="admin-filter-test-result"></div>
+            </div>
+
+            <div id="admin-terms-list"></div>
+        </div>
+
+        <!-- ---------- mod log ---------- -->
+        <div class="admin-section" data-tab-panel="history" style="display:none;">
+            <div class="admin-section-head">
+                <h3>moderation log</h3>
+                <button type="button" class="btn btn-sm" onclick="window.adminLoadModLog()">reload</button>
+            </div>
+            <p class="admin-section-sub">Every moderation action on the site, by staff and by the auto-moderator. Append-only, nothing here can be edited or removed from the panel.</p>
+            <div class="admin-search-bar">
+                <select id="admin-log-filter" onchange="window.adminLoadModLog()">
+                    <option value="">all actions</option>
+                    <option value="warn">warnings</option>
+                    <option value="mute">mutes</option>
+                    <option value="unmute">unmutes</option>
+                    <option value="ban">suspensions</option>
+                    <option value="unban">lifted suspensions</option>
+                    <option value="automod_block">automod blocks</option>
+                    <option value="automod_flag">automod flags</option>
+                    <option value="delete_comment">comment deletions</option>
+                    <option value="purge_comments">comment purges</option>
+                    <option value="delete_mon">fakemon deletions</option>
+                    <option value="purge_mons">fakemon purges</option>
+                    <option value="delete_user">account deletions</option>
+                    <option value="badge_change">badge changes</option>
+                    <option value="badge_upsert">badge edits</option>
+                    <option value="term_added">filter rules added</option>
+                    <option value="term_updated">filter rules edited</option>
+                    <option value="term_removed">filter rules removed</option>
+                </select>
+            </div>
+            <div id="admin-log-list"></div>
+            <div class="admin-log-more"><button type="button" class="btn btn-sm" id="admin-log-more-btn" onclick="window.adminLoadMoreModLog()" style="display:none;">load more</button></div>
+        </div>
+
+        <!-- ---------- badges ---------- -->
+        <div id="admin-badges-section" class="admin-section" data-tab-panel="badges" style="display:none;">
+            <div class="admin-section-head"><h3>badges &amp; permissions</h3></div>
+            <p class="admin-section-sub">Badges and roles are the same thing. A user can hold several; their permissions are the union of every badge they hold, and their rank (used for staff hierarchy) is the highest among them. Rank 0 badges are purely cosmetic. You can only create, edit or grant a badge ranked below your own.</p>
+            <div id="admin-badges-grid" class="admin-badges-grid"></div>
+        </div>
+
+        <!-- ---------- events ---------- -->
+        <div class="admin-section" id="admin-contests-section" data-tab-panel="events" style="display:none;">
+            <div class="admin-section-head">
+                <h3>events &amp; contests</h3>
+                <button type="button" class="btn btn-primary btn-sm" onclick="window.adminAddEvent()">+ event</button>
+            </div>
+            <p class="admin-section-sub">Create events, add contests, control the current phase, set deadlines, and inspect who has voted.</p>
+            <div id="admin-events-list"></div>
+        </div>
+
+        <!-- ---------- limits ---------- -->
+        <div class="admin-section" id="admin-limits-section" data-tab-panel="limits" style="display:none;">
+            <div class="admin-section-head"><h3>limits</h3></div>
+            <p class="admin-section-sub">What every account gets by default. A badge can raise any of these for the people holding it (badges tab), and the most generous badge a user holds is the one that applies. These are enforced in Postgres by enforce_collection_quota() and published_mons_enforce_cooldown(), so they hold no matter what any client sends.</p>
+            <form id="admin-limits-form" onsubmit="window.adminSubmitLimits(event)">
+                <div class="admin-modal-row">
+                    <div class="form-group">
+                        <label for="admin-limit-cloud-items">cloud backup items <span>(-1 for unlimited)</span></label>
+                        <input id="admin-limit-cloud-items" type="number" min="-1" step="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-limit-cloud-mb">cloud backup size <span>(MB per account)</span></label>
+                        <input id="admin-limit-cloud-mb" type="number" min="1" step="0.5" required>
+                    </div>
+                </div>
+                <div class="admin-modal-row">
+                    <div class="form-group">
+                        <label for="admin-limit-uploads">community uploads <span>(-1 for unlimited)</span></label>
+                        <input id="admin-limit-uploads" type="number" min="-1" step="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-limit-cooldown">publish cooldown <span>(seconds, 0 for none)</span></label>
+                        <input id="admin-limit-cooldown" type="number" min="0" step="1" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="admin-checkbox-row" title="The master switch for automatic cloud backup">
+                        <input type="checkbox" id="admin-limit-auto-backup">
+                        <span>automatic cloud backup available<small>Off by default. Even with this on, a user only gets it if one of their badges grants it, and only if they switch it on themselves.</small></span>
+                    </label>
+                </div>
+                <div class="admin-modal-actions">
+                    <button type="submit" class="btn btn-primary">save limits</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== modals ===================== -->
+
+<!-- moderation action: warn / mute / unmute / ban / unban / delete account -->
+<div id="admin-mod-action-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="admin-mod-action-title">moderation</h3>
+            <button class="modal-close" type="button" onclick="window.adminCloseModAction()" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <form onsubmit="window.adminSubmitModAction(event)">
+            <p class="admin-section-sub" id="admin-mod-action-blurb"></p>
+            <div class="form-group" id="admin-mod-duration-group">
+                <label for="admin-mod-duration">duration</label>
+                <select id="admin-mod-duration"></select>
+            </div>
+            <div class="form-group">
+                <label for="admin-mod-reason">reason <span>(the user sees this)</span></label>
+                <textarea id="admin-mod-reason" rows="3" placeholder="e.g. slurs in a comment on Flarewisp"></textarea>
+            </div>
+            <div class="admin-mod-danger" id="admin-mod-danger" style="display:none;">
+                <i data-lucide="alert-triangle"></i>
+                <span>This permanently deletes the account and everything it posted: Fakemon, comments, likes and its saved collection. It cannot be undone.</span>
+            </div>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn" onclick="window.adminCloseModAction()">cancel</button>
+                <button type="submit" class="btn btn-primary" id="admin-mod-action-confirm">confirm</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- bulk purge -->
+<div id="admin-purge-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>purge content</h3>
+            <button class="modal-close" type="button" onclick="window.adminClosePurge()" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <form onsubmit="window.adminSubmitPurge(event)">
+            <p class="admin-section-sub" id="admin-purge-blurb"></p>
+            <div class="admin-modal-row">
+                <div class="form-group">
+                    <label for="admin-purge-what">what</label>
+                    <select id="admin-purge-what" onchange="window.adminPreviewPurge()">
+                        <option value="all">comments (all kinds)</option>
+                        <option value="mon">Fakemon comments only</option>
+                        <option value="profile">profile comments only</option>
+                        <option value="mons">published Fakemon</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="admin-purge-window">time window</label>
+                    <select id="admin-purge-window" onchange="window.adminPreviewPurge()">
+                        <option value="1">last hour</option>
+                        <option value="24" selected>last 24 hours</option>
+                        <option value="72">last 3 days</option>
+                        <option value="168">last 7 days</option>
+                        <option value="720">last 30 days</option>
+                        <option value="0">everything, all time</option>
+                    </select>
+                </div>
+            </div>
+            <p class="admin-section-sub" id="admin-purge-count">&nbsp;</p>
+            <div class="form-group">
+                <label for="admin-purge-reason">reason <span>(the user sees this)</span></label>
+                <textarea id="admin-purge-reason" rows="2" placeholder="e.g. comment spam across several listings"></textarea>
+            </div>
+            <div class="admin-mod-danger">
+                <i data-lucide="alert-triangle"></i>
+                <span>Bulk deletion cannot be undone. Check the count above before confirming.</span>
+            </div>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn" onclick="window.adminClosePurge()">cancel</button>
+                <button type="submit" class="btn btn-primary" id="admin-purge-confirm">purge</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- addresses seen on one IP -->
+<div id="admin-ip-modal" class="modal-overlay">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <h3 id="admin-ip-modal-title">address</h3>
+            <button class="modal-close" type="button" onclick="window.adminCloseIpModal()" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <p class="admin-section-sub">Accounts that have signed in or registered from this address. A match is not proof of ban evasion. Shared households, phone networks and university campuses all produce them.</p>
+        <div id="admin-ip-modal-list" class="admin-ip-scroll"></div>
+    </div>
+</div>
+
+<!-- content filter rule editor -->
+<div id="admin-term-form-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="admin-term-form-title">new filter rule</h3>
+            <button class="modal-close" type="button" onclick="window.adminCloseTermForm()" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <form onsubmit="window.adminSubmitTermForm(event)">
+            <input type="hidden" id="admin-term-id">
+            <div class="form-group">
+                <label for="admin-term-label">what is it</label>
+                <input id="admin-term-label" type="text" placeholder="e.g. Homophobic slur" required>
+            </div>
+            <div class="form-group">
+                <label for="admin-term-pattern">pattern</label>
+                <textarea id="admin-term-pattern" rows="2" spellcheck="false" required placeholder="\myourword\M" oninput="window.adminPreviewTerm()"></textarea>
+                <p class="admin-section-sub" style="margin:6px 0 0;">Use <code>\m</code> / <code>\M</code> for word start/end so <em>class</em> doesn't trip an <em>ass</em> rule, and <code>[\W_]{0,3}</code> between letters to catch <em>s p a c e d</em> evasion.</p>
+            </div>
+            <div class="admin-modal-row">
+                <div class="form-group">
+                    <label for="admin-term-severity">severity</label>
+                    <select id="admin-term-severity">
+                        <option value="severe">severe (slurs)</option>
+                        <option value="moderate">moderate</option>
+                        <option value="mild">mild</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="admin-term-action">action</label>
+                    <select id="admin-term-action">
+                        <option value="block">block + strike</option>
+                        <option value="flag">allow, log for review</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="admin-term-notes">notes <span>(staff only)</span></label>
+                <input id="admin-term-notes" type="text" placeholder="e.g. false positive on 'chink in the armor'">
+            </div>
+            <label class="admin-checkbox-row"><input id="admin-term-enabled" type="checkbox" checked> rule is active</label>
+            <div class="form-group">
+                <label for="admin-term-preview-input">test this pattern</label>
+                <input id="admin-term-preview-input" type="text" placeholder="type a phrase" oninput="window.adminPreviewTerm()">
+                <div id="admin-term-preview-result" class="admin-filter-test-result"></div>
+            </div>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn" id="admin-term-delete-btn" style="display:none;margin-right:auto;" onclick="window.adminDeleteTerm()">delete</button>
+                <button type="button" class="btn" onclick="window.adminCloseTermForm()">cancel</button>
+                <button type="submit" class="btn btn-primary">save rule</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- badge editor -->
+<div id="admin-badge-form-modal" class="modal-overlay">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <h3 id="admin-badge-form-title">new badge</h3>
+            <button class="modal-close" type="button" onclick="window.adminCloseBadgeForm()" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <form onsubmit="window.adminSubmitBadgeForm(event)">
+            <div class="admin-modal-row">
+                <div class="form-group">
+                    <label for="admin-badge-key">key <span>(internal id, permanent)</span></label>
+                    <input id="admin-badge-key" type="text" placeholder="artist_lead" required>
+                </div>
+                <div class="form-group">
+                    <label for="admin-badge-label">display label</label>
+                    <input id="admin-badge-label" type="text" placeholder="Artist Lead" required>
+                </div>
+            </div>
+            <div class="admin-icon-color-row">
+                <div class="admin-icon-preview" id="admin-badge-icon-preview"><i data-lucide="star" id="admin-badge-icon-preview-i"></i></div>
+                <div class="form-group" style="flex:1;min-width:150px;">
+                    <label for="admin-badge-icon">icon <span>(lucide.dev name)</span></label>
+                    <input id="admin-badge-icon" type="text" placeholder="shield-check" oninput="window.adminPreviewBadgeIcon()">
+                </div>
+                <div class="form-group" style="width:80px;">
+                    <label for="admin-badge-color">color</label>
+                    <input id="admin-badge-color" type="color" value="#6b7280" oninput="window.adminPreviewBadgeIcon()">
+                </div>
+                <div class="form-group" style="width:110px;">
+                    <label for="admin-badge-rank">rank</label>
+                    <input id="admin-badge-rank" type="number" min="0" step="1" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="admin-badge-description">description / tooltip</label>
+                <textarea id="admin-badge-description" rows="2" placeholder="Shown on hover"></textarea>
+            </div>
+            <div class="form-group">
+                <label>permissions</label>
+                <div class="admin-perm-grid" id="admin-badge-perms"></div>
+                <p class="admin-section-sub" style="margin:8px 0 0;">Rank 0 with no permissions is a purely cosmetic badge. Anything with at least one permission can open this panel.</p>
+            </div>
+            <!-- Only shown to holders of the manage_limits permission; the RPC
+                 refuses these fields from anyone else regardless. -->
+            <div class="form-group" id="admin-badge-limits-group">
+                <label>limits this badge grants</label>
+                <p class="admin-section-sub" style="margin:0 0 8px;">Leave a box empty to inherit the site default. Enter -1 for unlimited. When someone holds several badges the most generous number wins, so these raise a limit and never lower one.</p>
+                <div class="admin-modal-row">
+                    <div class="form-group">
+                        <label for="admin-badge-limit-items">cloud backup items</label>
+                        <input id="admin-badge-limit-items" type="number" min="-1" step="1" placeholder="inherit">
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-badge-limit-uploads">community uploads</label>
+                        <input id="admin-badge-limit-uploads" type="number" min="-1" step="1" placeholder="inherit">
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-badge-limit-cooldown">publish cooldown <span>(seconds)</span></label>
+                        <input id="admin-badge-limit-cooldown" type="number" min="0" step="1" placeholder="inherit">
+                    </div>
+                </div>
+                <label class="admin-checkbox-row" title="Lets holders switch on automatic cloud backup">
+                    <input type="checkbox" id="admin-badge-limit-auto">
+                    <span>automatic cloud backup<small>Holders can switch on auto-backup in Settings, if the site-wide switch on the limits tab is also on.</small></span>
+                </label>
+            </div>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn" id="admin-badge-delete-btn" style="display:none;margin-right:auto;" onclick="window.adminDeleteBadge()">delete</button>
+                <button type="button" class="btn" onclick="window.adminCloseBadgeForm()">cancel</button>
+                <button type="submit" class="btn btn-primary">save badge</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- event editor -->
+<div id="admin-event-form-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header"><h3 id="admin-event-form-title">create event</h3><button class="modal-close" type="button" onclick="window.adminCloseEventForm()"><i data-lucide="x"></i></button></div>
+        <form onsubmit="window.adminSubmitEventForm(event)">
+            <input type="hidden" id="admin-event-id">
+            <div class="form-group"><label>title</label><input id="admin-event-title" required></div>
+            <div class="form-group"><label>description</label><textarea id="admin-event-description" rows="3"></textarea></div>
+            <div class="admin-modal-row">
+                <div class="form-group"><label>starts</label><input id="admin-event-starts" type="datetime-local"></div>
+                <div class="form-group"><label>ends</label><input id="admin-event-ends" type="datetime-local"></div>
+            </div>
+            <div class="admin-modal-actions"><button type="button" class="btn" onclick="window.adminCloseEventForm()">cancel</button><button type="submit" class="btn btn-primary">save event</button></div>
+        </form>
+    </div>
+</div>
+
+<!-- contest editor -->
+<div id="admin-contest-form-modal" class="modal-overlay">
+    <div class="modal modal-wide">
+        <div class="modal-header"><h3 id="admin-contest-form-title">create contest</h3><button class="modal-close" type="button" onclick="window.adminCloseContestForm()"><i data-lucide="x"></i></button></div>
+        <form onsubmit="window.adminSubmitContestForm(event)">
+            <input type="hidden" id="admin-contest-id">
+            <div class="form-group"><label>event</label><select id="admin-contest-event-id" required></select></div>
+            <div class="form-group"><label>contest title</label><input id="admin-contest-title" required></div>
+            <div class="form-group"><label>description</label><textarea id="admin-contest-description" rows="3"></textarea></div>
+            <div class="form-group"><label>rules</label><textarea id="admin-contest-rules" rows="4" placeholder="e.g. one entry must be an original design, no reused sprites, keep it SFW"></textarea></div>
+            <div class="admin-modal-row">
+                <div class="form-group"><label>submission deadline</label><input id="admin-contest-submission-deadline" type="datetime-local"></div>
+                <div class="form-group"><label>voting starts</label><input id="admin-contest-voting-start" type="datetime-local"></div>
+            </div>
+            <div class="admin-modal-row">
+                <div class="form-group"><label>voting deadline</label><input id="admin-contest-voting-deadline" type="datetime-local"></div>
+                <div class="form-group"><label>results time</label><input id="admin-contest-results-at" type="datetime-local"></div>
+            </div>
+            <div class="admin-modal-row">
+                <div class="form-group"><label>phase</label><div class="admin-phase-row"><select id="admin-contest-phase"><option value="draft">draft</option><option value="submission">submission</option><option value="voting">voting</option><option value="results">results</option><option value="closed">closed</option></select><button type="button" class="btn btn-sm" onclick="window.adminForcePhase()" title="Immediately set the contest to this phase">force</button></div></div>
+                <div class="form-group"><label>max submissions per user</label><input id="admin-contest-max-subs" type="number" min="1" step="1" value="1"></div>
+            </div>
+            <div class="form-group">
+                <label>winner criteria</label>
+                <div class="admin-winner-criteria">
+                    <label class="admin-checkbox-row"><input type="checkbox" id="admin-contest-wc-topn-enabled" onchange="window.adminToggleWcField('topn')"> top <input type="number" id="admin-contest-wc-topn" min="1" step="1" class="admin-wc-num" disabled> submissions</label>
+                    <label class="admin-checkbox-row"><input type="checkbox" id="admin-contest-wc-toppct-enabled" onchange="window.adminToggleWcField('toppct')"> top <input type="number" id="admin-contest-wc-toppct" min="1" max="100" step="1" class="admin-wc-num" disabled> % of submissions</label>
+                    <label class="admin-checkbox-row"><input type="checkbox" id="admin-contest-wc-minscore-enabled" onchange="window.adminToggleWcField('minscore')"> any submission scoring at least <input type="number" id="admin-contest-wc-minscore" min="1" max="100" step="1" class="admin-wc-num" disabled> % of possible points</label>
+                </div>
+                <p class="admin-section-sub" style="margin:6px 0 0;">A submission wins if it meets any checked criterion. Leave everything unchecked to default to top 3. The percentage is that entry's competitive+design points across every voter, out of (voter count &times; 20).</p>
+            </div>
+            <div class="admin-modal-actions"><button type="button" class="btn" onclick="window.adminCloseContestForm()">cancel</button><button type="submit" class="btn btn-primary">save contest</button></div>
+        </form>
+    </div>
+</div>
+
+<!-- voters -->
+<div id="admin-voters-modal" class="modal-overlay">
+    <div class="modal modal-wide admin-voters-modal">
+        <div class="modal-header"><h3 id="admin-voters-modal-title">contest voters</h3><button class="modal-close" type="button" onclick="window.adminCloseVotersModal()"><i data-lucide="x"></i></button></div>
+        <div class="admin-voters-toolbar"><span id="admin-voters-summary">loading</span><button type="button" class="btn btn-sm" onclick="window.adminExportVotersJson()">export json</button></div>
+        <div id="admin-voters-modal-list" class="admin-voters-modal-list"></div>
+    </div>
+</div>
+
+<!-- submissions -->
+<div id="admin-submissions-modal" class="modal-overlay">
+    <div class="modal modal-wide admin-voters-modal">
+        <div class="modal-header"><h3 id="admin-submissions-modal-title">contest submissions</h3><button class="modal-close" type="button" onclick="window.adminCloseSubmissionsModal()"><i data-lucide="x"></i></button></div>
+        <div class="admin-voters-toolbar"><span id="admin-submissions-summary">loading</span></div>
+        <div id="admin-submissions-modal-list" class="admin-voters-modal-list"></div>
+    </div>
+</div>
+
+<div id="admin-toast" class="admin-toast"></div>
+
+<script type="module" src="js/features/admin.js"></script>
+</body>
+</html>

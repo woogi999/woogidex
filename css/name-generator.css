@@ -1,0 +1,70 @@
+/* ==================== name-generator ====================
+   the name generator dice button.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+.name-input-row { display: flex; align-items: stretch; gap: 8px; }
+.name-input-row input { flex: 1; min-width: 0; }
+.name-roll-btn {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    width: 40px; border: 1px solid var(--border); border-radius: 9px;
+    background: var(--bg-input); color: var(--text-secondary); cursor: pointer;
+    transition: border-color .15s ease, color .15s ease, transform .15s ease, background .15s ease;
+}
+.name-roll-btn:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+.name-roll-btn:active { transform: translateY(0) scale(.94); }
+.name-roll-btn svg { width: 17px; height: 17px; }
+
+.name-roll-popover {
+    z-index: 1200; width: 220px; max-width: calc(100vw - 16px);
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 12px 28px rgba(0,0,0,.18); padding: 8px; animation: fadeInUp .18s ease both;
+}
+.name-roll-popover-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 4px 6px; font: 700 10px/1 'JetBrains Mono', monospace;
+    letter-spacing: .08em; color: var(--text-muted);
+}
+.name-roll-reroll {
+    display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+    border: none; border-radius: 7px; background: transparent; color: var(--text-secondary); cursor: pointer;
+    transition: background .15s ease, color .15s ease, transform .15s ease;
+}
+.name-roll-reroll:hover { background: var(--bg-input); color: var(--accent); transform: rotate(20deg); }
+.name-roll-reroll svg { width: 14px; height: 14px; }
+.name-roll-list { display: flex; flex-direction: column; gap: 3px; }
+.name-roll-option {
+    text-align: left; padding: 7px 9px; border: none; border-radius: 8px;
+    background: transparent; color: var(--text-primary); font: 600 13px 'Exo 2', sans-serif;
+    cursor: pointer; transition: background .12s ease, padding-left .12s ease;
+}
+.name-roll-option:hover { background: var(--bg-input); padding-left: 12px; color: var(--accent); }
+
+.color-option { transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.18s ease, box-shadow 0.18s ease; }
+.color-option.selected { animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+.file-upload-btn { transition: transform 0.15s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease; }
+.file-upload-btn:hover { transform: translateY(-2px); border-color: var(--text-secondary); }
+
+.gender-bar .male, .gender-bar .female, .gender-bar .genderless {
+    transition: width 0.35s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* subtle lift on hover/focus gives the editor form a bit of life without distracting while typing */
+#editor-view .panel { transition: box-shadow 0.25s ease; }
+#editor-view .panel:hover { box-shadow: 0 4px 26px rgba(0,0,0,0.08); }
+
+.section-divider { position: relative; overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+    .tab.active, .tab-content-enter, .top-level-view-enter, .color-option.selected {
+        animation: none !important;
+    }
+    .tab:hover:not(.active), .form-group input:focus, .form-group select:focus,
+    .form-group textarea:focus, .color-option, .file-upload-btn:hover,
+    .gender-bar .male, .gender-bar .female, .gender-bar .genderless {
+        transition: none !important;
+        transform: none !important;
+    }
+}
+

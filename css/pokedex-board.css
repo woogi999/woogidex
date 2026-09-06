@@ -1,0 +1,115 @@
+/* ==================== pokedex-board ====================
+   the Pokedex board: frame, name plate, info rows, move tags.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+        .board-bst-display { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+        .board-bst-display .label { font-weight: 700; letter-spacing: 1px; color: var(--text-muted); }
+        .board-bst-display .value { font-weight: 800; font-family: 'JetBrains Mono', monospace; color: var(--text-primary); }
+        /* font-size for both: css/editor.css (which loads after this file and
+           already carried its own override of this same selector) */
+        .bst-display {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+            padding: 10px 14px; text-align: left; margin-top: 12px;
+        }
+        .bst-display .label { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-secondary); }
+        .bst-display .value { font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: var(--text-primary); }
+        .pokedex-board {
+            background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-panel) 100%);
+            border: 2px solid var(--accent); border-radius: 22px;
+            padding: 26px; position: relative; overflow: hidden;
+            box-shadow:
+                0 0 0 6px var(--bg-card),
+                0 0 0 8px var(--border),
+                0 14px 40px rgba(124,92,255,0.12);
+        }
+        .board-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; position: relative; }
+        .board-number {
+            font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text-secondary);
+            font-weight: 700; background: var(--bg-panel); padding: 6px 14px;
+            border-radius: 20px; border: 1px solid var(--border);
+        }
+        .board-artwork {
+            width: 200px; height: 200px;
+            background:
+                radial-gradient(circle at 50% 40%, var(--accent-glow), transparent 70%),
+                var(--bg-panel);
+            border-radius: 16px; display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px; overflow: hidden; border: 2px dashed var(--border); position: relative;
+        }
+        .board-artwork img { width: 100%; height: 100%; object-fit: contain; }
+        .board-artwork .placeholder { font-size: 60px; opacity: 0.3; color: var(--text-muted); }
+        .board-name { text-align: center; margin-bottom: 8px; }
+        .board-name h2 { font-size: 32px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.01em; line-height: 1.15; }
+        .board-species { text-align: center; font-size: 16px; color: var(--text-secondary); margin-bottom: 16px; font-style: italic; }
+        .board-types { display: flex; justify-content: center; gap: 10px; margin-bottom: 24px; }
+        /* type-badge sizing lives in css/controls.css (one fixed tier for a Fakemon own type badges everywhere) */
+        .board-section {
+            background: var(--bg-panel); border: 1px solid var(--border);
+            border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; position: relative;
+        }
+        .board-section-title {
+            font-size: 14px; font-weight: 700; letter-spacing: .08em;
+            color: var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+        }
+        .board-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        @media (max-width: 768px) { .board-info-grid { grid-template-columns: 1fr; } }
+        .board-info-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+        .board-info-item:last-child { border-bottom: none; }
+        .board-info-item .label, .board-info-item .value { font-size: 12px; }
+        .board-info-item .label { color: var(--text-secondary); }
+        .board-info-item .value { font-weight: 600; }
+        .dex-entries { display: flex; flex-direction: column; gap: var(--sp-2); }
+        /* dex entries are flavour text nobody reads twice, so kept at the smallest comfortable size */
+        .dex-entry {
+            background: var(--bg-dark); padding: var(--sp-1) var(--sp-2); border-radius: 10px;
+            font-style: italic; line-height: 1.4; font-size: 10.5px;
+            border-left: 2px solid var(--text-muted);
+        }
+        .dex-entry-label { font-size: 8.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 1px; font-style: normal; }
+        .move-category { margin-bottom: var(--sp-2); }
+        /* move tags are the densest thing on the board (40+ per full learnset), so kept as compact chips instead of wrapping to many rows */
+        .move-category-title {
+            font-size: 9px; font-weight: 700; letter-spacing: .06em;
+            margin-bottom: var(--sp-1); padding: 2px 7px; border-radius: 8px; display: inline-block;
+        }
+        .move-category.physical .move-category-title { background: rgba(204,136,68,0.12); color: #995511; }
+        .move-category.special .move-category-title { background: rgba(68,102,204,0.12); color: #2244aa; }
+        .move-category.status .move-category-title { background: rgba(120,112,96,0.14); color: #6b6456; }
+        .move-list { display: flex; flex-wrap: wrap; gap: 3px; }
+        .move-tag {
+            background: var(--bg-dark); border: 1px solid var(--border);
+            padding: 1px 6px; border-radius: 5px; font-size: 10px; font-weight: 600; line-height: 1.5; color: var(--text-primary);
+            cursor: pointer; transition: all 0.15s; position: relative;
+        }
+        .move-tag:hover { background: var(--bg-panel); transform: translateY(-1px); }
+        .move-tag.physical { border-color: #cc8844; color: #995511; background: rgba(204,136,68,0.06); }
+        .move-tag.special { border-color: #4466cc; color: #2244aa; background: rgba(68,102,204,0.06); }
+        .move-tag.status { border-color: #b8b0a0; color: #6b6456; background: rgba(184,176,160,0.18); }
+        .move-tag.custom { border-color: var(--text-muted); color: var(--text-secondary); background: rgba(100,100,100,0.06); }
+        .move-tag.low-value { opacity: 0.45; }
+        .collection-grid {
+            /* 150px cards run 7-8 across at desktop width and still read fine as thumbnails */
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-3); margin-top: 0;
+        }
+        @media (max-width: 640px) {
+            /* two clean columns rather than auto-fill's awkward near-fit */
+            .collection-grid { grid-template-columns: repeat(2, 1fr) !important; gap: var(--sp-2) !important; }
+            .collection-card { padding: var(--sp-2); }
+        }
+        .collection-card {
+            background: var(--bg-card);
+            border: var(--nb-border-w) solid var(--nb-ink);
+            border-radius: var(--card-r);
+            padding: var(--sp-3); cursor: pointer;
+            transition: transform 0.18s cubic-bezier(.34,1.56,.64,1), box-shadow 0.18s ease, border-color 0.18s ease;
+            position: relative; overflow: hidden;
+            box-shadow: 5px 5px 0 var(--nb-shadow);
+        }
+        /* straight lift instead of the fancier lift-and-rotate hover (tuned for a bigger card); ripples less across a dense row */
+        .collection-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--nb-ink);
+            box-shadow: 8px 8px 0 var(--nb-shadow);
+        }

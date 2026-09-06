@@ -1,0 +1,23 @@
+<!-- ==================== battle-view ====================
+     The battle simulator: teams, lobby and the battle screen
+
+     Loaded into index.html by js/core/views.js the first time this page
+     is opened. It is a fragment, not a document: no <html>, <head> or
+     <body>, and the outer <div id="battle-view"> lives in index.html so the
+     router can toggle it before this file has been fetched.
+
+     Inline onclick handlers still work -- every module assigns its
+     exports onto window, so the contract is unchanged by the move.
+     ==================== -->
+<div class="panel">
+    <div class="collection-title-row">
+        <div class="collection-title-left">
+            <h2 class="collection-heading">Battle</h2>
+        </div>
+        <div class="collection-header-actions">
+            <span id="battle-status" class="events-status"></span>
+        </div>
+    </div>
+    <div id="battle-body"></div>
+</div>
+

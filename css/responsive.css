@@ -1,0 +1,610 @@
+/* ==================== responsive ====================
+   every mobile and small-screen override, including the preview scaling passes.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+/* ==================== mobile responsive hardening ====================
+   consolidated fixes for small screens, placed last so it reliably wins over
+   earlier desktop-oriented rules without touching each one individually. */
+@media (max-width: 640px) {
+    .app-container { padding: 12px !important; }
+
+    /* ---- top header ---- */
+    .header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        padding: 14px 0 !important;
+    }
+    .logo { justify-content: center !important; }
+    .header-actions {
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        width: 100% !important;
+        gap: 8px !important;
+    }
+    .header-actions .btn { flex: 1 1 auto !important; justify-content: center !important; white-space: nowrap; }
+    .header-actions .api-status,
+    .header-actions .save-status { flex: 1 1 100% !important; text-align: center !important; order: -1; }
+
+    /* ---- collection header / breadcrumb / view switcher ---- */
+    #collection-header-row {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+        gap: 10px !important;
+        min-height: 0 !important;
+    }
+    #collection-header-row .collection-title-left {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+    #collection-header-row .collection-heading {
+        white-space: normal !important;
+        font-size: 19px !important;
+        width: 100% !important;
+    }
+    #collection-header-row .collection-view-select { flex: 1 1 auto !important; }
+    #collection-header-row .collection-header-actions {
+        width: 100% !important;
+        justify-content: stretch !important;
+        gap: 8px !important;
+    }
+    #collection-header-row .collection-header-actions .btn { flex: 1 1 0 !important; justify-content: center !important; }
+
+    /* ---- search bar / sort / create menu row ---- */
+    .search-bar { flex-wrap: wrap !important; gap: 8px !important; }
+    .search-bar input { flex: 1 1 100% !important; }
+    .search-bar select#collection-sort { flex: 1 1 100% !important; width: 100% !important; }
+    .search-bar .export-as-wrap { flex: 1 1 100% !important; width: 100% !important; }
+    .search-bar .export-as-wrap > .btn { width: 100% !important; justify-content: center !important; }
+    .export-as-menu { left: 0 !important; right: 0 !important; width: 100% !important; min-width: 0 !important; }
+
+    /* ---- tabs ---- */
+    .tabs { flex-wrap: wrap !important; gap: 6px !important; }
+    .tab { flex: 1 1 45% !important; padding: 8px 6px !important; font-size: 12px !important; }
+
+    /* ---- grids that assume desktop space ---- */
+    .form-row, .form-row-3, .form-row-6 { grid-template-columns: 1fr !important; }
+    .sample-set-evs { grid-template-columns: repeat(3, 1fr) !important; }
+    .collection-library-grid { grid-template-columns: 1fr !important; }
+    .library-card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important; }
+    .board-info-grid { grid-template-columns: 1fr !important; }
+
+    /* ---- learnset / ability rows: let long rows wrap instead of squeezing ---- */
+    .learnset-item { flex-wrap: wrap !important; }
+    .learnset-item .move-name { flex: 1 1 100% !important; }
+    .learnset-item .move-meta { flex: 1 1 100% !important; justify-content: flex-start !important; }
+
+    /* ---- modals ---- */
+    .modal { padding: 18px !important; width: 94vw !important; max-height: 88vh !important; }
+    .modal-header h3 { font-size: 17px !important; }
+    .move-detail-popup { width: 92vw !important; padding: 18px !important; }
+
+    /* ---- buttons generally: keep them from overflowing their rows ---- */
+    .btn { font-size: 13px !important; padding: 9px 14px !important; }
+    .btn-sm { padding: 6px 10px !important; }
+
+    /* ---- board preview art ---- */
+    .board-artwork { width: 150px !important; height: 150px !important; }
+    .board-name h2 { font-size: 24px !important; }
+}
+
+/* ==================== collection toolbar rewrite (<=760px) ====================
+   three short rows (title+create, search, filters+tools) instead of the five
+   stacked bands the <=640px block above would produce alone; overrides that
+   stretch rather than editing it. Must load after that block and css/library.css. */
+@media (max-width: 760px) {
+    #collection-header-row, .collection-title-row {
+        flex-direction: row !important;
+        align-items: center !important;
+        flex-wrap: wrap !important;
+        gap: var(--sp-2) !important;
+        margin-bottom: var(--sp-3);
+    }
+    #collection-header-row .collection-title-left, .collection-title-row .collection-title-left {
+        flex: 1 1 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+    }
+    #collection-header-row .collection-header-actions, .collection-title-row .collection-header-actions {
+        width: auto !important;
+        flex: 0 0 auto !important;
+        justify-content: flex-end !important;
+        gap: var(--sp-2) !important;
+    }
+    #collection-header-row .collection-header-actions .btn {
+        flex: 0 0 auto !important;
+        width: auto !important;
+    }
+    .collection-heading, #collection-header-row .collection-heading { font-size: 17px !important; }
+}
+@media (max-width: 760px) {
+    /* view switcher belongs on the title line next to the heading it qualifies, not its own full-width band */
+    #collection-header-row .collection-view-select {
+        flex: 0 1 auto !important;
+        width: auto !important;
+        min-width: 96px !important;
+        max-width: 130px !important;
+    }
+    #collection-header-row .collection-title-left {
+        display: flex !important;
+        align-items: center !important;
+        gap: var(--sp-2) !important;
+        flex-wrap: nowrap !important;
+    }
+    /* icon-width import + shortened export label keep all four tools on the title row */
+    #collection-import-btn { padding: 0 var(--sp-3) !important; }
+    #collection-export-btn { padding: 0 var(--sp-3) !important; font-size: 12px !important; }
+}
+@media (max-width: 460px) {
+    /* "Export Collection" is the longest label and the reason this row doesn't fit beside Create */
+    #collection-export-btn { font-size: 0 !important; gap: 0 !important; }
+    #collection-export-btn::before { content: "Export"; font-size: 12px; font-weight: 700; }
+    #collection-export-btn span { font-size: 9px; margin-left: 4px; }
+}
+
+/* ==================== search-bar rewrite (<=760px) ====================
+   undoes the <=640px stretch-everything-full-width block above so the grid
+   layout below applies. Must load after that block and css/collection-cards.css. */
+@media (max-width: 760px) {
+    .search-bar input { flex: 1 1 100%; max-width: none; }
+}
+@media (max-width: 760px) {
+    .search-bar { margin-bottom: var(--sp-3); }
+    .search-bar input { max-width: none !important; }
+    .search-bar .export-as-wrap { width: auto !important; }
+    .search-bar .export-as-wrap > .btn { width: auto !important; padding: 0 var(--sp-4) !important; }
+    .export-as-menu { left: auto !important; right: 0 !important; width: auto !important; min-width: 200px !important; }
+}
+@media (max-width: 460px) {
+    .search-bar select { flex: 1 1 calc(50% - var(--sp-1)) !important; }
+}
+@media (max-width: 760px) {
+    /* 3-column grid instead of flex, which kept wrapping to 3 lines: Create takes its space, sorts split the rest, search spans the row above */
+    .search-bar {
+        display: grid !important;
+        grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+        align-items: center !important;
+        gap: var(--sp-2) !important;
+    }
+    .search-bar input { grid-column: 1 / -1; grid-row: 1; }
+    .search-bar .export-as-wrap { grid-column: 1; grid-row: 2; }
+    .search-bar #collection-sort-by, .search-bar #community-sort-by { grid-column: 2; grid-row: 2; }
+    .search-bar #collection-sort-order, .search-bar #community-sort-order { grid-column: 3; grid-row: 2; }
+    .search-bar select { flex: none !important; width: 100% !important; }
+}
+@media (max-width: 460px) {
+    .search-bar select { font-size: 12px !important; padding: 0 20px 0 var(--sp-2) !important; }
+}
+
+@media (max-width: 420px) {
+    .tab { flex: 1 1 100% !important; }
+    .header-actions .btn span,
+    .collection-header-actions .btn span { display: inline; }
+}
+
+/* ==================== final responsive preview overrides ====================
+   keeps the board's desktop composition where practical; artwork/data split
+   shrinks fluidly, only dense lower columns stack on phones. */
+.pokedex-board {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.board-top-row,
+.board-bottom-row,
+.board-lower-row,
+.board-top-row > div,
+.board-top-row > div:nth-child(2),
+.board-top-row > div:nth-child(2) > * {
+    min-width: 0;
+}
+
+@media (max-width: 768px) {
+    .quick-preview-modal {
+        width: min(96vw, 1250px) !important;
+        max-width: 96vw !important;
+        padding: 12px !important;
+    }
+
+    #preview-modal-board-wrap {
+        width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+    }
+
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
+        padding: clamp(12px, 3vw, 22px);
+        border-radius: 14px;
+    }
+
+    /* preserve the artwork | information split instead of stacking it */
+    #preview-modal-board-wrap .board-top-row,
+    #pokedex-board-container .board-top-row, #community-detail-board .board-top-row {
+        grid-template-columns: minmax(0, 38%) minmax(0, 1fr) !important;
+        gap: clamp(8px, 2vw, 14px);
+    }
+
+    #preview-modal-board-wrap .board-artwork-left,
+    #pokedex-board-container .board-artwork-left, #community-detail-board .board-artwork-left {
+        width: 100% !important;
+        height: auto !important;
+        aspect-ratio: 1 / 1;
+        max-height: none !important;
+        border-radius: clamp(10px, 2vw, 16px);
+    }
+
+    #preview-modal-board-wrap .board-artwork-left .placeholder,
+    #pokedex-board-container .board-artwork-left .placeholder, #community-detail-board .board-artwork-left .placeholder {
+        font-size: clamp(36px, 10vw, 72px);
+    }
+
+    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
+    #pokedex-board-container .board-top-row > div:nth-child(2), #community-detail-board .board-top-row > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+        gap: clamp(6px, 1.5vw, 12px) !important;
+    }
+
+    #preview-modal-board-wrap .board-data-row,
+    #pokedex-board-container .board-data-row, #community-detail-board .board-data-row {
+        font-size: clamp(11px, 2.4vw, 15px);
+        gap: 5px;
+    }
+
+    #preview-modal-board-wrap .board-data-row .label,
+    #pokedex-board-container .board-data-row .label, #community-detail-board .board-data-row .label {
+        min-width: 0;
+        font-size: clamp(8px, 1.8vw, 11px);
+    }
+
+    #preview-modal-board-wrap .board-data-row .value,
+    #pokedex-board-container .board-data-row .value, #community-detail-board .board-data-row .value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-name h2,
+    #pokedex-board-container .board-name h2, #community-detail-board .board-name h2 {
+        font-size: clamp(20px, 6vw, 34px) !important;
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-species,
+    #pokedex-board-container .board-species, #community-detail-board .board-species {
+        font-size: clamp(11px, 3vw, 16px);
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-number,
+    #pokedex-board-container .board-number, #community-detail-board .board-number {
+        font-size: clamp(10px, 2.5vw, 14px);
+        padding: 4px 9px;
+    }
+
+    /* same sections/cards, but single column instead of a squeezed desktop layout */
+    #preview-modal-board-wrap .board-lower-row,
+    #pokedex-board-container .board-lower-row, #community-detail-board .board-lower-row {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    #preview-modal-board-wrap .board-lower-row > .board-learnset-slot,
+    #preview-modal-board-wrap .board-lower-row > .board-sets-slot,
+    #pokedex-board-container .board-lower-row > .board-learnset-slot,
+    #community-detail-board .board-lower-row > .board-learnset-slot,
+    #pokedex-board-container .board-lower-row > .board-sets-slot, #community-detail-board .board-lower-row > .board-sets-slot {
+        grid-column: 1 !important;
+    }
+
+    #preview-modal-board-wrap .board-bottom-row,
+    #pokedex-board-container .board-bottom-row, #community-detail-board .board-bottom-row {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 12px;
+    }
+
+    #preview-modal-board-wrap .board-section,
+    #pokedex-board-container .board-section, #community-detail-board .board-section {
+        min-width: 0;
+    }
+
+    #preview-modal-board-wrap .move-tag,
+    #pokedex-board-container .move-tag, #community-detail-board .move-tag {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 390px) {
+    /* data pane becomes single-column while the artwork/data split is retained */
+    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
+    #pokedex-board-container .board-top-row > div:nth-child(2), #community-detail-board .board-top-row > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
+        padding: 10px;
+        border-radius: 12px;
+    }
+
+    #preview-modal-board-wrap .board-types,
+    #pokedex-board-container .board-types, #community-detail-board .board-types {
+        gap: 5px;
+    }
+}
+
+/* ==================== preview scale on small screens ====================
+   `zoom` instead of transform: scales text/padding/badges/bars/cards while keeping document flow intact */
+@media (max-width: 768px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
+        zoom: 0.90;
+        width: 111.111% !important;
+    }
+}
+
+@media (max-width: 640px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
+        zoom: 0.82;
+        width: 121.951% !important;
+    }
+}
+
+@media (max-width: 520px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
+        zoom: 0.76;
+        width: 131.579% !important;
+    }
+}
+
+@media (max-width: 420px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
+        zoom: 0.70;
+        width: 142.857% !important;
+    }
+}
+
+@media (max-width: 360px) {
+    #preview-modal-board-wrap .pokedex-board,
+    #pokedex-board-container .pokedex-board, #community-detail-board .pokedex-board {
+        zoom: 0.64;
+        width: 156.25% !important;
+    }
+}
+
+/* ==================== small-screen UI scaling ====================
+   same proportional treatment as the live preview, applied to the sample-set editor's dense stat controls */
+@media (max-width: 768px) {
+    .sample-set-card {
+        padding: clamp(10px, 2.5vw, 16px);
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+
+    .sample-set-header { margin-bottom: 9px; }
+    .sample-set-name { font-size: clamp(12px, 2.8vw, 15px); margin-right: 8px; }
+
+    .sample-set-field { gap: 5px; margin-bottom: 6px; }
+    .sample-set-field label {
+        width: clamp(52px, 15vw, 70px);
+        font-size: clamp(9px, 2.1vw, 12px);
+    }
+    .sample-set-field input,
+    .sample-set-field select,
+    .sample-set-moves input {
+        min-width: 0;
+        padding: clamp(6px, 1.8vw, 8px) clamp(8px, 2.4vw, 12px);
+        font-size: clamp(11px, 2.5vw, 13px);
+    }
+
+    .sample-set-row { gap: 6px; margin-bottom: 6px; }
+    .sample-set-moves { gap: 6px; margin-top: 9px; }
+    .sample-set-output {
+        margin-top: 9px;
+        padding: 10px 38px 10px 10px;
+        font-size: clamp(10px, 2.3vw, 13px);
+        line-height: 1.5;
+    }
+    .sample-set-copy { top: 8px; right: 34px; width: 25px; height: 25px; }
+    .sample-set-delete { top: 8px; right: 8px; width: 22px; height: 22px; }
+
+    .sample-set-stats-section {
+        margin-top: 9px;
+        padding: clamp(7px, 2vw, 12px);
+        overflow: hidden;
+    }
+    .sample-set-stats-header,
+    .sample-set-stat-row {
+        /* EV/IV boxes stay full-size so values like 252/31 don't clip; only the surrounding columns tighten */
+        grid-template-columns: clamp(42px, 12vw, 80px) clamp(26px, 8vw, 40px) clamp(44px, 13vw, 80px) minmax(55px, 1fr) clamp(38px, 10vw, 60px) clamp(38px, 10vw, 55px);
+        gap: clamp(3px, 1vw, 8px);
+    }
+    .sample-set-stats-header { font-size: clamp(7px, 1.7vw, 10px); }
+    .sample-set-stat-row { padding: 4px 0; }
+    .sample-set-stat-label,
+    .sample-set-stat-base,
+    .sample-set-stat-calc { font-size: clamp(9px, 2vw, 12px); }
+    .sample-set-ev-input-compact,
+    .sample-set-iv-input {
+        width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+        font-size: clamp(9px, 2vw, 12px);
+    }
+    .sample-set-stat-col.slider-col { min-width: 0; }
+    .sample-set-ev-track { min-width: 0; }
+
+    .sample-set-ev-total-row { gap: 6px; flex-wrap: wrap; }
+    .sample-set-ev-total-text { font-size: clamp(9px, 2.1vw, 12px); }
+    .sample-set-guess-btn { max-width: 100%; font-size: clamp(9px, 2vw, 12px) !important; }
+
+    .sample-set-add { padding: 9px; font-size: clamp(11px, 2.5vw, 14px); }
+}
+
+@media (max-width: 520px) {
+    /* keep the artwork | information split, but stack the data and entries vertically instead of squeezing into a narrow column */
+    #preview-modal-board-wrap .board-top-row > div:nth-child(2),
+    #pokedex-board-container .board-top-row > div:nth-child(2), #community-detail-board .board-top-row > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px !important;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact,
+    #pokedex-board-container .board-dex-entries-compact, #community-detail-board .board-dex-entries-compact {
+        padding: 9px 10px;
+        border-radius: 10px;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact .board-section-title,
+    #pokedex-board-container .board-dex-entries-compact .board-section-title, #community-detail-board .board-dex-entries-compact .board-section-title {
+        font-size: clamp(9px, 2.4vw, 13px);
+        margin-bottom: 6px;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact .dex-entry,
+    #pokedex-board-container .board-dex-entries-compact .dex-entry, #community-detail-board .board-dex-entries-compact .dex-entry {
+        font-size: clamp(9px, 2.4vw, 13px);
+        line-height: 1.4;
+        padding: 8px;
+        overflow-wrap: anywhere;
+    }
+
+    #preview-modal-board-wrap .board-dex-entries-compact .dex-entry-label,
+    #pokedex-board-container .board-dex-entries-compact .dex-entry-label, #community-detail-board .board-dex-entries-compact .dex-entry-label {
+        font-size: clamp(7px, 1.9vw, 10px);
+    }
+}
+
+/* gender row uses the normal UI font instead of the surrounding monospace/stat styling, and shrinks/wraps cleanly on narrow screens */
+#preview-modal-board-wrap .board-gender-compact,
+#pokedex-board-container .board-gender-compact, #community-detail-board .board-gender-compact {
+    min-width: 0;
+    gap: clamp(4px, 1vw, 10px);
+    flex-wrap: wrap;
+}
+#preview-modal-board-wrap .board-gender-compact > .label,
+#pokedex-board-container .board-gender-compact > .label, #community-detail-board .board-gender-compact > .label {
+    min-width: 0 !important;
+    flex: 0 0 auto;
+    font-family: 'Exo 2', sans-serif !important;
+    font-size: clamp(8px, 1.8vw, 10px) !important;
+    line-height: 1.2;
+}
+#preview-modal-board-wrap .board-gender-compact .gender-bar,
+#pokedex-board-container .board-gender-compact .gender-bar, #community-detail-board .board-gender-compact .gender-bar {
+    width: clamp(48px, 10vw, 160px);
+    height: clamp(8px, 1.8vw, 16px);
+    border-radius: 999px;
+    flex: 1 1 48px;
+    min-width: 48px;
+    margin-top: 0;
+}
+#preview-modal-board-wrap .board-gender-compact .gender-label,
+#pokedex-board-container .board-gender-compact .gender-label, #community-detail-board .board-gender-compact .gender-label {
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-family: 'Exo 2', sans-serif !important;
+    font-size: clamp(7px, 1.8vw, 11px) !important;
+    line-height: 1.2;
+}
+
+/* settings */
+.settings-modal { width: min(560px, 92vw); max-height: min(720px, 85vh); display: flex; flex-direction: column; }
+.settings-modal .modal-header { flex: 0 0 auto; }
+.settings-list { display:flex; flex-direction:column; gap:var(--sp-4) !important; overflow-y:auto; padding-right:4px; margin-right:-4px; }
+.settings-group { display:flex; flex-direction:column; gap:8px; }
+.settings-group-title {
+    display:flex; align-items:center; gap:8px;
+    font-size:11px; font-weight:800; letter-spacing:.08em;
+    color:var(--text-muted); padding:0 2px;
+}
+.settings-group-title svg { width:14px; height:14px; stroke-width:2.2; color:var(--accent); }
+.settings-row {
+    display:flex; align-items:center; gap:14px;
+    min-height:58px; padding:13px 14px;
+    background:var(--bg-panel); border:1px solid var(--border); border-radius:12px;
+    cursor:pointer;
+    transition: border-color .18s ease, background .18s ease, transform .15s ease;
+}
+.settings-row:hover { border-color:color-mix(in srgb, var(--accent) 35%, var(--border)); transform:translateY(-1px); }
+.settings-row-icon {
+    flex:0 0 34px; width:34px; height:34px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg-card); border:1px solid var(--border); color:var(--accent);
+}
+.settings-row-icon svg { width:16px; height:16px; stroke-width:2; }
+.settings-row-text { display:flex; flex-direction:column; gap:3px; min-width:0; flex:1 1 auto; }
+.settings-label { color:var(--text-primary); font-size:13.5px; font-weight:700; line-height:1.3; }
+.settings-desc { color:var(--text-muted); font-size:11.5px; line-height:1.4; }
+.settings-switch-wrap { position:relative; width:46px; height:26px; flex:0 0 46px; }
+.settings-toggle-input { position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
+.settings-toggle-slider {
+    position:absolute; inset:0; border-radius:999px; background:var(--border);
+    transition:background .2s ease; cursor:pointer;
+}
+.settings-toggle-slider::after {
+    content:''; position:absolute; width:20px; height:20px; left:3px; top:3px;
+    border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25);
+    transition:transform .2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.settings-toggle-input:checked + .settings-toggle-slider { background:var(--accent); }
+.settings-toggle-input:checked + .settings-toggle-slider::after { transform:translateX(20px); }
+.settings-toggle-input:focus-visible + .settings-toggle-slider { outline:2px solid var(--info); outline-offset:2px; }
+.settings-group { animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.settings-group:nth-child(2) { animation-delay: 0.04s; }
+.settings-group:nth-child(3) { animation-delay: 0.08s; }
+@media (prefers-reduced-motion: reduce) {
+    .settings-group { animation: none !important; }
+    .settings-row:hover { transform: none; }
+}
+@media (max-width:520px) {
+    .settings-row { align-items:flex-start; }
+    .settings-row-icon { margin-top:1px; }
+}
+
+/* ==================== settings as a page ====================
+   settings used to be a 560px modal with one long scrolling list; as a page it
+   gets more room, and tabs replace the scroll with four short, purposeful lists. */
+.settings-page-shell {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--sp-2) 0 var(--sp-6);
+}
+.settings-page-header {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-4);
+}
+.settings-page-header h2 {
+    font-size: 20px;
+    font-weight: 800;
+    margin: 0;
+}
+.settings-page-panel { padding: var(--sp-4); }
+.settings-page-panel .tabs { margin-bottom: var(--sp-4); }
+@media (max-width: 640px) {
+    .settings-page-shell { padding: 0 0 var(--sp-5); }
+}
+@media (max-width: 640px) {
+    /* prevents the 4-item tab strip wrapping to stacked rows on a phone; same fix as css/editor.css's sticky .tabs strip */
+    #settings-tabs {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    #settings-tabs::-webkit-scrollbar { display: none; }
+    #settings-tabs .tab { flex: 0 0 auto !important; white-space: nowrap; }
+}
+

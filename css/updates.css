@@ -1,0 +1,78 @@
+/* ==================== updates ====================
+   the sidebar policy links and the updates modal.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+/* Sidebar footer policy links */
+.sidebar-footer-links {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-wrap:wrap;
+    /* row wraps, but links themselves stay nowrap so "Terms of Service" doesn't break mid-line */
+    gap:4px 7px;
+    margin-top:6px;
+    font-size:11px;
+}
+.sidebar-footer-link {
+    appearance:none;
+    border:0;
+    padding:0;
+    background:transparent;
+    color:var(--text-muted);
+    font:inherit;
+    cursor:pointer;
+    text-decoration:underline;
+    text-underline-offset:2px;
+    white-space:nowrap;
+}
+.sidebar-footer-link:hover { color:var(--text-primary); }
+
+/* ==================== updates modal ==================== */
+.updates-modal .modal-body { padding: 16px 20px 20px; }
+.update-entry { padding: 16px 0; border-bottom: 1px solid var(--border-light); }
+.update-entry:first-child { padding-top: 2px; }
+.update-entry:last-child { border-bottom: 0; padding-bottom: 2px; }
+.update-entry-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.update-entry-header h4 { margin:3px 0 0; font-size:17px; color:var(--text-primary); }
+.update-entry-header time { flex:0 0 auto; font-size:11px; color:var(--text-muted); padding-top:3px; white-space:nowrap; }
+.update-entry-kicker { font-size:10px; font-weight:800; letter-spacing:.08em; color:var(--accent); }
+.update-entry-latest .update-entry-kicker::after { content:'Latest'; margin-left:8px; padding:2px 6px; border-radius:999px; background:var(--accent); color:#fff; font-size:8px; letter-spacing:.06em; }
+.update-entry ul { margin:10px 0 0 18px; padding:0; color:var(--text-secondary); }
+.update-entry li { margin:6px 0; line-height:1.5; }
+.updates-empty-state { min-height:260px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:var(--text-muted); }
+.updates-empty-state svg { width:34px; height:34px; margin-bottom:10px; color:var(--accent); }
+.updates-empty-state h4 { margin:0 0 5px; color:var(--text-primary); font-size:16px; }
+.updates-empty-state p { margin:0; max-width:320px; font-size:13px; line-height:1.5; }
+@media (max-width:600px) {
+    .updates-modal .modal-body { padding:14px 16px 18px; }
+    .update-entry-header { flex-direction:column; gap:4px; }
+    .update-entry-header time { padding-top:0; }
+}
+
+/* marked, not just counted, so someone behind on releases can tell which entries are new */
+.update-entry-unread {
+    position: relative;
+    border-left: 3px solid var(--accent);
+    padding-left: 13px;
+}
+
+.update-entry-unread .update-entry-header h4::after {
+    content: 'New';
+    margin-left: 8px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
+.update-entry li code {
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-light);
+    font-size: .92em;
+}

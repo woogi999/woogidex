@@ -1,0 +1,228 @@
+/* ==================== learnset ====================
+   the learnset grid and its move rows.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+        /* learnset grid: five compact columns, flowing left-to-right then top-to-bottom. */
+        #learnset-list {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 8px;
+            width: 100%;
+        }
+        #learnset-list > p {
+            grid-column: 1 / -1;
+        }
+
+        /* learnset layout improvements */
+        .learnset-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            background: var(--bg-dark);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+        }
+        .learnset-item:hover { background: var(--bg-panel); transform: translateX(4px); }
+        .learnset-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+        .learnset-item .move-name { 
+            font-weight: 700; 
+            font-size: 15px;
+            color: var(--text-primary);
+        }
+        .learnset-item .move-meta { 
+            display: flex; 
+            gap: 8px; 
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .learnset-item .move-method-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 2px;
+        }
+        .learnset-item .method-select-inline {
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: 'Exo 2', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--bg-input);
+            color: var(--text-primary);
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+            width: auto;
+            min-width: 70px;
+            flex-shrink: 0;
+        }
+        .learnset-item .method-select-inline:hover { border-color: var(--text-secondary); }
+        .learnset-item .method-select-inline:focus { border-color: var(--text-primary); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .learnset-item .level-input-inline {
+            width: 64px;
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            background: var(--bg-input);
+            color: var(--text-primary);
+            text-align: center;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .learnset-item .level-input-inline:hover { border-color: var(--text-secondary); }
+        .learnset-item .level-input-inline:focus { border-color: var(--text-primary); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .learnset-item .cat-pill {
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .learnset-item .power-text { 
+            font-size: 12px; 
+            color: var(--text-muted); 
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }
+        .learnset-item .remove-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .learnset-item .remove-btn:hover { background: var(--danger); color: white; }
+
+        /* compact five-column learnset cards */
+        #learnset-list .learnset-item {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 6px;
+            min-width: 0;
+            min-height: 0;
+            padding: 9px 10px;
+            margin-bottom: 0;
+            border-radius: 9px;
+        }
+        #learnset-list .learnset-item:hover {
+            transform: translateY(-1px);
+        }
+        #learnset-list .learnset-main {
+            width: 100%;
+            min-width: 0;
+            padding-right: 22px;
+            gap: 5px;
+        }
+        #learnset-list .learnset-item .move-name {
+            display: block;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            line-height: 1.25;
+        }
+        #learnset-list .learnset-item .move-meta {
+            gap: 4px;
+            min-width: 0;
+            flex-wrap: nowrap;
+        }
+        /* type-pill sizing lives in css/controls.css */
+        #learnset-list .learnset-item .cat-pill {
+            font-size: 9px;
+            padding: 2px 5px;
+            display: inline-flex;
+            align-items: center;
+        }
+        #learnset-list .learnset-item .power-text {
+            font-size: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #learnset-list .learnset-item .move-method-row {
+            gap: 4px;
+            width: 100%;
+            margin-top: 1px;
+        }
+        #learnset-list .learnset-item .method-select-inline {
+            min-width: 0;
+            width: 100%;
+            padding: 3px 6px;
+            font-size: 10px;
+        }
+        #learnset-list .learnset-item .level-input-inline {
+            width: 48px;
+            padding: 3px 5px;
+            font-size: 10px;
+        }
+        #learnset-list .learnset-item .remove-btn {
+            position: absolute;
+            top: 7px;
+            right: 7px;
+            width: 22px;
+            height: 22px;
+            font-size: 14px;
+            margin-top: 0;
+        }
+
+        @media (max-width: 1150px) {
+            #learnset-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+        @media (max-width: 850px) {
+            #learnset-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (max-width: 600px) {
+            #learnset-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 400px) {
+            #learnset-list { grid-template-columns: 1fr; }
+        }
+
+        /* move flag tidbits */
+        .move-flags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .flag-tidbit {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            background: var(--bg-panel);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            white-space: nowrap;
+        }
+

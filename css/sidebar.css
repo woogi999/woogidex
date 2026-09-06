@@ -1,0 +1,165 @@
+/* ==================== sidebar ====================
+   the sidebar navigation and its brand row.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+.header-left { display:flex; align-items:center; gap:12px; min-width:0; }
+.menu-toggle {
+    width:44px; height:44px; border:1px solid var(--border); border-radius:12px;
+    background:var(--bg-panel); color:var(--text-primary); display:inline-flex;
+    align-items:center; justify-content:center; cursor:pointer; transition:all .2s ease;
+    flex:0 0 auto;
+}
+.menu-toggle:hover { background:var(--border-light); transform:translateY(-1px); }
+/* rail replaces the old hamburger-drawer sidebar; its header row and toggle are irrelevant on desktop, restored below for mobile overlay */
+.sidebar-header, .sidebar-brand, .sidebar-close, .sidebar-header-spacer { display:none !important; }
+.menu-toggle { display:none !important; }
+/* permanent icon rail on desktop (72px collapsed, 252px on hover/focus/.open); still a slide-in overlay below 769px */
+:root { --header-h: 56px; }
+.app-sidebar {
+    position:fixed !important; top:var(--header-h) !important; left:0 !important; bottom:0 !important;
+    width:72px !important; min-width:72px;
+    background:var(--bg-card);
+    border-right: var(--nb-border-w) solid var(--nb-ink);
+    border-top:1px solid transparent;
+    box-shadow:4px 0 24px rgba(0,0,0,.06); z-index:11000 !important;
+    transform:none !important; transition:width .22s cubic-bezier(.2,.8,.2,1);
+    display:flex; flex-direction:column; padding:14px 10px !important;
+    overflow:hidden auto; scrollbar-width:thin;
+}
+/* expand on hover (desktop) or when JS adds .open (mobile overlay) */
+.app-sidebar:hover,
+.app-sidebar:focus-within,
+.app-sidebar.open { width:252px !important; box-shadow:10px 0 40px rgba(0,0,0,.14); }
+/* forces collapsed width after a nav click, since :hover/:focus-within can still be true right after */
+.app-sidebar.force-closed,
+.app-sidebar.force-closed:hover,
+.app-sidebar.force-closed:focus-within { width:72px !important; }
+/* main content clears the rail on desktop */
+@media (min-width:769px) { body { padding-left:72px; } }
+.reduce-motion .app-sidebar { transition:none !important; }
+.sidebar-backdrop {
+    position:fixed; inset:0; background:rgba(0,0,0,.34); z-index:10599 !important; opacity:0;
+    pointer-events:none; transition:opacity .25s ease; backdrop-filter:none; -webkit-backdrop-filter:none;
+}
+.sidebar-backdrop.open { opacity:1; pointer-events:auto; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+/* same darken+blur as the mobile overlay, but never intercepts clicks since the rail opens/closes on hover, not a tap */
+.sidebar-backdrop.hover-active { opacity:1; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+
+/* "Blur & dim effects" off: strips blur and dark scrim from every overlay site-wide, not just the sidebar */
+.no-overlay-blur .sidebar-backdrop.hover-active,
+.no-overlay-blur .sidebar-backdrop.open,
+.no-overlay-blur .modal-overlay.active,
+.no-overlay-blur .overlay-dark.active {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+.sidebar-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:2px 4px 20px; border-bottom:1px solid var(--border-light); }
+.sidebar-kicker { font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.5px; color:var(--text-muted); margin-bottom:4px; }
+.sidebar-header h2 { font-size:22px; line-height:1; }
+.sidebar-close { width:38px; height:38px; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); color:var(--text-primary); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+.sidebar-close:hover { background:var(--border-light); }
+/* sidebar-status stays off on desktop (would push nav buttons down on hover-expand); mobile query below re-enables it for the overlay */
+.sidebar-status { display:none; flex-direction:column; gap:7px; padding:16px 4px; }
+.sidebar-status .api-status, .sidebar-status .save-status { display:block; width:100%; text-align:left; }
+.sidebar-footer { display:none; }
+.app-sidebar:hover .sidebar-footer,
+.app-sidebar:focus-within .sidebar-footer,
+.app-sidebar.open .sidebar-footer { display:flex; }
+.sidebar-nav { display:flex; flex-direction:column; gap:6px; }
+.sidebar-nav-btn {
+    width:100%; border:1px solid transparent; border-radius:12px !important; background:transparent;
+    color:var(--text-primary); padding:12px 13px !important; display:flex; align-items:center;
+    justify-content:flex-start; gap:12px !important;
+    font:600 14px 'Exo 2',sans-serif; cursor:pointer; text-align:left;
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+/* icon position fixed in both states; only label visibility changes, so the rail never jumps on hover */
+.sidebar-nav-btn svg { width:20px; height:20px; margin:0; color:var(--text-secondary); flex:0 0 auto; }
+/* no outline on hover; it looked too busy/boxy next to the rail's own edge */
+.sidebar-nav-btn:hover { background:var(--bg-panel); border-color:transparent; box-shadow:none; transform:translateX(3px); }
+.sidebar-nav-btn:active { transform: translateX(1px) scale(0.98); }
+/* labels keep the same padding/position in both states; only opacity and rail width animate */
+.sidebar-nav-btn span,
+.sidebar-footer-links span[aria-hidden] {
+    opacity:0; white-space:nowrap; transition:opacity .1s ease;
+}
+/* collapsed rail: hide labels entirely so nothing peeks out */
+.app-sidebar:not(:hover):not(:focus-within):not(.open) .sidebar-nav-btn span { visibility:hidden; }
+/* fade labels in only once the rail has mostly finished widening, so text doesn't pop in mid-animation */
+.app-sidebar:hover .sidebar-nav-btn span,
+.app-sidebar:focus-within .sidebar-nav-btn span,
+.app-sidebar.open .sidebar-nav-btn span { opacity:1; transition:opacity .15s ease .12s; }
+/* unread count pushed to the far end by margin-left:auto, regardless of label length */
+.sidebar-nav-badge {
+    margin-left:auto; min-width:18px; height:18px; padding:0 5px; border-radius:999px;
+    background:var(--danger); color:#fff; font:700 10px 'Exo 2',sans-serif;
+    display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+}
+.sidebar-divider { height:1px; background:var(--border-light); margin:8px 4px; }
+.sidebar-footer { margin-top:auto; padding:14px 5px 2px; color:var(--text-muted); font-size:11px; flex-direction:column; gap:3px; }
+@media (max-width:640px) {
+    .app-sidebar { width:min(310px, 90vw); padding:18px 14px; }
+    .header { flex-direction:row !important; align-items:center !important; justify-content:space-between !important; }
+    .header-left { flex:1; }
+    .logo { justify-content:flex-start !important; }
+    .logo img { height:52px !important; max-width:calc(100vw - 150px); }
+    .header-actions { width:auto !important; flex-wrap:nowrap !important; justify-content:flex-end !important; }
+    .header-actions .btn { flex:0 0 auto !important; }
+}
+
+/* --- mobile: rail hides off-canvas; menu button brings it back as overlay --- */
+@media (max-width: 768px) {
+    .menu-toggle { display: inline-flex !important; }
+    body { padding-left: 0; }
+    .app-sidebar {
+        transform: translateX(-105%) !important;
+        width: min(280px, 84vw) !important;
+        box-shadow: 18px 0 50px rgba(0,0,0,.2);
+    }
+    .app-sidebar.open { transform: translateX(0) !important; }
+    .app-sidebar.open .sidebar-status { display: flex; }
+}
+
+.logo-button{border:0;background:transparent;padding:0;cursor:pointer;color:inherit;display:flex;align-items:center;}
+.logo-button:hover{transform:translateY(-1px);}
+.sidebar-header-spacer{min-height:38px;}
+
+/* ==================== sidebar brand + mobile refinement ==================== */
+.sidebar-header {
+    min-height: 48px;
+}
+.sidebar-brand {
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    min-width: 0;
+}
+/* same icon as the main header */
+.sidebar-brand-logo { height:42px; width:auto; max-width:150px; object-fit:contain; flex:0 0 auto; display:block; }
+@media (max-width: 600px) {
+  .sidebar-brand-logo { height:36px; max-width:130px; }
+}
+
+@media (max-width: 380px) {
+    .app-sidebar { width: 88vw; }
+    .sidebar-nav-btn { gap: 10px; }
+}
+
+/* full-screen backdrop blur is expensive on mobile GPUs; use a lighter radius on small screens */
+@media (max-width: 640px) {
+    .modal-overlay.active { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+    .overlay-dark.active { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+    .sidebar-backdrop.open { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay, .modal, .overlay-dark, .sidebar-backdrop, .app-sidebar { transition: none !important; }
+}
+

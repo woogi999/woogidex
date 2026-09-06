@@ -1,0 +1,148 @@
+/* ==================== auth ====================
+   sign-in, registration and avatar controls.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+.auth-signed-in { display: flex; }
+.auth-user-email {
+    font-size: 13px;
+    color: var(--text-secondary, #888);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.auth-modal { max-width: 380px; width: 100%; }
+.auth-modal-error {
+    color: var(--danger, #ef4444);
+    font-size: 13px;
+    min-height: 18px;
+    margin: -4px 0 8px;
+}
+.auth-submit-btn { width: 100%; margin-top: 4px; }
+.auth-switch-link {
+    display: block;
+    text-align: center;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--accent, #6366f1);
+    text-decoration: none;
+}
+.auth-switch-link:hover { text-decoration: underline; }
+.auth-forgot-link {
+    display: block;
+    text-align: right;
+    margin: -10px 0 14px;
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    text-decoration: none;
+}
+.auth-forgot-link:hover { color: var(--accent, #6366f1); text-decoration: underline; }
+
+/* ---- avatar / profile additions ---- */
+.auth-avatar-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: none; padding: 0; cursor: pointer; overflow: hidden;
+    background: var(--accent, #6366f1); flex-shrink: 0;
+}
+.auth-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.auth-avatar-fallback {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 14px; font-weight: 700;
+}
+.profile-avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.profile-avatar-picker {
+    width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
+    background: var(--bg-secondary, #2a2a35); border: 2px dashed var(--border, #444);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+}
+.profile-avatar-preview { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-avatar-placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-secondary, #888); }
+.profile-avatar-hint { font-size: 12px; color: var(--text-secondary, #888); }
+
+
+/* extends .policy-actions from community.css: error line gets its own row, and
+   the destructive button pair is grouped instead of spread by justify-content */
+.policy-actions .auth-modal-error { flex: 1 1 100%; margin: 0; }
+.delete-account-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; }
+@media (max-width: 640px) {
+    .delete-account-buttons { width: 100%; }
+    .delete-account-buttons .btn { flex: 1 1 100%; justify-content: center; }
+}
+
+/* provider buttons above the password form; list is built at runtime from
+   whatever's enabled, so these rules can't assume a fixed button count */
+
+.oauth-buttons { display: flex; flex-direction: column; gap: 8px; }
+
+.oauth-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-elevated, var(--bg-secondary));
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .05s;
+}
+
+.oauth-btn:hover { border-color: var(--accent); background: var(--bg-hover, var(--bg-secondary)); }
+.oauth-btn:active { transform: translateY(1px); }
+.oauth-btn:disabled { opacity: .6; cursor: progress; }
+.oauth-btn svg { flex: none; }
+
+.oauth-consent {
+    margin: 10px 0 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* flex row instead of a pseudo-element overlay so it works on any bg color */
+.oauth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 18px 0 16px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    letter-spacing: .08em;
+}
+
+.oauth-divider::before,
+.oauth-divider::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid var(--border-light);
+}
+
+/* provider brand mark makes each linked-account row scannable at a glance */
+.connected-account-row { gap: var(--sp-3); }
+.connected-account-icon {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+}
+.connected-account-icon svg { width: 17px; height: 17px; }
+.connected-account-row.is-connected .connected-account-icon {
+    border-color: var(--success);
+}
+.connected-account-check {
+    display: inline-flex;
+    color: var(--success);
+    font-weight: 800;
+    margin-left: 2px;
+}

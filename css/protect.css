@@ -1,0 +1,80 @@
+/* ==================== content protection ====================
+   not real enforcement (devtools/screenshots defeat it trivially) - just closes
+   the effortless routes: right-click, drag-to-desktop, print-to-PDF, crawling.
+   paired with js/core/protect.js, which toggles the body class below; nothing
+   here depends on that script having run. */
+
+/* ---- images are not assets to be dragged off the page ---- */
+img[data-protected],
+.card-art img,
+.artwork-preview img,
+.board-artwork-left img,
+.profile-mon-art img,
+.collection-library-artwork img,
+.community-update-mon-art img,
+.preview-evo-sprite-wrap img {
+    -webkit-user-drag: none;
+    user-drag: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
+/* ---- screen capture deterrence ----
+   armed while tab is hidden/unfocused (what capture tools/screen share look like);
+   only artwork blurs, rest of the page stays normal so it doesn't look broken on alt-tab */
+body.protect-shielded #pokedex-board-community .board-artwork-left img,
+body.protect-shielded #community-view .card-art img,
+body.protect-shielded #community-detail-view .card-art img {
+    filter: blur(22px);
+    transition: filter .12s ease;
+}
+
+/* ---- print / save-as-PDF ----
+   the one screenshot route a page can actually refuse, via the print stylesheet */
+@media print {
+    #community-view,
+    #community-detail-view,
+    #pokedex-board-community {
+        display: none !important;
+    }
+
+    body::before {
+        content: 'Woogidex artwork is not available in print. Please view it on the site.';
+        display: block;
+        padding: 48px;
+        font: 700 16px/1.5 'Exo 2', system-ui, sans-serif;
+        text-align: center;
+    }
+}
+
+/* Someone who has turned motion down should not get a blur transition. */
+.reduce-motion body.protect-shielded img { transition: none; }
+
+/* ==================== shielded artwork ====================
+   a <canvas> standing in for an <img> (js/core/art-shield.js); reproduces the
+   same sizing/aspect-ratio behavior object-fit: contain gave the images.
+   ==================== */
+.shielded-art {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    /* pixels arrive a frame after the element; fading in avoids a flash of empty boxes */
+    opacity: 0;
+    transition: opacity .18s ease;
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+.shielded-art.is-painted { opacity: 1; }
+
+/* these boxes size their art to fill the box rather than centering it, so the canvas needs the same treatment */
+.card-art .shielded-art,
+.profile-mon-art .shielded-art,
+.community-landing-art .shielded-art,
+.community-upload-art .shielded-art,
+.preview-evo-sprite-wrap .shielded-art,
+#board-artwork-image .shielded-art {
+    display: block;
+}

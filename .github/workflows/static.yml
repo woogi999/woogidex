@@ -1,0 +1,63 @@
+# Simple workflow for deploying static content to GitHub Pages
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["live"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Single deploy job since we're just deploying
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        run: npm test
+      # Builds dist/, then serves it and loads it in a real browser.
+      #
+      # dist/ is the bundled and hashed JS and CSS, public/ copied to the root,
+      # and 404.html emitted as a copy of the built index.html -- GitHub Pages
+      # answers any unrecognised path with 404.html, which is what makes
+      # /community/12 open the app instead of a not-found page.
+      #
+      # The browser pass is the step that catches a deploy which would come up
+      # as an empty shell: nothing else here can tell that the app never ran.
+      - name: Build and smoke-test
+        run: npm run test:smoke
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Only the build output ships -- not the sources, not node_modules.
+          path: 'dist'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

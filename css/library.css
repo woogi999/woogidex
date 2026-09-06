@@ -1,0 +1,235 @@
+/* ==================== library ====================
+   the collection view selector and the reusable custom-library cards.
+   link order in index.html = cascade order; later files override earlier ones.
+   ==================== */
+
+/* one wrapping toolbar: heading and primary action anchor the ends, filters sit in the
+   middle; on narrow screens the search input takes its own line. #collection-header-row
+   scoped versions of these rules live further down. */
+.collection-title-row {
+    display:flex !important;
+    justify-content:space-between;
+    align-items:center !important;
+    gap:var(--sp-3) !important;
+    margin-bottom:var(--sp-4);
+    min-height:0 !important;
+    flex-wrap:wrap !important;
+}
+.collection-heading {
+    font-size:19px !important;
+    font-weight:800;
+    line-height:var(--ctl-h);
+    margin:0 !important;
+    white-space:nowrap;
+}
+.collection-title-left {
+    gap:var(--sp-3) !important;
+    flex:0 0 auto !important;
+}
+.collection-header-actions {
+    gap:var(--sp-2) !important;
+    margin-left:auto !important;
+}
+.collection-view-select {
+    height:var(--ctl-h) !important;
+    padding:0 26px 0 var(--sp-3) !important;
+    border:1.5px solid var(--border);
+    border-radius:var(--ctl-r) !important;
+    background:var(--bg-input);
+    color:var(--text-primary);
+    font-family:'Exo 2',sans-serif;
+    font-size:13px !important;
+    font-weight:600;
+    cursor:pointer;
+}
+.collection-view-select:focus { outline:none; border-color:var(--text-secondary); box-shadow:0 0 0 3px var(--accent-glow); }
+.collection-library-add { white-space:nowrap; }
+.breadcrumb-current { color:var(--text-primary); }
+.collection-library-card .card-actions {
+    position:absolute; top:8px; right:8px; display:flex; gap:4px; opacity:0; transition:opacity .2s;
+}
+.collection-library-card:hover .card-actions { opacity:1; }
+.collection-library-card .card-actions button {
+    width:28px; height:28px; border-radius:6px; border:none;
+    background:var(--bg-panel); color:var(--text-primary); cursor:pointer;
+    font-size:14px; display:flex; align-items:center; justify-content:center;
+}
+.collection-library-card .card-actions button:hover { background:var(--accent); color:#fff; }
+.collection-library-card .card-actions button.card-delete-btn:hover { background:var(--danger); color:#fff; }
+.collection-library-card .card-actions button.pinned-btn { background:var(--accent); color:#fff; }
+.collection-library-card {
+    position:relative;
+    min-width:0;
+    padding:18px;
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.collection-library-card:hover {
+    transform:translateY(-2px);
+    border-color:var(--text-secondary);
+    box-shadow:0 8px 22px rgba(0,0,0,.08);
+}
+.collection-library-card-title {
+    padding-right:128px;
+    font-size:16px;
+    font-weight:700;
+    color:var(--text-primary);
+}
+.collection-library-card-meta {
+    margin-top:8px;
+    font-size:11px;
+    color:var(--text-secondary);
+    line-height:1.6;
+}
+.collection-library-card-desc {
+    margin-top:10px;
+    font-size:12px;
+    line-height:1.5;
+    color:var(--text-secondary);
+    white-space:pre-wrap;
+}
+
+/* --- custom-library list layout ---
+   same card, its parts on one row; grid/list toggle applies to moves/items/abilities too, not just Fakemon */
+.collection-library-list-card {
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:10px 14px;
+}
+.collection-library-list-card .collection-library-card-body {
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    flex:1;
+    min-width:0;
+}
+.collection-library-list-card .collection-library-card-title {
+    padding-right:0;
+    font-size:15px;
+    flex:0 0 auto;
+    max-width:34%;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.collection-library-list-card .collection-library-card-meta {
+    margin-top:0;
+    flex:0 0 auto;
+    white-space:nowrap;
+}
+.collection-library-list-card .collection-library-card-desc {
+    margin-top:0;
+    flex:1;
+    min-width:0;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+/* buttons ride at the end of the row rather than floating over the text */
+.collection-library-list-card .card-actions {
+    position:static;
+    flex:none;
+    margin-left:auto;
+}
+.collection-library-list-card .collection-library-artwork {
+    width:44px;
+    height:44px;
+    margin:0;
+    flex:0 0 44px;
+    border-radius:8px;
+}
+.collection-library-card.pinned { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent-glow); }
+.library-card-actions {
+    position:absolute;
+    top:10px;
+    right:10px;
+    display:flex;
+    gap:4px;
+    opacity:0;
+    transform:translateY(-2px);
+    transition:opacity .15s ease, transform .15s ease;
+}
+.collection-library-card:hover .library-card-actions { opacity:1; transform:translateY(0); }
+.library-card-actions button {
+    width:30px;
+    height:30px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:1px solid var(--border);
+    border-radius:7px;
+    background:var(--bg-panel);
+    color:var(--text-secondary);
+    cursor:pointer;
+}
+.library-card-actions button:hover { color:var(--text-primary); border-color:var(--text-secondary); }
+
+@media (max-width: 700px) {
+    .collection-title-row { align-items:flex-start; flex-direction:column; }
+    .collection-view-select { align-self:flex-start; }
+    .collection-library-add { width:100%; }
+}
+
+/* explicit so legacy header/breadcrumb styles can't hide or collapse this selector */
+#collection-header-row {
+    display:flex !important;
+    align-items:center !important;
+    justify-content:space-between !important;
+    gap:var(--sp-3) !important;
+    width:100% !important;
+    min-height:0 !important;
+    flex-wrap:wrap !important;
+}
+#collection-header-row .collection-title-left {
+    display:flex !important;
+    align-items:center !important;
+    gap:12px !important;
+    min-width:0 !important;
+    flex:1 1 auto !important;
+}
+#collection-header-row .collection-heading {
+    display:block !important;
+    font-size:19px !important;
+    font-weight:800;
+    line-height:var(--ctl-h);
+    margin:0 !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap;
+}
+#collection-header-row .collection-view-select {
+    display:inline-block !important;
+    visibility:visible !important;
+    opacity:1 !important;
+    position:relative !important;
+    z-index:20 !important;
+    width:auto !important;
+    min-width:112px !important;
+    height:var(--ctl-h) !important;
+    padding:0 26px 0 var(--sp-3) !important;
+    border:1px solid var(--border) !important;
+    border-radius:var(--ctl-r) !important;
+    background:var(--bg-input) !important;
+    color:var(--text-primary) !important;
+    font:600 13px 'Exo 2', sans-serif !important;
+    cursor:pointer !important;
+    flex:0 0 auto !important;
+}
+#collection-header-row .collection-header-actions {
+    display:flex !important;
+    align-items:center !important;
+    gap:var(--sp-2) !important;
+    margin-left:auto !important;
+    flex:0 0 auto !important;
+}
+@media (max-width:700px) {
+    #collection-header-row {
+        align-items:flex-start !important;
+        flex-wrap:wrap !important;
+    }
+}
+/* the mobile (<=760px) toolbar rewrite overriding these selectors lives in
+   css/responsive.css, which must load after this file to keep winning. */

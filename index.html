@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- URLs are real paths (/community/12), not #hashes. GitHub Pages answers
+         those with 404.html (a copy of this file), so relative hrefs would
+         resolve against the wrong directory unless <base> is fixed up here,
+         before the first stylesheet parses. Must stay above every link,
+         script and image in the head -- see js/core/router.js, which reads
+         the result back out of baseURI. -->
+    <base href="/" target="_blank">
+    <script>
+        (function () {
+            var ROUTES = ['collection', 'editor', 'ability-editor', 'community', 'events', 'battle', 'profile', 'privacy', 'terms', 'settings'];
+            var parts = window.location.pathname.split('/');
+            var cut = -1;
+            for (var i = 0; i < parts.length; i++) {
+                if (ROUTES.indexOf(parts[i]) !== -1) { cut = i; break; }
+            }
+            var dir = cut > 0 ? parts.slice(0, cut) : parts.slice(0, -1);
+            document.querySelector('base').setAttribute('href', dir.join('/') + '/');
+        })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woogidex</title>
+    <meta name="description" content="Woogidex is a fan-made Fakemon creator: design custom Pokemon, publish them to the Community Hub, and battle them out in a 3D simulator.">
+    <!-- link-preview metadata; update og:url if the domain changes again -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Woogidex">
+    <meta property="og:title" content="Woogidex">
+    <meta property="og:description" content="A fan-made Fakemon creator. design custom Fakemon, publish them to the Community Hub, and battle them out in a simulator.">
+    <meta property="og:image" content="https://dex.woogi.xyz/assets/woogidex_icon.png">
+    <meta property="og:url" content="https://dex.woogi.xyz/">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Woogidex">
+    <meta name="twitter:description" content="A fan-made Fakemon creator. design custom Fakemon, publish them to the Community Hub, and battle them out in a simulator.">
+    <meta name="twitter:image" content="https://dex.woogi.xyz/assets/woogidex_icon.png">
+    <!-- must run synchronously before style.css paints, so dark mode applies
+         on the first frame instead of flashing light then switching -->
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('woogidex-dark-mode') === 'true') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                }
+                if (localStorage.getItem('woogidex-reduce-motion') === 'true') {
+                    document.documentElement.classList.add('reduce-motion');
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <!-- artwork is hand-drawn; asks well-behaved crawlers to stay out of it
+         (robots.txt carries the same refusal in full) -->
+    <meta name="robots" content="noai, noimageai, max-image-preview:standard">
+    <!-- stylesheets, in cascade order -- THE ORDER IS LOAD-BEARING: later
+         files restyle classes from earlier ones, and responsive.css sits
+         after the desktop rules it overrides. Adding a file is fine;
+         reordering these lines changes what the site looks like. -->
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/notifications.css">
+    <link rel="stylesheet" href="css/controls.css">
+    <link rel="stylesheet" href="css/pokedex-board.css">
+    <link rel="stylesheet" href="css/collection-cards.css">
+    <link rel="stylesheet" href="css/modals.css">
+    <link rel="stylesheet" href="css/editor.css">
+    <link rel="stylesheet" href="css/learnset.css">
+    <link rel="stylesheet" href="css/sample-sets.css">
+    <link rel="stylesheet" href="css/editor-stats.css">
+    <link rel="stylesheet" href="css/abilities.css">
+    <link rel="stylesheet" href="css/editor-tools.css">
+    <link rel="stylesheet" href="css/library.css">
+    <link rel="stylesheet" href="css/cloud-backup.css">
+    <link rel="stylesheet" href="css/responsive.css">
+    <link rel="stylesheet" href="css/templates.css">
+    <link rel="stylesheet" href="css/evolution.css">
+    <link rel="stylesheet" href="css/analysis.css">
+    <link rel="stylesheet" href="css/auth.css">
+    <link rel="stylesheet" href="css/community.css">
+    <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="css/staff.css">
+    <link rel="stylesheet" href="css/profile.css">
+    <link rel="stylesheet" href="css/events.css">
+    <link rel="stylesheet" href="css/skeleton.css">
+    <link rel="stylesheet" href="css/name-generator.css">
+    <link rel="stylesheet" href="css/ability-blocks.css">
+    <link rel="stylesheet" href="css/preview-evolution.css">
+    <link rel="stylesheet" href="css/updates.css">
+    <link rel="stylesheet" href="css/battle.css">
+    <link rel="stylesheet" href="css/legal.css">
+    <link rel="stylesheet" href="css/protect.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-left">
+                <button class="menu-toggle" type="button" onclick="toggleSidebar()" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false" title="Menu">
+                    <i data-lucide="menu" style="width:22px;height:22px;"></i>
+                </button>
+                <button class="logo logo-button" type="button" onclick="toggleSidebar()" aria-label="Open navigation menu" title="Menu">
+                    <img src="assets/woogidex_icon.png" alt="Woogidex" style="height: 60px; width: auto; object-fit: contain;">
+                </button>
+            </div>
+            <div class="header-actions">
+                <div id="notifications-wrap" class="notifications-wrap" style="display:none;">
+                    <button class="notifications-bell-btn" type="button" onclick="toggleNotificationsPanel(event)" aria-label="Notifications" title="Notifications">
+                        <i data-lucide="bell" style="width:20px;height:20px;"></i>
+                        <span id="notifications-badge" class="notifications-badge" style="display:none;"></span>
+                    </button>
+                    <div id="notifications-panel" class="notifications-panel" style="display:none;">
+                        <div class="notifications-panel-header">
+                            <span>Notifications</span>
+                            <button class="notifications-mark-all-btn" type="button" onclick="markAllNotificationsRead(event)">Mark all read</button>
+                        </div>
+                        <div id="notifications-list" class="notifications-list"></div>
+                    </div>
+                </div>
+                <button class="dark-mode-header-btn" id="dark-mode-btn" type="button"
+                        onclick="toggleDarkMode()"
+                        aria-label="Toggle dark mode"
+                        title="Toggle dark mode">
+                    <i data-lucide="moon" style="width:20px;height:20px;"></i>
+                </button>
+                <button class="header-signin-btn" id="header-signin-btn" type="button" onclick="openAuthModal('signin')" style="display:none;">Sign In</button>
+                <div class="header-profile-wrap" id="header-profile-wrap" style="display:none;">
+                    <button class="header-profile-btn" id="header-profile-btn" type="button" onclick="toggleHeaderProfilePopover(event)" aria-haspopup="true" aria-expanded="false" aria-label="Account menu" title="Account menu">
+                        <span class="header-profile-avatar"><img id="header-profile-avatar-img" style="display:none;" alt=""><span id="header-profile-avatar-fallback">?</span></span>
+                    </button>
+                    <div class="header-profile-popover" id="header-profile-popover" style="display:none;">
+                        <div class="header-profile-popover-identity">
+                            <span class="header-profile-popover-avatar"><img id="header-profile-popover-avatar-img" style="display:none;" alt=""><span id="header-profile-popover-avatar-fallback">?</span></span>
+                            <span class="header-profile-popover-copy">
+                                <strong id="header-profile-popover-name">Profile</strong>
+                                <small id="header-profile-popover-username"></small>
+                            </span>
+                        </div>
+                        <div class="header-profile-popover-divider"></div>
+                        <button type="button" class="header-profile-popover-item" onclick="showProfileView(); closeHeaderProfilePopover();"><i data-lucide="user"></i><span>View Profile</span></button>
+                        <button type="button" class="header-profile-popover-item" onclick="openSettings(); closeHeaderProfilePopover();"><i data-lucide="settings"></i><span>Settings</span></button>
+                        <div class="header-profile-popover-divider"></div>
+                        <button type="button" class="header-profile-popover-item header-profile-popover-danger" id="header-profile-signout-btn" onclick="closeHeaderProfilePopover(); handleSignOutClick();"><i data-lucide="log-out"></i><span>Sign Out</span></button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+        <!-- aria-hidden/inert are set by setSidebarHidden() in js/core/app.js: the
+             rail is only hidden when it is genuinely off-canvas, which is mobile only. -->
+        <aside class="app-sidebar" id="app-sidebar">
+            <div class="sidebar-header">
+                <button class="sidebar-brand" type="button" onclick="closeSidebar()" aria-label="Close menu">
+                    <img src="assets/woogidex_icon.png" alt="Woogidex" class="sidebar-brand-logo">
+                </button>
+                <button class="sidebar-close" type="button" onclick="closeSidebar()" aria-label="Close navigation menu" title="Close menu">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="sidebar-status">
+                <div class="api-status" id="api-status">Loading data...</div>
+                <div class="save-status unsaved" id="save-status" style="display:none;">Unsaved</div>
+            </div>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <button class="sidebar-nav-btn" type="button" onclick="showCollection(); closeSidebar();"><i data-lucide="library"></i><span>My Collection</span></button>
+                <button class="sidebar-nav-btn" type="button" onclick="openCommunityHub(); closeSidebar();"><i data-lucide="users"></i><span>Community</span></button>
+                <button class="sidebar-nav-btn" type="button" id="sidebar-battle-btn" onclick="openBattle(); closeSidebar();"><i data-lucide="swords"></i><span>Battle</span></button>
+                <div class="sidebar-divider"></div>
+                <button class="sidebar-nav-btn" type="button" onclick="openSettings(); closeSidebar();"><i data-lucide="settings"></i><span>Settings</span></button>
+                <button class="sidebar-nav-btn" type="button" onclick="openCreditsModal(); closeSidebar();"><i data-lucide="badge-info"></i><span>Credits</span></button>
+                <button class="sidebar-nav-btn" type="button" onclick="closeSidebar(); window.openUpdatesModal();"><i data-lucide="newspaper"></i><span>Updates</span><span id="updates-badge" class="sidebar-nav-badge" style="display:none;"></span></button>
+                <div class="sidebar-divider"></div>
+                <button class="sidebar-nav-btn sidebar-auth-btn" id="sidebar-auth-btn" type="button" onclick="openAuthModal('signin'); closeSidebar();"><i data-lucide="log-in"></i><span>Sign In</span></button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-links">
+                    <button type="button" class="sidebar-footer-link" onclick="closeSidebar(); openTermsPage();">Terms of Service</button>
+                    <span aria-hidden="true">·</span>
+                    <button type="button" class="sidebar-footer-link" onclick="closeSidebar(); openPrivacyPage();">Privacy Policy</button>
+                    <span aria-hidden="true">·</span>
+                    <button type="button" class="sidebar-footer-link" onclick="openCommunityRulesModal(); closeSidebar();">Community Rules</button>
+                </div>
+            </div>
+        </aside>
+
+        <div id="main-content">
+            <!-- battle view -->
+            <div id="battle-view" style="display:none;" data-view-src="views/battle.html"></div>
+
+            <!-- contest entry picker: pick a Fakemon from your collection to submit -->
+            <div class="modal-overlay" id="contest-mon-picker-modal">
+                <div class="modal contest-mon-picker-modal-box">
+                    <div class="modal-header">
+                        <h3 id="contest-mon-picker-title">Choose a Fakemon</h3>
+                        <button class="modal-close" onclick="closeModal('contest-mon-picker-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+                    </div>
+                    <div class="search-bar">
+                        <input type="text" id="contest-mon-picker-search" placeholder="Search your Fakemon..." oninput="filterContestMonPicker()">
+                    </div>
+                    <div id="contest-mon-picker-grid" class="collection-grid contest-mon-picker-grid"></div>
+                    <div id="contest-mon-picker-empty" class="community-empty" style="display:none;">No Fakemon match your search.</div>
+                </div>
+            </div>
+
+            <!-- battle team builder: pick a Fakemon to add to a team -->
+            <div class="modal-overlay" id="battle-mon-picker-modal">
+                <div class="modal contest-mon-picker-modal-box">
+                    <div class="modal-header">
+                        <h3>Add a Fakémon to your team</h3>
+                        <button class="modal-close" onclick="closeModal('battle-mon-picker-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+                    </div>
+                    <div id="battle-mon-picker-tabs" class="battle-picker-tabs"></div>
+                    <div id="battle-mon-picker-grid" class="collection-grid contest-mon-picker-grid"></div>
+                </div>
+            </div>
+
+            <!-- ability battle-effect block editor view -->
+            <div id="ability-block-editor-view" style="display:none;" data-view-src="views/ability-block-editor.html"></div>
+
+            <!-- editor view -->
+            <div id="editor-view" style="display: none;" data-view-src="views/editor.html"></div>
+
+            <!-- profile view -->
+            <div id="profile-view" class="profile-page-view" style="display:none;" data-view-src="views/profile.html"></div>
+
+            <!-- collection view (hidden by default so deep links like #editor/
+                 or #battle never flash it first; boot reveals it explicitly) -->
+            <div id="collection-view" style="display:none;" data-view-src="views/collection.html"></div>
+
+            <!-- community hub view -->
+            <div id="community-view" style="display:none;" data-view-src="views/community.html"></div>
+
+            <!-- community Fakemon detail view ("warp" page, mirrors share view) -->
+            <div id="community-detail-view" style="display:none;" data-view-src="views/community-detail.html"></div>
+
+            <!-- policy pages: /privacy and /terms, both rendered from
+                 public/legal/*.md by js/features/legal.js -->
+            <div id="legal-view" style="display:none;" data-view-src="views/legal.html"></div>
+
+            <!-- settings, as its own page rather than a modal -->
+            <div id="settings-view" style="display:none;" data-view-src="views/settings.html"></div>
+
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="evolution-node-modal">
+        <div class="modal evolution-node-modal">
+            <div class="modal-header">
+                <h3 id="evolution-node-modal-title">Add Pokémon</h3>
+                <button class="modal-close" onclick="closeModal('evolution-node-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="pokemon-template-controls">
+                <input id="evolution-node-search" type="text" placeholder="Search Pokemon by name..." autocomplete="off" oninput="renderEvolutionNodeChooser()">
+            </div>
+            <div id="evolution-node-list" class="evolution-node-list"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="auth-modal" data-mode="signin">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Sign In</h3>
+                <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-error" id="auth-modal-error"></p>
+                <!-- filled in by oauth.js from whatever providers are enabled;
+                     stays empty and hidden if none are -->
+                <div id="auth-oauth" style="display:none;"></div>
+                <div class="form-group">
+                    <label for="auth-identifier" id="auth-identifier-label">Username</label>
+                    <input type="text" id="auth-identifier" placeholder="your username or email">
+                </div>
+                <div class="form-group" id="auth-email-optional-row" style="display:none;">
+                    <label for="auth-email-optional">Email (optional - for account recovery)</label>
+                    <input type="email" id="auth-email-optional" autocomplete="email" placeholder="you@example.com">
+                </div>
+                <div class="auth-signup-note" id="auth-signup-note" style="display:none;">
+                    <strong>No account is required to use Woogidex.</strong> You only need an account if you want to use Community features such as uploading, publishing, and interacting with other users.
+                </div>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <a href="#" class="auth-forgot-link" id="auth-forgot-link" onclick="openForgotPasswordModal(); return false;">Forgot password?</a>
+                <div class="auth-terms-row" id="auth-terms-row" style="display:none;">
+                    <label class="auth-terms-check">
+                        <input type="checkbox" id="auth-terms-checkbox">
+                        <span>I agree to the <button type="button" class="inline-link-btn" onclick="openTermsModal(); event.preventDefault(); event.stopPropagation();">Terms of Service</button>.</span>
+                    </label>
+                </div>
+                <button class="btn btn-primary auth-submit-btn" id="auth-submit-btn" onclick="submitAuthForm()">Sign In</button>
+                <a href="#" class="auth-switch-link" id="auth-switch-link" onclick="toggleAuthMode(); return false;">Don't have an account? Sign up</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="forgot-password-modal" onclick="if(event.target===this) closeForgotPasswordModal()">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3>Reset Password</h3>
+                <button class="modal-close" onclick="closeForgotPasswordModal()" aria-label="Close">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-error" id="forgot-password-error"></p>
+                <div id="forgot-password-form">
+                    <div class="form-group">
+                        <label for="forgot-password-identifier">Username or Email</label>
+                        <input type="text" id="forgot-password-identifier" autocomplete="username" placeholder="your username or email">
+                    </div>
+                    <button class="btn btn-primary auth-submit-btn" id="forgot-password-submit-btn" onclick="submitForgotPasswordForm()">Send Reset Link</button>
+                </div>
+                <a href="#" class="auth-switch-link" onclick="closeForgotPasswordModal(); openAuthModal('signin'); return false;">Back to sign in</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="set-new-password-modal">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3>Set New Password</h3>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-error" id="set-new-password-error"></p>
+                <div class="form-group">
+                    <label for="set-new-password">New Password</label>
+                    <input type="password" id="set-new-password" autocomplete="new-password" placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label for="set-new-password-confirm">Confirm Password</label>
+                    <input type="password" id="set-new-password-confirm" autocomplete="new-password" placeholder="••••••••">
+                </div>
+                <button class="btn btn-primary auth-submit-btn" id="set-new-password-submit-btn" onclick="submitSetNewPasswordForm()">Set Password</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="updates-modal" onclick="if(event.target===this) closeUpdatesModal()">
+        <div class="modal policy-modal updates-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>Updates</h3>
+                </div>
+                <button class="modal-close" onclick="closeUpdatesModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body" id="updates-modal-body"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="credits-modal" onclick="if(event.target===this) closeCreditsModal()">
+        <div class="modal policy-modal credits-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>Credits</h3>
+                </div>
+                <button class="modal-close" onclick="closeCreditsModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p><strong>Woogidex</strong></p>
+                <p>Created by <strong><a href="https://github.com/woogi999" target="_blank" rel="noopener noreferrer" class="credits-link">Woogi</a></strong><br>Lead Backend: <strong><a href="https://github.com/gghrvy" target="_blank" rel="noopener noreferrer" class="credits-link">gghrvy</a></strong><br>Placeholder Art &amp; Sprites: <strong>Enderwither02</strong></p>
+                <h4>Attributions</h4>
+                <p>Woogidex is a fan-made, unofficial project. Pokémon and related names, characters, and other intellectual property are owned by their respective rights holders.</p>
+                <h4>Disclaimer</h4>
+                <p>Woogidex is not affiliated with, endorsed by, or sponsored by Nintendo, The Pokémon Company, or Game Freak. This project is made for fan and non-commercial purposes.</p>
+                <p>© 2026 Woogidex · All rights reserved to their respective owners.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="terms-modal" onclick="if(event.target===this) closeTermsModal()">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <h3 id="terms-modal-title">Terms of Service</h3>
+                </div>
+                <button class="modal-close" onclick="closeTermsModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <!-- rendered from public/legal/terms.md by legal.js, the same
+                     file the /terms page shows -- one copy of the terms -->
+                <div class="legal-doc" id="terms-modal-doc"></div>
+                <div class="policy-actions">
+                    <button type="button" class="btn btn-primary" onclick="closeTermsModal()">Got it</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="community-update-modal" onclick="if(event.target===this) closeCommunityUpdateModal()">
+         <div class="modal community-update-modal">
+             <div class="modal-header">
+                 <div>
+                     <h3 id="community-update-title">Choose a Fakémon to update</h3>
+                 </div>
+                 <button class="modal-close" onclick="closeCommunityUpdateModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+             </div>
+             <div class="modal-body community-update-modal-body">
+                 <p class="community-update-help" id="community-update-help">Select the Fakémon from your collection that should replace this community hub upload.</p>
+                 <div class="community-update-controls">
+                     <div class="community-update-search-wrap"><i data-lucide="search"></i><input id="community-update-search" type="search" placeholder="Search your Fakemon..." oninput="filterCommunityUpdateCollection()"></div>
+                     <select id="community-update-sort-by" onchange="sortCommunityUpdateCollection()" aria-label="Sort collection">
+                         <option value="created">Date Added</option><option value="name">Name</option><option value="number">Pokédex Number</option><option value="bst">BST</option><option value="updated">Last Updated</option>
+                     </select>
+                     <select id="community-update-sort-order" onchange="sortCommunityUpdateCollection()" aria-label="Sort direction">
+                         <option value="desc">Descending</option><option value="asc">Ascending</option>
+                     </select>
+                 </div>
+                 <div id="community-update-collection-grid" class="community-update-collection-grid"></div>
+                 <div class="community-update-actions">
+                     <div id="community-update-selected" class="community-update-selected">No Fakemon selected</div>
+                     <div class="community-update-action-buttons">
+                         <button class="btn btn-secondary" type="button" onclick="closeCommunityUpdateModal()">Cancel</button>
+                         <button class="btn btn-primary" id="community-update-confirm" type="button" onclick="confirmCommunityUpdate()" disabled><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Update Listing</button>
+                     </div>
+                 </div>
+             </div>
+         </div>
+     </div>
+
+    <!-- ==================== cloud backup picker ====================
+         One modal, two modes (see openCloudBackupModal in
+         js/features/cloud-save.js): picking which Fakemon the backup should
+         hold, and picking which of them to bring back. Both are the same
+         question about the same kind of list, so they share one grid rather
+         than drifting apart as two.
+         ==================== -->
+    <div class="modal-overlay" id="cloud-backup-modal" onclick="if(event.target===this) closeCloudBackupModal()">
+        <div class="modal community-update-modal cloud-backup-modal">
+            <div class="modal-header">
+                <div>
+                    <h3 id="cloud-backup-title">Choose what to back up</h3>
+                </div>
+                <button class="modal-close" onclick="closeCloudBackupModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body community-update-modal-body">
+                <p class="community-update-help" id="cloud-backup-help"></p>
+                <div id="cloud-backup-meters" class="cloud-meters"></div>
+                <!-- one tab per kind of thing a backup can hold, written by
+                     renderCloudBackupTabs() in cloud-save.js -->
+                <div class="tabs cloud-backup-tabs" id="cloud-backup-tabs"></div>
+                <div class="community-update-controls">
+                    <div class="community-update-search-wrap"><i data-lucide="search"></i><input id="cloud-backup-search" type="search" placeholder="Search Fakemon..." oninput="filterCloudBackupModal()"></div>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="selectAllCloudBackupMons()">Select all</button>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="clearCloudBackupSelection()">Clear</button>
+                </div>
+                <div id="cloud-backup-grid" class="cloud-pick-grid"></div>
+                <div class="community-update-actions">
+                    <div id="cloud-backup-summary" class="community-update-selected"></div>
+                    <div class="community-update-action-buttons">
+                        <button class="btn btn-secondary" type="button" onclick="closeCloudBackupModal()">Cancel</button>
+                        <button class="btn btn-primary" id="cloud-backup-confirm" type="button" onclick="confirmCloudBackupModal()" disabled>Save Backup</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="community-rules-modal" onclick="if(event.target===this) closeCommunityRulesModal()">
+        <div class="modal policy-modal community-rules-modal">
+            <div class="modal-header">
+                <div>
+                    <h3 id="community-rules-title">Community Rules</h3>
+                </div>
+                <button class="modal-close" onclick="closeCommunityRulesModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>Keep the Community Hub friendly, creative, and safe for everyone.</p>
+                <ul>
+                    <li><strong>We strictly do not allow AI art.</strong> Artwork must be drawn by a human being. Anything generated by an AI image tool, or traced, painted over, or touched up from a generated image, will be removed. Repeat uploads are grounds for a permanent ban. If you did not draw it, credit the artist who did.</li>
+                    <li><strong>No NSFW or sexual content.</strong> This includes artwork, names, descriptions, cries, and other uploaded content.</li>
+                    <li><strong>No inappropriate or offensive names.</strong></li>
+                    <li><strong>No spam.</strong> Do not flood the Community Hub with repeated or low-effort posts.</li>
+                    <li><strong>No harassment, threats, hate, or discrimination.</strong></li>
+                    <li><strong>No impersonation.</strong> Do not pretend to be another user, creator, staff member, company, or organization.</li>
+                    <li><strong>No scams, misleading content, or advertising.</strong></li>
+                    <li><strong>Only share content you have permission to use.</strong></li>
+                    <li><strong>Do not upload malicious or harmful files.</strong></li>
+                </ul>
+                <p>Breaking these rules may result in content removal, account termination, and a permanent ban from the Community Hub and Woogidex.</p>
+                <div class="policy-actions">
+                    <div class="policy-check-row" id="community-rules-agree-row">
+                        <label class="auth-terms-check">
+                            <input type="checkbox" id="community-rules-checkbox">
+                            <span>I have read and agree to the Community Rules.</span>
+                        </label>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="community-rules-continue-btn" onclick="acceptCommunityRules()">I Agree and Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="lost-fakemon-modal" onclick="if(event.target===this) closeRecoveryModal()">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>We Found Some Lost Fakémon</h3>
+                </div>
+                <button class="modal-close" onclick="closeRecoveryModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>A bug used to be able to make Fakémon disappear from your collection. We fixed it, and found copies of some of yours that never made it back in. Uncheck any you don't want, then restore the rest.</p>
+                <div class="recovery-list" id="recovery-list"></div>
+                <div class="policy-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeRecoveryModal()">Not Now</button>
+                    <button type="button" class="btn btn-primary" onclick="restoreSelectedFakemon()"><i data-lucide="rotate-ccw" style="width:14px;height:14px;"></i> Restore Selected</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="duplicate-fakemon-modal" onclick="if(event.target===this) closeDuplicateModal()">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>Possible Duplicates</h3>
+                </div>
+                <button class="modal-close" onclick="closeDuplicateModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>Some restored Fakémon share a name with one already in your collection, most likely because you recreated it by hand after it went missing. Check both and delete whichever copy you don't want.</p>
+                <div id="duplicate-list"></div>
+                <div class="policy-actions">
+                    <button type="button" class="btn btn-primary" onclick="closeDuplicateModal()">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="site-transfer-modal" onclick="if(event.target===this) closeSiteTransferNotice()">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>We're Moving to dex.woogi.xyz</h3>
+                </div>
+                <button class="modal-close" onclick="closeSiteTransferNotice()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>Woogidex is moving to a new address: <span class="site-transfer-url">dex.woogi.xyz</span>. Your collection is saved in this browser only, so it will not follow you to the new site automatically. You'll need to bring it over yourself.</p>
+                <ol class="site-transfer-steps">
+                    <li>On this site's Collection page, click <strong>Export Collection</strong> and choose <strong>Export as JSON</strong> to download a backup file.</li>
+                    <li>Go to <span class="site-transfer-url">dex.woogi.xyz</span> and sign in (or create an account).</li>
+                    <li>On its Collection page, click <strong>Import</strong> and choose the file you just downloaded.</li>
+                </ol>
+                <p>That brings over every Fakémon with its artwork and movesets, plus your custom moves, abilities, and items. Folders and battle teams don't travel with it, so you'll need to rebuild those on the new site.</p>
+                <div class="policy-actions">
+                    <div class="policy-check-row">
+                        <label class="auth-terms-check">
+                            <input type="checkbox" id="site-transfer-never-show" autocomplete="off">
+                            <span>Don't show this again</span>
+                        </label>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="closeSiteTransferNotice()">Got it</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal-overlay" id="delete-account-modal" onclick="if(event.target===this) closeDeleteAccountModal()">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>Delete Your Account</h3>
+                </div>
+                <button class="modal-close" onclick="closeDeleteAccountModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>Your account will be permanently deleted on <strong id="delete-account-when"></strong>. Until then nothing is lost, and you can call it off from <strong>Settings &rarr; Account</strong> at any point.</p>
+                <p>After that date these are gone for good and cannot be recovered:</p>
+                <ul>
+                    <li>Your profile, username, display name, avatar and bio.</li>
+                    <li>The Fakémon synced to your account, and your published listings.</li>
+                    <li>Your comments, likes, notifications and battle records.</li>
+                </ul>
+                <p><strong>Export your collection first</strong> if you want to keep it. <em>Collection &rarr; Export</em> downloads the whole thing as a file you can import again later.</p>
+                <div class="policy-actions">
+                    <div class="policy-check-row">
+                        <label class="auth-terms-check">
+                            <input type="checkbox" id="delete-account-checkbox" autocomplete="off">
+                            <span>I understand that this permanently deletes my account and everything on it.</span>
+                        </label>
+                    </div>
+                    <p class="auth-modal-error" id="delete-account-error"></p>
+                    <div class="delete-account-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="closeDeleteAccountModal()">Keep My Account</button>
+                        <button type="button" class="btn btn-danger" id="delete-account-confirm-btn" onclick="confirmDeleteAccount()"><i data-lucide="trash-2" style="width:14px;height:14px;"></i> Schedule Deletion</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="account-deletion-notice-modal" onclick="if(event.target===this) closeAccountDeletionNotice()">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>Your Account Is Scheduled for Deletion</h3>
+                </div>
+                <button class="modal-close" onclick="closeAccountDeletionNotice()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <p>You asked us to delete this account. It will be permanently deleted on <strong id="account-deletion-notice-when"></strong>, along with your collection, published Fakémon, comments and everything else on it.</p>
+                <p>If that was not what you meant, you can stop it right now. Otherwise there is nothing to do, and if you want a copy of your Fakémon, export it from <em>Collection &rarr; Export</em> before the date above.</p>
+                <div class="policy-actions">
+                    <div class="delete-account-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="closeAccountDeletionNotice()">Leave It Scheduled</button>
+                        <button type="button" class="btn btn-primary" onclick="cancelAccountDeletion()"><i data-lucide="rotate-ccw" style="width:14px;height:14px;"></i> Cancel Deletion</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-entity-chooser-modal">
+        <div class="modal" style="max-width: 620px;">
+            <div class="modal-header">
+                <h3 id="custom-entity-chooser-title">Add Custom Move</h3>
+                <button class="modal-close" onclick="closeModal('custom-entity-chooser-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div id="custom-entity-chooser-body"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-ability-modal">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 id="custom-ability-modal-title">Create Custom Ability</h3>
+                <button class="modal-close" onclick="closeModal('custom-ability-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="form-group">
+                <label>Ability Name</label>
+                <input type="text" id="custom-ability-name" placeholder="e.g., Solar Heart">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="custom-ability-desc" rows="4" placeholder="Describe what this ability does..."></textarea>
+            </div>
+            <input type="hidden" id="custom-ability-edit-id" value="">
+            <div class="form-group entity-code-launch">
+                <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;" onclick="openAbilityBlockEditor(document.getElementById('custom-ability-edit-id').value)">
+                    <i data-lucide="puzzle" style="width:16px;height:16px;"></i> Code Battle Effect (Blocks)
+                </button>
+                <p class="entity-code-hint">Save the ability once first, then build its real battle logic out of coding blocks. It exports to both Showdown and Essentials.</p>
+                <details class="entity-raw-code">
+                    <summary><i data-lucide="code-2"></i> Or write the code yourself</summary>
+                    <p class="entity-code-hint">Paste Showdown hook syntax. The bare hooks, the whole <code>{ ... }</code> entry, an <code>export const</code> off GitHub or one keyed entry out of a dex table all work, TypeScript annotations included. Runs in battles against the bot; a battle against another player skips it, on both sides, because their copy arrived over the network.</p>
+                    <textarea id="custom-ability-raw-code" rows="10" spellcheck="false" placeholder="onModifyMove(move, pokemon) {&#10;    if (move.secondaries) {&#10;        for (const s of move.secondaries) s.chance *= 2;&#10;    }&#10;},&#10;onResidual(pokemon) {&#10;    this.heal(pokemon.maxhp / 8, pokemon);&#10;}" oninput="checkEntityRawCode('custom-ability')" onblur="checkEntityRawCode('custom-ability', true)"></textarea>
+                    <div class="entity-raw-code-status" id="custom-ability-raw-code-status"></div>
+                    <details class="entity-raw-code-ref">
+                        <summary>Hooks this engine can run</summary>
+                        <div class="entity-raw-code-hooks" id="custom-ability-raw-code-hooks"></div>
+                    </details>
+                </details>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeModal('custom-ability-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveCustomAbilityLibraryEntry()">Save Ability</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-item-modal">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 id="custom-item-modal-title">Create Custom Item</h3>
+                <button class="modal-close" onclick="closeModal('custom-item-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="form-group">
+                <label>Item Name</label>
+                <input type="text" id="custom-item-name" placeholder="e.g., Moonlit Charm">
+            </div>
+            <div class="form-group">
+                <label>Artwork</label>
+                <div class="artwork-upload-combined custom-item-artwork-zone" id="custom-item-artwork-zone" onclick="document.getElementById('custom-item-artwork-upload').click()" ondragover="handleCustomItemArtworkDragOver(event)" ondragleave="handleCustomItemArtworkDragLeave(event)" ondrop="handleCustomItemArtworkDrop(event)">
+                    <div class="artwork-preview" id="custom-item-artwork-preview"><span class="placeholder">Item</span></div>
+                    <input type="file" id="custom-item-artwork-upload" accept="image/*" onchange="handleCustomItemArtworkUpload(event)">
+                    <div class="artwork-upload-overlay"><i data-lucide="upload" style="width:16px;height:16px;"></i><span>Click or drag item artwork here</span></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="custom-item-desc" rows="4" placeholder="Describe what this item does..."></textarea>
+            </div>
+            <label class="custom-item-mega-toggle">
+                <input type="checkbox" id="custom-item-is-mega-stone">
+                <span class="custom-item-mega-toggle-copy">
+                    <strong>Mega Stone</strong>
+                    <span>Mark this item as a Mega Stone for evolution and item pickers.</span>
+                </span>
+            </label>
+            <input type="hidden" id="custom-item-edit-id" value="">
+            <div class="form-group entity-code-launch">
+                <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;" onclick="openItemBlockEditor(document.getElementById('custom-item-edit-id').value)">
+                    <i data-lucide="puzzle" style="width:16px;height:16px;"></i> Code Battle Effect (Blocks)
+                </button>
+                <p class="entity-code-hint">Save the item once first, then build its real battle logic out of coding blocks. It exports to both Showdown and Essentials.</p>
+                <details class="entity-raw-code">
+                    <summary><i data-lucide="code-2"></i> Or write the code yourself</summary>
+                    <p class="entity-code-hint">Paste Showdown hook syntax. The bare hooks, the whole <code>{ ... }</code> entry, an <code>export const</code> off GitHub or one keyed entry out of a dex table all work, TypeScript annotations included. Runs in battles against the bot; a battle against another player skips it, on both sides, because their copy arrived over the network.</p>
+                    <textarea id="custom-item-raw-code" rows="10" spellcheck="false" placeholder="onModifySpe(spe, pokemon) {&#10;    return this.chainModify(2);&#10;},&#10;onDamage(damage, target, source, effect) {&#10;    if (damage &gt;= target.hp) return target.hp - 1;&#10;}" oninput="checkEntityRawCode('custom-item')" onblur="checkEntityRawCode('custom-item', true)"></textarea>
+                    <div class="entity-raw-code-status" id="custom-item-raw-code-status"></div>
+                    <details class="entity-raw-code-ref">
+                        <summary>Hooks this engine can run</summary>
+                        <div class="entity-raw-code-hooks" id="custom-item-raw-code-hooks"></div>
+                    </details>
+                </details>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeModal('custom-item-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveCustomItemLibraryEntry()">Save Item</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="fakemon-preview-modal">
+        <div class="modal quick-preview-modal">
+            <div class="modal-header">
+                <h3>Quick Preview</h3>
+                <button class="modal-close" onclick="closeModal('fakemon-preview-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div id="preview-modal-board-wrap"></div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                <button class="btn btn-primary" id="preview-modal-edit-btn">Edit Fakemon</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="folder-name-modal">
+        <div class="modal" style="max-width: 380px;">
+            <div class="modal-header">
+                <h3 id="folder-name-modal-title">New Folder</h3>
+                <button class="modal-close" onclick="closeModal('folder-name-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="form-group">
+                <label>Folder Name</label>
+                <input type="text" id="folder-name-input" placeholder="e.g., Legendaries" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmFolderName();}">
+            </div>
+            <div class="form-group">
+                <label>Folder Color</label>
+                <div id="folder-color-options" class="color-options"></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeModal('folder-name-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmFolderName()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-move-modal">
+        <div class="modal" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 id="custom-move-modal-title">Create Custom Move</h3>
+                <button class="modal-close" onclick="closeModal('custom-move-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div id="custom-move-form">
+                <input type="hidden" id="custom-move-edit-index" value="">
+                <input type="hidden" id="custom-move-library-edit-id" value="">
+                <div class="form-group">
+                    <label>Move Name</label>
+                    <input type="text" id="custom-move-name" placeholder="e.g., Ember Fang">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Type</label>
+                        <div class="type-dropdown" id="custom-move-type-dropdown">
+                            <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('custom-move-type')">
+                                <span class="type-dropdown-value" id="custom-move-type-value">Select Type</span>
+                                <span class="type-dropdown-arrow">▼</span>
+                            </button>
+                            <div class="type-dropdown-menu" id="custom-move-type-menu"></div>
+                        </div>
+                        <input type="hidden" id="custom-move-type" value="Normal">
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <div class="cat-dropdown" id="custom-move-category-dropdown">
+                            <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('custom-move-category')">
+                                <span class="cat-dropdown-value" id="custom-move-category-value">Status</span>
+                                <span class="type-dropdown-arrow">▼</span>
+                            </button>
+                            <div class="cat-dropdown-menu" id="custom-move-category-menu"></div>
+                        </div>
+                        <input type="hidden" id="custom-move-category" value="Status">
+                    </div>
+                </div>
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label>Base Power</label>
+                        <input type="number" id="custom-move-power" min="0" max="250" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Accuracy</label>
+                        <input type="number" id="custom-move-accuracy" min="0" max="100" value="100">
+                    </div>
+                    <div class="form-group">
+                        <label>PP</label>
+                        <input type="number" id="custom-move-pp" min="1" max="64" value="10">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Priority</label>
+                    <input type="number" id="custom-move-priority" min="-7" max="5" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Flags</label>
+                    <div class="flag-checkboxes" id="custom-move-flags">
+                        <label><input type="checkbox" value="contact"> Contact</label>
+                        <label><input type="checkbox" value="punch"> Punch</label>
+                        <label><input type="checkbox" value="slicing"> Slicing</label>
+                        <label><input type="checkbox" value="sound"> Sound</label>
+                        <label><input type="checkbox" value="bite"> Bite</label>
+                        <label><input type="checkbox" value="bullet"> Bullet</label>
+                        <label><input type="checkbox" value="pulse"> Pulse</label>
+                        <label><input type="checkbox" value="wind"> Wind</label>
+                        <label><input type="checkbox" value="dance"> Dance</label>
+                        <label><input type="checkbox" value="powder"> Powder</label>
+                        <label><input type="checkbox" value="heal"> Heal</label>
+                        <label><input type="checkbox" value="thawing"> Thaws User</label>
+                        <label><input type="checkbox" value="charge"> Charge</label>
+                        <label><input type="checkbox" value="recharge"> Recharge</label>
+                        <label><input type="checkbox" value="highcrit"> High Crit</label>
+                        <label><input type="checkbox" value="multihit"> Multi-hit</label>
+                        <label><input type="checkbox" value="pivot"> Pivot</label>
+                        <label><input type="checkbox" value="protect"> Bypass Protect</label>
+                        <label><input type="checkbox" value="reflectable"> Bypass Reflect</label>
+                        <label><input type="checkbox" value="snatch"> Bypass Snatch</label>
+                        <label><input type="checkbox" value="bypasssub"> Bypass Substitute</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="custom-move-desc" rows="3" placeholder="Describe what this move does..."></textarea>
+                </div>
+                <div class="form-group entity-code-launch">
+                    <button type="button" class="btn btn-secondary" style="width:100%;justify-content:center;" onclick="openMoveBlockEditor(document.getElementById('custom-move-library-edit-id').value)">
+                        <i data-lucide="puzzle" style="width:16px;height:16px;"></i> Code Battle Effect (Blocks)
+                    </button>
+                    <p class="entity-code-hint">Save the move once first, then build its real battle logic out of coding blocks. It exports to both Showdown and Essentials.</p>
+                    <details class="entity-raw-code">
+                        <summary><i data-lucide="code-2"></i> Or write the code yourself</summary>
+                        <p class="entity-code-hint">Paste Showdown hook syntax. The bare hooks, the whole <code>{ ... }</code> entry, an <code>export const</code> off GitHub or one keyed entry out of a dex table all work, TypeScript annotations included. Runs in battles against the bot; a battle against another player skips it, on both sides, because their copy arrived over the network. A move also gets the move pipeline: <code>basePowerCallback</code>, <code>onModifyMove</code>, <code>onBasePower</code>, <code>onTry</code>, <code>onHit</code>, plus data fields like <code>secondaries</code>, <code>drain</code> and <code>multihit</code>.</p>
+                        <textarea id="custom-move-raw-code" rows="10" spellcheck="false" placeholder="basePowerCallback(pokemon, target, move) {&#10;    return 40 + Math.floor(pokemon.hp * 60 / pokemon.maxhp);&#10;},&#10;secondaries: [{ chance: 30, boosts: { spe: -1 } }],&#10;onHit(target, source, move) {&#10;    this.boost({ atk: 1 }, source);&#10;}" oninput="checkEntityRawCode('custom-move')" onblur="checkEntityRawCode('custom-move', true)"></textarea>
+                        <div class="entity-raw-code-status" id="custom-move-raw-code-status"></div>
+                        <details class="entity-raw-code-ref">
+                            <summary>Hooks this engine can run</summary>
+                            <div class="entity-raw-code-hooks" id="custom-move-raw-code-hooks"></div>
+                        </details>
+                    </details>
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button class="btn btn-secondary" onclick="closeModal('custom-move-modal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveCustomMove()">Save Move</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="sample-set-modal">
+        <div class="modal" style="max-width: 620px;">
+            <div class="modal-header">
+                <h3>Add Sample Set</h3>
+                <button class="modal-close" onclick="closeSampleSetModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+                
+            </p>
+            <button class="btn btn-secondary" onclick="addBlankSampleSet()" style="width:100%;justify-content:center;margin-bottom:18px;">
+                Blank Slate
+            </button>
+            <div style="border-top:1px solid var(--border-light);padding-top:16px;">
+                <div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:8px;">
+                    Sample Set Ideas
+                </div>
+                <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">
+                    Based from this Fakemon's data. It's kinda stupid right now but hey, it's better than nothing!
+                </p>
+                <div id="suggested-sample-sets-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="move-import-export-modal">
+        <div class="modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Import / Export Moves</h3>
+                <button class="modal-close" onclick="closeModal('move-import-export-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+                Import and export your moves here. The selected order is used for both operations.
+            </p>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                <label for="move-import-export-sort" style="font-size:12px;font-weight:600;color:var(--text-secondary);">Learnset sort</label>
+                <select id="move-import-export-sort" style="width:145px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="exportMovesToText()">
+                    <option value="name">Alphabetical</option>
+                    <option value="type">Type</option>
+                    <option value="power">Power</option>
+                    <option value="category">Category</option>
+                    <option value="default">Default</option>
+                </select>
+                <select id="move-import-export-order" style="width:105px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="exportMovesToText()">
+                    <option value="asc">Ascending ▲</option>
+                    <option value="desc">Descending ▼</option>
+                </select>
+            </div>
+            <textarea id="move-import-export-text" spellcheck="false"
+                placeholder="Absorb&#10;Acid Armor&#10;Aerial Ace&#10;..."></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:flex-end;">
+                <button class="btn btn-secondary btn-sm" onclick="exportMovesToText()">Export Current Moves</button>
+                <button class="btn btn-primary btn-sm" onclick="importMovesFromText()">Import Moves</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeModal('move-import-export-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="plain-text-export-modal">
+        <div class="modal" style="max-width: 850px;">
+            <div class="modal-header">
+                <h3>Export as Plain Text</h3>
+                <button class="modal-close" onclick="closeModal('plain-text-export-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Choose the learnset order, then copy the text below or download it as a .txt file.</p>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                <label for="plain-text-export-sort" style="font-size:12px;font-weight:600;color:var(--text-secondary);">Learnset sort</label>
+                <select id="plain-text-export-sort" style="width:145px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="refreshPlainTextExport()">
+                    <option value="name">Alphabetical</option>
+                    <option value="type">Type</option>
+                    <option value="power">Power</option>
+                    <option value="category">Category</option>
+                    <option value="default">Default</option>
+                </select>
+                <select id="plain-text-export-order" style="width:105px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="refreshPlainTextExport()">
+                    <option value="asc">Ascending ▲</option>
+                    <option value="desc">Descending ▼</option>
+                </select>
+            </div>
+            <textarea id="plain-text-export-text" spellcheck="false" style="min-height:520px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap;">
+                <button class="btn btn-secondary btn-sm" onclick="copyPlainTextExport()">Copy Text</button>
+                <button class="btn btn-primary btn-sm" onclick="downloadPlainTextExport()">Download .txt</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeModal('plain-text-export-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="move-browser-modal">
+        <div class="modal" style="max-width: 820px;">
+            <div class="modal-header">
+                <h3>Browse Moves</h3>
+                <button class="modal-close" onclick="closeBattleMoveBrowser?.();closeModal('move-browser-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="move-browser-filters">
+                <input type="text" id="mb-filter-name" placeholder="Search by name..." oninput="filterMoveBrowser()" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
+                <div class="type-dropdown" id="mb-filter-type-dropdown" style="width:120px;">
+                    <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('mb-filter-type')">
+                        <span class="type-dropdown-value" id="mb-filter-type-value">Any Type</span>
+                        <span class="type-dropdown-arrow">▼</span>
+                    </button>
+                    <div class="type-dropdown-menu" id="mb-filter-type-menu"></div>
+                </div>
+                <input type="hidden" id="mb-filter-type" value="">
+                <div class="cat-dropdown" id="mb-filter-category-dropdown" style="width:120px;">
+                    <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('mb-filter-category')">
+                        <span class="cat-dropdown-value" id="mb-filter-category-value">Any Category</span>
+                        <span class="type-dropdown-arrow">▼</span>
+                    </button>
+                    <div class="cat-dropdown-menu" id="mb-filter-category-menu"></div>
+                </div>
+                <input type="hidden" id="mb-filter-category" value="">
+                <select id="mb-filter-priority" onchange="filterMoveBrowser()" style="width:130px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
+                    <option value="">Any Priority</option>
+                    <option value="positive">Priority &gt; 0</option>
+                    <option value="zero">Priority = 0</option>
+                    <option value="negative">Priority &lt; 0</option>
+                </select>
+            </div>
+            <div class="move-browser-filters">
+                <label class="mb-range-label">Min BP <input type="number" id="mb-filter-bp-min" min="0" oninput="filterMoveBrowser()"></label>
+                <label class="mb-range-label">Min Acc% <input type="number" id="mb-filter-acc-min" min="0" max="100" oninput="filterMoveBrowser()"></label>
+                <label class="mb-range-label">Min PP <input type="number" id="mb-filter-pp-min" min="0" oninput="filterMoveBrowser()"></label>
+                <button class="btn btn-secondary btn-sm" onclick="clearMoveBrowserFilters()" title="Reset all filters">Clear Filters</button>
+            </div>
+            <div id="mb-filter-flags" class="move-browser-flags"></div>
+            <div id="move-browser-count" style="font-size:11px;color:var(--text-muted);margin:8px 0;"></div>
+            <div id="move-browser-results" class="move-browser-results"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="generated-learnset-modal">
+        <div class="modal" style="max-width: 960px;">
+            <div class="modal-header">
+                <h3>Generated Learnset</h3>
+                <button class="modal-close" onclick="closeModal('generated-learnset-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <p id="generated-learnset-subtitle" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></p>
+            <div id="generated-learnset-body"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="recommend-moves-modal">
+        <div class="modal" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3>Recommended Moves</h3>
+                <button class="modal-close" onclick="closeModal('recommend-moves-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Based on this Fakemon's typing and stat spread. Click a move to add it to the learnset.</p>
+            <button class="btn btn-secondary btn-sm" onclick="generateLearnset()" style="width:100%;margin-bottom:6px;justify-content:center;">Generate Learnset</button>
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">Too lazy to think of a proper moveset? I got you! It finds real Pokémon similar to this Fakemon's data and builds a learnset from their actual movesets. Moves you've already added are adjusted accordingly.</p>
+            <div id="recommend-moves-list"></div>
+        </div>
+    </div>
+<div class="modal-overlay" id="import-modal">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header">
+                <h3>Import Collection</h3>
+                <button class="modal-close" onclick="closeModal('import-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <p style="margin-bottom: 16px; color: var(--text-secondary);">Import a collection or a Fakemon export. You can choose to add the imported Fakemon to your collection, or replace the current collection.</p>
+            <label class="file-upload-btn" style="width:100%;box-sizing:border-box;text-align:center;">
+                <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" onchange="handleCollectionImportFile(event)">
+                Choose JSON / TXT File
+            </label>
+            <div id="collection-import-status" style="margin-top:12px;font-size:12px;color:var(--text-muted);text-align:center;">Choose a .json or .txt file first.</div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button id="collection-import-add" class="btn btn-secondary" type="button" onclick="importCollection('add')" disabled style="flex:1;justify-content:center;">Add to Collection</button>
+                <button id="collection-import-replace" class="btn btn-danger" type="button" onclick="importCollection('replace')" disabled style="flex:1;justify-content:center;">Replace Collection</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- new Fakemon flow -->
+    <div class="modal-overlay" id="new-fakemon-modal">
+        <div class="modal new-fakemon-modal">
+            <div class="modal-header">
+                <h3>New Fakemon</h3>
+                <button class="modal-close" type="button" onclick="closeModal('new-fakemon-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="form-group" style="margin-bottom:18px;">
+                <label for="new-fakemon-name">Enter your Fakemon's name</label>
+                <input id="new-fakemon-name" type="text" placeholder="e.g., Flareon" autocomplete="off"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();createBlankFakemonFromModal();}">
+            </div>
+            <div class="new-fakemon-actions">
+                <button class="btn btn-primary new-fakemon-choice" type="button" onclick="createBlankFakemonFromModal()">Create Fakemon</button>
+                <button class="btn btn-secondary new-fakemon-choice" type="button" onclick="openPokemonTemplateChooser()">Use Existing Pokemon as Template</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="pokemon-template-modal">
+        <div class="modal pokemon-template-modal">
+            <div class="modal-header">
+                <h3>Choose a Pokemon Template</h3>
+                <button class="modal-close" type="button" onclick="closeModal('pokemon-template-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <p class="new-fakemon-subtitle">Choose a vanilla Pokémon. Its stats, typing, abilities, dimensions, learnset, and other available data will be copied into your new Fakemon.</p>
+            <div class="pokemon-template-controls">
+                <input id="pokemon-template-search" type="text" placeholder="Search Pokemon by name..." autocomplete="off"
+                       oninput="renderPokemonTemplateChooser()">
+            </div>
+            <div id="pokemon-template-status" class="pokemon-template-status"></div>
+            <div id="pokemon-template-list" class="pokemon-template-list"></div>
+        </div>
+    </div>
+
+
+    <div class="modal-overlay" id="evolution-method-modal">
+        <div class="modal evolution-method-modal">
+            <div class="modal-header">
+                <h3 id="evolution-method-modal-title">Add Evo Method</h3>
+                <button class="modal-close" type="button" onclick="closeModal('evolution-method-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="evolution-method-form">
+                <div class="form-group">
+                    <label>Method</label>
+                    <div class="type-dropdown evo-method-type-dropdown" id="evolution-method-type-dropdown">
+                        <button class="type-dropdown-trigger" type="button" id="evolution-method-type-trigger">
+                            <span class="type-dropdown-value" id="evolution-method-type-value">By Level</span>
+                            <span class="type-dropdown-arrow">▼</span>
+                        </button>
+                        <div class="type-dropdown-menu" id="evolution-method-type-menu">
+                            <div class="type-dropdown-option" data-value="level">By Level</div>
+                            <div class="type-dropdown-option" data-value="item">By Item</div>
+                            <div class="type-dropdown-option" data-value="custom">Custom Method</div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="evolution-method-type" value="level">
+                </div>
+                <div class="form-group" id="evolution-method-level-wrap">
+                    <label for="evolution-method-level">Level</label>
+                    <input id="evolution-method-level" type="number" min="1" max="100" value="16">
+                </div>
+                <div class="form-group" id="evolution-method-value-wrap" style="display:none;">
+                    <label id="evolution-method-value-label" for="evolution-method-value">Item</label>
+                    <div class="evo-combobox">
+                        <input id="evolution-method-value" type="text" autocomplete="off" placeholder="Search or type an item..." onfocus="openEvolutionMethodItemMenu()" oninput="filterEvolutionMethodItems()">
+                        <div class="evo-combobox-menu" id="evolution-method-item-options"></div>
+                    </div>
+                    <div class="evolution-method-hint">Evolution Stones and Mega Stones are detected automatically from the item you choose.</div>
+                </div>
+                <div class="form-group" id="evolution-method-description-wrap" style="display:none;">
+                    <label for="evolution-method-description">Description</label>
+                    <textarea id="evolution-method-description" placeholder="Describe the evolution condition..."></textarea>
+                </div>
+                <div class="evolution-method-actions">
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="closeModal('evolution-method-modal')">Cancel</button>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="saveEvolutionMethod()">Save Method</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+
+
+<script type="module" src="js/core/app.js"></script>
+<!-- boot guard: the module above imports npm packages by name, which only a
+     bundler or dev server can resolve. Opening off disk or serving the repo
+     with a plain static server leaves a half-painted shell and 404s with no
+     explanation, so this shows one. -->
+<script>
+    (function () {
+        setTimeout(function () {
+            if (window.__woogidexBooted) return;
+            var local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+            var onDisk = location.protocol === 'file:';
+            document.body.innerHTML =
+                '<div id="woogidex-boot-error" style="font:16px/1.6 system-ui,sans-serif;max-width:44rem;margin:12vh auto;padding:0 1.5rem;color:#222">'
+                + '<h1 style="font-size:1.5rem;margin:0 0 .75rem">Woogidex did not start.</h1>'
+                + '<p style="margin:0 0 1rem">The app code never ran, so this page is only the empty shell.</p>'
+                + ((onDisk || local)
+                    ? '<p style="margin:0 0 1rem">Woogidex has a build step. Opening the files directly, or serving the'
+                      + ' folder with a plain static server, cannot work: the code imports packages by name and something'
+                      + ' has to resolve them.</p>'
+                      + '<pre style="background:#f4f4f5;padding:1rem;border-radius:8px;overflow:auto">npm install\nnpm run dev</pre>'
+                      + '<p style="margin:1rem 0 0;color:#666">To check a production build instead: <code>npm run build</code>'
+                      + ' then <code>npm run preview</code>.</p>'
+                    : '<p style="margin:0 0 1rem">This is usually a bad deploy. Check the browser console for a failed'
+                      + ' script request, and that the build output was published.</p>')
+                + '</div>';
+        }, 6000);
+    })();
+</script>
+</body>
+</html>
