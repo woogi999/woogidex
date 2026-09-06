@@ -29,7 +29,7 @@ export function Avatar({ userId, url = '', name = '', className = 'community-min
     }, [masked]);
 
     if (masked) {
-        return <canvas ref={canvasRef} className={`shielded-art ${className}`} role="img" aria-label="" />;
+        return <canvas ref={canvasRef} className={`shielded-art avatar-art ${className}`} role="img" aria-label="" />;
     }
     if (url) return <img className={className} src={url} alt="" />;
     return (

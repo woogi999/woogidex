@@ -340,6 +340,35 @@
         </div>
     </div>
 
+    <!-- First-run setup. A password sign-up collects a username on the form;
+         an OAuth sign-up has no form at all, so Google/Discord accounts used to
+         land on the site with no username and whatever display name the
+         provider happened to send. This asks for both, once, and is the only
+         modal with no close button: an account without a username cannot be
+         signed into again or linked to from anyone else's page. -->
+    <div class="modal-overlay" id="account-setup-modal">
+        <div class="modal auth-modal">
+            <div class="modal-header">
+                <h3>Finish setting up your account</h3>
+            </div>
+            <div class="modal-body">
+                <p class="auth-modal-note">Pick how you'll appear around Woogidex. You can change both of these later in Edit Profile.</p>
+                <p class="auth-modal-error" id="account-setup-error"></p>
+                <div class="form-group">
+                    <label for="account-setup-username">Username</label>
+                    <input type="text" id="account-setup-username" maxlength="20" autocomplete="username" placeholder="letters, numbers, underscore only">
+                    <div class="profile-field-hint">3-20 characters. This is how people find you, and how you sign in.</div>
+                </div>
+                <div class="form-group">
+                    <label for="account-setup-display-name">Display Name</label>
+                    <input type="text" id="account-setup-display-name" maxlength="40" placeholder="e.g., AshK">
+                    <div class="profile-field-hint">Shown on your Fakémon, comments, and profile.</div>
+                </div>
+                <button class="btn btn-primary auth-submit-btn" id="account-setup-submit-btn" onclick="submitAccountSetup()">Continue</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="updates-modal" onclick="if(event.target===this) closeUpdatesModal()">
         <div class="modal policy-modal updates-modal">
             <div class="modal-header">

@@ -78,3 +78,28 @@ body.protect-shielded #community-detail-view .card-art img {
 #board-artwork-image .shielded-art {
     display: block;
 }
+
+/* Avatars are the one shielded image that crops rather than fits: they sit in a
+   fixed circle and the <img> they replace had object-fit: cover. The rules
+   above would instead shrink the canvas to fit inside that circle, which is
+   what made a profile picture read as zoomed way out.
+   Filling the wrapper is the right default: every avatar but one sits inside a
+   fixed circle (.profile-public-avatar-wrap, .header-profile-avatar, ...) and
+   the <img> it replaces was 100%/100%. It also has to be stated here rather
+   than left to those classes -- `.shielded-art { width: auto }` above is in
+   this same file and would otherwise win on load order. */
+.shielded-art.avatar-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    object-fit: cover;
+}
+
+/* The comment/feed mini avatar is the exception: it is its own fixed box
+   rather than something inside one, so 100% would size it to the row. */
+.shielded-art.avatar-art.community-mini-avatar {
+    width: 20px;
+    height: 20px;
+}

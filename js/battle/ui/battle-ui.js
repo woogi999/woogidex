@@ -27,6 +27,7 @@ import { BattleScene, SCENE_SPEEDS } from './scene.js';
 import { mountField3D, fieldForSeed } from './field3d.js';
 
 import { esc, publicName } from '../../core/html.js';
+import { shieldedArtHtml, artworkDataUri, maskedArtwork } from '../../core/art-shield.js';
 
 const UI = {
     pane: 'teams',
@@ -944,10 +945,9 @@ function renderMonPickerGrid() {
         } else {
             grid.innerHTML = (cs.mons || []).map(row => {
                 const d = row.fakemon_data || {};
-                const art = d.thumbnail || d.artwork || '';
                 return `
             <div class="collection-card" onclick="pickCommunityMon('${esc(String(row.id))}')">
-              <div class="card-art">${art ? `<img src="${esc(art)}" alt="" draggable="false">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="" draggable="false">'}</div>
+              <div class="card-art">${communityCardArtHtml(row, d.name || '')}</div>
               <div class="card-name">${esc(d.name || 'Unnamed')}</div>
               <div class="card-types">${[d.type1, d.type2].filter(Boolean).map(t => `<span class="type-badge type-${String(t).toLowerCase()}">${t}</span>`).join('')}</div>
             </div>`;
@@ -1002,6 +1002,26 @@ export async function pickVanillaMon(sdId) {
     document.getElementById('battle-mon-picker-modal')?.classList.remove('active');
     api.saveToStorage?.(); render();
 }
+
+// Someone else's artwork on a picker card. The hub's feed row carries no
+// image at all any more -- `d.thumbnail || d.artwork` here was reading keys
+// that are stripped server-side, so every community card was a placeholder --
+// and the image it does hand out is masked. So this asks the hub for the same
+// masked bytes its own cards use and paints them into a shielded canvas,
+// rather than putting a readable <img src> in the battle tab that the rest of
+// the site no longer has anywhere.
+function communityCardArtHtml(row, name) {
+    const id = String(row?.id || '');
+    Promise.resolve(api.requestCardArtwork?.(id))
+        .then(art => {
+            if (!art) return;
+            const slot = document.querySelector(`[data-battle-art="${CSS.escape(id)}"]`);
+            if (slot) slot.innerHTML = shieldedArtHtml(art, { alt: `${name} artwork` });
+        })
+        .catch(e => log.debug('BATTLE', 'Community card artwork failed', e));
+    return `<span data-battle-art="${esc(id)}"><img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="" draggable="false"></span>`;
+}
+
 // A Fakémon someone else published. The hub feed row is deliberately slim
 // (no artwork, no learnset), so the full record is fetched on pick and then
 // frozen onto the member exactly like a vanilla pick -- it is a snapshot, not
@@ -1012,13 +1032,21 @@ export async function pickCommunityMon(publishedId) {
     let row = null;
     try {
         const client = await api.getClient();
-        const { data, error } = await client
-            .from('published_mons')
-            .select('id, fakemon_data, author_name')
-            .eq('id', publishedId)
-            .maybeSingle();
-        if (error) throw error;
-        row = data;
+        // Was a plain `.from('published_mons').select(...)`, which put the
+        // author's full-resolution artwork in a response body as readable
+        // base64 -- the exact route community_mon_detail()/community_mon_images()
+        // exist to close. The detail RPC hands back the row with every image
+        // key stripped; the images RPC hands back those images masked, and
+        // they are unmasked here in memory because the battle renderer
+        // (scene.js, field3d.js) draws from a URL and nothing else.
+        const [detail, images] = await Promise.all([
+            client.rpc('community_mon_detail', { p_id: publishedId }),
+            client.rpc('community_mon_images', { p_id: publishedId })
+        ]);
+        if (detail.error) throw detail.error;
+        if (images.error) throw images.error;
+        row = detail.data;
+        if (row?.fakemon_data) Object.assign(row.fakemon_data, await ownArtwork(images.data));
     } catch (e) {
         log.error('BATTLE', 'Could not load community Fakémon', e);
     }
@@ -1031,6 +1059,19 @@ export async function pickCommunityMon(publishedId) {
     t.updatedAt = Date.now();
     document.getElementById('battle-mon-picker-modal')?.classList.remove('active');
     api.saveToStorage?.(); render();
+}
+
+// The post's own artwork out of community_mon_images(). source_id '' is the
+// mon the post is about; the other rows are its evolution family, which a
+// battle pick does not use.
+async function ownArtwork(rows) {
+    const out = {};
+    for (const r of rows || []) {
+        if (r?.source_id) continue;
+        if (r.kind !== 'artwork' && r.kind !== 'shinyArtwork') continue;
+        out[r.kind] = await artworkDataUri(maskedArtwork(r.image));
+    }
+    return out;
 }
 
 // A published row in the shape the rest of the battle stack expects. The id is

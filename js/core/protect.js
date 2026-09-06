@@ -5,8 +5,14 @@
 
 import { log } from './log.js';
 
-// selectors where full-size artwork can appear; small UI images (icons,
-// avatars, placeholder) are deliberately left alone
+// selectors where someone else's artwork can appear. Site chrome (icons, the
+// no-art placeholder) is deliberately left alone so ordinary right-clicking
+// still works everywhere it isn't someone's drawing.
+//
+// Avatars are in the list now: they are a picture a person uploaded, they
+// travel masked like everything else (js/core/avatar.js), and leaving them out
+// meant "open image in new tab" worked on the one image the profile page is
+// mostly made of.
 const PROTECTED_IMG = [
     '.card-art img',
     '.artwork-preview img',
@@ -15,6 +21,16 @@ const PROTECTED_IMG = [
     '.collection-library-artwork img',
     '.community-update-mon-art img',
     '.preview-evo-sprite-wrap img',
+    // the Community Hub landing shelves and the uploads list -- same artwork
+    // the Browse grid shows, and they were the only hub panels not covered
+    '.community-landing-art img',
+    '.community-upload-art img',
+    // avatars, everywhere one is drawn
+    '.profile-public-avatar',
+    '.profile-avatar-preview',
+    '.header-profile-avatar img',
+    '.header-profile-popover-avatar img',
+    'img.community-mini-avatar',
     // canvas.shielded-art already blocks "save image as" natively; listed so
     // right-click still shows our message instead of the default menu
     'canvas.shielded-art'

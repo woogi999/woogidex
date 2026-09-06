@@ -1578,12 +1578,18 @@ function paintArtwork(id, art) {
     // already had.
     const row = ensureCommunityState().mons.find(m => m.id === id);
     if (row?.fakemon_data) row.fakemon_data.artwork = art;
-    const slot = document.querySelector(`[data-art-for="${CSS.escape(String(id))}"]`);
-    if (!slot) return;
-    // A profile gallery card is not in the hub's feed, so fall back to the name
-    // the slot carries rather than losing the alt text.
-    const name = row?.fakemon_data?.name || slot.getAttribute('data-art-name') || '';
-    slot.innerHTML = shieldedArtHtml(art, { alt: `${name} artwork` });
+    // querySelectorAll, not querySelector: the hub landing draws the same post
+    // on more than one shelf (Featured, Trending, Freshly published), and
+    // filling in only the first left the others on the placeholder forever --
+    // no artwork, and so no shielded canvas either.
+    const slots = document.querySelectorAll(`[data-art-for="${CSS.escape(String(id))}"]`);
+    if (!slots.length) return;
+    slots.forEach(slot => {
+        // A profile gallery card is not in the hub's feed, so fall back to the
+        // name the slot carries rather than losing the alt text.
+        const name = row?.fakemon_data?.name || slot.getAttribute('data-art-name') || '';
+        slot.innerHTML = shieldedArtHtml(art, { alt: `${name} artwork` });
+    });
 }
 
 // tiny arrow glyph between evolution-chain nodes - same icon as the local

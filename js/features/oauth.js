@@ -110,6 +110,16 @@ export async function finishProviderRedirect() {
                 tosAcceptedAt: updated.user.user_metadata?.tos_accepted_at || state.user.tosAcceptedAt
             });
         }
+
+        // user_metadata is readable by its owner and nobody else, so a name and
+        // picture that only live there are invisible to every other visitor --
+        // which is why a Google account's profile page came up blank-faced and
+        // nameless to everyone but its owner. The password signup path mirrors
+        // through updateDisplayName(); OAuth had no equivalent until here.
+        const mirror = {};
+        if (state.user.displayName) mirror.display_name = state.user.displayName;
+        if (state.user.avatarUrl) mirror.avatar_url = state.user.avatarUrl;
+        if (Object.keys(mirror).length) await api.mirrorToProfile?.(mirror);
     } catch (e) {
         log.warn('AUTH', 'Could not finish setting up the social account', e);
     }

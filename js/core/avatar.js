@@ -97,7 +97,7 @@ async function flush() {
  */
 export function avatarHtml(userId, { name = '', url = '', className = 'community-mini-avatar' } = {}) {
     const masked = cachedAvatar(userId);
-    if (masked) return shieldedArtHtml(masked, { alt: '', className });
+    if (masked) return shieldedArtHtml(masked, { alt: '', className: `${className} avatar-art` });
     if (userId && masked === undefined) {
         // not asked for yet: start the fetch, and paintAvatarSlots() will swap
         // the fallback out when it arrives
@@ -124,29 +124,67 @@ export function paintAvatarSlots(root = document) {
         const masked = cachedAvatar(id);
         if (!masked) return;                       // nothing better to show yet
         const className = slot.firstElementChild?.className || 'community-mini-avatar';
-        slot.innerHTML = shieldedArtHtml(masked, { alt: '', className: className.split(' ')[0] });
+        slot.innerHTML = shieldedArtHtml(masked, { alt: '', className: `${className.split(' ')[0]} avatar-art` });
         delete slot.dataset.avatarFor;
     });
 }
 
 /**
- * Paints one already-existing element (the header/popover avatars, which are a
- * fixed <img> in the page rather than markup we generate). Replaces the <img>
- * with a canvas the first time it has masked bytes to draw.
+ * Paints one already-existing avatar element (the header/popover/profile
+ * avatars, which are a fixed <img> in the page rather than markup we generate).
  *
- * @param {HTMLElement|null} host element whose contents become the avatar
+ * Swaps the <img> for a canvas IN PLACE, keeping its id and classes, rather
+ * than rewriting the wrapper's innerHTML: the wrapper also holds the
+ * initial-letter fallback, and the CSS that sizes an avatar (width/height 100%,
+ * object-fit: cover) is keyed on the img's own class. Losing either is how a
+ * profile picture ended up letterboxed inside its circle instead of filling it.
+ *
+ * @param {HTMLElement|null} host the avatar element, or the wrapper holding it
  * @param {string} userId
  * @param {string} fallbackUrl
  */
 export async function paintAvatarInto(host, userId, fallbackUrl = '') {
     if (!host) return;
+    const slot = /^(IMG|CANVAS)$/.test(host.tagName)
+        ? host
+        : host.querySelector('img, canvas.shielded-art');
+    if (!slot) return;
+
     const masked = await requestAvatar(userId);
     if (!masked) {
-        if (fallbackUrl) host.innerHTML = `<img src="${escapeAttr(fallbackUrl)}" alt="">`;
+        // nothing better than the bucket copy; leave whatever is up alone if
+        // there isn't even one of those
+        if (fallbackUrl && slot.tagName === 'IMG') {
+            slot.src = fallbackUrl;
+            slot.style.display = 'block';
+            hideFallbackBeside(slot);
+        }
         return;
     }
-    host.innerHTML = '<canvas class="shielded-art" role="img" aria-label=""></canvas>';
-    await paintShieldedCanvas(host.querySelector('canvas'), masked);
+    const canvas = slot.tagName === 'CANVAS' ? slot : swapForCanvas(slot);
+    hideFallbackBeside(canvas);
+    await paintShieldedCanvas(canvas, masked);
+}
+
+// keeps the id and the sizing classes, so every rule written for the <img>
+// still applies; avatar-art is what css/protect.css uses to give an avatar
+// canvas the cover-fill the image had.
+function swapForCanvas(img) {
+    const canvas = document.createElement('canvas');
+    canvas.className = `${img.className} shielded-art avatar-art`.trim();
+    if (img.id) canvas.id = img.id;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', '');
+    img.replaceWith(canvas);
+    return canvas;
+}
+
+// the initial-letter circle sits beside the picture in the same wrapper and is
+// shown/hidden by whoever populated the page; a real avatar landing later has
+// to put it away itself.
+function hideFallbackBeside(el) {
+    const fallback = el.parentElement?.querySelector('[id$="-fallback"]');
+    if (fallback) fallback.style.display = 'none';
 }
 
 /** Forgets one entry, so a fresh upload is picked up rather than the old face. */

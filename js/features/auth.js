@@ -1663,39 +1663,88 @@ function closeHeaderProfilePopover() {
     document.removeEventListener('click', closeHeaderProfilePopoverOnOutsideClick);
 }
 
-// accounts can lack a username (pre-username-requirement accounts, or a
-// failed claim during signup - see signUp's catch block); nudge them to the
-// profile page's username field once signed in.
+// ==================== first-run setup ====================
+// An account can arrive without a username two ways: a failed claim during a
+// password signup (see signUp's catch block), or -- far more often -- a
+// Google/Discord sign-in, which has no form to ask on. Those accounts used to
+// be dropped onto the profile page with a toast, which is easy to walk away
+// from; the result was OAuth users wandering the site with no username at all
+// and whatever name the provider sent, if any.
+//
+// This asks for both up front instead, in a modal with no way out. Both fields
+// are collected together because they are the same decision, and because
+// display_name has to be written through mirrorToProfile() for anyone else to
+// see it -- which OAuth's metadata-only setup never did.
 function promptUsernameIfMissing() {
     if (!state.user || state.user.username) return;
-    api.showToast?.('Please choose a username to finish setting up your account.', 'warning');
-    showProfileView();
-    // give the profile page a tick to render before focusing/scrolling to the field.
-    setTimeout(() => {
-        const errorEl = document.getElementById('profile-username-error');
-        if (errorEl) {
-            errorEl.style.color = 'var(--warning, #eab308)';
-            errorEl.textContent = 'Choose a username to finish setting up your account.';
-        }
-        // OAuth sign-ins bring a handle along; offering it as a starting point saves a naming decision under pressure.
-        const field = document.getElementById('profile-username');
-        const suggestion = api.suggestedUsername?.();
-        if (field && !field.value && suggestion) field.value = suggestion;
-        field?.focus();
-    }, 0);
+    const modal = document.getElementById('account-setup-modal');
+    if (!modal) {          // markup missing: fall back to the old nudge
+        api.showToast?.('Please choose a username to finish setting up your account.', 'warning');
+        showProfileView();
+        return;
+    }
+    const errorEl = document.getElementById('account-setup-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.style.color = ''; }
+
+    // OAuth sign-ins bring a handle and a name along; offering them as a
+    // starting point saves a naming decision under pressure.
+    const usernameField = document.getElementById('account-setup-username');
+    const nameField = document.getElementById('account-setup-display-name');
+    if (usernameField) usernameField.value = api.suggestedUsername?.() || '';
+    if (nameField) nameField.value = state.user.displayName || state.user.providerName || '';
+
+    modal.classList.add('active');
+    setTimeout(() => usernameField?.focus(), 0);
+}
+
+function closeAccountSetupModal() {
+    document.getElementById('account-setup-modal')?.classList.remove('active');
+}
+
+async function submitAccountSetup() {
+    const errorEl = document.getElementById('account-setup-error');
+    const submitBtn = document.getElementById('account-setup-submit-btn');
+    const username = document.getElementById('account-setup-username').value.trim();
+    const displayName = document.getElementById('account-setup-display-name').value.trim();
+    errorEl.textContent = '';
+    errorEl.style.color = '';
+
+    if (!USERNAME_PATTERN.test(username)) {
+        errorEl.textContent = 'Username must be 3-20 characters: letters, numbers, and underscores only.';
+        return;
+    }
+    if (!displayName) { errorEl.textContent = 'Please enter a display name.'; return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    try {
+        // username first: it is the one that can be refused (taken, or rate
+        // limited), and a display name saved against a half-made account would
+        // have to be undone.
+        await setUsername(username);
+        await updateDisplayName(displayName);
+        invalidateProfile(state.user.id);
+        closeAccountSetupModal();
+        api.showToast?.(`You're all set, ${displayName}.`, 'success');
+    } catch (e) {
+        errorEl.textContent = e.message || 'Could not save that.';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Continue';
+    }
 }
 
 export {
     initAuth, getClient, signUp, signIn, signOut, resetPassword, requestPasswordReset, completePasswordReset,
     getCurrentUser, isLoggedIn, updateDisplayName, uploadAvatar,
-    setUsername, updateEmail, removeEmail, fetchProfile,
+    setUsername, updateEmail, removeEmail, fetchProfile, mirrorToProfile,
     openAuthModal, closeAuthModal, toggleAuthMode, submitAuthForm,
     openForgotPasswordModal, closeForgotPasswordModal, submitForgotPasswordForm,
     openSetNewPasswordModal, closeSetNewPasswordModal, submitSetNewPasswordForm,
     requireAccount, invalidateProfile,
     showProfileView, showUserProfile, handleProfileRoute, exitProfileRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, onProfileAvatarFileChosen, submitProfileForm, renderProfilePage, renderProfileLoading, submitDisplayedBadges, submitProfileComment, deleteProfileComment,
     submitUsernameForm, submitEmailForm, submitRemoveEmail,
-    handleSignOutClick, updateAuthUI, promptUsernameIfMissing,
+    handleSignOutClick, updateAuthUI, promptUsernameIfMissing, submitAccountSetup, closeAccountSetupModal,
     toggleHeaderProfilePopover, closeHeaderProfilePopover,
     fetchBadges, currentRole, isStaff, isAdminOrDev, canDeleteAnyContent,
     fetchPermissions, recordAuthEvent
