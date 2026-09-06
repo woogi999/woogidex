@@ -585,7 +585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     maybeShowOriginNotice(state.fakemonDB.length);
     // recovery takes priority over the transfer notice; recovery.js shows the
     // transfer notice itself once it's done (restored, dismissed, or nothing found)
-    if (!api.checkForLostFakemon?.()) api.maybeShowSiteTransferNotice?.();
+    if (!(await api.checkForLostFakemon?.())) api.maybeShowSiteTransferNotice?.();
     // last on purpose: refreshUpdatesBadge() checks for an already-open modal
     // before opening its own, but still fills the unread count either way
     window.refreshUpdatesBadge?.({ autoOpen: true });

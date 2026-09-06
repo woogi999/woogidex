@@ -206,7 +206,10 @@ let pendingCollectionImportFile = null;
                 mergeLibrary('customItems', importedItems, 'item');
 
                 await api.migrateLearnsetsToMinimal();
-                await api.saveToStorage();
+                // allowEmpty: a "replace" import is the user explicitly choosing to
+                // swap their whole collection, so the empty-collection guard in
+                // saveToStorage() must not block it
+                await api.saveToStorage({ allowEmpty: mode === 'replace' });
                 api.renderCollection();
                 closeModal('import-modal');
                 const libraryBits = [];

@@ -674,6 +674,16 @@ export function scheduleAutoBackup() {
 
 async function runAutoBackup() {
     if (!state.user || !isAutoBackupOn()) return;
+
+    // This backup mirrors the device, so anything missing locally is dropped from
+    // the cloud copy. That is correct for a real deletion and catastrophic for a
+    // failed load -- it would push a local wipe up to the one copy that could have
+    // undone it. If we never proved we read local storage, leave the backup alone.
+    if (api.isCollectionLoaded && !api.isCollectionLoaded()) {
+        log.warn('CLOUD', 'Auto-backup skipped: local collection was never loaded this session');
+        return;
+    }
+
     const cs = ensureCloudState();
     // Nothing to keep current yet; silent since this fires on a timer, not a user action.
     if (!cs.savedAt) { log.debug('CLOUD', 'Auto-backup skipped: no backup to update yet'); return; }
@@ -696,10 +706,19 @@ async function runAutoBackup() {
         items: freshest(stored.items, state.customItems)
     };
 
+    // A backup that would keep nothing is not a backup refresh, it is a delete.
+    // Auto-backup runs unattended on a timer, so it never gets to make that call:
+    // a real "I deleted everything" still reaches the cloud through the manual
+    // picker, which is an explicit action with a confirmation.
+    const kept = parts.mons.length + parts.moves.length + parts.abilities.length + parts.items.length;
+    const had = stored.mons.length + stored.moves.length + stored.abilities.length + stored.items.length;
+    if (had && !kept) {
+        log.warn('CLOUD', 'Auto-backup skipped: it would have emptied the backup', { had });
+        return;
+    }
+
     const ok = await writeCloudBackup(parts, { silent: true });
-    log.info('CLOUD', 'Auto-backup ran', {
-        ok, items: parts.mons.length + parts.moves.length + parts.abilities.length + parts.items.length
-    });
+    log.info('CLOUD', 'Auto-backup ran', { ok, items: kept });
 }
 
 // ==================== limit meters ====================

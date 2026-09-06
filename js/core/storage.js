@@ -11,10 +11,75 @@ let latestStorageWriteRevision = 0;
 let storageWriteChain = Promise.resolve();
 let autoSaveGeneration = 0;
 
+// ==================== wipe guards ====================
+// Every previously-reported "my collection vanished" traced back to the same
+// shape: something made the in-memory collection empty (or shorter), and the
+// next ordinary save faithfully wrote that over the good data in IndexedDB.
+// The in-memory copy is only ever a safe thing to persist once we have proved
+// we loaded the stored one, so writes are gated on that proof.
+let collectionLoaded = false;      // did loadFromStorage() actually read the collection?
+let loadFailureReported = false;   // only nag the user once per session
+let lastKnownCount = 0;            // Fakemon count of the last known-good state
+const MIRROR_KEY = 'woogidexCollectionMirror_v1';
+const MIRROR_MIN_INTERVAL_MS = 5 * 60 * 1000;
+let lastMirrorAt = 0;
+
+/** True once the stored collection has been read successfully this session. */
+export function isCollectionLoaded() { return collectionLoaded; }
+
+function reportLoadFailure(e) {
+    collectionLoaded = false;
+    if (loadFailureReported) return;
+    loadFailureReported = true;
+    log.error('STORAGE', 'Collection could not be read; saving is disabled for this session', e);
+    api.showToast?.(
+        "We couldn't open your saved collection. Nothing has been changed or deleted - "
+        + 'reload the page before editing, so a save cannot overwrite it.',
+        'error'
+    );
+}
+
+/**
+ * Keeps a second copy of the last known-good collection in its own IndexedDB
+ * key, so "Check for lost Fakemon" has something to find. The old recovery
+ * path only ever looked at the pre-IndexedDB localStorage keys, which most
+ * accounts never had, so for them the check could only ever find nothing.
+ * Throttled, best-effort, and never allowed to fail a real save.
+ */
+async function writeMirror(snapshot) {
+    if (!snapshot.fakemonDB.length) return;            // never mirror an empty state over a real one
+    const now = Date.now();
+    if (now - lastMirrorAt < MIRROR_MIN_INTERVAL_MS) return;
+    lastMirrorAt = now;
+    try {
+        await idbSet(MIRROR_KEY, { savedAt: now, ...snapshot });
+        log.debug('STORAGE', 'Safety mirror updated', { fakemons: snapshot.fakemonDB.length });
+    } catch (e) {
+        // Out of quota is the likely cause, and the primary write already
+        // succeeded. Drop the half-written mirror so the extra copy can never
+        // be the reason a later real save runs out of room, and stop retrying
+        // it this session.
+        lastMirrorAt = Number.MAX_SAFE_INTEGER;
+        try { await idbDel(MIRROR_KEY); } catch { /* nothing more we can do */ }
+        log.warn('STORAGE', 'Safety mirror write failed and was discarded; primary save was fine', e);
+    }
+}
+
+/** The last known-good collection snapshot, or null. Read by js/features/recovery.js. */
+export async function readCollectionMirror() {
+    try {
+        const mirror = await idbGet(MIRROR_KEY);
+        return mirror && Array.isArray(mirror.fakemonDB) ? mirror : null;
+    } catch (e) {
+        log.warn('STORAGE', 'Safety mirror read failed', e);
+        return null;
+    }
+}
+
         function openDB() {
             log.debug('STORAGE', 'openDB requested', { database: IDB_NAME, version: IDB_VERSION });
             if (idbPromise) return idbPromise;
-            idbPromise = new Promise((resolve, reject) => {
+            const attempt = new Promise((resolve, reject) => {
                 if (!('indexedDB' in window)) { reject(new Error('IndexedDB not supported')); return; }
                 const req = indexedDB.open(IDB_NAME, IDB_VERSION);
                 req.onupgradeneeded = (e) => {
@@ -22,17 +87,31 @@ let autoSaveGeneration = 0;
                     const db = e.target.result;
                     if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
                 };
-                req.onsuccess = () => { log.info('STORAGE', 'IndexedDB opened'); resolve(req.result); };
+                req.onsuccess = () => {
+                    const db = req.result;
+                    // a versionchange from another tab closes this handle; drop the
+                    // cached promise so the next call reopens instead of using a dead db
+                    db.onversionchange = () => { db.close(); if (idbPromise === attempt) idbPromise = null; };
+                    db.onclose = () => { if (idbPromise === attempt) idbPromise = null; };
+                    log.info('STORAGE', 'IndexedDB opened');
+                    resolve(db);
+                };
                 req.onerror = () => { log.error('STORAGE', 'IndexedDB open failed', req.error); reject(req.error); };
+                req.onblocked = () => log.warn?.('STORAGE', 'IndexedDB open blocked by another tab');
             });
+            // never cache a rejection: a transient open failure used to poison every
+            // later read AND write for the whole session, which is how a collection
+            // could look empty and then get saved that way
+            idbPromise = attempt.catch(err => { if (idbPromise === attempt) idbPromise = null; throw err; });
             return idbPromise;
         }
         function idbGet(key) {
             return openDB().then(db => new Promise((resolve, reject) => {
                 const tx = db.transaction(IDB_STORE, 'readonly');
                 const req = tx.objectStore(IDB_STORE).get(key);
-                req.onsuccess = () => { log.info('STORAGE', 'IndexedDB opened'); resolve(req.result); };
-                req.onerror = () => { log.error('STORAGE', 'IndexedDB open failed', req.error); reject(req.error); };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => { log.error('STORAGE', 'IndexedDB read failed', { key, error: req.error }); reject(req.error); };
+                tx.onabort = () => reject(tx.error || new Error('IndexedDB read aborted'));
             }));
         }
         function idbSet(key, value) {
@@ -41,7 +120,35 @@ let autoSaveGeneration = 0;
                 tx.objectStore(IDB_STORE).put(value, key);
                 tx.oncomplete = () => resolve();
                 tx.onerror = () => reject(tx.error);
+                tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
             }));
+        }
+        function idbDel(key) {
+            return openDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE, 'readwrite');
+                tx.objectStore(IDB_STORE).delete(key);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+                tx.onabort = () => reject(tx.error || new Error('IndexedDB delete aborted'));
+            }));
+        }
+
+        // Browsers evict "best effort" origin data under storage pressure, and Safari
+        // clears it outright after ~7 days without a visit. That is a silent, total
+        // collection wipe with no error for us to catch, and it is the one cause the
+        // guards below cannot detect after the fact. Asking for persistent storage is
+        // the only thing that opts an origin out of it.
+        async function requestPersistentStorage() {
+            try {
+                if (!navigator.storage?.persist) return false;
+                if (await navigator.storage.persisted()) { log.info('STORAGE', 'Storage already persistent'); return true; }
+                const granted = await navigator.storage.persist();
+                log.info('STORAGE', 'Persistent storage requested', { granted });
+                return granted;
+            } catch (e) {
+                log.debug('STORAGE', 'Persistent storage request unavailable', e);
+                return false;
+            }
         }
 
 // older builds could append duplicate entries during overlapping saves;
@@ -145,7 +252,13 @@ function normalizeCollections() {
                 else state.fakemonDB.push(fakemon);
                 normalizeCollections();
 
-                await saveToStorage();
+                // a refused write must not be reported as a save; the guards in
+                // saveToStorage() only help if the user finds out it happened
+                const written = await saveToStorage();
+                if (!written) {
+                    updateSaveStatus('unsaved');
+                    return false;
+                }
 
                 // don't let a stale in-flight save update UI after a delete/newer session
                 if (generation !== autoSaveGeneration) {
@@ -259,11 +372,13 @@ function normalizeCollections() {
         
 // ==================== save / load ====================
 
-        function saveFakemon() {
+        async function saveFakemon() {
             // manual save button forces an immediate auto-save
             const name = document.getElementById('fakemon-name').value.trim();
             if (!name) { api.showToast('Please enter a Pokemon name!', 'error'); return; }
-            autoSave(true);
+            // awaited so a blocked write reports the failure instead of "Saved!"
+            // and leaves the user in the editor with their work still on screen
+            if (!await autoSave(true)) return;
             api.showToast('Saved!', 'success');
             api.showCollection();
         }
@@ -286,7 +401,7 @@ function normalizeCollections() {
                 state.lastSavedId = null;
             }
 
-            await saveToStorage();
+            await saveToStorage({ allowEmpty: true });
             api.renderCollection();
             api.showToast('Fakemon deleted!', 'info');
         }
@@ -310,8 +425,28 @@ function normalizeCollections() {
         // local-only (IndexedDB); nothing here reaches the network. The only way
         // a collection leaves the device is the opt-in Cloud Backup button
         // (js/features/cloud-save.js), which is manual, never automatic.
-        async function saveToStorage() {
+        async function saveToStorage(options = {}) {
+            // Nothing in memory is trustworthy until the stored collection has been
+            // read back. Writing here would replace a real collection with whatever
+            // this session happens to be holding - which is exactly how a failed
+            // read turned into a permanent wipe.
+            if (!collectionLoaded) {
+                log.error('STORAGE', 'Refusing to save: the stored collection was never loaded this session');
+                reportLoadFailure(new Error('save attempted before a successful load'));
+                return false;
+            }
+
             normalizeCollections();
+
+            // Emptying the collection is only ever the result of deleting the last
+            // Fakemon, and that path says so. Any other write that would drop the
+            // collection to nothing is a bug somewhere upstream, so drop the write
+            // instead of the user's Fakemon.
+            if (!options.allowEmpty && !state.fakemonDB.length && lastKnownCount > 0) {
+                log.error('STORAGE', 'Refusing to save an empty collection over a non-empty one', { lastKnownCount });
+                api.showToast?.('Something tried to empty your collection. The save was blocked - please reload the page.', 'error');
+                return false;
+            }
 
             // snapshot now since IndexedDB writes are async and live arrays could
             // change from a delete/edit while a previous write is still in flight
@@ -333,7 +468,10 @@ function normalizeCollections() {
                 // resurrected by an older autosave still waiting on IndexedDB
                 if (revision !== latestStorageWriteRevision) {
                     log.debug('STORAGE', 'Skipping stale storage snapshot', { revision, latest: latestStorageWriteRevision });
-                    return false;
+                    // true, not false: a newer snapshot of the same live state is
+                    // already queued and will be written, so this is superseded
+                    // rather than failed, and callers must not report it as unsaved
+                    return true;
                 }
 
                 const done = log.time('STORAGE', 'saveToStorage');
@@ -353,6 +491,8 @@ function normalizeCollections() {
                     await idbSet('woogidexCustomAbilities_v1', snapshot.customAbilities);
                     await idbSet('woogidexCustomItems_v1', snapshot.customItems);
                     await idbSet('woogidexBattleTeams_v1', snapshot.battleTeams);
+                    lastKnownCount = snapshot.fakemonDB.length;
+                    await writeMirror(snapshot);
                     done({ revision, fakemons: snapshot.fakemonDB.length });
                     log.info('STORAGE', 'Collection saved', { revision });
                     // no-op unless auto-backup is on; coalesces edits into one upload
@@ -372,29 +512,51 @@ function normalizeCollections() {
             const done = log.time('STORAGE', 'loadFromStorage');
             log.info('STORAGE', 'Loading persisted application state');
 
-            // each key is fetched/defaulted independently: a shared try/catch across
-            // all keys meant an unrelated read failing (transient IndexedDB error,
-            // storage pressure) could reset fakemonDB to [] and then persist that
-            // empty array over a perfectly good collection. see js/features/recovery.js.
-            try {
-                const data = await idbGet('fakemonDB_v4');
-                if (Array.isArray(data)) {
-                    state.fakemonDB = data;
-                } else {
-                    // one-time migration: earlier versions stored the collection in
-                    // localStorage. left in place afterward rather than cleared - see
-                    // recovery.js, which treats it as an independent backup copy
-                    const legacy = localStorage.getItem('fakemonDB_v4')
-                        || localStorage.getItem('fakemonDB_v3')
-                        || localStorage.getItem('fakemonDB_v2')
-                        || localStorage.getItem('fakemonDB');
-                    state.fakemonDB = legacy ? JSON.parse(legacy) : [];
+            collectionLoaded = false;
+            requestPersistentStorage();  // fire and forget; nothing below depends on it
+
+            // A failed read is NOT an empty collection. Previously this caught the
+            // error, set fakemonDB to [], and then the save at the end of this same
+            // function wrote that empty array over the real one - one transient
+            // IndexedDB error was enough to destroy a collection permanently. Now a
+            // read failure leaves state alone and locks saving for the session, so
+            // the worst case is a session that cannot save rather than one that
+            // deletes everything.
+            let attempts = 0;
+            for (;;) {
+                try {
+                    const data = await idbGet('fakemonDB_v4');
+                    if (Array.isArray(data)) {
+                        state.fakemonDB = data;
+                    } else {
+                        // one-time migration: earlier versions stored the collection in
+                        // localStorage. left in place afterward rather than cleared - see
+                        // recovery.js, which treats it as an independent backup copy
+                        const legacy = localStorage.getItem('fakemonDB_v4')
+                            || localStorage.getItem('fakemonDB_v3')
+                            || localStorage.getItem('fakemonDB_v2')
+                            || localStorage.getItem('fakemonDB');
+                        state.fakemonDB = legacy ? JSON.parse(legacy) : [];
+                    }
+                    collectionLoaded = true;
+                    break;
+                } catch (e) {
+                    // one retry: the common failures here (a still-opening database, a
+                    // connection closed by another tab's upgrade) clear immediately
+                    if (++attempts > 2) {
+                        reportLoadFailure(e);
+                        done({ failed: true });
+                        return;
+                    }
+                    log.warn('STORAGE', 'loadFromStorage: collection read failed, retrying', e);
+                    await new Promise(r => setTimeout(r, 250));
                 }
-            } catch (e) {
-                log.error('STORAGE', 'loadFromStorage: fakemonDB fetch failed, starting from an empty collection', e);
-                state.fakemonDB = [];
             }
 
+            lastKnownCount = state.fakemonDB.length;
+
+            // These are secondary: an empty custom-move library is a real state, and
+            // failing to read one is not a reason to refuse to load the collection.
             const loadArray = async (key, label) => {
                 try {
                     const value = await idbGet(key);
@@ -410,18 +572,41 @@ function normalizeCollections() {
             state.customItems = await loadArray('woogidexCustomItems_v1', 'customItems');
             state.battleTeams = await loadArray('woogidexBattleTeams_v1', 'battleTeams');
 
+            // Mirror what was actually in storage, before this session can change
+            // anything. Recovering to the state the collection was in when the
+            // page opened is more useful than recovering to some point after the
+            // edit that lost something.
+            await writeMirror({
+                fakemonDB: state.fakemonDB,
+                folders: state.folders,
+                customMoves: state.customMoves,
+                customAbilities: state.customAbilities,
+                customItems: state.customItems,
+                battleTeams: state.battleTeams
+            });
+
             // whatever loaded above is now the source of truth; log normalization
             // failures but never fall back to wiping it
             try {
+                const countsBefore = collectionCounts();
                 normalizeCollections();
                 migrateCustomLibrariesFromCollection();
                 normalizeCollections();
-                await saveToStorage();
+                // Only write if boot actually changed something. Saving on every boot
+                // rewrites the whole collection for no reason, and every rewrite is
+                // another chance to persist a bad state.
+                if (collectionCounts() !== countsBefore) await saveToStorage({ allowEmpty: true });
             } catch (e) {
                 log.error('STORAGE', 'loadFromStorage: post-load normalization failed; collection left untouched', e);
             }
 
             await migrateLearnsetsToMinimal();
+            done({ fakemons: state.fakemonDB.length });
+        }
+
+        function collectionCounts() {
+            return [state.fakemonDB, state.customMoves, state.customAbilities, state.customItems]
+                .map(a => (a || []).length).join('/');
         }
         function migrateCustomLibrariesFromCollection() {
             const moveMap = new Map((state.customMoves || []).filter(m => m && m.id).map(m => [m.id, m]));
@@ -511,4 +696,4 @@ function normalizeCollections() {
 
         
 
-export { autoSave, buildFakemonObject, updateSaveStatus, saveFakemon, deleteFakemon, duplicateFakemon, saveToStorage, loadFromStorage, migrateLearnsetsToMinimal, migrateCustomLibrariesFromCollection };
+export { autoSave, buildFakemonObject, updateSaveStatus, saveFakemon, deleteFakemon, duplicateFakemon, saveToStorage, loadFromStorage, migrateLearnsetsToMinimal, migrateCustomLibrariesFromCollection, requestPersistentStorage };
