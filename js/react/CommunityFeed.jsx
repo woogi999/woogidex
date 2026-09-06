@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon.jsx';
 import { paintShieldedCanvas } from '../core/art-shield.js';
 import { BadgeRow } from './Badge.jsx';
+import { Avatar } from './Avatar.jsx';
 import { prepareCommunityFeed, emptyFeedMessage, evoBadgeLabel } from '../features/community-feed-model.js';
 
 const call = (name, ...args) => window[name]?.(...args);
@@ -103,16 +104,9 @@ function EvoBadge({ row }) {
 }
 
 function Author({ row }) {
-    const avatar = row.author_avatar_url;
     return (
         <div className="community-card-author">
-            {avatar
-                ? <img className="community-mini-avatar" src={avatar} alt="" />
-                : (
-                    <span className="community-mini-avatar community-mini-avatar-fallback">
-                        {String(row.author_name || '?').charAt(0).toUpperCase()}
-                    </span>
-                )}
+            <Avatar userId={row.user_id} url={row.author_avatar_url} name={row.author_name} />
             <span
                 className="community-author-link"
                 onClick={e => { e.stopPropagation(); call('showUserProfile', row.user_id); }}
@@ -152,6 +146,14 @@ function CommunityCard({ row, canDelete, isMine, requestArtwork }) {
             <div className="community-card-stats" aria-label="Community activity">
                 <button
                     type="button"
+                    className={`community-stat-btn community-like-btn${row.liked_by_me ? ' liked' : ''}`}
+                    title={row.liked_by_me ? 'Unlike' : 'Like'}
+                    onClick={e => { e.stopPropagation(); call('toggleCommunityLike', row.id, e); }}
+                >
+                    <Icon name="heart" /><span>{row.like_count || 0}</span>
+                </button>
+                <button
+                    type="button"
                     className="community-stat-btn"
                     title="Comments"
                     onClick={e => { e.stopPropagation(); open(); }}
@@ -161,14 +163,6 @@ function CommunityCard({ row, canDelete, isMine, requestArtwork }) {
                 <span className="community-stat-btn community-stat-static" title="Views">
                     <Icon name="eye" /><span>{row.view_count || 0}</span>
                 </span>
-                <button
-                    type="button"
-                    className={`community-stat-btn community-like-btn${row.liked_by_me ? ' liked' : ''}`}
-                    title={row.liked_by_me ? 'Unlike' : 'Like'}
-                    onClick={e => { e.stopPropagation(); call('toggleCommunityLike', row.id, e); }}
-                >
-                    <Icon name="heart" /><span>{row.like_count || 0}</span>
-                </button>
             </div>
 
             <Author row={row} />

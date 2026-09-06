@@ -39,6 +39,7 @@ import * as accountDeletion from '../features/account-deletion.js';
 import * as oauth from '../features/oauth.js';
 import { maybeShowOriginNotice } from './dev-notice.js';
 import { initArtShield } from './art-shield.js';
+import { initAvatars, paintAvatarSlots } from './avatar.js';
 
 export const state = {
     sdMoves: {},
@@ -568,6 +569,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     initSidebarHoverDim();
     api.initContentProtection?.();
     initArtShield();
+    // avatars come from the same masked pipe artwork does; this hands the
+    // module a client getter rather than letting it import the feature layer
+    initAvatars(() => api.getClient());
+    paintAvatarSlots();
     // rail's initial hidden state: inert on a phone, available on desktop
     setSidebarHidden(document.getElementById('app-sidebar'), true);
     if (typeof lucide !== 'undefined') lucide.createIcons();

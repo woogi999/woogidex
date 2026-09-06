@@ -266,6 +266,79 @@ const TRIGGERS = {
             footer: null
         })
     },
+    // The -ate family: Pixilate, Aerilate, Refrigerate, Galvanize, Normalize.
+    // All five are one hook -- rewrite a move's type as it is being used --
+    // plus the 20% power bump that came with them in Gen 6.
+    moveTypeChange: {
+        label: 'This Pok\u00e9mon uses a move of a chosen type', icon: 'shuffle', kinds: ['ability', 'item'],
+        params: [{ key: 'from', label: 'Move Type', type: 'select', options: [{ value: 'any', label: 'any type' }, ...TYPES], default: 'Normal' }],
+        allowed: ['setMoveType', 'multiplyMovePower', 'setMovePower', 'multiplyDamage', 'showMessage'],
+        sd: (ast) => {
+            const from = ast.triggerParams.from || 'Normal';
+            const guard = from === 'any' ? '' : `\n\t\t\tif (move.type !== '${from}') return;`;
+            return { header: `onModifyType(move, pokemon, target) {${guard}`, footer: '}', selfVar: 'pokemon', foeVar: 'target', moveVar: 'move', preamble: '' };
+        },
+        es: (ast) => {
+            const from = ast.triggerParams.from || 'Normal';
+            return {
+                adder: 'Battle::AbilityEffects::ModifyMoveBaseType', args: 'ability, user, move, type',
+                selfVar: 'user', foeVar: 'nil', moveVar: 'move',
+                // setMoveType writes `newType` rather than answering with
+                // `next :TYPE` -- Ruby's next returns there and then, so
+                // answering mid-body made every block after it unreachable.
+                preamble: (from === 'any' ? '' : `next type if type != :${from.toUpperCase()}
+    `) + 'newType = type',
+                footer: 'next newType'
+            };
+        }
+    },
+    // Storm Drain, Lightning Rod, Sap Sipper, Motor Drive: a move of the named
+    // type is pulled onto this Pok\u00e9mon and absorbed instead of landing.
+    // A singles battle has no ally to pull it away from, so the sim runs the
+    // absorbing half; the exported code carries the redirection with it.
+    // The unopinionated version of moveImmunity/drawIn: the hook itself, with
+    // no type baked in and nothing decided. Pair it with the `if` blocks and
+    // the move-property checks to say which moves it should care about, and
+    // with "absorb"/"draw in" to say what happens. Storm Drain built by hand
+    // is: this event -> if move property type is Water -> raise Sp. Atk, absorb.
+    moveIncoming: {
+        label: 'A move is about to hit this Pok\u00e9mon', icon: 'shield-alert', kinds: ['ability', 'item'], params: [],
+        allowed: ['absorbMove', 'redirectMove', 'boostStat', 'healDamage', 'dealDamage', 'setStatus',
+                  'cureStatus', 'changeType', 'addVolatile', 'removeVolatile', 'setShield', 'showMessage'],
+        sd: () => ({
+            header: 'onTryHit(target, source, move) {',
+            // no trailing `return null` -- whether the move is absorbed is the
+            // body's decision here, which is the whole point of this event
+            footer: '}', selfVar: 'target', foeVar: 'source', moveVar: 'move', preamble: ''
+        }),
+        es: () => ({
+            adder: 'Battle::AbilityEffects::MoveImmunity', args: 'ability, user, target, move',
+            selfVar: 'target', foeVar: 'user', moveVar: 'move', preamble: '', footer: 'next false'
+        })
+    },
+    drawIn: {
+        label: 'A move of a chosen type is drawn in by this Pok\u00e9mon', icon: 'magnet', kinds: ['ability'],
+        params: [{ key: 'type', label: 'Move Type', type: 'select', options: TYPES, default: 'Water' }],
+        allowed: ['boostStat', 'healDamage', 'cureStatus', 'addVolatile', 'removeVolatile', 'showMessage'],
+        sd: (ast) => {
+            const type = ast.triggerParams.type || 'Water';
+            return {
+                header: `onTryHit(target, source, move) {\n\t\t\tif (target === source || move.type !== '${type}') return;`,
+                // The absorb and the redirect are one ability but two Showdown
+                // hooks, so the second is emitted from the footer.
+                footer: `return null;\n\t\t},\n\n\t\tonAnyRedirectTarget(target, source, source2, move) {\n\t\t\tif (move.type !== '${type}') return;\n\t\t\tconst holder = this.effectState.target;\n\t\t\tif (holder !== source && this.validTarget(holder, source, move.target)) return holder;\n\t\t}`,
+                selfVar: 'target', foeVar: 'source', moveVar: 'move', preamble: ''
+            };
+        },
+        es: (ast) => ({
+            adder: 'Battle::AbilityEffects::MoveImmunity', args: 'ability, user, target, move',
+            selfVar: 'target', foeVar: 'user', moveVar: 'move',
+            // Essentials picks its target before abilities are consulted, so
+            // the redirection half has no hook to bind to. The absorb ports.
+            preamble: `next false if move.type != :${(ast.triggerParams.type || 'WATER').toUpperCase()}\n    # NOTE: Essentials has no redirection hook; this absorbs but does not pull.`,
+            footer: 'next true'
+        })
+    },
     damageModify: {
         label: 'Calculating a move\u2019s damage', icon: 'percent', kinds: ['ability', 'item', 'move'],
         params: [{ key: 'direction', label: 'Direction', type: 'select', options: [{ value: 'dealing', label: 'This Pokémon is attacking' }, { value: 'receiving', label: 'This Pokémon is defending' }], default: 'dealing' }],
@@ -513,6 +586,12 @@ const BATTLE_EFFECT_OPS = [
     {value:'<',label:'<'},{value:'>=',label:'>='},{value:'<=',label:'<='}
 ];
 const BATTLE_EFFECT_TARGETS = TARGETS;
+// The sdHandler templates below need real tabs and newlines in their output;
+// this keeps those escapes out of the template literals themselves.
+function tokNL(text) {
+    return text.replace(/@NL@/g, '\n').replace(/@T3@/g, '\t\t\t').replace(/@T2@/g, '\t\t');
+}
+
 function safeEffectId(value) {
     return String(value || 'customEffect').trim().replace(/[^A-Za-z0-9_:-]/g, '');
 }
@@ -543,7 +622,136 @@ function battleEffectExpression(c, p, lang) {
     return prop === 'exists' ? `!!${base}` : `${base}&.${prop}`;
 }
 
+// Anything about a Pokemon worth comparing a number against. The point of
+// this list is that one block covers what would otherwise be twenty.
+const POKEMON_PROPERTY_OPTIONS = [
+    {value:'hp',label:'Current HP'},
+    {value:'maxhp',label:'Max HP'},
+    {value:'hpPercent',label:'HP (% of max)'},
+    {value:'level',label:'Level'},
+    {value:'weight',label:'Weight (kg)'},
+    {value:'atk',label:'Attack (actual value)'},
+    {value:'def',label:'Defense (actual value)'},
+    {value:'spa',label:'Sp. Atk (actual value)'},
+    {value:'spd',label:'Sp. Def (actual value)'},
+    {value:'spe',label:'Speed (actual value)'},
+    {value:'boost.atk',label:'Attack stage'},
+    {value:'boost.def',label:'Defense stage'},
+    {value:'boost.spa',label:'Sp. Atk stage'},
+    {value:'boost.spd',label:'Sp. Def stage'},
+    {value:'boost.spe',label:'Speed stage'},
+    {value:'boost.accuracy',label:'Accuracy stage'},
+    {value:'boost.evasion',label:'Evasion stage'},
+    {value:'positiveBoosts',label:'Number of raised stats'},
+    {value:'negativeBoosts',label:'Number of lowered stats'},
+    {value:'movesMade',label:'Moves made since switching in'}
+];
+
+function pokemonPropertyExpression(c, p, lang) {
+    const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+    const prop = String(p.property || 'hp');
+    if (lang === 'sd') {
+        if (prop.startsWith('boost.')) return `(${t}.boosts?.${prop.slice(6)} || 0)`;
+        if (prop === 'hpPercent') return `(${t}.hp * 100 / ${t}.maxhp)`;
+        if (prop === 'positiveBoosts') return `Object.values(${t}.boosts || {}).filter(v => v > 0).length`;
+        if (prop === 'negativeBoosts') return `Object.values(${t}.boosts || {}).filter(v => v < 0).length`;
+        if (prop === 'movesMade') return `(${t}.activeMoveActions || 0)`;
+        if (['atk','def','spa','spd','spe'].includes(prop)) return `${t}.getStat('${prop}')`;
+        if (prop === 'weight') return `${t}.getWeight()`;
+        return `${t}.${prop}`;
+    }
+    const ES_STAT = { atk:'ATTACK', def:'DEFENSE', spa:'SPECIAL_ATTACK', spd:'SPECIAL_DEFENSE', spe:'SPEED',
+                      accuracy:'ACCURACY', evasion:'EVASION' };
+    if (prop.startsWith('boost.')) return `(${t}.stages[:${ES_STAT[prop.slice(6)] || 'ATTACK'}] || 0)`;
+    if (prop === 'hpPercent') return `(${t}.hp * 100.0 / ${t}.totalhp)`;
+    if (prop === 'positiveBoosts') return `${t}.stages.values.count { |v| v > 0 }`;
+    if (prop === 'negativeBoosts') return `${t}.stages.values.count { |v| v < 0 }`;
+    if (prop === 'movesMade') return `${t}.turnCount`;
+    if (['atk','def','spa','spd','spe'].includes(prop)) return `${t}.${prop}`;
+    if (prop === 'weight') return `${t}.pbWeight`;
+    if (prop === 'maxhp') return `${t}.totalhp`;
+    return `${t}.${prop}`;
+}
+
 Object.assign(CONDITIONS, {
+    // ---- blanket checks ----
+    // These exist so a new idea does not need a new block. One comparison
+    // block over a list of properties covers what the hpBelow/statStageAtLeast
+    // family covers one case at a time.
+    alwaysTrue: {
+        label: 'always', params: [],
+        sd: () => 'true', es: () => 'true'
+    },
+    pokemonPropertyCompare: {
+        label: '__ __ __ __', params: [
+            {key:'target',type:'select',options:TARGETS,default:'self'},
+            {key:'property',type:'select',options:POKEMON_PROPERTY_OPTIONS,default:'hpPercent'},
+            {key:'op',type:'select',options:BATTLE_EFFECT_OPS,default:'<='},
+            {key:'value',type:'number',default:50}
+        ],
+        sd: (c,p) => `(${pokemonPropertyExpression(c,p,'sd')}) ${p.op || '<='} (${Number(p.value) || 0})`,
+        es: (c,p) => `(${pokemonPropertyExpression(c,p,'es')}) ${p.op || '<='} (${Number(p.value) || 0})`
+    },
+    isFasterThan: {
+        label: '__ is faster than __', params: [
+            {key:'target',type:'select',options:TARGETS,default:'self'},
+            {key:'other',type:'select',options:TARGETS,default:'foe'}
+        ],
+        sd: (c,p) => {
+            const a = p.target === 'foe' ? c.foeVar : c.selfVar;
+            const b = p.other === 'foe' ? c.foeVar : c.selfVar;
+            return `(${a}.getStat('spe') > ${b}.getStat('spe'))`;
+        },
+        es: (c,p) => {
+            const a = p.target === 'foe' ? c.foeVar : c.selfVar;
+            const b = p.other === 'foe' ? c.foeVar : c.selfVar;
+            return `(${a}.spe > ${b}.spe)`;
+        }
+    },
+    isType: {
+        label: '__ is __ type', params: [
+            {key:'target',type:'select',options:TARGETS,default:'self'},
+            {key:'type',type:'select',options:TYPES,default:'Water'}
+        ],
+        sd: (c,p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            return `${t}.hasType('${p.type || 'Water'}')`;
+        },
+        es: (c,p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            return `${t}.pbHasType?(:${String(p.type || 'Water').toUpperCase()})`;
+        }
+    },
+    hasAbility: {
+        label: '__ has ability __', params: [
+            {key:'target',type:'select',options:TARGETS,default:'foe'},
+            {key:'ability',type:'text',default:'Levitate'}
+        ],
+        sd: (c,p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            return `${t}.hasAbility('${toShowdownAbilityId(p.ability || '')}')`;
+        },
+        es: (c,p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            return `${t}.hasActiveAbility?(:${String(p.ability || '').toUpperCase().replace(/[^A-Z0-9]/g, '')})`;
+        }
+    },
+    hasItem: {
+        label: '__ is holding __', params: [
+            {key:'target',type:'select',options:TARGETS,default:'self'},
+            {key:'item',type:'text',default:'Leftovers'}
+        ],
+        sd: (c,p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            const item = String(p.item || '').trim();
+            return item ? `${t}.hasItem('${toShowdownAbilityId(item)}')` : `!!${t}.item`;
+        },
+        es: (c,p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            const item = String(p.item || '').trim();
+            return item ? `${t}.hasActiveItem?(:${item.toUpperCase().replace(/[^A-Z0-9]/g, '')})` : `${t}.item`;
+        }
+    },
     movePropertyCompare: {
         label: 'move property __ __ __',
         params: [
@@ -1028,6 +1236,56 @@ Object.assign(ACTIONS, {
 
 // ==================== extended ability actions ====================
 Object.assign(ACTIONS, {
+    // Half of an -ate ability. The other half is multiplyMovePower, and they
+    // are two blocks because they are two things: plenty of abilities change a
+    // move's type without touching its power, and vice versa.
+    setMoveType: {
+        label: 'Make this move __ type',
+        category: 'Battle Actions',
+        params: [{ key: 'type', type: 'select', options: TYPES, default: 'Fairy' }],
+        sd: (c, p) => [`${c.moveVar || 'move'}.type = '${p.type || 'Fairy'}';`],
+        // the ModifyMoveBaseType handler hands `newType` back at the end
+        es: (_c, p) => [`newType = :${String(p.type || 'Fairy').toUpperCase()}`]
+    },
+    multiplyMovePower: {
+        label: 'Multiply this move\u2019s power by __%',
+        category: 'Battle Actions',
+        params: [{ key: 'percent', type: 'number', default: 120, min: 0, max: 1000, step: 1 }],
+        sd: (c, p) => {
+            const mv = c.moveVar || 'move';
+            return [`${mv}.basePower = Math.floor(${mv}.basePower * ${((Number(p.percent) || 100) / 100).toFixed(4)});`];
+        },
+        es: (c, p) => {
+            const mv = c.moveVar || 'move';
+            return [`${mv}.baseDamage = (${mv}.baseDamage * ${((Number(p.percent) || 100) / 100).toFixed(4)}).floor if ${mv}.respond_to?(:baseDamage=)`];
+        }
+    },
+    // The two halves of what the drawIn preset does in one piece, as blocks you
+    // can put behind whatever condition you like.
+    absorbMove: {
+        label: 'Absorb the move (this Pok\u00e9mon is not hit)',
+        category: 'Battle Actions',
+        params: [],
+        sd: () => ['return null;'],
+        es: () => ['next true']
+    },
+    redirectMove: {
+        label: 'Draw in __ moves aimed at anyone else',
+        category: 'Battle Actions',
+        params: [{ key: 'type', type: 'select', options: [{ value: 'any', label: 'all' }, ...TYPES], default: 'Water' }],
+        // Redirection is a different Showdown hook from the one this block sits
+        // in, so it emits a sibling handler rather than a statement -- see
+        // sdHandler/collectExtraHandlers in the compilers below.
+        sd: (_c, p) => [`// draws in ${p.type === 'any' ? 'all' : (p.type || 'Water')} moves -- see onAnyRedirectTarget below`],
+        sdHandler: (_c, p) => {
+            const type = p.type || 'Water';
+            const guard = type === 'any' ? '' : tokNL(`@NL@@T3@if (move.type !== '${type}') return;`);
+            return tokNL(`@T2@onAnyRedirectTarget(target, source, source2, move) {${guard}@NL@@T3@const holder = this.effectState.target;@NL@@T3@if (holder !== source && this.validTarget(holder, source, move.target)) return holder;@NL@@T2@}`);
+        },
+        // Essentials picks its target before abilities are consulted, so there
+        // is no hook to bind the redirection to.
+        es: (_c, p) => [`# NOTE: Essentials has no redirection hook; ${p.type === 'any' ? 'all' : (p.type || 'Water')} moves cannot be pulled here.`]
+    },
     setTypeFromMove: {
         label: 'Change type of __ to the current move type',
         category: 'Battle Actions',
@@ -1242,7 +1500,7 @@ const BLOCK_GROUPS = [
     { label:'Variables', color:'orange', items:['setVariable','changeVariable','getVariable','localVariable','globalVariable'] },
     { label:'Values', color:'green', items:['numberValue','booleanValue','stringValue','pokemonValue','moveValue','abilityValue','itemValue','statValue','hpValue','maxHpValue','damageTakenValue','randomNumberValue','turnNumberValue'] },
     { label:'Functions', color:'cyan', items:['callFunction','returnValue','parameters','getProperty','setProperty'] },
-    { label:'Battle Actions', color:'blue', items:['damage','heal','boostStat','setStatValue','changeStatValue','setStatus','inflictStatus','changeType','changeAbility','changeForm','switchPokemon','setWeather','setTerrain','setWeatherTerrain','setHazard','removeHazard','clearTerrainWeather','changePriority','addVolatile','setVolatile','removeVolatile','setShield','changeTypeToMoveType','resetStatStages','copyStatStages','setAbility','suppressAbility'] },
+    { label:'Battle Actions', color:'blue', items:['damage','heal','boostStat','setStatValue','changeStatValue','setStatus','inflictStatus','changeType','changeAbility','changeForm','switchPokemon','setWeather','setTerrain','setWeatherTerrain','setHazard','removeHazard','clearTerrainWeather','changePriority','addVolatile','setVolatile','removeVolatile','setShield','changeTypeToMoveType','setMoveType','multiplyMovePower','setMovePower','absorbMove','redirectMove','resetStatStages','copyStatStages','setAbility','suppressAbility'] },
     { label:'Battle Effects', color:'blue', items:['applyBattleEffect','removeBattleEffect','setBattleEffectProperty'] },
     { label:'Items', color:'blue', items:['restoreItem'] },
     { label:'Raw Code', color:'gray', items:['customCode'] },
@@ -1257,6 +1515,7 @@ const EVENT_GROUP = { label:'Events', color:'gold', items:[
     'switchIn', 'switchOut', 'turnStart', 'residual',
     'beforeMove', 'afterMove', 'damagingHit', 'onContact', 'onFaint', 'onStatus',
     'statModify', 'damageModify', 'accuracyModify', 'statStageIgnore', 'moveImmunity',
+    'moveTypeChange', 'moveIncoming', 'drawIn',
     'moveUsed', 'moveHit'
 ] };
 const EVENT_KEYS = new Set(EVENT_GROUP.items);
@@ -1356,6 +1615,14 @@ function compileBody(list, ctx, lang, indent) {
             const def = ACTIONS[block.action]; if (!def) return;
             const stmts = lang === 'sd' ? def.sd(ctx, block.params || {}) : def.es(ctx, block.params || {});
             stmts.forEach(s => lines.push(`${pad}${s}`));
+            // A few effects are not a statement inside the handler they are
+            // written in -- redirection is its own Showdown hook. Those
+            // actions hand back a whole sibling handler, collected here and
+            // emitted next to the one being built (see compileShowdownAbility).
+            if (lang === 'sd' && def.sdHandler && ctx.extraHandlers) {
+                const extra = def.sdHandler(ctx, block.params || {});
+                if (extra && !ctx.extraHandlers.includes(extra)) ctx.extraHandlers.push(extra);
+            }
         }
     });
     return lines;
@@ -1393,9 +1660,12 @@ function compileShowdownAbility(ability) {
     const id = toShowdownAbilityId(ability.name);
     const desc = String(ability.desc || '').replace(/"/g, '\\"');
     const groups = new Map();
+    // filled by compileBody for actions that are their own hook rather than a
+    // line inside someone else's
+    const extraHandlers = [];
     events.forEach(ev => {
         const def = TRIGGERS[ev.trigger]; if (!def) return;
-        const t = def.sd(ev); const ctx = { selfVar:t.selfVar, foeVar:t.foeVar, moveVar:t.moveVar };
+        const t = def.sd(ev); const ctx = { selfVar:t.selfVar, foeVar:t.foeVar, moveVar:t.moveVar, extraHandlers };
         const body = compileBody(ev.body || [], ctx, 'sd', 3);
         const key = `${t.header}|||${t.footer}`;
         if (!groups.has(key)) groups.set(key, { t, bodies: [] });
@@ -1405,10 +1675,15 @@ function compileShowdownAbility(ability) {
     const handlers = [...groups.values()].map(({t,bodies,preamble}) => {
         const pre = preamble ? `\t\t\t${preamble}\n` : '';
         return `\t\t${t.header}\n${pre}${bodies.length ? bodies.join('\n') : '\t\t\t// (empty event)'}\n\t\t${t.footer}`;
-    }).join('\n\n');
+    // These are members of an object literal: joined on a bare
+    // newline they emitted TypeScript that would not parse.
+    }).join(',\n\n');
+    const withExtras = extraHandlers.length
+        ? [handlers, ...extraHandlers].filter(Boolean).join(',\n\n')
+        : handlers;
     // Blocks AND hand-written code: both go in, blocks first, so neither is
     // quietly dropped because the other existed.
-    const body = written ? `${handlers}\n${written}` : handlers;
+    const body = written ? `${withExtras},\n${written}` : withExtras;
     return `\t${id || 'customability'}: {\n\t\tname: "${String(ability.name || '').replace(/"/g, '\\"')}",\n\t\tshortDesc: "${desc}",\n${body}\n\t},`;
 }
 
@@ -1433,7 +1708,7 @@ function compileShowdownMove(move) {
         `\t\ttarget: "normal",`
     ];
     const blockBody = compileShowdownMoveBlocks(move);
-    if (blockBody) fields.push(blockBody);
+    if (blockBody) fields.push(blockBody + ',');
     const written = showdownSourceFromRaw(move.rawCode);
     if (written) fields.push(written);
     return `\t${id}: {\n${fields.join('\n')}\n\t},`;
@@ -1446,9 +1721,10 @@ function compileShowdownMoveBlocks(move) {
     const events = getAbilityEvents(move?.blocks);
     if (!events.length) return null;
     const groups = new Map();
+    const extraHandlers = [];
     events.forEach(ev => {
         const def = TRIGGERS[ev.trigger]; if (!def) return;
-        const t = def.sd(ev); const ctx = { selfVar: t.selfVar, foeVar: t.foeVar, moveVar: t.moveVar };
+        const t = def.sd(ev); const ctx = { selfVar: t.selfVar, foeVar: t.foeVar, moveVar: t.moveVar, extraHandlers };
         const body = compileBody(ev.body || [], ctx, 'sd', 3);
         const key = `${t.header}|||${t.footer}`;
         if (!groups.has(key)) groups.set(key, { t, bodies: [] });
@@ -1456,10 +1732,13 @@ function compileShowdownMoveBlocks(move) {
         if (t.preamble) groups.get(key).preamble = t.preamble;
     });
     if (!groups.size) return null;
-    return [...groups.values()].map(({ t, bodies, preamble }) => {
+    const handlers = [...groups.values()].map(({ t, bodies, preamble }) => {
         const pre = preamble ? `\t\t\t${preamble}\n` : '';
         return `\t\t${t.header}\n${pre}${bodies.length ? bodies.join('\n') : '\t\t\t// (empty event)'}\n\t\t${t.footer}`;
-    }).join('\n\n');
+    // These are members of an object literal: joined on a bare
+    // newline they emitted TypeScript that would not parse.
+    }).join(',\n\n');
+    return [handlers, ...extraHandlers].filter(Boolean).join(',\n\n');
 }
 
 function compileShowdownItem(item) {
@@ -1472,7 +1751,7 @@ function compileShowdownItem(item) {
         `\t\tshortDesc: "${esc(item.desc)}",`
     ];
     const blockBody = compileShowdownMoveBlocks(item);
-    if (blockBody) fields.push(blockBody);
+    if (blockBody) fields.push(blockBody + ',');
     const written = showdownSourceFromRaw(item.rawCode);
     if (written) fields.push(written);
     return `\t${id}: {\n${fields.join('\n')}\n\t},`;

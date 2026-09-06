@@ -93,6 +93,21 @@ const MOVE_WEATHER = {
 // things that happen to a Pokemon, so they are never announced.
 const SILENT_VOLATILES = new Set(['twoturnmove', 'stall']);
 
+// Protect and its relatives get less likely to work the more they are leaned
+// on. Showdown marks them with `stallingMove`, which reaches us through the
+// move bridge (sd-moves.js DATA_FIELDS); this list is the fallback for when
+// the bridge is unavailable, so spamming Protect still fails offline.
+const STALLING_MOVES = new Set([
+    'protect', 'detect', 'endure', 'kingsshield', 'spikyshield', 'banefulbunker',
+    'obstruct', 'silktrap', 'burningbulwark', 'maxguard', 'craftyshield',
+    'quickguard', 'wideguard'
+]);
+
+function isStallingMove(move) {
+    if (!move) return false;
+    return move.stallingMove === true || STALLING_MOVES.has(move.id);
+}
+
 // Volatiles worth announcing when they start but not when they lapse. Protect
 // says "it protected itself!" as it goes up; mainline says nothing at all when
 // the turn ends and it comes back down.
@@ -1169,6 +1184,15 @@ export class Battle {
         }
         if (releasing) this._endCharge(user);
 
+        // Protect used twice in a row usually fails, and a third time almost
+        // always does. Checked after onTry so a move that was going to fail
+        // for its own reasons doesn't spend the counter.
+        if (isStallingMove(move) && !this._stallCheck(user)) {
+            this.add('-fail', this.ref(user), move.name);
+            hook('onMoveFail');
+            return;
+        }
+
         if (!target || target.fainted) {
             if (move.category === 'Status') this._applyStatusMove(user, user, move, fx);
             return;
@@ -1318,6 +1342,30 @@ export class Battle {
         this._runMoveEvent('afterMove', user, target, { move, damage: totalDealt, eff });
         this.runEvent('afterMoveHit', user, { move, damage: totalDealt });
         this.runEvent('afterMove', user, { move, damage: totalDealt });
+    }
+
+    // The stall counter behind Protect's diminishing returns. The first use
+    // always works; each consecutive one is a third as likely as the last,
+    // down to 1/729. The counter lives in a volatile with a two-turn duration
+    // rather than a plain field, so that skipping a turn (or switching out,
+    // which clears volatiles) resets it -- exactly the two ways mainline lets
+    // a Pokemon earn a fresh Protect.
+    _stallCheck(user) {
+        const v = user.volatiles.stall;
+        if (!v) {
+            this.addVolatile(user, 'stall', { duration: 2, counter: 3 });
+            return true;
+        }
+        const counter = v.counter || 3;
+        if (!this.rng.chance(1, counter)) {
+            // A failed stall move resets the odds, so the next one is free.
+            this.removeVolatile(user, 'stall');
+            return false;
+        }
+        v.counter = Math.min(729, counter * 3);
+        // Still stalling: the clock starts over rather than lapsing this turn.
+        v.turns = 0;
+        return true;
     }
 
     // Confusion. It was being applied as a volatile by Confuse Ray, Swagger,

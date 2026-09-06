@@ -4,6 +4,7 @@
 // generated, not markup the commenter wrote directly.
 
 import { Icon } from './Icon.jsx';
+import { Avatar } from './Avatar.jsx';
 import { BadgeRow } from './Badge.jsx';
 import { renderCommentMarkdown } from '../core/data.js';
 
@@ -25,17 +26,10 @@ function SkeletonComment() {
 }
 
 function Comment({ comment, monId, canDelete, isMine }) {
-    const avatar = comment.author_avatar_url;
     return (
         <div className="mon-comment">
             <div className="mon-comment-header">
-                {avatar
-                    ? <img className="community-mini-avatar" src={avatar} alt="" />
-                    : (
-                        <span className="community-mini-avatar community-mini-avatar-fallback">
-                            {String(comment.author_name || '?').charAt(0).toUpperCase()}
-                        </span>
-                    )}
+                <Avatar userId={comment.user_id} url={comment.author_avatar_url} name={comment.author_name} />
                 <span
                     className="mon-comment-author community-author-link"
                     onClick={e => { e.stopPropagation(); call('showUserProfile', comment.user_id); }}

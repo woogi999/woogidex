@@ -4,6 +4,7 @@
 // same component so they can't drift apart in layout.
 
 import { useEffect, useRef, useState } from 'react';
+import { Avatar } from './Avatar.jsx';
 import { paintShieldedCanvas } from '../core/art-shield.js';
 import { Icon } from './Icon.jsx';
 import { BadgeRow } from './Badge.jsx';
@@ -30,8 +31,9 @@ function ShieldedArt({ art, alt, className = '' }) {
 }
 
 function MonArt({ row, mon, requestArtwork }) {
-    // shows stored thumbnail if present; otherwise lazy-fetches full artwork near-viewport
-    const [art, setArt] = useState(mon.thumbnail || mon.artwork || '');
+    // lazy-fetches masked artwork near-viewport. The gallery query no longer
+    // carries a thumbnail -- see the masked_artwork_transport migration.
+    const [art, setArt] = useState(mon.artwork || '');
     const ref = useRef(null);
 
     useEffect(() => {
@@ -143,13 +145,7 @@ export function ProfileComments({ comments = [], loading = false, viewerId = nul
                             title="View profile"
                             onClick={() => call('showUserProfile', c.user_id)}
                         >
-                            {author.avatar_url
-                                ? <img className="community-mini-avatar" src={author.avatar_url} alt="" />
-                                : (
-                                    <span className="community-mini-avatar community-mini-avatar-fallback">
-                                        {name.charAt(0).toUpperCase()}
-                                    </span>
-                                )}
+                            <Avatar userId={c.user_id} url={author.avatar_url} name={name} />
                             <strong>{name}</strong>
                             <BadgeRow badgeKeys={badgeKeys} size={12} />
                             <span className="profile-comment-time">{new Date(c.created_at).toLocaleString()}</span>
@@ -241,7 +237,7 @@ export function UserHoverCard({ profile = null, loading = false }) {
             <div className="user-hover-card-accent" />
             <div className="user-hover-card-top">
                 <div className="user-hover-card-avatar">
-                    {profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <span>{name.charAt(0).toUpperCase()}</span>}
+                    <Avatar userId={profile.id} url={profile.avatar_url} name={name} className="profile-avatar-img" />
                 </div>
                 <div className="user-hover-card-identity">
                     <div className="user-hover-card-label">Trainer card</div>

@@ -1,4 +1,6 @@
 import { getClient } from '../core/supabase.js';
+import { dropCachedAvatar, paintAvatarInto } from '../core/avatar.js';
+import { frameCount } from '../core/art-shield.js';
 import { esc, publicName } from '../core/html.js';
 import { log } from '../core/log.js';
 import { state, api } from '../core/app.js';
@@ -488,6 +490,41 @@ async function updateDisplayName(displayName) {
     return state.user;
 }
 
+// A 256px copy of the chosen file, small enough to live in the profile row and
+// be read inline with it. Animated avatars are left alone -- drawing one onto a
+// canvas keeps a single frame, and a still avatar for an animated upload is
+// worse than falling back to the bucket URL, which still animates.
+const AVATAR_DATA_PX = 256;
+
+async function smallAvatarDataUri(file) {
+    try {
+        if (await frameCount(await blobToDataUri(file)) > 1) return null;
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1, AVATAR_DATA_PX / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        // browsers that cannot encode webp return a png, which at 256px is
+        // still comfortably inside the column's size check
+        const uri = canvas.toDataURL('image/webp', 0.82);
+        return uri.length <= 262144 ? uri : null;
+    } catch (e) {
+        log.warn('AUTH', 'Could not make a small avatar; falling back to the bucket URL', e);
+        return null;
+    }
+}
+
+function blobToDataUri(blob) {
+    return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+    });
+}
+
 // uploads to avatars/<user_id>/avatar.<ext> (upsert), then stores the public URL on user metadata.
 async function uploadAvatar(file) {
     if (!file) return null;
@@ -511,7 +548,12 @@ async function uploadAvatar(file) {
     const { data, error } = await client.auth.updateUser({ data: { avatar_url: bustedUrl } });
     if (error) { log.error('AUTH', 'Avatar URL save failed', error); throw error; }
     applySupabaseUser(data.user);
-    await mirrorToProfile({ avatar_url: bustedUrl });
+    // avatar_data is the copy everything actually renders: small, in the row,
+    // and served masked so an avatar is not a plain image request any more (see
+    // js/core/avatar.js). The bucket upload above stays as the fallback for
+    // anyone who has not been through here since.
+    await mirrorToProfile({ avatar_url: bustedUrl, avatar_data: await smallAvatarDataUri(file) });
+    dropCachedAvatar(state.user.id);
     updateAuthUI();
     return state.user;
 }
@@ -919,19 +961,20 @@ async function loadPublicProfile(userId) {
     let comments = [];
     try {
         // same egress fix as the hub feed: skip the full fakemon_data blob and
-        // `artwork` (~176kB base64 each, ~17MB for a 100-mon gallery) and
-        // select only the thumbnail; older mons without one fall back to the
-        // hub's lazy on-scroll path.
+        // `artwork` (~176kB base64 each, ~17MB for a 100-mon gallery). The
+        // thumbnail used to come through here too; it is an image, and an image
+        // in this response is an image in the network panel, so every card now
+        // takes the hub's lazy on-scroll path and gets a masked one.
         const result = await withProfileTimeout(
             client.from('published_mons')
-                .select('id, user_id, published_at, fakemon_data->>name, fakemon_data->>type1, fakemon_data->>type2, fakemon_data->>thumbnail')
+                .select('id, user_id, published_at, fakemon_data->>name, fakemon_data->>type1, fakemon_data->>type2')
                 .eq('user_id', userId)
                 .order('published_at', { ascending: false })
                 .limit(100),
             'Published Fakemon request'
         );
         if (result.error) console.warn('Could not load published mons:', result.error);
-        else mons = (result.data || []).map(({ name, type1, type2, thumbnail, ...rest }) => ({ ...rest, fakemon_data: { name, type1, type2, thumbnail } }));
+        else mons = (result.data || []).map(({ name, type1, type2, ...rest }) => ({ ...rest, fakemon_data: { name, type1, type2 } }));
     } catch (e) {
         console.warn('Could not load published mons:', e);
     }
@@ -1043,7 +1086,7 @@ function renderProfilePage() {
     if (handle) { handle.classList.remove('skel', 'skel-text'); handle.style.width = ''; handle.textContent = profile.username ? '@' + profile.username : ''; }
     const avatar = document.getElementById('profile-public-avatar');
     const fallback = document.getElementById('profile-public-avatar-fallback');
-    if (avatar) { avatar.src = profile.avatar_url || ''; avatar.style.display = profile.avatar_url ? 'block' : 'none'; }
+    if (avatar) { paintAvatarInto(avatar.parentElement, profile.id, profile.avatar_url || ''); avatar.style.display = profile.avatar_url ? 'block' : 'none'; }
     if (fallback) { fallback.classList.remove('skel', 'skel-circle'); fallback.textContent = displayName.charAt(0).toUpperCase(); fallback.style.display = profile.avatar_url ? 'none' : 'flex'; }
     const bio = document.getElementById('profile-public-bio');
     if (bio) { bio.classList.remove('skel', 'skel-text'); bio.style.width = ''; bio.textContent = profile.bio || 'No bio yet.'; }
@@ -1553,11 +1596,11 @@ function updateAuthUI() {
         if (headerProfileWrap) headerProfileWrap.style.display = '';
         const initial = (state.user.displayName || state.user.username || '?').charAt(0).toUpperCase();
         if (headerAvatarImg && headerAvatarFallback) {
-            if (state.user.avatarUrl) { headerAvatarImg.src = state.user.avatarUrl; headerAvatarImg.style.display = 'block'; headerAvatarFallback.style.display = 'none'; }
+            if (state.user.avatarUrl) { paintAvatarInto(headerAvatarImg.parentElement, state.user.id, state.user.avatarUrl); headerAvatarImg.style.display = 'block'; headerAvatarFallback.style.display = 'none'; }
             else { headerAvatarImg.style.display = 'none'; headerAvatarFallback.style.display = 'flex'; headerAvatarFallback.textContent = initial; }
         }
         if (popoverAvatarImg && popoverAvatarFallback) {
-            if (state.user.avatarUrl) { popoverAvatarImg.src = state.user.avatarUrl; popoverAvatarImg.style.display = 'block'; popoverAvatarFallback.style.display = 'none'; }
+            if (state.user.avatarUrl) { paintAvatarInto(popoverAvatarImg.parentElement, state.user.id, state.user.avatarUrl); popoverAvatarImg.style.display = 'block'; popoverAvatarFallback.style.display = 'none'; }
             else { popoverAvatarImg.style.display = 'none'; popoverAvatarFallback.style.display = 'flex'; popoverAvatarFallback.textContent = initial; }
         }
         if (popoverName) {

@@ -68,6 +68,25 @@ const TRIGGER_MAP = {
     statModify:  { event: 'modifyStat', filter: (p, ctx) => ctx.whose !== 'foe' && (!p.stat || p.stat === ctx.stat), value: true },
     damageModify:{ resolve: p => (p.direction === 'receiving' ? 'modifyDamageTaken' : 'modifyDamageDealt'), value: true },
     moveImmunity:{ event: 'tryHit', filter: (p, ctx) => !!ctx.move && ctx.move.type === (p.type || 'Electric'), immunity: true },
+    // Storm Drain and Lightning Rod. The redirection they are named for needs
+    // an ally to pull the move away from, and this engine only runs singles,
+    // so what is left here is the absorb -- which is the whole of what those
+    // abilities do one-on-one anyway. The exported code carries both halves.
+    drawIn:      { event: 'tryHit', filter: (p, ctx) => !!ctx.move && ctx.move.type === (p.type || 'Water'), immunity: true },
+    // Same hook as the two presets above, with nothing decided for you: it
+    // fires for every incoming move and the body says (via the absorb action)
+    // whether this one gets through. `canImmune` rather than `immunity` is the
+    // difference between "this event means immunity" and "this event may
+    // choose it".
+    moveIncoming:{ event: 'tryHit', canImmune: true },
+    // The -ate abilities. Not a value event: the body rewrites the move object
+    // the engine is holding, which is the per-use copy (battle.js _activeMove),
+    // so nothing leaks into the next use of the same move.
+    moveTypeChange: {
+        event: 'modifyType',
+        filter: (p, ctx) => ctx.role === 'user' && !!ctx.move
+            && (!p.from || p.from === 'any' || ctx.move.type === p.from)
+    },
     // Compound Eyes and Sand Veil both live here. The engine asks twice per
     // move -- once as the attacker, once as the target -- and `role` says which
     // call this is, so an ability only ever applies from its own side.
@@ -88,7 +107,7 @@ const TRIGGER_MAP = {
 export const RUNTIME_EVENTS = [
     'switchIn', 'switchOut', 'turnStart', 'residual', 'beforeMove', 'afterMove',
     'afterMoveHit', 'damagingHit', 'faint', 'setStatus', 'modifyStat',
-    'modifyDamageDealt', 'modifyDamageTaken', 'tryHit',
+    'modifyDamageDealt', 'modifyDamageTaken', 'tryHit', 'modifyType',
     'modifyAccuracy', 'ignoreBoosts', 'afterDamage'
 ];
 
@@ -148,6 +167,47 @@ const CONDITION_RUNTIME = {
     targetIsFainted: (_p, ctx) => !!ctx.foe?.fainted,
     stockpileStacksAtLeast: (p, ctx) => n(pick(ctx, p.target)?.volatiles?.stockpile?.layers, 0) >= n(p.value, 0),
     stockpileStacksExactly: (p, ctx) => n(pick(ctx, p.target)?.volatiles?.stockpile?.layers, 0) === n(p.value, 0),
+    // ---- blanket checks ----
+    alwaysTrue: () => true,
+    pokemonPropertyCompare: (p, ctx) => {
+        const mon = pick(ctx, p.target);
+        const prop = String(p.property || 'hp');
+        // the five real stat values go through the engine so stages, items and
+        // abilities are all counted, exactly as a damage roll would see them
+        const left = ['atk', 'def', 'spa', 'spd', 'spe'].includes(prop)
+            ? (mon ? ctx.battle.getStat(mon, prop) : 0)
+            : pokemonProperty(mon, prop);
+        return compareOp(left, p.op, n(p.value, 0));
+    },
+    isFasterThan: (p, ctx) => {
+        const a = pick(ctx, p.target), b = pick(ctx, p.other || 'foe');
+        if (!a || !b) return false;
+        return ctx.battle.getStat(a, 'spe') > ctx.battle.getStat(b, 'spe');
+    },
+    isType: (p, ctx) => (pick(ctx, p.target)?.types || []).includes(p.type),
+    hasAbility: (p, ctx) => toId(pick(ctx, p.target)?.ability?.name || pick(ctx, p.target)?.ability) === toId(p.ability),
+    hasItem: (p, ctx) => {
+        const item = pick(ctx, p.target)?.item;
+        const wanted = String(p.item || '').trim();
+        return wanted ? toId(item?.name || item) === toId(wanted) : !!item;
+    },
+    // The editor has offered these three since the generalised move/effect
+    // inspection went in, but there was no runtime for any of them, so an
+    // ability built on one behaved as though the check had said "no".
+    movePropertyCompare: (p, ctx) => compareOp(moveProperty(ctx.move, p.property), p.op, readValue(p.value, ctx)),
+    movePropertyIs: (p, ctx) => {
+        const actual = moveProperty(ctx.move, p.property);
+        const wanted = String(p.value ?? '');
+        // ids and names compare case/punctuation-insensitively; everything
+        // else is a plain value comparison
+        if (p.property === 'id' || p.property === 'name') return toId(actual) === toId(wanted);
+        return String(actual) === wanted;
+    },
+    battleEffectActive: (p, ctx) => !!pick(ctx, p.target)?.volatiles?.[toId(p.effect || 'stockpile')],
+    battleEffectCompare: (p, ctx) => compareOp(battleEffectProperty(pick(ctx, p.target), p), p.op, readValue(p.value, ctx)),
+    battleEffectStacksAtLeast: (p, ctx) =>
+        n(pick(ctx, p.target)?.volatiles?.[toId(p.effect || 'stockpile')]?.layers, 0) >= n(p.value, 0),
+
     // The free-text logic blocks (compare/and/or/not) accept arbitrary strings
     // in the editor because their codegen just splices them into the output.
     // An interpreter cannot evaluate arbitrary source safely, so these resolve
@@ -166,6 +226,54 @@ const CONDITION_RUNTIME = {
 };
 
 function truthy(v) { return !(v === false || v === 0 || v === '' || v === null || v === undefined); }
+
+// Shared by the comparison blocks. Mirrors BATTLE_EFFECT_OPS in
+// ability-blocks.js, which is the list the editor offers.
+function compareOp(left, op, right) {
+    switch (op) {
+        case '!=': return left !== right;
+        case '>':  return left > right;
+        case '<':  return left < right;
+        case '<=': return left <= right;
+        case '>=': return left >= right;
+        default:   return left === right;      // '=='
+    }
+}
+
+// Mirrors pokemonPropertyExpression() in ability-blocks.js, so the interpreted
+// answer matches what the exported code would compute.
+function pokemonProperty(mon, property) {
+    if (!mon) return 0;
+    const prop = String(property || 'hp');
+    if (prop.startsWith('boost.')) return n(mon.boosts?.[prop.slice(6)], 0);
+    const boosts = Object.values(mon.boosts || {});
+    switch (prop) {
+        case 'hpPercent':      return mon.maxhp ? (mon.hp * 100) / mon.maxhp : 0;
+        case 'positiveBoosts': return boosts.filter(v => v > 0).length;
+        case 'negativeBoosts': return boosts.filter(v => v < 0).length;
+        case 'movesMade':      return n(mon.activeMoveActions, 0);
+        // weight lives on the species record, not the battler
+        case 'weight':         return n(mon.species?.weightkg ?? mon.weightkg, 0);
+        default:               return n(mon[prop], 0);
+    }
+}
+
+// Mirrors movePropertyExpression(). Returns the raw value, not a number: a
+// flag is a boolean and a type is a string.
+function moveProperty(move, property) {
+    if (!move) return undefined;
+    const prop = String(property || 'basePower');
+    if (prop.startsWith('flags.')) return !!move.flags?.[prop.slice(6)];
+    return move[prop];
+}
+
+// Mirrors battleEffectExpression().
+function battleEffectProperty(mon, p) {
+    const v = mon?.volatiles?.[toId(p.effect || 'stockpile')];
+    const prop = p.property === 'custom' ? String(p.customProperty || 'layers') : String(p.property || 'exists');
+    if (prop === 'exists') return !!v;
+    return v ? v[prop] : undefined;
+}
 
 // Whitelisted reader for the free-text value fields. Supports numbers, a small
 // set of named battle values, and `name op number` comparisons. Anything it
@@ -270,6 +378,39 @@ const ACTION_RUNTIME = {
     changeType: (p, ctx) => {
         const t = pick(ctx, p.target);
         if (t) ctx.battle.setTypes(t, [p.type || 'Normal'], ctx.abilityName);
+    },
+    // These three write to the active move copy (battle.js _activeMove), so a
+    // rewrite lasts for this one use and never leaks into the next.
+    setMoveType: (p, ctx) => { if (ctx.move) ctx.move.type = p.type || 'Fairy'; },
+    multiplyMovePower: (p, ctx) => {
+        if (!ctx.move) return;
+        ctx.move.basePower = Math.floor(n(ctx.move.basePower, 0) * (n(p.percent, 100) / 100));
+    },
+    setMovePower: (p, ctx) => {
+        if (ctx.move) ctx.move.basePower = Math.max(0, Math.floor(n(p.power, 0)));
+    },
+    // The body half of an absorbing ability. tryHit reads ctx.immune back out
+    // (see compileProgram) and the engine turns that into "it doesn't affect
+    // <mon>", so everything after this in the body still runs -- which is what
+    // lets Storm Drain raise Sp. Atk on the way.
+    absorbMove: (_p, ctx) => { ctx.immune = true; },
+    // Redirection needs an ally to pull the move away from and this engine
+    // only runs singles, so there is nothing to move it off. Absorbing is the
+    // one-on-one equivalent and what the block's own text promises; the
+    // exported code carries the real onAnyRedirectTarget hook.
+    redirectMove: (p, ctx) => {
+        if (!ctx.move) return;
+        if (p.type && p.type !== 'any' && ctx.move.type !== p.type) return;
+        ctx.immune = true;
+    },
+    multiplyDamageTaken: (p, ctx) => { ctx.value = Math.floor(n(ctx.value, 0) * (n(p.percent, 100) / 100)); },
+    addSideCondition: (p, ctx) => {
+        const side = (p.target || 'foe') === 'foe' ? ctx.battle.sideOf(ctx.foe) : ctx.battle.sideOf(ctx.self);
+        if (side) ctx.battle.addSideCondition(side, toId(p.condition || 'reflect'));
+    },
+    removeSideCondition: (p, ctx) => {
+        const side = (p.target || 'foe') === 'foe' ? ctx.battle.sideOf(ctx.foe) : ctx.battle.sideOf(ctx.self);
+        if (side) ctx.battle.removeSideCondition(side, toId(p.condition || 'reflect'));
     },
     changeTypeToMoveType: (p, ctx) => {
         const t = pick(ctx, p.target);
@@ -411,7 +552,16 @@ export function compileProgram(program, abilityName = '') {
             ctx.vars = ctx.vars || {};
             ctx.abilityName = abilityName;
             runBody(body, ctx);
-            if (map.immunity) return ctx.immune ? 'immune' : undefined;
+            // Two ways to be immune. For the presets (moveImmunity, drawIn)
+            // the trigger firing IS the immunity -- its filter already checked
+            // the move type, and their generated Showdown code ends in an
+            // unconditional `return null`. For the raw moveIncoming event it
+            // is the absorb action in the body that decides, which is what
+            // ctx.immune carries. This used to read ctx.immune alone, which
+            // nothing set, so an absorbing ability ran its body (the Storm
+            // Drain boost) and then took the hit anyway.
+            if (map.immunity) return 'immune';
+            if (map.canImmune) return ctx.immune ? 'immune' : undefined;
             return map.value ? ctx.value : undefined;
         };
         handler.isValueEvent = !!map.value;

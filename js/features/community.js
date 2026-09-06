@@ -6,7 +6,8 @@ import { CommunityFeed } from '../react/CommunityFeed.jsx';
 import { CommentList } from '../react/CommentList.jsx';
 import { getCommunityDexNumber } from './community-feed-model.js';
 import { getCachedArt, getCachedArtBatch, putCachedArt, dropCachedArt } from '../core/art-cache.js';
-import { shieldedArtHtml } from '../core/art-shield.js';
+import { shieldedArtHtml, artworkBlob, frameCount, maskedArtwork, artworkDataUri } from '../core/art-shield.js';
+import { avatarHtml } from '../core/avatar.js';
 
 // ==================== live roles ====================
 // roles are db-driven so staff can edit them from the admin panel. cache
@@ -464,9 +465,8 @@ async function openPublishedMonById(publishedId, options = {}) {
     // the Fakemon they came for.
     if (!api.requireAccount?.('Sign in to view this Fakemon.',
         () => openPublishedMonById(publishedId, options))) return false;
-    const client = await api.getClient();
-    const { data, error } = await client.from('published_mons').select('*').eq('id', publishedId).maybeSingle();
-    if (error || !data) { api.showToast?.('Could not load that Fakemon.', 'error'); return false; }
+    const data = await fetchMonDetailRow(publishedId);
+    if (!data) { api.showToast?.('Could not load that Fakemon.', 'error'); return false; }
     const cs = ensureCommunityState();
     cs.mons = [data, ...(cs.mons || []).filter(x => x.id !== data.id)];
     await attachLiveAuthorInfo(cs.mons);
@@ -577,7 +577,10 @@ async function fetchCommunityFeed(options = {}) {
         const client = await api.getClient();
         const { data, error } = await client
             .from('published_mons')
-            .select('id, user_id, published_at, activity_at, view_count, source_fakemon_id, author_name, author_avatar_url, author_role, author_badges, family_snapshots, evolution_stage, fakemon_data->>name, fakemon_data->>species, fakemon_data->>number, fakemon_data->>type1, fakemon_data->>type2, fakemon_data->>thumbnail')
+            // no thumbnail here any more: a thumbnail is an image, and an
+            // image in this response is an image in the network panel. Cards
+            // ask community_mon_artwork() for a masked one instead.
+            .select('id, user_id, published_at, activity_at, view_count, source_fakemon_id, author_name, author_avatar_url, author_role, author_badges, family_snapshots, evolution_stage, fakemon_data->>name, fakemon_data->>species, fakemon_data->>number, fakemon_data->>type1, fakemon_data->>type2')
             .order('activity_at', { ascending: false })
             .limit(100);
         if (error) throw error;
@@ -603,10 +606,10 @@ async function fetchCommunityFeed(options = {}) {
 // columns, but every renderer expects row.fakemon_data.name etc. - rebuild
 // that shape and drop the flat columns so a slim row isn't mistaken for a full one.
 function unflattenSlimMonRow(row) {
-    const { name, species, number, type1, type2, thumbnail, ...rest } = row;
-    // full artwork is deliberately absent -- the thumbnail covers the card, and
-    // anything published before thumbnails existed lazy-loads it on scroll.
-    return { ...rest, fakemon_data: { name, species, number, type1, type2, thumbnail, artwork: artworkCache.get(row.id) || '' } };
+    const { name, species, number, type1, type2, ...rest } = row;
+    // every image is deliberately absent from the feed query -- a card asks
+    // for a masked one on scroll, and artworkCache is where that lands.
+    return { ...rest, fakemon_data: { name, species, number, type1, type2, artwork: artworkCache.get(row.id) || '' } };
 }
 
 // ==================== community stats ====================
@@ -905,14 +908,23 @@ async function openCommunityHub({ panel = null } = {}) {
     if (cs.panel === 'events') api.showEventsPanel?.();
     if (feedIsFresh()) { paintCommunityPanels(); return; }
 
-    renderCommunityGridSkeleton();
+    // Mark the feed loading BEFORE the first paint. paintCommunityPanels()
+    // renders the grid from cs.loading, so painting a skeleton and then
+    // calling it here drew the skeleton, replaced it with an empty grid, and
+    // only then filled it in - three passes and a visible flash of "nothing
+    // published" where one pass would do.
+    cs.loading = true;
     paintCommunityPanels();
 
     // guard against a slower, earlier fetch resolving after a newer one and
     // clobbering the grid with stale data (e.g. rapid back-and-forth clicks).
     const requestToken = Symbol('community-fetch');
     cs.latestFetchToken = requestToken;
-    await fetchCommunityFeed();
+    try {
+        await fetchCommunityFeed();
+    } finally {
+        cs.loading = false;
+    }
     if (cs.latestFetchToken === requestToken) paintCommunityPanels();
 }
 
@@ -1027,15 +1039,29 @@ const COMMUNITY_PANELS = {
     uploads: { id: 'community-uploads', title: 'My uploads' }
 };
 
+// The contest shelf on the landing panel needs events data the events panel
+// used to own. Fetched once per page life rather than once per paint: this
+// used to fire on every call to paintCommunityPanels() and repaint the landing
+// again each time it resolved, which is most of why opening the hub painted
+// itself four or five times over.
+let contestFetch = null;
+function ensureContestData() {
+    // no contests means no shelf, so a failure here is not worth reporting
+    contestFetch ||= Promise.resolve(api.fetchEvents?.()).catch(() => {});
+    return contestFetch;
+}
+
 // paint all three feed-backed panels together - they all read cs.mons, and
 // repainting hidden ones costs nothing.
 function paintCommunityPanels() {
-    // contest shelf needs events data the events panel used to own; fetch
-    // quietly - no contests means no shelf.
-    api.fetchEvents?.().then(() => renderCommunityLanding()).catch(() => {});
+    const firstPaint = !contestFetch;
     renderCommunityLanding();
     renderCommunityGrid();
     renderCommunityUploads();
+    // Only the very first paint owes the landing a second pass for the shelf.
+    // After that the events data is already in hand and the paint above
+    // included it, so repainting for it would be a wasted pass.
+    if (firstPaint) ensureContestData().then(renderCommunityLanding);
 }
 
 function setCommunityPanel(panel) {
@@ -1107,12 +1133,9 @@ function renderCommunityUploads() {
         .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))
         .map(row => {
             const mon = row.fakemon_data || {};
-            const art = mon.thumbnail || mon.artwork;
             const id = escapeHtml(String(row.id));
             return `<div class="community-upload-row">
-                <div class="community-upload-art">${art
-                    ? shieldedArtHtml(art, { alt: `${mon.name || 'Fakémon'} artwork` })
-                    : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork">'}</div>
+                <div class="community-upload-art">${lazyArtHtml(row, `${mon.name || 'Fakémon'} artwork`)}</div>
                 <div class="community-upload-info">
                     <strong>${escapeHtml(mon.name || 'Unnamed')}</strong>
                     <span>Published ${new Date(row.published_at).toLocaleDateString()}</span>
@@ -1138,8 +1161,9 @@ function renderCommunityUploads() {
 // ISO week, so it's deterministic per-week with nothing to run or sync.
 function isoWeekKey(date = new Date()) {
     // ISO weeks start Monday, belong to their Thursday's year. done by hand
-    // (not locale) so the key is identical for every visitor.
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    // (not locale) so the key is identical for every visitor -- which means
+    // reading the date in UTC too, not in whatever zone the visitor is in.
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
     const dayNum = d.getUTCDay() || 7;               // Sunday counts as 7
     d.setUTCDate(d.getUTCDate() + 4 - dayNum);       // move to this week's Thursday
     const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
@@ -1158,23 +1182,20 @@ function seedFrom(text) {
     return hash >>> 0;
 }
 
+// Scores each row on its own, from its id and the week, and takes the best
+// `count`. The seed alone used to drive a Fisher-Yates shuffle of the whole
+// pool, which made the result depend on how many rows were in it: publishing
+// one new Fakemon shifted every index and dealt a completely different
+// "Featured this week", so on any day something was published the shelf reset.
+// A per-row score has no such coupling -- the same row scores the same all
+// week no matter what else is in the hub.
 function seededPick(rows, count, seedText) {
-    // sort by id first so input order can't affect the result - only the seed decides.
-    const pool = [...rows].sort((a, b) => String(a.id).localeCompare(String(b.id)));
-    let seed = seedFrom(seedText) || 1;
-    const next = () => {
-        // xorshift32: small, no dependencies, and good enough to shuffle a few
-        // dozen rows without visible clumping.
-        seed ^= seed << 13; seed >>>= 0;
-        seed ^= seed >> 17;
-        seed ^= seed << 5;  seed >>>= 0;
-        return seed / 4294967296;
-    };
-    for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(next() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, count);
+    return [...rows]
+        .map(row => ({ row, score: seedFrom(`${seedText}:${row.id}`) }))
+        // id breaks ties so two rows that hash alike still order consistently
+        .sort((a, b) => a.score - b.score || String(a.row.id).localeCompare(String(b.row.id)))
+        .slice(0, count)
+        .map(entry => entry.row);
 }
 
 // ==================== landing rendering ====================
@@ -1183,13 +1204,10 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function landingCard(row) {
     const mon = row.fakemon_data || {};
-    const art = mon.thumbnail || mon.artwork;
     const types = [mon.type1, mon.type2].filter(Boolean).map(t =>
         `<span class="type-badge type-${escapeHtml(String(t).toLowerCase())}">${escapeHtml(t)}</span>`).join('');
     return `<button type="button" class="community-landing-card" onclick="openMonDetail('${escapeHtml(String(row.id))}')">
-        <span class="community-landing-art">${art
-            ? shieldedArtHtml(art, { alt: `${mon.name || 'Fakémon'} artwork` })
-            : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork">'}</span>
+        <span class="community-landing-art">${lazyArtHtml(row, `${mon.name || 'Fakémon'} artwork`)}</span>
         <span class="community-landing-name">${escapeHtml(mon.name || 'Unnamed')}</span>
         <span class="community-landing-types">${types}</span>
         <span class="community-landing-stats">
@@ -1345,9 +1363,19 @@ function withAbilityPrograms(mon) {
 }
 
 async function makeThumbnail(dataUri) {
-    if (!String(dataUri || '').startsWith('data:image')) return '';
+    if (!String(dataUri || '')) return '';
+    // An animated image cannot survive this: drawImage paints exactly one
+    // frame, so a GIF would get a still thumbnail on its card and only move
+    // once the post was opened. Leaving it without one puts the card on the
+    // lazy path, which loads and plays the real thing.
+    if (await frameCount(dataUri) > 1) {
+        log.debug('COMMUNITY', 'Animated artwork gets no thumbnail; the card loads the real image');
+        return '';
+    }
     try {
-        const bitmap = await createImageBitmap(await (await fetch(dataUri)).blob());
+        const blob = await artworkBlob(dataUri);
+        if (!blob) return '';
+        const bitmap = await createImageBitmap(blob);
         const scale = Math.min(1, THUMB_MAX_PX / Math.max(bitmap.width, bitmap.height));
         const w = Math.max(1, Math.round(bitmap.width * scale));
         const h = Math.max(1, Math.round(bitmap.height * scale));
@@ -1458,20 +1486,24 @@ async function flushArtworkQueue() {
     if (!ids.length) return;
     try {
         const client = await api.getClient();
-        const { data, error } = await client
-            .from('published_mons')
-            .select('id, fakemon_data->>artwork')
-            .in('id', ids);
+        // Was `select('id, fakemon_data->>artwork')`, which put the whole image
+        // in the response as readable base64. The RPC returns it encrypted and
+        // picks the stored thumbnail over the full image the way the cards
+        // used to themselves.
+        const { data, error } = await client.rpc('community_mon_artwork', { p_ids: ids });
         if (error) throw error;
         for (const row of data || []) {
-            const art = row.artwork || '';
-            artworkCache.set(row.id, art);
+            const art = maskedArtwork(row.image);
+            artworkCache.set(row.mon_id, art);
             // Written through to disk so the next visit costs nothing. Not
-            // awaited: painting must not wait on storage.
-            putCachedArt(row.id, art);
-            paintArtwork(row.id, art);
-            settleArtwork(row.id, art);
-            backfillThumbnail(row.id, art);
+            // awaited: painting must not wait on storage. The masked form is
+            // what gets cached; it decrypts for as long as it is kept.
+            putCachedArt(row.mon_id, art);
+            paintArtwork(row.mon_id, art);
+            settleArtwork(row.mon_id, art);
+            // is_thumb false means the post had no small version and this is
+            // the full image, which is exactly when a backfill is worth doing
+            if (!row.is_thumb) backfillThumbnail(row.mon_id, art);
         }
         // Anything the query did not return still gets a cache entry, so a
         // deleted or unreadable row is not re-requested on every scroll.
@@ -1500,7 +1532,8 @@ async function backfillThumbnail(id, art) {
     if (!state.user) return;
     const row = ensureCommunityState().mons.find(m => m.id === id);
     if (!row) return;
-    if (row.fakemon_data?.thumbnail) return;
+    // whether a thumbnail already exists is the caller's to know now (the RPC
+    // reports it); the feed row no longer carries one to check
     const mine = row.user_id === state.user.id;
     if (!mine && !api.isStaff?.()) return;
 
@@ -1516,6 +1549,26 @@ async function backfillThumbnail(id, art) {
     } catch (e) {
         log.debug('COMMUNITY', 'Thumbnail backfill skipped', { id, error: String(e?.message || e) });
     }
+}
+
+/**
+ * Artwork for a row that a plain-HTML renderer is painting.
+ *
+ * The React feed awaits requestCardArtwork(); these renderers build a string
+ * in one pass and have nothing to await with, so they emit a slot instead and
+ * paintArtwork() fills it in when the image lands. They used to read
+ * fakemon_data.thumbnail straight out of the feed row, which is the readable
+ * image the feed no longer carries.
+ *
+ * @param {object} row a feed row
+ * @param {string} alt
+ * @returns {string} canvas markup if the artwork is already in hand, else a slot
+ */
+function lazyArtHtml(row, alt) {
+    const cached = row?.id ? artworkCache.get(row.id) : '';
+    if (cached) return shieldedArtHtml(cached, { alt });
+    if (row?.id) queueArtwork(row.id);
+    return `<span data-art-for="${escapeHtml(String(row?.id || ''))}" data-art-name="${escapeHtml(alt)}"><img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork"></span>`;
 }
 
 function paintArtwork(id, art) {
@@ -1583,11 +1636,18 @@ function buildCommunityEvoStripHtml(row) {
 // renders a Fakemon snapshot into the read-only community preview board.
 // shared by openMonDetail (first load) and switchCommunityPreviewMon
 // (clicking an evolution/mega/forme chip) so both stay in sync.
-function renderCommunityPreviewBoard(mon, row) {
+async function renderCommunityPreviewBoard(mon, row) {
     if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
     state.isCommunityPreview = true;
     state.editingId = null;
-    api.loadFakemonIntoEditor(mon);
+    // The board is a copy of the editor's, which renders artwork as an <img>
+    // and so needs a URL. Decoded here, in memory: this never touches the
+    // network, and it is the only place masked artwork is turned back.
+    api.loadFakemonIntoEditor({
+        ...mon,
+        artwork: await artworkDataUri(mon.artwork),
+        shinyArtwork: await artworkDataUri(mon.shinyArtwork)
+    });
     api.updatePreview?.();
 
     const source = document.getElementById('pokedex-board-container');
@@ -1626,7 +1686,43 @@ function switchCommunityPreviewMon(sourceId) {
     const entry = (row?.family_full || []).find(m => m.sourceId === String(sourceId));
     if (!entry || cs.openMonActiveSourceId === String(sourceId)) return;
     cs.openMonActiveSourceId = String(sourceId);
-    renderCommunityPreviewBoard(entry.mon, row);
+    renderCommunityPreviewBoard(entry.mon, row);   // fire and forget: nothing below waits on the board
+}
+
+// The full post, minus every picture, plus the pictures back in masked form.
+//
+// This was `select('*')`, the single largest readable image payload on the
+// site: full artwork and shinies for a whole evolution family, sitting in one
+// response body. community_mon_detail() strips the image keys server-side and
+// community_mon_images() returns them encrypted, so the row arrives whole but
+// nothing in it is a viewable image.
+async function fetchMonDetailRow(publishedId) {
+    const client = await api.getClient();
+    const [detail, images] = await Promise.all([
+        client.rpc('community_mon_detail', { p_id: publishedId }),
+        client.rpc('community_mon_images', { p_id: publishedId })
+    ]);
+    if (detail.error) throw detail.error;
+    const row = detail.data;
+    if (!row) return null;
+    // an images failure is not fatal: the post still reads, it just has no art
+    if (images.error) log.warn('COMMUNITY', 'Could not load artwork for this post', images.error);
+
+    // '' as the source id is the post's own mon; anything else names a family
+    // member, keyed the way family_full is.
+    const byMember = new Map();
+    for (const img of images.data || []) {
+        const art = maskedArtwork(img.image);
+        if (!art) continue;
+        const key = String(img.source_id || '');
+        if (!byMember.has(key)) byMember.set(key, {});
+        byMember.get(key)[img.kind] = art;
+    }
+    Object.assign(row.fakemon_data ||= {}, byMember.get('') || {});
+    for (const entry of row.family_full || []) {
+        Object.assign(entry.mon ||= {}, byMember.get(String(entry.sourceId || '')) || {});
+    }
+    return row;
 }
 
 async function openMonDetail(publishedId, options = {}) {
@@ -1640,9 +1736,7 @@ async function openMonDetail(publishedId, options = {}) {
     // twice. flag cleared by updatePublishedMon or a forced feed reload.
     try {
         if (!row.__full) {
-            const client = await api.getClient();
-            const { data: fullRow, error } = await client.from('published_mons').select('*').eq('id', publishedId).maybeSingle();
-            if (error) throw error;
+            const fullRow = await fetchMonDetailRow(publishedId);
             if (fullRow) {
                 row = { ...row, ...fullRow, __full: true };
                 const idx = cs.mons.findIndex(m => m.id === publishedId);
@@ -1676,7 +1770,7 @@ async function openMonDetail(publishedId, options = {}) {
     renderCommunityPreviewBoard(mon, row);
 
     document.getElementById('community-detail-author').innerHTML = `
-        ${row.author_avatar_url ? `<img class="community-mini-avatar" src="${row.author_avatar_url}" alt="">` : `<span class="community-mini-avatar community-mini-avatar-fallback">${escapeHtml((row.author_name || '?').charAt(0).toUpperCase())}</span>`}
+        ${avatarHtml(row.user_id, { name: row.author_name, url: row.author_avatar_url })}
         <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">Published by ${escapeHtml(row.author_name)}</span>
         ${renderBadgeRow(row.author_badges, 13)}
     `;

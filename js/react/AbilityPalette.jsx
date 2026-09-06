@@ -67,7 +67,7 @@ export function AbilityPalette({ kind, tables }) {
 
             <div className="ab-palette-tip">
                 <strong>Tip</strong><br />
-                Events are executable roots. Drag actions into an event stack.
+                Drag actions into an event block.
                 Add as many event triggers as you need.
             </div>
         </>
