@@ -24,19 +24,90 @@ const MIRROR_KEY = 'woogidexCollectionMirror_v1';
 const MIRROR_MIN_INTERVAL_MS = 5 * 60 * 1000;
 let lastMirrorAt = 0;
 
+// How many Fakemon were stored last time, kept in localStorage rather than
+// IndexedDB *on purpose*: it has to survive the thing it is there to detect.
+// When IndexedDB comes back empty but this says otherwise, the collection did
+// not become empty, it went missing - and the user needs to be told before
+// they start creating things on top of it.
+const COUNT_MARKER_KEY = 'woogidex.collection.count.v1';
+let wipeSuspected = false;      // loaded empty, but this device says there was something
+let emptyAcknowledged = false;  // user confirmed the empty collection is correct
+
+// Two tabs both hold the whole collection in memory. Without a fence, the one
+// with the older copy overwrites the newer one on its next save and silently
+// undoes everything the other tab did. This stamp is how a save notices that
+// somebody else wrote since we last looked.
+const STAMP_KEY = 'woogidexCollectionStamp_v1';
+const SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+let lastSeenStamp = null;       // the stamp this session last read or wrote
+let foreignWriteDetected = false;
+
 /** True once the stored collection has been read successfully this session. */
 export function isCollectionLoaded() { return collectionLoaded; }
+
+/**
+ * True when the collection loaded empty but this device has a record of it
+ * holding something. Drives the warning modal in js/features/recovery.js.
+ */
+export function isCollectionWipeSuspected() { return wipeSuspected && !emptyAcknowledged; }
+
+/** True when another tab has written since this session last read the collection. */
+export function isStaleTab() { return foreignWriteDetected; }
+
+/**
+ * The user says the empty collection is correct (they deleted everything
+ * themselves). Lifts the save block and stops the warning coming back.
+ */
+export function acknowledgeEmptyCollection() {
+    emptyAcknowledged = true;
+    writeCountMarker(0);
+    log.info('STORAGE', 'User confirmed the empty collection is expected');
+}
+
+/** Did somebody other than this session write since we last looked? */
+function isForeignStamp(stamp) {
+    if (!stamp) return false;                 // nothing written yet by anyone
+    if (!lastSeenStamp) return true;          // there was no stamp when we loaded; now there is
+    return stamp.writer !== lastSeenStamp.writer || stamp.seq !== lastSeenStamp.seq;
+}
+
+/** Records this session as the collection's most recent writer. */
+async function claimStamp(previous) {
+    const next = {
+        writer: SESSION_ID,
+        seq: Math.max(Number(previous?.seq) || 0, Number(lastSeenStamp?.seq) || 0) + 1,
+        at: Date.now()
+    };
+    try {
+        await idbSet(STAMP_KEY, next);
+        lastSeenStamp = next;
+    } catch (e) {
+        // The collection itself is already written, which is what matters. Leaving
+        // lastSeenStamp alone keeps it consistent with what is actually stored.
+        log.warn('STORAGE', 'Could not update the write stamp', e);
+    }
+}
+
+function readCountMarker() {
+    try {
+        const raw = localStorage.getItem(COUNT_MARKER_KEY);
+        if (raw === null) return null;
+        const n = Number(raw);
+        return Number.isFinite(n) && n >= 0 ? n : null;
+    } catch { return null; }
+}
+function writeCountMarker(n) {
+    try { localStorage.setItem(COUNT_MARKER_KEY, String(n)); } catch { /* private mode */ }
+}
 
 function reportLoadFailure(e) {
     collectionLoaded = false;
     if (loadFailureReported) return;
     loadFailureReported = true;
     log.error('STORAGE', 'Collection could not be read; saving is disabled for this session', e);
-    api.showToast?.(
-        "We couldn't open your saved collection. Nothing has been changed or deleted - "
-        + 'reload the page before editing, so a save cannot overwrite it.',
-        'error'
-    );
+    // A modal, not a toast: this one has to stop the user before they start
+    // creating things on top of a collection that is still recoverable.
+    api.warnCollectionLoadFailed?.();
 }
 
 /**
@@ -244,12 +315,30 @@ function normalizeCollections() {
 
                 // claim the ID before the first await so later saves in this session update the same record
                 const savedId = state.editingId || fakemon.id;
+
+                const idx = state.fakemonDB.findIndex(f => String(f.id) === String(savedId));
+
+                // buildFakemonObject() is a snapshot of the editor. Writing it over a
+                // saved record is only correct while the editor is actually showing
+                // THAT record -- editorLoadedId is set at the end of a successful
+                // load and cleared at the start of one. Anything else (a half-finished
+                // load, a preview that borrowed the editor's form, a debounced save
+                // landing after the editor moved on) would replace the stored Fakemon
+                // with a stripped copy: no artwork, no moves, no abilities.
+                if (idx !== -1 && String(state.editorLoadedId ?? '') !== String(savedId)) {
+                    log.error('STORAGE', 'Refusing an autosave that does not own the record it would overwrite',
+                        { savedId, editorLoadedId: state.editorLoadedId });
+                    updateSaveStatus('unsaved');
+                    return false;
+                }
+
                 state.editingId = savedId;
                 fakemon.id = savedId;
 
-                const idx = state.fakemonDB.findIndex(f => String(f.id) === String(savedId));
                 if (idx !== -1) state.fakemonDB[idx] = fakemon;
                 else state.fakemonDB.push(fakemon);
+                // a brand-new Fakemon is the editor's from the moment it exists
+                state.editorLoadedId = savedId;
                 normalizeCollections();
 
                 // a refused write must not be reported as a save; the guards in
@@ -400,6 +489,7 @@ function normalizeCollections() {
                 state.editingId = null;
                 state.lastSavedId = null;
             }
+            if (String(state.editorLoadedId) === String(id)) state.editorLoadedId = null;
 
             await saveToStorage({ allowEmpty: true });
             api.renderCollection();
@@ -432,7 +522,27 @@ function normalizeCollections() {
             // read turned into a permanent wipe.
             if (!collectionLoaded) {
                 log.error('STORAGE', 'Refusing to save: the stored collection was never loaded this session');
-                reportLoadFailure(new Error('save attempted before a successful load'));
+                // straight to the modal: reportLoadFailure() only speaks once per
+                // session, and a user who closed it and then tried to save needs
+                // to be told again why nothing happened
+                api.warnCollectionLoadFailed?.();
+                return false;
+            }
+
+            // The collection came up empty when this device says it should not have.
+            // Until the user tells us which it is, every write is a potential
+            // overwrite of data that is still sitting there recoverable.
+            if (isCollectionWipeSuspected()) {
+                log.error('STORAGE', 'Refusing to save while the collection looks wiped');
+                api.warnCollectionLooksWiped?.();
+                return false;
+            }
+
+            // Another tab wrote after we read. Our copy is older, so saving it would
+            // roll their work back. Nothing this tab holds is safe to write again.
+            if (foreignWriteDetected) {
+                log.error('STORAGE', 'Refusing to save from a stale tab');
+                api.warnStaleTab?.();
                 return false;
             }
 
@@ -474,6 +584,17 @@ function normalizeCollections() {
                     return true;
                 }
 
+                // Re-checked here, inside the serialized write chain, rather than
+                // above: another tab can commit in the time a queued save spends
+                // waiting its turn.
+                const stamp = await idbGet(STAMP_KEY).catch(() => undefined);
+                if (isForeignStamp(stamp)) {
+                    foreignWriteDetected = true;
+                    log.error('STORAGE', 'Aborting save: another tab wrote first', { stamp, lastSeenStamp });
+                    api.warnStaleTab?.();
+                    return false;
+                }
+
                 const done = log.time('STORAGE', 'saveToStorage');
                 log.debug('STORAGE', 'Saving collection snapshot', {
                     revision,
@@ -492,6 +613,8 @@ function normalizeCollections() {
                     await idbSet('woogidexCustomItems_v1', snapshot.customItems);
                     await idbSet('woogidexBattleTeams_v1', snapshot.battleTeams);
                     lastKnownCount = snapshot.fakemonDB.length;
+                    writeCountMarker(snapshot.fakemonDB.length);
+                    await claimStamp(stamp);
                     await writeMirror(snapshot);
                     done({ revision, fakemons: snapshot.fakemonDB.length });
                     log.info('STORAGE', 'Collection saved', { revision });
@@ -554,6 +677,24 @@ function normalizeCollections() {
             }
 
             lastKnownCount = state.fakemonDB.length;
+
+            // Adopt whatever the last writer left, so this session only trips the
+            // stale-tab fence on writes that happen from here on.
+            lastSeenStamp = await idbGet(STAMP_KEY).catch(() => null) || null;
+            foreignWriteDetected = false;
+
+            // An empty collection is either "you deleted everything" or "your
+            // collection is missing". The count marker is the only thing that can
+            // tell those apart, and it lives in localStorage so that losing
+            // IndexedDB does not also lose the evidence that there was something
+            // in it. While this is set, saving is blocked: see saveToStorage().
+            const marker = readCountMarker();
+            wipeSuspected = state.fakemonDB.length === 0 && marker > 0;
+            if (wipeSuspected) {
+                log.error('STORAGE', 'Collection loaded empty but this device recorded Fakemon', { expected: marker });
+            } else {
+                writeCountMarker(state.fakemonDB.length);
+            }
 
             // These are secondary: an empty custom-move library is a real state, and
             // failing to read one is not a reason to refuse to load the collection.

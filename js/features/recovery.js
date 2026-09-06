@@ -164,6 +164,120 @@ async function reportNothingFoundLocally() {
     );
 }
 
+// ==================== "something is wrong with your collection" ====================
+// Three situations, one modal. All three share the same advice, because in all
+// three the dangerous thing is the same: carrying on and creating or editing
+// Fakemon writes over data that is very likely still recoverable.
+//
+// Saving is already blocked by js/core/storage.js in the first two cases. This
+// is the part that tells the user why, before they go looking for the reason in
+// an empty collection screen.
+
+const WARNING_REOPEN_COOLDOWN_MS = 15000;
+let lastWarningShownAt = 0;
+let warningKind = null;
+
+const WARNINGS = {
+    'load-failed': {
+        title: 'Your Collection Did Not Load',
+        body: `<p><strong>Your Fakémon have not been deleted.</strong> We could not open the place they are stored,
+               which is usually a temporary browser problem rather than lost data.</p>
+               <p><strong>Please reload the page before doing anything else.</strong> Until you do, saving is
+               switched off on purpose: creating or editing a Fakémon now could write over the collection
+               that is still sitting there.</p>`
+    },
+    wiped: {
+        title: 'Your Collection Looks Empty',
+        body: `<p><strong>Do not create anything yet.</strong> Your collection came up empty, but this device has a
+               record of Fakémon being here, so they have most likely gone missing rather than been deleted.</p>
+               <p>Reload the page first — an empty collection is very often just a browser hiccup, and a reload
+               fixes it. If it is still empty afterwards, use <em>Check for lost Fakémon</em> to restore them
+               from a backup copy.</p>
+               <p>Saving is switched off until then, because a new Fakémon saved now could take the place of the
+               ones we can still get back.</p>`
+    },
+    'stale-tab': {
+        title: 'This Tab Is Out Of Date',
+        body: `<p>Your collection was changed in another tab or window, so what this tab is showing is older than
+               what is actually saved.</p>
+               <p><strong>Reload this page to catch up.</strong> Saving from here is switched off, because writing
+               this tab's older copy back would undo the changes the other tab made.</p>`
+    }
+};
+
+/**
+ * Opens the warning for `kind`, unless it is already up or was just dismissed.
+ * @param {'load-failed'|'wiped'|'stale-tab'} kind
+ */
+function openCollectionWarning(kind) {
+    const modal = document.getElementById('collection-warning-modal');
+    const config = WARNINGS[kind];
+    if (!modal || !config) return;
+
+    // saveToStorage() calls in here on every refused write, and a refused write
+    // happens on every keystroke in the editor; without this the modal would
+    // reopen the instant the user closed it
+    if (modal.classList.contains('active')) return;
+    if (Date.now() - lastWarningShownAt < WARNING_REOPEN_COOLDOWN_MS) {
+        api.showToast?.('Saving is switched off until you reload the page.', 'error');
+        return;
+    }
+
+    warningKind = kind;
+    lastWarningShownAt = Date.now();
+    document.getElementById('collection-warning-title').textContent = config.title;
+    document.getElementById('collection-warning-body').innerHTML = config.body;
+    document.getElementById('collection-warning-actions').innerHTML = warningActionsHtml(kind);
+
+    modal.classList.add('active');
+    document.body.classList.add('modal-open');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function warningActionsHtml(kind) {
+    const reload = `<button type="button" class="btn btn-primary" onclick="location.reload()">
+        <i data-lucide="rotate-cw" style="width:14px;height:14px;"></i> Reload the Page</button>`;
+    if (kind !== 'wiped') return reload;
+    // Only the "looks wiped" case has anywhere else to go: a backup to check, and
+    // a way out for the user who really did delete everything themselves.
+    return `${reload}
+        <button type="button" class="btn btn-secondary" onclick="checkForLostFakemonFromWarning()">Check for Lost Fakémon</button>
+        <button type="button" class="btn btn-secondary" onclick="confirmCollectionIsEmpty()">I Deleted Them Myself</button>`;
+}
+
+export function closeCollectionWarning() {
+    document.getElementById('collection-warning-modal')?.classList.remove('active');
+    document.body.classList.remove('modal-open');
+}
+
+/** The warning's recovery button: close it and run the full scan straight away. */
+export async function checkForLostFakemonFromWarning() {
+    closeCollectionWarning();
+    await manualCheckForLostFakemon();
+}
+
+/** The warning's way out for a collection that really is supposed to be empty. */
+export function confirmCollectionIsEmpty() {
+    api.acknowledgeEmptyCollection?.();
+    closeCollectionWarning();
+    api.showToast?.('Got it. Saving is back on, and we will not ask again.', 'success');
+}
+
+/**
+ * Boot check, ahead of the lost-Fakemon scan. Returns true when it showed
+ * something, in which case its own buttons drive whatever happens next.
+ */
+export function maybeWarnAboutCollectionHealth() {
+    if (api.isCollectionLoaded && !api.isCollectionLoaded()) { openCollectionWarning('load-failed'); return true; }
+    if (api.isCollectionWipeSuspected?.()) { openCollectionWarning('wiped'); return true; }
+    return false;
+}
+
+/** Called by saveToStorage() when it refuses a write. */
+export function warnCollectionLooksWiped() { openCollectionWarning('wiped'); }
+export function warnCollectionLoadFailed() { openCollectionWarning('load-failed'); }
+export function warnStaleTab() { openCollectionWarning('stale-tab'); }
+
 function renderRecoveryList() {
     const list = document.getElementById('recovery-list');
     if (!list) return;

@@ -59,6 +59,10 @@ export const state = {
     battleTeams: [],
     currentFolderId: null,
     editingId: null,
+    // which saved Fakemon the editor's in-memory state was actually populated
+    // from. autoSave() refuses to overwrite a record the editor does not own,
+    // so a half-finished load or a borrowed form can't blank one out.
+    editorLoadedId: null,
     // NOTE: editor draft and saved library share customMoves/customAbilities
     // names; worth splitting into a separate draft object eventually
     abilities: [],
@@ -583,9 +587,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     log.info('BOOT', 'Application ready', { fakemons: state.fakemonDB.length, sdLoaded: state.sdLoaded });
     // empty collection on a local origin looks like data loss; see dev-notice.js
     maybeShowOriginNotice(state.fakemonDB.length);
-    // recovery takes priority over the transfer notice; recovery.js shows the
-    // transfer notice itself once it's done (restored, dismissed, or nothing found)
-    if (!(await api.checkForLostFakemon?.())) api.maybeShowSiteTransferNotice?.();
+    // Order matters. A collection that did not load, or that came up empty on a
+    // device that had Fakemon, is the only thing worth showing first: it tells
+    // the user not to create anything yet, and its own buttons lead to the
+    // recovery scan. Otherwise recovery takes priority over the transfer notice;
+    // recovery.js shows the transfer notice itself once it is done (restored,
+    // dismissed, or nothing found).
+    if (!api.maybeWarnAboutCollectionHealth?.()) {
+        if (!(await api.checkForLostFakemon?.())) api.maybeShowSiteTransferNotice?.();
+    }
     // last on purpose: refreshUpdatesBadge() checks for an already-open modal
     // before opening its own, but still fills the unread count either way
     window.refreshUpdatesBadge?.({ autoOpen: true });

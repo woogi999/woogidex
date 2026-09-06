@@ -524,6 +524,25 @@
         </div>
     </div>
 
+    <!-- Shown when the collection did not load, or loaded empty on a device that
+         recorded Fakemon. Title, body and buttons are filled in by
+         openCollectionWarning() in js/features/recovery.js, which is also what
+         decides which of those situations this is. -->
+    <div class="modal-overlay" id="collection-warning-modal">
+        <div class="modal policy-modal">
+            <div class="modal-header">
+                <div>
+                    <h3 id="collection-warning-title">Your Collection Did Not Load</h3>
+                </div>
+                <button class="modal-close" onclick="closeCollectionWarning()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="modal-body policy-body">
+                <div id="collection-warning-body"></div>
+                <div class="policy-actions" id="collection-warning-actions"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="lost-fakemon-modal" onclick="if(event.target===this) closeRecoveryModal()">
         <div class="modal policy-modal">
             <div class="modal-header">

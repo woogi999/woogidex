@@ -72,10 +72,17 @@ function resetEditor() {
             updateStats();
             updateGenderBar();
             api.initializeEvolutionGraph?.(null);
+            // a blank editor owns no saved record until the first save creates one
+            state.editorLoadedId = null;
         }
 
         function loadFakemonIntoEditor(fakemon) {
             log.info('EDITOR', 'Loading Fakemon into editor', { id: fakemon?.id, name: fakemon?.name, moves: fakemon?.learnset?.length || 0 });
+            // Released now and re-claimed at the very end, so a load that throws
+            // part way through leaves the editor owning nothing rather than owning
+            // a record it only half filled in. autoSave() checks this before it
+            // overwrites anything.
+            state.editorLoadedId = null;
             document.getElementById('fakemon-name').value = fakemon.name || '';
             document.getElementById('fakemon-species').value = fakemon.species || '';
             selectType('type1', fakemon.type1 || '');
@@ -212,6 +219,8 @@ function resetEditor() {
             api.initializeEvolutionGraph?.(fakemon.evolutionGraph || null);
             updateStats();
             updateGenderBar();
+            // fully populated: the editor now owns this record and may save over it
+            state.editorLoadedId = fakemon.id ?? null;
         }
 
         
