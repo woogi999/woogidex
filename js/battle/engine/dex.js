@@ -155,13 +155,22 @@ export class BattleDex {
             }),
             abilities: Object.freeze((fakemon.abilities || []).filter(a => a && a.name)),
             learnset: Object.freeze(fakemon.learnset || []),
-            // kg; sd-facade converts to the hectograms Showdown uses (for Low Kick/Grass Knot)
-            weightkg: Number(fakemon.weightkg) || 0,
+            // kg; sd-facade converts to the hectograms Showdown uses (for Low Kick/Grass Knot).
+            // Saved Fakemon only carry the display string ('25 kg' / '55 lb'), so fall back to it.
+            weightkg: Number(fakemon.weightkg) || parseWeightKg(fakemon.weight),
             artwork: fakemon.artwork || '',
             shinyArtwork: fakemon.shinyArtwork || '',
             number: fakemon.number || ''
         });
     }
+}
+
+function parseWeightKg(display) {
+    const match = String(display || '').trim().match(/^([\d.]+)\s*(kg|lb)?$/i);
+    if (!match) return 0;
+    const val = parseFloat(match[1]);
+    if (!Number.isFinite(val)) return 0;
+    return (match[2] || 'kg').toLowerCase() === 'lb' ? val / 2.20462 : val;
 }
 
 function num(v, fallback) {

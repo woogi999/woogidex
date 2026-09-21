@@ -82,6 +82,24 @@ function ensureCloudState() {
     return state.cloud;
 }
 
+/**
+ * Fingerprint of everything in the manifest that the collection grid draws.
+ * Re-rendering the grid rebuilds every card's innerHTML, so it is only worth
+ * doing when this actually changed -- otherwise a routine manifest refetch
+ * repaints the whole page for no visible difference.
+ */
+function cloudManifestSignature() {
+    const cs = ensureCloudState();
+    return [...cs.byId.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]))).join('|')
+        + `#${cs.loaded ? 1 : 0}`;
+}
+
+/** Re-renders the collection only if the badges it draws would come out different. */
+function renderCollectionIfManifestChanged(before) {
+    if (cloudManifestSignature() === before) return;
+    api.renderCollection?.();
+}
+
 /** Total items a backup of `list` would occupy against the item quota. */
 export function countCloudItems(list = state.fakemonDB) {
     return (list?.length || 0)
@@ -124,6 +142,7 @@ function friendlyCloudError(error) {
 /** Refreshes the cached manifest (two small columns, never the full backup). Called on auth change and after every write. */
 export async function refreshCloudManifest() {
     const cs = ensureCloudState();
+    const signedInSignature = cloudManifestSignature();
     if (!state.user) {
         cs.byId = new Map();
         cs.loaded = false;
@@ -131,14 +150,15 @@ export async function refreshCloudManifest() {
         cs.libraryCount = 0;
         cs.publishedCount = null;
         cs.limits = { ...DEFAULT_LIMITS };
-        api.renderCollection?.();
+        renderCollectionIfManifestChanged(signedInSignature);
         await refreshCloudBackupUI({ revalidate: false });
         return;
     }
     // Limits refreshed alongside the manifest since meters are measured against them.
+    const before = cloudManifestSignature();
     await refreshCloudLimits();
     await fetchCloudManifest();
-    api.renderCollection?.();
+    renderCollectionIfManifestChanged(before);
     // Already revalidated above; don't refetch the same answers again.
     await refreshCloudBackupUI({ revalidate: false });
 }
@@ -782,10 +802,12 @@ export async function refreshCloudBackupUI({ revalidate = true } = {}) {
 
     // Refetched fresh every time rather than trusted from cache: other tabs/devices
     // can change these counts without this tab hearing about it.
+    const before = cloudManifestSignature();
     await Promise.all([refreshCloudLimits(), fetchCloudManifest(), refreshPublishedCount()]);
     paintCloudBackupUI();
-    // Manifest also drives the collection grid's badges, so push a re-render there too.
-    api.renderCollection?.();
+    // Manifest also drives the collection grid's badges, so push a re-render there
+    // too -- but only when a badge would actually come out different.
+    renderCollectionIfManifestChanged(before);
 }
 
 /** Writes the current cloud state into the Settings rows. No fetching. */

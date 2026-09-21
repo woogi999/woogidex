@@ -412,8 +412,10 @@ function normalizeCollections() {
                 }),
                 dexEntry1: document.getElementById('dex-entry1').value.trim(),
                 dexEntry2: document.getElementById('dex-entry2').value.trim(),
-                height: document.getElementById('fakemon-height').value.trim(),
-                weight: document.getElementById('fakemon-weight').value.trim(),
+                // unit-suffixed ('3.5 ft'), otherwise a foot/pound value reloads
+                // as metres/kilograms and silently changes the Fakemon's size
+                height: api.getHeightDisplay ? api.getHeightDisplay() : document.getElementById('fakemon-height').value.trim(),
+                weight: api.getWeightDisplay ? api.getWeightDisplay() : document.getElementById('fakemon-weight').value.trim(),
                 color: document.getElementById('fakemon-color').value,
                 eggGroups: api.getEggGroupValue(),
                 genderRatio: api.getGenderRatioValue(),

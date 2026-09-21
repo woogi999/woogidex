@@ -33,7 +33,7 @@ You must be at least 13 years old, or the minimum age set by law where you live,
 - You may sign in with a password, or with Google or Discord. Signing in with one of those is subject to that provider's own terms as well as these, and what we receive from them is set out in [the Privacy Policy](privacy#6-social-logins). Only connect an account you own.
 - One person, one account. Do not create additional accounts to get around a suspension or ban.
 - Do not impersonate another person, creator, staff member, company or organisation, whether through your username, display name, avatar or anything you post.
-- Tell us at **contact@dex.woogi.xyz** if you believe your account has been accessed by someone else.
+- Tell us at **earl@woogi.xyz** if you believe your account has been accessed by someone else.
 
 How we handle the information attached to your account is described in the [Privacy Policy](privacy).
 
@@ -69,7 +69,7 @@ You are responsible for the content you post, and you confirm that you have the 
 
 We may remove content, hide it, suspend an account, terminate an account, or permanently ban a user who breaks these terms, breaks the Community Rules, or abuses the service. Serious or repeated breaches can result in a permanent ban without warning. AI-generated artwork, sexual content, harassment and ban evasion are the most likely to.
 
-If you believe a moderation decision was a mistake, email **contact@dex.woogi.xyz**.
+If you believe a moderation decision was a mistake, email **earl@woogi.xyz**.
 
 ---
 
@@ -111,4 +111,4 @@ We may update these terms when needed to keep Woogidex safe and usable. The revi
 
 ## 10. Contact
 
-Questions about these terms go to **contact@dex.woogi.xyz**.
+Questions about these terms go to **earl@woogi.xyz**.

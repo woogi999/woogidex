@@ -1611,27 +1611,55 @@ function buildCommunityEvoStripHtml(row) {
         return '';
     }
     const activeId = ensureCommunityState().openMonActiveSourceId || String(row.source_fakemon_id || '');
-    const ordered = members.slice().sort((a, b) => (a.stage || 1) - (b.stage || 1));
-    const parts = ordered.map((entry, i) => {
-        const mon = entry.mon || {};
-        const isCurrent = entry.sourceId === activeId;
-        const label = entry.isMega ? 'Mega' : (entry.isFormeChange ? 'Forme' : `Stage ${entry.stage || 1}`);
-        const typesHtml = [mon.type1, mon.type2].filter(Boolean).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${escapeHtml(t)}</span>`).join('');
-        const metaBits = [mon.number, mon.species].filter(Boolean);
-        const titleText = isCurrent ? 'Currently viewing' : `View ${mon.name || 'this stage'}`;
-        const node = `<button type="button" class="preview-evo-node${isCurrent ? ' current' : ''}" ${isCurrent ? 'disabled' : `onclick="switchCommunityPreviewMon('${escapeHtml(entry.sourceId)}')"`} title="${escapeHtml(titleText)}">
-            <span class="preview-evo-stage">${escapeHtml(label)}</span>
-            <div class="preview-evo-sprite-wrap">${mon.artwork
-                ? shieldedArtHtml(mon.artwork, { alt: `${mon.name || 'Fakémon'} artwork` })
-                : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="">'}</div>
+
+    // A published family is a flat list of members with a stage number and no
+    // edges, so the exact branch wiring the author drew isn't recoverable here.
+    // What it can do is stop lying about it: members of one stage stack in a
+    // single column, and an arrow is only drawn where the stage actually
+    // advances. Previously everything was strung out in one row, so a split
+    // evolution appeared to evolve sideways into its own sibling.
+    const bases = members.filter(m => !m.isMega && !m.isFormeChange);
+    const specials = members.filter(m => m.isMega || m.isFormeChange);
+    const stages = [...new Set(bases.map(m => Math.max(1, m.stage || 1)))].sort((a, b) => a - b);
+    // a Mega/forme belongs beside the stage it transforms from
+    const specialsForStage = stage => specials.filter(m => Math.max(1, m.stage || 1) === stage);
+
+    const columns = stages.map(stage => {
+        const cards = [
+            ...bases.filter(m => Math.max(1, m.stage || 1) === stage).map(m => communityEvoCardHtml(m, activeId, `Stage ${stage}`, false)),
+            ...specialsForStage(stage).map(m => communityEvoCardHtml(m, activeId, m.isMega ? 'Mega' : 'Forme', true))
+        ].join('');
+        return `<div class="community-evo-column">${cards}</div>`;
+    });
+
+    const parts = columns
+        .map((col, i) => i === columns.length - 1 ? col : col + `<div class="preview-evo-connector">${COMMUNITY_EVO_ARROW_ICON}</div>`)
+        .join('');
+    return `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div><div class="preview-evo-row community-evo-row">${parts}</div></div>`;
+}
+
+function communityEvoCardHtml(entry, activeId, label, compact) {
+    const mon = entry.mon || {};
+    const isCurrent = entry.sourceId === activeId;
+    const titleText = isCurrent ? 'Currently viewing' : `View ${mon.name || 'this stage'}`;
+    const attrs = `${isCurrent ? 'disabled' : `onclick="switchCommunityPreviewMon('${escapeHtml(entry.sourceId)}')"`} title="${escapeHtml(titleText)}"`;
+    if (compact) {
+        return `<button type="button" class="preview-evo-node preview-evo-node-special${isCurrent ? ' current' : ''}" ${attrs}>
+            <span class="preview-evo-badge">${escapeHtml(label)}</span>
             <span class="preview-evo-name">${escapeHtml(mon.name || 'Unnamed')}</span>
-            ${metaBits.length ? `<span class="preview-evo-meta">${escapeHtml(metaBits.join(' \u00b7 '))}</span>` : ''}
-            ${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}
         </button>`;
-        if (i === ordered.length - 1) return node;
-        return node + `<div class="preview-evo-connector">${COMMUNITY_EVO_ARROW_ICON}</div>`;
-    }).join('');
-    return `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div><div class="preview-evo-row">${parts}</div></div>`;
+    }
+    const typesHtml = [mon.type1, mon.type2].filter(Boolean).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${escapeHtml(t)}</span>`).join('');
+    const metaBits = [mon.number, mon.species].filter(Boolean);
+    return `<button type="button" class="preview-evo-node${isCurrent ? ' current' : ''}" ${attrs}>
+        <span class="preview-evo-stage">${escapeHtml(label)}</span>
+        <div class="preview-evo-sprite-wrap">${mon.artwork
+            ? shieldedArtHtml(mon.artwork, { alt: `${mon.name || 'Fakémon'} artwork` })
+            : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="">'}</div>
+        <span class="preview-evo-name">${escapeHtml(mon.name || 'Unnamed')}</span>
+        ${metaBits.length ? `<span class="preview-evo-meta">${escapeHtml(metaBits.join(' · '))}</span>` : ''}
+        ${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}
+    </button>`;
 }
 
 
@@ -1654,7 +1682,8 @@ async function renderCommunityPreviewBoard(mon, row) {
         artwork: await artworkDataUri(mon.artwork),
         shinyArtwork: await artworkDataUri(mon.shinyArtwork)
     });
-    api.updatePreview?.();
+    // cloned into the community board below, so render synchronously
+    api.updatePreviewNow?.();
 
     const source = document.getElementById('pokedex-board-container');
     const target = document.getElementById('community-detail-board');

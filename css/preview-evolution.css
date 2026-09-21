@@ -55,12 +55,77 @@
 .board-evolution-chain {
     margin-top: 14px;
 }
+/* the flat single-row chain; still used by the community hub's strip, which
+   only has a stage-ordered snapshot list and no edges to branch on */
 .preview-evo-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 2px;
 }
+
+/* ---- branching graph (editor preview) ----
+   Positions come from buildPreviewEvolutionModel() in js/features/evolution.js,
+   which computes them rather than measuring the DOM, so the board export
+   renders the same picture. Everything here is absolutely positioned inside
+   .preview-evo-graph; the CSS only styles what JS has already placed. */
+.preview-evo-scroller {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 2px 6px;
+    scrollbar-width: thin;
+}
+.preview-evo-graph {
+    position: relative;
+    /* width/height are set inline from the computed layout */
+    flex: none;
+}
+.preview-evo-wires {
+    position: absolute;
+    inset: 0;
+    color: var(--accent);
+    pointer-events: none;
+    overflow: visible;
+}
+.preview-evo-wire {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+}
+/* a Mega/forme stem is not an evolution, so it reads as a different kind of line */
+.preview-evo-wire-forme {
+    stroke: var(--text-muted);
+    stroke-width: 2;
+    stroke-dasharray: 3 4;
+}
+.preview-evo-graph .preview-evo-node {
+    position: absolute;
+    margin: 0;
+}
+/* the method chip sits on the midpoint of its own curve */
+.preview-evo-graph .preview-evo-method {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    pointer-events: none;
+}
+.preview-evo-node-special {
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 10px;
+}
+.preview-evo-badge {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 999px;
+    padding: 1px 8px;
+}
+
 .preview-evo-node {
     display: flex;
     flex-direction: column;
@@ -87,7 +152,12 @@
 .preview-evo-node.current {
     border-color: var(--accent);
     background: var(--accent-glow);
+    /* the one you're editing has to stand out where several branches compete */
+    box-shadow: 0 0 0 2px var(--accent-glow);
 }
+/* inside the graph, a node is placed over the wires */
+.preview-evo-graph .preview-evo-node { z-index: 1; box-sizing: border-box; }
+.preview-evo-graph .preview-evo-node.current { z-index: 3; }
 .preview-evo-stage {
     font-size: 9px;
     font-weight: 700;
@@ -158,3 +228,17 @@
     padding: 1px 6px;
 }
 
+
+/* ---- community hub strip ----
+   Same cards, but the data is a flat snapshot list, so the layout is columns
+   of same-stage members rather than the editor's wired graph. */
+.community-evo-row {
+    align-items: center;
+}
+.community-evo-column {
+    display: flex;
+    flex-direction: column;
+    /* siblings of one stage stack, which is what shows the split */
+    gap: 8px;
+    align-items: center;
+}

@@ -1152,7 +1152,21 @@ function togglePreviewArtworkMode(event) {
     setPreviewArtworkMode(state.previewArtworkMode === 'shiny' ? 'normal' : 'shiny');
 }
 
+// Every editor field's oninput calls this, and so does every stat slider drag,
+// so it used to rebuild the whole board -- name, stats, learnset, type chart
+// and evolution graph -- on each keystroke. Renders now collapse into one per
+// tick. Callers that clone or screenshot the board read the DOM back
+// synchronously and must use updatePreviewNow() instead.
+let previewRenderQueued = false;
 function updatePreview() {
+    if (previewRenderQueued) return;
+    previewRenderQueued = true;
+    queueMicrotask(() => { if (previewRenderQueued) updatePreviewNow(); });
+}
+
+/** Renders the board immediately. Use before reading the board's markup back. */
+function updatePreviewNow() {
+    previewRenderQueued = false;
     log.debug('PREVIEW', 'Updating Fakemon preview', { name: document.getElementById('fakemon-name')?.value || '', moves: state.learnset.length });
             renderTypeEffectiveness();
             const name = document.getElementById('fakemon-name').value || 'Unnamed Pokemon';
@@ -1354,4 +1368,4 @@ function updatePreview() {
 
 
 
-export { getNextPokedexNumber, resetEditor, loadFakemonIntoEditor, setPreviewArtworkMode, setCollectionShinyPreview, toggleCollectionShinyPreview, updateCollectionShinyPreviewUI, updateEditorStats, updateStats, getSpriteUrl, updateBulkComparison, STAT_TEMPLATES, populateStatTemplateOptions, applyStatTemplate, initStatBarSliders, scaleStatsToBst, clampTemplateBstValue, handleArtworkUpload, handleArtworkDragOver, handleArtworkDragLeave, handleArtworkDrop, handleEggGroupChange, getEggGroupValue, setEggGroupValue, getGenderRatioValue, setGenderRatioValue, toggleGenderless, genderSliderChanged, genderMaleInputChanged, genderFemaleInputChanged, updateGenderBar, getFlagLabels, renderMoveTag, updatePreview, handleHeightInput, handleWeightInput, convertHeight, convertWeight, getHeightDisplay, getWeightDisplay, getTypeDamageMultiplier, renderTypeEffectiveness };
+export { getNextPokedexNumber, resetEditor, loadFakemonIntoEditor, setPreviewArtworkMode, setCollectionShinyPreview, toggleCollectionShinyPreview, updateCollectionShinyPreviewUI, updateEditorStats, updateStats, getSpriteUrl, updateBulkComparison, STAT_TEMPLATES, populateStatTemplateOptions, applyStatTemplate, initStatBarSliders, scaleStatsToBst, clampTemplateBstValue, handleArtworkUpload, handleArtworkDragOver, handleArtworkDragLeave, handleArtworkDrop, handleEggGroupChange, getEggGroupValue, setEggGroupValue, getGenderRatioValue, setGenderRatioValue, toggleGenderless, genderSliderChanged, genderMaleInputChanged, genderFemaleInputChanged, updateGenderBar, getFlagLabels, renderMoveTag, updatePreview, handleHeightInput, handleWeightInput, convertHeight, convertWeight, getHeightDisplay, getWeightDisplay, updatePreviewNow, getTypeDamageMultiplier, renderTypeEffectiveness };

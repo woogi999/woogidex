@@ -29,7 +29,14 @@ const STATS = [
     { id: 'atk', label: 'Attack' }, { id: 'def', label: 'Defense' },
     { id: 'spa', label: 'Sp. Atk' }, { id: 'spd', label: 'Sp. Def' }, { id: 'spe', label: 'Speed' }
 ];
-const STAT_ESSENTIALS = { atk: 'ATTACK', def: 'DEFENSE', spa: 'SPECIAL_ATTACK', spd: 'SPECIAL_DEFENSE', spe: 'SPEED' };
+const STAT_ESSENTIALS = { atk: 'ATTACK', def: 'DEFENSE', spa: 'SPECIAL_ATTACK', spd: 'SPECIAL_DEFENSE', spe: 'SPEED', accuracy: 'ACCURACY', evasion: 'EVASION' };
+// Accuracy and evasion have stat STAGES but no stored stat number, so they
+// belong in stage blocks (boost / stage checks) and not in the setStatValue
+// family, which writes storedStats.
+const BOOST_STATS = [
+    ...STATS,
+    { id: 'accuracy', label: 'Accuracy' }, { id: 'evasion', label: 'Evasion' }
+];
 const STATUSES = [
     { id: 'brn', label: 'Burn', es: 'BURN' }, { id: 'par', label: 'Paralysis', es: 'PARALYSIS' },
     { id: 'psn', label: 'Poison', es: 'POISON' }, { id: 'slp', label: 'Sleep', es: 'SLEEP' }, { id: 'frz', label: 'Freeze', es: 'FROZEN' }
@@ -433,7 +440,7 @@ const CONDITIONS = {
     },
     statStageAtLeast: {
         label: 'stat stage of __ is at least __', params: [
-            { key: 'stat', type: 'select', options: STATS.map(s => ({ value: s.id, label: s.label })), default: 'atk' },
+            { key: 'stat', type: 'select', options: BOOST_STATS.map(s => ({ value: s.id, label: s.label })), default: 'atk' },
             { key: 'value', type: 'number', default: 1, min: -6, max: 6 }
         ],
         sd: (c, p) => `${c.selfVar}.boosts.${p.stat} >= ${p.value}`,
@@ -809,7 +816,7 @@ Object.assign(CONDITIONS, {
 const ACTIONS = {
     boostStat: {
         label: 'Change __ by __ stage(s) on __', params: [
-            { key: 'stat', type: 'select', options: STATS.map(s => ({ value: s.id, label: s.label })), default: 'atk' },
+            { key: 'stat', type: 'select', options: BOOST_STATS.map(s => ({ value: s.id, label: s.label })), default: 'atk' },
             { key: 'stages', type: 'number', default: 1, min: -6, max: 6 },
             { key: 'target', type: 'select', options: TARGETS, default: 'self' }
         ],
@@ -939,6 +946,72 @@ const ACTIONS = {
                     `  battle.pbDisplay(_INTL("{1} found one {2}!", ${t}.pbThis, ${t}.itemName))`,
                     'end'];
         }
+    },
+    removeItem: {
+        label: 'Take away __’s held item', params: [
+            { key: 'target', type: 'select', options: TARGETS, default: 'foe' },
+            { key: 'mode', type: 'select', options: [
+                { value: 'consume', label: 'used up (can be recycled)' },
+                { value: 'destroy', label: 'destroyed outright' }
+            ], default: 'consume' }
+        ],
+        sd: (c, p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            // written out rather than calling takeItem()/useItem(): takeItem()
+            // doesn't record lastItem (so Recycle wouldn't find it) and useItem()
+            // would fire the item's own effect on the way out
+            return [`if (${t} && ${t}.item) {`,
+                    `	const lost = ${t}.item;`,
+                    `	${t}.item = '';`,
+                    `	${t}.lastItem = ${p.mode === 'destroy' ? "''" : 'lost'};`,
+                    `	this.add('-enditem', ${t}, this.dex.items.get(lost));`,
+                    `}`];
+        },
+        es: (c, p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            return [`if ${t} && ${t}.item`,
+                    `  battle.pbDisplay(_INTL("{1} lost its {2}!", ${t}.pbThis, ${t}.itemName))`,
+                    ...(p.mode === 'destroy' ? [`  ${t}.setRecycleItem(nil)`] : [`  ${t}.setRecycleItem(${t}.item)`]),
+                    `  ${t}.item = nil`,
+                    'end'];
+        }
+    },
+    setItem: {
+        label: 'Give __ the item __', params: [
+            { key: 'target', type: 'select', options: TARGETS, default: 'self' },
+            { key: 'item', type: 'text', default: 'Leftovers' }
+        ],
+        sd: (c, p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            const id = String(p.item || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            return [`if (${t}) {`,
+                    `	${t}.setItem('${id}');`,
+                    `	this.add('-item', ${t}, this.dex.items.get('${id}'));`,
+                    `}`];
+        },
+        es: (c, p) => {
+            const t = p.target === 'foe' ? c.foeVar : c.selfVar;
+            const id = String(p.item || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return [`if ${t}`,
+                    `  ${t}.item = :${id}`,
+                    `  battle.pbDisplay(_INTL("{1} obtained one {2}!", ${t}.pbThis, ${t}.itemName))`,
+                    'end'];
+        }
+    },
+    swapItems: {
+        label: 'Swap held items between this Pokémon and the opposing one', params: [],
+        sd: (c) => [`if (${c.selfVar} && ${c.foeVar}) {`,
+                    `	const mine = ${c.selfVar}.item, theirs = ${c.foeVar}.item;`,
+                    `	${c.selfVar}.setItem(theirs);`,
+                    `	${c.foeVar}.setItem(mine);`,
+                    `	this.add('-activate', ${c.selfVar}, 'move: Trick', '[of] ' + ${c.foeVar});`,
+                    `}`],
+        es: (c) => [`if ${c.selfVar} && ${c.foeVar}`,
+                    `  mine = ${c.selfVar}.item`,
+                    `  ${c.selfVar}.item = ${c.foeVar}.item`,
+                    `  ${c.foeVar}.item = mine`,
+                    `  battle.pbDisplay(_INTL("{1} switched items with its opponent!", ${c.selfVar}.pbThis))`,
+                    'end']
     },
     multiplyDamage: {
         label: 'Change damage by factor __', params: [{ key: 'factor', type: 'number', step: 0.1, default: 0.5 }],
@@ -1077,12 +1150,11 @@ const COMPARE_OPS = [
     { value: '>=', label: '>=' }, { value: '<=', label: '<=' }
 ];
 
+// Extra event aliases. Anything defined in the canonical TRIGGERS table above
+// must NOT be redefined here: this assign wins, and these entries carry no
+// `kinds`, so a redefinition silently drops the event from the item and move
+// palettes (which is what happened to beforeMove / onFaint / onStatus).
 Object.assign(TRIGGERS, {
-    beforeMove: {
-        label: 'Before this Pokémon uses a move', icon: 'zap', params: [], allowed: [],
-        sd: () => ({ header: 'onPrepareHit(source, target, move) {', footer: '}', selfVar: 'source', foeVar: 'target', moveVar: 'move', preamble: '' }),
-        es: () => ({ adder: 'Battle::AbilityEffects::BeforeMove', args: 'ability, user, targets, move, showAnimation', selfVar: 'user', foeVar: 'targets&.first', moveVar: 'move', preamble: '', footer: null })
-    },
     battleStart: {
         label: 'On Battle Start', icon: 'play-circle', params: [], allowed: [],
         sd: () => ({ header: 'onStart(pokemon) {', footer: '}', selfVar: 'pokemon', foeVar: 'pokemon.side.foe.active[0]', moveVar: null, preamble: '' }),
@@ -1111,16 +1183,6 @@ Object.assign(TRIGGERS, {
         label: 'On Damage', icon: 'heart-crack', params: [], allowed: [],
         sd: () => ({ header: 'onDamagingHit(damage, target, source, move) {', footer: '}', selfVar: 'target', foeVar: 'source', moveVar: 'move', preamble: '' }),
         es: () => ({ adder: 'Battle::AbilityEffects::AfterMoveUseFromTarget', args: 'ability, user, target, move, switchedBattlers, hpLost', selfVar: 'target', foeVar: 'user', moveVar: 'move', preamble: '', footer: null })
-    },
-    onFaint: {
-        label: 'On Faint', icon: 'skull', params: [], allowed: [],
-        sd: () => ({ header: 'onFaint(pokemon, source, effect) {', footer: '}', selfVar: 'pokemon', foeVar: 'source', moveVar: null, preamble: '' }),
-        es: () => ({ adder: 'Battle::AbilityEffects::OnSwitchOut', args: 'ability, battler', selfVar: 'battler', foeVar: 'battler.pbDirectOpposing rescue nil', moveVar: null, preamble: '', footer: null })
-    },
-    onStatus: {
-        label: 'On Status Change', icon: 'circle-alert', params: [], allowed: [],
-        sd: () => ({ header: 'onSetStatus(status, target, source, effect) {', footer: '}', selfVar: 'target', foeVar: 'source', moveVar: null, preamble: '' }),
-        es: () => ({ adder: 'Battle::AbilityEffects::OnSwitchIn', args: 'ability, battler', selfVar: 'battler', foeVar: 'battler.pbDirectOpposing rescue nil', moveVar: null, preamble: '', footer: null })
     }
 });
 
@@ -1502,7 +1564,7 @@ const BLOCK_GROUPS = [
     { label:'Functions', color:'cyan', items:['callFunction','returnValue','parameters','getProperty','setProperty'] },
     { label:'Battle Actions', color:'blue', items:['damage','heal','boostStat','setStatValue','changeStatValue','setStatus','inflictStatus','changeType','changeAbility','changeForm','switchPokemon','setWeather','setTerrain','setWeatherTerrain','setHazard','removeHazard','clearTerrainWeather','changePriority','addVolatile','setVolatile','removeVolatile','setShield','changeTypeToMoveType','setMoveType','multiplyMovePower','setMovePower','absorbMove','redirectMove','resetStatStages','copyStatStages','setAbility','suppressAbility'] },
     { label:'Battle Effects', color:'blue', items:['applyBattleEffect','removeBattleEffect','setBattleEffectProperty'] },
-    { label:'Items', color:'blue', items:['restoreItem'] },
+    { label:'Items', color:'blue', items:['setItem','removeItem','swapItems','restoreItem'] },
     { label:'Raw Code', color:'gray', items:['customCode'] },
     { label:'Calculation', color:'blue', items:['multiplyStat','multiplyDamage','multiplyAccuracy','ignoreStatStages'] },
     { label:'Other / Output', color:'gray', items:['cureStatus','showMessage','dealDamage','healDamage','setWeather','setTerrain','changeType'] }

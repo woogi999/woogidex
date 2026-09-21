@@ -442,7 +442,8 @@ let pendingCollectionImportFile = null;
                 await api.autoSave?.(true);
                 state.editingId = fakemon.id;
                 api.loadFakemonIntoEditor(fakemon);
-                api.updatePreview?.();
+                // exporters screenshot or read the board, so it must be drawn first
+                api.updatePreviewNow?.();
                 await callback(fakemon);
             } catch (err) {
                 log.error('EXPORT', 'Collection Fakemon export failed', err);

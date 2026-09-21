@@ -369,9 +369,18 @@ function renderEvolutionBoard() {
 }
 
 function calculateStages(g) {
+    // A Mega or forme change is not a stage of its own -- it is the same
+    // Pokemon wearing a different shape. effectiveEdges() flips its edge so it
+    // doesn't gain a stage, but that made it the PARENT of its own base, which
+    // pushed the base (and everything after it) up by one: a first-stage
+    // Fakemon with a Mega came out as Stage 2. Stages are counted over the
+    // base-to-base edges only, and each special then inherits its base's stage.
+    const specials = new Set(g.nodes.filter(isSpecialNode).map(n => n.id));
     const incoming = new Map(g.nodes.map(n => [n.id, []]));
-    const effective = effectiveEdges(g);
-    effective.forEach(e => { if (incoming.has(e.to)) incoming.get(e.to).push(e.from); });
+    effectiveEdges(g).forEach(e => {
+        if (specials.has(e.from) || specials.has(e.to)) return;
+        if (incoming.has(e.to)) incoming.get(e.to).push(e.from);
+    });
     const memo = new Map(), visiting = new Set();
     const dfs = id => {
         if (memo.has(id)) return memo.get(id);
@@ -381,7 +390,11 @@ function calculateStages(g) {
         const val = parents.length ? Math.max(...parents.map(dfs)) + 1 : 1;
         visiting.delete(id); memo.set(id, Math.min(val, 99)); return memo.get(id);
     };
-    g.nodes.forEach(n => dfs(n.id));
+    g.nodes.filter(n => !specials.has(n.id)).forEach(n => dfs(n.id));
+    g.nodes.filter(n => specials.has(n.id)).forEach(n => {
+        const base = getFormeTabBase(g, n);
+        memo.set(n.id, (base && base.id !== n.id ? memo.get(base.id) : null) || 1);
+    });
     return Object.fromEntries(memo);
 }
 
@@ -796,20 +809,6 @@ function getEdgeMethodMap(g) {
     return map;
 }
 
-const PREVIEW_EVO_ARROW_ICON = '<svg class="preview-evo-arrow-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 12h15M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
-function getPreviewEvolutionChain() {
-    const g = ensureGraph();
-    const me = addCurrentNode();
-    const component = getConnectedComponent(g, me.id);
-    const stageMap = calculateStages(g);
-    const chain = g.nodes
-        .filter(n => component.has(n.id) && !isMethodNode(n) && !isSpecialNode(n))
-        .map(n => ({ id: n.id, kind: n.kind, refId: n.refId, info: getNodeInfo(n), stage: stageMap[n.id] || 1, isCurrent: n.id === me.id }))
-        .sort((a, b) => a.stage - b.stage);
-    return chain.length > 1 ? chain : [];
-}
-
 function getFormeTabBase(g, node) {
     if (!isSpecialNode(node)) return node;
     const neighborIds = [];
@@ -844,37 +843,209 @@ function editFakemonFromPreview(refId) {
     api.editFakemon?.(refId);
 }
 
-function renderPreviewEvolutionChain() {
-    const chain = getPreviewEvolutionChain();
-    if (!chain.length) return '';
+// ==================== preview: evolution graph ====================
+// The chain used to be one stage-sorted list joined end to end, which is only
+// right for a straight line. A split (Eevee-style), a merge, a Mega or a forme
+// change all got flattened into that single row, so sibling branches were wired
+// to each other with whatever method label happened to sit between them, and
+// Megas/formes were dropped from the chain entirely.
+//
+// It is laid out as the graph it actually is: one column per evolution stage,
+// branches drawn as curves between columns, and Megas/formes hanging off the
+// base they belong to. Geometry is computed here rather than measured from the
+// DOM, so the same markup renders identically in the board export (html2canvas
+// never gets a second layout pass).
+const PREVIEW_EVO_GEOM = {
+    nodeW: 128, nodeH: 150,
+    specialH: 58, specialGap: 10,
+    colGap: 80, rowGap: 16
+};
+
+/** Flat stage-ordered list of the family's base stages. Kept for callers that only want the members, not the shape. */
+function getPreviewEvolutionChain() {
+    const model = buildPreviewEvolutionModel();
+    if (!model) return [];
+    return model.entries
+        .filter(e => !e.isSpecial)
+        .map(e => ({ id: e.id, kind: e.kind, refId: e.refId, info: e.info, stage: e.stage, isCurrent: e.isCurrent }))
+        .sort((a, b) => a.stage - b.stage);
+}
+
+/**
+ * Positions every member of the current Fakemon's family on a grid.
+ * @returns {null|{width:number,height:number,entries:Array,links:Array}}
+ *   null when there is nothing worth drawing (a lone Fakemon with no relatives).
+ */
+function buildPreviewEvolutionModel() {
     const g = ensureGraph();
+    const me = addCurrentNode();
+    const component = getConnectedComponent(g, me.id);
+    const members = g.nodes.filter(n => component.has(n.id) && !isMethodNode(n));
+    if (members.length < 2) return null;
+
+    const stageMap = calculateStages(g);
+    const bases = members.filter(n => !isSpecialNode(n));
+    if (!bases.length) return null;
+    const baseIds = new Set(bases.map(n => n.id));
+
+    // a Mega/forme is not a stage of its own; it belongs to the base it hangs off
+    const specialsByBase = new Map();
+    members.filter(isSpecialNode).forEach(n => {
+        const base = getFormeTabBase(g, n);
+        if (!base || !baseIds.has(base.id)) return;
+        if (!specialsByBase.has(base.id)) specialsByBase.set(base.id, []);
+        specialsByBase.get(base.id).push(n);
+    });
+
+    // effectiveEdges() collapses method nodes, so an edge between two bases
+    // is a real evolution step; Mega/forme edges never connect two bases
+    const edges = effectiveEdges(g).filter(e => baseIds.has(e.from) && baseIds.has(e.to) && e.from !== e.to);
+    const parentsOf = new Map(bases.map(n => [n.id, []]));
+    edges.forEach(e => parentsOf.get(e.to).push(e.from));
+
+    // ---- columns, one per evolution stage ----
+    const stageOf = new Map(bases.map(n => [n.id, Math.max(1, stageMap[n.id] || 1)]));
+    const stages = [...new Set([...stageOf.values()])].sort((a, b) => a - b);
+    const columns = stages.map(stage => bases.filter(n => stageOf.get(n.id) === stage));
+
+    // ---- row order: put a child next to its parents so branches don't cross ----
+    const rowOf = new Map();
+    const meanParentRow = node => {
+        const rows = (parentsOf.get(node.id) || []).map(id => rowOf.get(id)).filter(r => r !== undefined);
+        // a node with no placed parent sinks to the bottom rather than jumping the queue
+        return rows.length ? rows.reduce((a, b) => a + b, 0) / rows.length : Number.MAX_SAFE_INTEGER;
+    };
+    columns.forEach((col, c) => {
+        if (c > 0) col.sort((a, b) => meanParentRow(a) - meanParentRow(b));
+        col.forEach((n, i) => rowOf.set(n.id, i));
+    });
+
+    // ---- geometry ----
+    const G = PREVIEW_EVO_GEOM;
+    const cellHeight = node => G.nodeH + (specialsByBase.get(node.id) || []).length * (G.specialH + G.specialGap);
+    const colHeights = columns.map(col => col.reduce((sum, n) => sum + cellHeight(n), 0) + Math.max(0, col.length - 1) * G.rowGap);
+    const height = Math.max(...colHeights);
+    const width = columns.length * G.nodeW + Math.max(0, columns.length - 1) * G.colGap;
+
+    const box = new Map();
+    columns.forEach((col, c) => {
+        const x = c * (G.nodeW + G.colGap);
+        // columns of different depths read better centred against each other
+        let y = (height - colHeights[c]) / 2;
+        col.forEach(node => {
+            box.set(node.id, { x, y });
+            y += cellHeight(node) + G.rowGap;
+        });
+    });
+
+    const makeEntry = (node, x, y, w, h, extra) =>
+        ({ id: node.id, kind: node.kind, refId: node.refId, info: getNodeInfo(node), x, y, w, h, ...extra });
+
+    const entries = [];
+    const links = [];
     const edgeMethodMap = getEdgeMethodMap(g);
-    const parts = chain.map((entry, i) => {
-        const spriteUrl = entry.info.artwork || (api.getSpriteUrl ? api.getSpriteUrl(entry.info.spriteId, entry.info.record || { id: entry.info.spriteId, name: entry.info.name }) : '');
-        const clickable = !entry.isCurrent && entry.kind === 'fakemon' && entry.refId;
-        const fallbackName = entry.info.record?.baseSpecies || entry.info.refId || entry.info.name;
-        const safeName = String(entry.info.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        const safeFallback = String(fallbackName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        const titleText = entry.isCurrent ? 'Currently editing' : (clickable ? `Edit ${entry.info.name}` : `${entry.info.name} (vanilla Pokémon)`);
-        const typesHtml = (entry.info.types || []).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${esc(t)}</span>`).join('');
-        const metaBits = [entry.info.number, entry.info.species].filter(Boolean);
-        const node = `<button type="button" class="preview-evo-node${entry.isCurrent ? ' current' : ''}${clickable ? '' : ' not-clickable'}"` +
-            `${clickable ? ` onclick="editFakemonFromPreview('${esc(entry.refId)}')"` : ' disabled'}` +
-            ` title="${esc(titleText)}">` +
-            `<span class="preview-evo-stage">Stage ${entry.stage}</span>` +
-            `<div class="preview-evo-sprite-wrap"><img src="${esc(spriteUrl)}" alt="${esc(entry.info.name)}" onerror="window.fallbackPokemonImage && window.fallbackPokemonImage(this, '${safeName}', '${safeFallback}')"></div>` +
-            `<span class="preview-evo-name">${esc(entry.info.name)}</span>` +
-            `${metaBits.length ? `<span class="preview-evo-meta">${esc(metaBits.join(' \u00b7 '))}</span>` : ''}` +
-            `${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}` +
+
+    columns.forEach((col, c) => {
+        col.forEach(node => {
+            const { x, y } = box.get(node.id);
+            entries.push(makeEntry(node, x, y, G.nodeW, G.nodeH, { stage: stages[c], isCurrent: node.id === me.id }));
+
+            // Mega / forme cards stack under their base, joined by a short dashed stem
+            let sy = y + G.nodeH;
+            (specialsByBase.get(node.id) || []).forEach(sp => {
+                const top = sy + G.specialGap;
+                entries.push(makeEntry(sp, x, top, G.nodeW, G.specialH, {
+                    isCurrent: sp.id === me.id, isSpecial: true,
+                    badge: sp.isMega ? 'Mega' : 'Forme'
+                }));
+                links.push({ kind: 'forme', d: `M ${x + G.nodeW / 2} ${sy} L ${x + G.nodeW / 2} ${top}` });
+                sy = top + G.specialH;
+            });
+        });
+    });
+
+    edges.forEach(e => {
+        const from = box.get(e.from), to = box.get(e.to);
+        if (!from || !to) return;
+        const x1 = from.x + G.nodeW, y1 = from.y + G.nodeH / 2;
+        const x2 = to.x, y2 = to.y + G.nodeH / 2;
+        const bend = Math.max(24, (x2 - x1) / 2);
+        const methodNode = edgeMethodMap.get(`${e.from}->${e.to}`);
+        links.push({
+            kind: 'evolve',
+            // a curve rather than an elbow, so several branches leaving one
+            // parent stay tellable apart where they fan out
+            d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`,
+            label: methodNode ? getMethodSummary(methodNode) : '',
+            labelAt: { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }
+        });
+    });
+
+    return { width, height, entries, links };
+}
+
+function previewEvoNodeHtml(entry) {
+    const info = entry.info;
+    const clickable = !entry.isCurrent && entry.kind === 'fakemon' && entry.refId;
+    const titleText = entry.isCurrent ? 'Currently editing' : (clickable ? `Edit ${info.name}` : `${info.name} (vanilla Pokémon)`);
+    const label = entry.badge || `Stage ${entry.stage}`;
+    const attrs = ` style="left:${entry.x}px;top:${entry.y}px;width:${entry.w}px;height:${entry.h}px;"` +
+        `${clickable ? ` onclick="editFakemonFromPreview('${esc(entry.refId)}')"` : ' disabled'}` +
+        ` title="${esc(titleText)}"`;
+    const cls = `${entry.isCurrent ? ' current' : ''}${clickable ? '' : ' not-clickable'}`;
+
+    if (entry.isSpecial) {
+        // compact card: at this size artwork and type pills would be unreadable,
+        // and the badge already says what makes it different from its base
+        return `<button type="button" class="preview-evo-node preview-evo-node-special${cls}"${attrs}>` +
+            `<span class="preview-evo-badge">${esc(label)}</span>` +
+            `<span class="preview-evo-name">${esc(info.name)}</span>` +
             `</button>`;
-        if (i === chain.length - 1) return node;
-        const next = chain[i + 1];
-        const methodNode = edgeMethodMap.get(`${entry.id}->${next.id}`);
-        const methodLabel = methodNode ? getMethodSummary(methodNode) : '';
-        const connector = `<div class="preview-evo-connector">${methodLabel ? `<span class="preview-evo-method">${esc(methodLabel)}</span>` : ''}${PREVIEW_EVO_ARROW_ICON}</div>`;
-        return node + connector;
-    }).join('');
-    return `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div><div class="preview-evo-row">${parts}</div></div>`;
+    }
+
+    const spriteUrl = info.artwork || (api.getSpriteUrl ? api.getSpriteUrl(info.spriteId, info.record || { id: info.spriteId, name: info.name }) : '');
+    const fallbackName = info.record?.baseSpecies || info.refId || info.name;
+    const safeName = String(info.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const safeFallback = String(fallbackName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const typesHtml = (info.types || []).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${esc(t)}</span>`).join('');
+    const metaBits = [info.number, info.species].filter(Boolean);
+    return `<button type="button" class="preview-evo-node${cls}"${attrs}>` +
+        `<span class="preview-evo-stage">${esc(label)}</span>` +
+        `<div class="preview-evo-sprite-wrap"><img src="${esc(spriteUrl)}" alt="${esc(info.name)}" onerror="window.fallbackPokemonImage && window.fallbackPokemonImage(this, '${safeName}', '${safeFallback}')"></div>` +
+        `<span class="preview-evo-name">${esc(info.name)}</span>` +
+        `${metaBits.length ? `<span class="preview-evo-meta">${esc(metaBits.join(' · '))}</span>` : ''}` +
+        `${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}` +
+        `</button>`;
+}
+
+function renderPreviewEvolutionChain() {
+    const model = buildPreviewEvolutionModel();
+    if (!model) return '';
+
+    // the marker id is unique per render because the board export clones this
+    // markup next to the live copy, and duplicate ids would collapse to one defs entry
+    const markerId = `preview-evo-arrow-${Math.random().toString(36).slice(2, 8)}`;
+    const paths = model.links.map(link => link.kind === 'forme'
+        ? `<path class="preview-evo-wire preview-evo-wire-forme" d="${link.d}" />`
+        : `<path class="preview-evo-wire" d="${link.d}" marker-end="url(#${markerId})" />`
+    ).join('');
+
+    const labels = model.links
+        .filter(link => link.label)
+        .map(link => `<span class="preview-evo-method" style="left:${link.labelAt.x}px;top:${link.labelAt.y}px;">${esc(link.label)}</span>`)
+        .join('');
+
+    const svg = `<svg class="preview-evo-wires" width="${model.width}" height="${model.height}" viewBox="0 0 ${model.width} ${model.height}" aria-hidden="true">` +
+        `<defs><marker id="${markerId}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">` +
+        `<path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" /></marker></defs>` +
+        paths +
+        `</svg>`;
+
+    const nodes = model.entries.map(previewEvoNodeHtml).join('');
+    return `<div class="board-section board-evolution-chain"><div class="board-section-title">Evolution Chain</div>` +
+        // a wide family scrolls sideways instead of bursting the board's width
+        `<div class="preview-evo-scroller"><div class="preview-evo-graph" style="width:${model.width}px;height:${model.height}px;">${svg}${labels}${nodes}</div></div>` +
+        `</div>`;
 }
 
 function renderPreviewFormeTabs() {

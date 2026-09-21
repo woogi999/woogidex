@@ -405,7 +405,8 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             // reuse the editor's render pipeline: load into the hidden form, render, then clone the board into the popup.
             state.editingId = id;
             api.loadFakemonIntoEditor(fakemon);
-            api.updatePreview();
+            // the board's markup is read back on the next line, so it has to exist now
+            api.updatePreviewNow();
             const source = document.getElementById('pokedex-board-container');
             const wrap = document.getElementById('preview-modal-board-wrap');
             wrap.innerHTML = source.innerHTML.replace(/id="pokedex-board-export"/, 'id="pokedex-board-preview-modal"');
@@ -1056,7 +1057,24 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             `;
         }
 
+        // A render rebuilds every card's innerHTML and re-runs lucide.createIcons()
+        // over the document, so it is the most visible thing the app does. Several
+        // independent things ask for one in the same tick on boot and after a save
+        // (the route, the auth refresh, the cloud manifest), and each one used to
+        // repaint -- which is what the flickering was. They now collapse into the
+        // single render before the next frame; nothing reads the grid back
+        // synchronously, so the only difference is how many times it is drawn.
+        let collectionRenderQueued = false;
         function renderCollection() {
+            if (collectionRenderQueued) return;
+            collectionRenderQueued = true;
+            queueMicrotask(() => {
+                collectionRenderQueued = false;
+                renderCollectionNow();
+            });
+        }
+
+        function renderCollectionNow() {
         log.debug('COLLECTION', 'Rendering collection', { count: state.fakemonDB.length, folders: state.folders.length });
             renderBreadcrumb();
             const grid = document.getElementById('collection-grid');

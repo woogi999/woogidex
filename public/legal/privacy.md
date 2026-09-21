@@ -8,7 +8,7 @@ This Privacy Notice explains how Woogidex ("we", "us", "our") collects, stores, 
 - use Woogidex, a browser-based toolkit for making and organising Fakémon; or
 - contact us in any other way.
 
-If you do not agree with this notice, please do not use Woogidex. Questions go to **contact@dex.woogi.xyz**.
+If you do not agree with this notice, please do not use Woogidex. Questions go to **earl@woogi.xyz**.
 
 ---
 
@@ -169,7 +169,7 @@ No transmission over the internet or method of electronic storage can be guarant
 
 We do not knowingly collect data from, or market to, children under 13 years of age, or the equivalent minimum age set by law where you live. By using Woogidex you confirm that you are at least that age, or that a parent or guardian consents to your use of the Services.
 
-If we learn that we have collected personal information from a child below that age, we will deactivate the account and take reasonable steps to delete the data promptly. If you believe we hold such data, email us at **contact@dex.woogi.xyz**.
+If we learn that we have collected personal information from a child below that age, we will deactivate the account and take reasonable steps to delete the data promptly. If you believe we hold such data, email us at **earl@woogi.xyz**.
 
 ---
 
@@ -181,13 +181,13 @@ Depending on where you live, you may have the right to access your personal info
 - **Export**: **Collection → Export** downloads your entire Fakémon collection as a JSON file.
 - **Delete**: individual Fakémon, published listings and comments can be deleted from where they appear; **Settings → Account** deletes the whole account.
 
-For anything else, email **contact@dex.woogi.xyz**. We will consider and act on any request in accordance with applicable data-protection law.
+For anything else, email **earl@woogi.xyz**. We will consider and act on any request in accordance with applicable data-protection law.
 
 **Withdrawing consent.** Where we rely on your consent, you may withdraw it at any time by contacting us or changing your settings. This does not affect the lawfulness of processing carried out before the withdrawal.
 
 ### Complaints
 
-If you are in the **UK** and are unhappy with how we have handled your personal information, contact us first at **contact@dex.woogi.xyz**. We will acknowledge your complaint within 30 days, investigate without undue delay, keep you informed, and explain the outcome. If you are not satisfied with our final response you may refer the complaint to the Information Commissioner's Office:
+If you are in the **UK** and are unhappy with how we have handled your personal information, contact us first at **earl@woogi.xyz**. We will acknowledge your complaint within 30 days, investigate without undue delay, keep you informed, and explain the outcome. If you are not satisfied with our final response you may refer the complaint to the Information Commissioner's Office:
 
 - Website: [ico.org.uk/make-a-complaint](https://ico.org.uk/make-a-complaint)
 - Helpline: 0303 123 1113
@@ -234,11 +234,11 @@ Category A information is retained for as long as you have an account with us, s
 
 You have the right to know whether we process your personal data, to access it, to correct inaccuracies, to request its deletion, to obtain a copy of what you gave us, to opt out of processing for targeted advertising, sale or profiling (none of which we do), and not to be discriminated against for exercising any of these rights. Depending on your state you may also have the right to a list of the categories or the specific third parties we have disclosed data to, and the right to limit the use of sensitive personal data.
 
-**How to exercise them.** Use the in-app controls described in [section 10](#10-what-are-your-privacy-rights), or email **contact@dex.woogi.xyz**. You may designate an authorised agent to act for you; we may deny a request from an agent who does not provide proof of valid authorisation.
+**How to exercise them.** Use the in-app controls described in [section 10](#10-what-are-your-privacy-rights), or email **earl@woogi.xyz**. You may designate an authorised agent to act for you; we may deny a request from an agent who does not provide proof of valid authorisation.
 
 **Verification.** We will need to verify that you are the person the information belongs to. We use information provided in your request only for that verification, and may ask for more if we cannot match you from what we already hold.
 
-**Appeals.** If we decline to act on your request, you may appeal by emailing **contact@dex.woogi.xyz**. We will respond in writing with our decision and reasons. If the appeal is denied, you may complain to your state attorney general.
+**Appeals.** If we decline to act on your request, you may appeal by emailing **earl@woogi.xyz**. We will respond in writing with our decision and reasons. If the appeal is denied, you may complain to your state attorney general.
 
 ---
 
@@ -261,7 +261,7 @@ Yes. We will update this notice as necessary to stay accurate and compliant. The
 
 ## 15. How can you contact us?
 
-Questions or comments about this notice go to **contact@dex.woogi.xyz**.
+Questions or comments about this notice go to **earl@woogi.xyz**.
 
 ---
 
@@ -269,7 +269,7 @@ Questions or comments about this notice go to **contact@dex.woogi.xyz**.
 
 You can review and update your account details from your profile, export your collection from **Collection → Export**, and delete your account from **Settings → Account**, deletion takes effect seven days after you request it, and can be cancelled at any point during that week.
 
-To request anything this does not cover, email **contact@dex.woogi.xyz**.
+To request anything this does not cover, email **earl@woogi.xyz**.
 
 ---
 

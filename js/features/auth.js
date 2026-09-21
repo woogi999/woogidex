@@ -201,6 +201,20 @@ function initAuth() {
         client.auth.onAuthStateChange(async (event, session) => {
             log.debug('AUTH', 'Auth state change', { event });
             const wasLoggedIn = !!state.user;
+            // Supabase re-emits here for things that change no identity at all:
+            // INITIAL_SESSION right after this listener is registered (initAuth
+            // has already painted that same session above), TOKEN_REFRESHED on
+            // its refresh timer, and a SIGNED_IN replay whenever the tab regains
+            // focus. Each one used to re-run attachProfile() and updateAuthUI(),
+            // and updateAuthUI() calls refreshCloudManifest(), which re-renders
+            // the whole collection grid -- so the UI visibly rebuilt itself
+            // several times on load and again on every tab switch.
+            const sameUser = (session?.user?.id || null) === (state.user?.id || null);
+            const identityUnchanged = sameUser && ['INITIAL_SESSION', 'TOKEN_REFRESHED', 'SIGNED_IN'].includes(event);
+            if (identityUnchanged && state.authReady) {
+                log.debug('AUTH', 'Auth state change ignored; same user', { event });
+                return;
+            }
             state.user = session?.user ? await attachProfile(mapUser(session.user)) : null;
             updateAuthUI();
 
