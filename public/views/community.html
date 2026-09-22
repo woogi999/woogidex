@@ -28,7 +28,13 @@
         <button class="tab" type="button" data-panel="events" onclick="showCommunityPanel('events')">Events</button>
         <button class="tab" type="button" data-panel="uploads" onclick="showCommunityPanel('uploads')">My uploads</button>
     </div>
-    <button class="btn btn-secondary btn-sm" onclick="closeCommunityHub()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back to collection</button>
+</div>
+
+<!-- Its own row under the tabs rather than sharing theirs: on the right of the
+     tab bar it read as a fifth tab, and it is a way out of the hub, not a
+     place in it. Left-aligned, where a back control is looked for. -->
+<div class="community-back-row">
+    <button class="btn btn-secondary btn-sm" onclick="closeCommunityHub()" title="Back to your collection"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
 </div>
 
 <div id="community-landing" class="community-landing">

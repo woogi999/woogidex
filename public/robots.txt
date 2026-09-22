@@ -17,9 +17,16 @@
 
 User-agent: *
 Allow: /
-Disallow: /admin.html
 Disallow: /js/
 Disallow: /supabase/
+
+# NOT disallowed here on purpose: /admin.html. It carries
+# <meta name="robots" content="noindex, nofollow">, and a crawler that is
+# forbidden to fetch a page can never read the noindex on it -- the URL can
+# still be indexed from an inbound link, with Google guessing at its content.
+# Letting it be fetched is what actually keeps it out of the index. It is also
+# a staff login page, and a login page Google cannot see is a login page it can
+# only judge from the outside.
 
 # ---- AI training / dataset crawlers: refused ----
 User-agent: GPTBot

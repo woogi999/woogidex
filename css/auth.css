@@ -13,6 +13,21 @@
     white-space: nowrap;
 }
 .auth-modal { max-width: 380px; width: 100%; }
+
+/* The site's own name and mark, on every dialog that asks for a password.
+   An unbranded credential box is a phishing signal in its own right -- both to
+   Safe Browsing's classifier and to a user who has been taught to check what
+   is asking. See the header of public/views/auth-modals.html. */
+.auth-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+    color: var(--text-secondary, #666);
+}
+.auth-brand img { border-radius: 6px; flex-shrink: 0; }
+.auth-brand strong { color: var(--text-primary, #111); }
 .auth-modal-error {
     color: var(--danger, #ef4444);
     font-size: 13px;

@@ -257,88 +257,16 @@
         </div>
     </div>
 
-    <div class="modal-overlay" id="auth-modal" data-mode="signin">
-        <div class="modal auth-modal">
-            <div class="modal-header">
-                <h3 id="auth-modal-title">Sign In</h3>
-                <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">
-                    <i data-lucide="x" style="width:20px;height:20px;"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <p class="auth-modal-error" id="auth-modal-error"></p>
-                <!-- filled in by oauth.js from whatever providers are enabled;
-                     stays empty and hidden if none are -->
-                <div id="auth-oauth" style="display:none;"></div>
-                <div class="form-group">
-                    <label for="auth-identifier" id="auth-identifier-label">Username</label>
-                    <input type="text" id="auth-identifier" placeholder="your username or email">
-                </div>
-                <div class="form-group" id="auth-email-optional-row" style="display:none;">
-                    <label for="auth-email-optional">Email (optional - for account recovery)</label>
-                    <input type="email" id="auth-email-optional" autocomplete="email" placeholder="you@example.com">
-                </div>
-                <div class="auth-signup-note" id="auth-signup-note" style="display:none;">
-                    <strong>No account is required to use Woogidex.</strong> You only need an account if you want to use Community features such as uploading, publishing, and interacting with other users.
-                </div>
-                <div class="form-group">
-                    <label for="auth-password">Password</label>
-                    <input type="password" id="auth-password" autocomplete="current-password" placeholder="••••••••">
-                </div>
-                <a href="#" class="auth-forgot-link" id="auth-forgot-link" onclick="openForgotPasswordModal(); return false;">Forgot password?</a>
-                <div class="auth-terms-row" id="auth-terms-row" style="display:none;">
-                    <label class="auth-terms-check">
-                        <input type="checkbox" id="auth-terms-checkbox">
-                        <span>I agree to the <button type="button" class="inline-link-btn" onclick="openTermsModal(); event.preventDefault(); event.stopPropagation();">Terms of Service</button>.</span>
-                    </label>
-                </div>
-                <button class="btn btn-primary auth-submit-btn" id="auth-submit-btn" onclick="submitAuthForm()">Sign In</button>
-                <a href="#" class="auth-switch-link" id="auth-switch-link" onclick="toggleAuthMode(); return false;">Don't have an account? Sign up</a>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="forgot-password-modal" onclick="if(event.target===this) closeForgotPasswordModal()">
-        <div class="modal auth-modal">
-            <div class="modal-header">
-                <h3>Reset Password</h3>
-                <button class="modal-close" onclick="closeForgotPasswordModal()" aria-label="Close">
-                    <i data-lucide="x" style="width:20px;height:20px;"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <p class="auth-modal-error" id="forgot-password-error"></p>
-                <div id="forgot-password-form">
-                    <div class="form-group">
-                        <label for="forgot-password-identifier">Username or Email</label>
-                        <input type="text" id="forgot-password-identifier" autocomplete="username" placeholder="your username or email">
-                    </div>
-                    <button class="btn btn-primary auth-submit-btn" id="forgot-password-submit-btn" onclick="submitForgotPasswordForm()">Send Reset Link</button>
-                </div>
-                <a href="#" class="auth-switch-link" onclick="closeForgotPasswordModal(); openAuthModal('signin'); return false;">Back to sign in</a>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="set-new-password-modal">
-        <div class="modal auth-modal">
-            <div class="modal-header">
-                <h3>Set New Password</h3>
-            </div>
-            <div class="modal-body">
-                <p class="auth-modal-error" id="set-new-password-error"></p>
-                <div class="form-group">
-                    <label for="set-new-password">New Password</label>
-                    <input type="password" id="set-new-password" autocomplete="new-password" placeholder="••••••••">
-                </div>
-                <div class="form-group">
-                    <label for="set-new-password-confirm">Confirm Password</label>
-                    <input type="password" id="set-new-password-confirm" autocomplete="new-password" placeholder="••••••••">
-                </div>
-                <button class="btn btn-primary auth-submit-btn" id="set-new-password-submit-btn" onclick="submitSetNewPasswordForm()">Set Password</button>
-            </div>
-        </div>
-    </div>
+    <!-- Sign-in / sign-up / password-reset dialogs.
+         Kept out of this file on purpose: these are the only credential forms
+         on the site, and inlining them here put a password field into the
+         served HTML of every indexable URL (/community/12, /profile/woogi, ...).
+         A page that is not a login page but carries a login form is the exact
+         shape Safe Browsing's credential-harvesting heuristic looks for, which
+         is what earned the "Possible phishing detected on user login" notice
+         in Search Console. Mounted at boot by js/core/views.js, so the live
+         DOM is unchanged; only the crawled markup differs. -->
+    <div id="auth-modals" data-view-src="views/auth-modals.html"></div>
 
     <!-- First-run setup. A password sign-up collects a username on the form;
          an OAuth sign-up has no form at all, so Google/Discord accounts used to

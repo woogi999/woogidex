@@ -443,6 +443,13 @@
     margin-bottom: 14px;
 }
 
+/* the way out of the hub, on its own line under the tabs */
+.community-back-row {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 14px;
+}
+
 /* ---- my uploads ---- */
 .community-uploads-list {
     display: flex;
