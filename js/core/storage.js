@@ -252,11 +252,41 @@ function normalizeCollectionArray(arr, options = {}) {
     return out;
 }
 
+// An item whose folderId names a folder that no longer exists is invisible:
+// the collection grid only lists items whose folderId matches the folder it is
+// currently showing, and an orphaned id matches none of them (searching skips
+// that filter, which is why such items could only be found by search). Imports
+// were the usual source - they carried folderId across from another user's
+// collection, where the ids meant something. Sweep them back to the root.
+// False only while a folders read has failed, when `state.folders` is an empty
+// stand-in rather than the real list; sweeping against it would dump every
+// foldered item back into the root over a transient IndexedDB error.
+let foldersAreTrustworthy = true;
+
+function reattachOrphanedFolderItems() {
+    if (!foldersAreTrustworthy) return;
+    const known = new Set((state.folders || []).map(f => String(f.id)));
+    let orphans = 0;
+    const sweep = list => (Array.isArray(list) ? list : []).forEach(item => {
+        if (!item || !item.folderId) return;
+        if (known.has(String(item.folderId))) return;
+        item.folderId = null;
+        orphans++;
+    });
+    sweep(state.fakemonDB);
+    sweep(state.customMoves);
+    sweep(state.customAbilities);
+    sweep(state.customItems);
+    if (orphans) log.info('STORAGE', 'Moved items out of folders that no longer exist', { orphans });
+}
+
 function normalizeCollections() {
     state.fakemonDB = normalizeCollectionArray(state.fakemonDB);
     state.customMoves = normalizeCollectionArray(state.customMoves, { uniqueName: true, idPrefix: 'cm_' });
     state.customAbilities = normalizeCollectionArray(state.customAbilities, { uniqueName: true, idPrefix: 'ca_' });
     state.customItems = normalizeCollectionArray(state.customItems, { uniqueName: true, idPrefix: 'ci_' });
+    state.folders = normalizeCollectionArray(state.folders);
+    reattachOrphanedFolderItems();
 }
 
         function autoSave(immediate = false) {
@@ -709,7 +739,15 @@ function normalizeCollections() {
                     return [];
                 }
             };
-            state.folders = await loadArray('woogidexFolders_v1', 'folders');
+            foldersAreTrustworthy = true;
+            try {
+                const stored = await idbGet('woogidexFolders_v1');
+                state.folders = Array.isArray(stored) ? stored : [];
+            } catch (e) {
+                log.error('STORAGE', 'loadFromStorage: folders fetch failed, starting from empty', e);
+                state.folders = [];
+                foldersAreTrustworthy = false;
+            }
             state.customMoves = await loadArray('woogidexCustomMoves_v1', 'customMoves');
             state.customAbilities = await loadArray('woogidexCustomAbilities_v1', 'customAbilities');
             state.customItems = await loadArray('woogidexCustomItems_v1', 'customItems');

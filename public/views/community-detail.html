@@ -22,6 +22,11 @@
             <button class="btn btn-secondary btn-sm" type="button" onclick="closeMonDetail()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
             <button class="btn btn-secondary btn-sm" type="button" onclick="copyOpenCommunityShareLink()"><i data-lucide="link" style="width:14px;height:14px;"></i> Copy Share Link</button>
             <button class="btn btn-secondary btn-sm" id="community-detail-update-btn" type="button" onclick="updateOpenCommunityMon()" style="display:none;" title="Update this Community Hub listing from one of your Fakemon"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Update Listing</button>
+            <!-- Owner-only, shown by openMonDetail() in js/features/community.js.
+                 Hidden here by default and re-checked inside each handler: these
+                 hand over full-res artwork, which only the publisher may take. -->
+            <button class="btn btn-secondary btn-sm" id="community-detail-collect-btn" type="button" onclick="addOpenCommunityMonToCollection()" style="display:none;" title="Add a copy of this Fakemon to your own collection"><i data-lucide="folder-plus" style="width:14px;height:14px;"></i> Add to My Collection</button>
+            <button class="btn btn-secondary btn-sm" id="community-detail-export-btn" type="button" onclick="exportOpenCommunityMon()" style="display:none;" title="Download this Fakemon as JSON"><i data-lucide="download" style="width:14px;height:14px;"></i> Export JSON</button>
             <button class="btn btn-secondary btn-sm community-unpublish-inline" id="community-detail-unpublish-btn" type="button" onclick="unpublishOpenCommunityMon()" style="display:none;">Unpublish</button>
         </div>
     </div>

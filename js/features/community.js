@@ -1818,6 +1818,11 @@ async function openMonDetail(publishedId, options = {}) {
     unpublishBtn.title = isMine ? 'Unpublish' : 'Remove (staff)';
     const updateBtn = document.getElementById('community-detail-update-btn');
     if (updateBtn) updateBtn.style.display = isMine ? 'inline-flex' : 'none';
+    // owner only - not staff. see the note above ownsOpenCommunityMon().
+    for (const id of ['community-detail-export-btn', 'community-detail-collect-btn']) {
+        const btn = document.getElementById(id);
+        if (btn) btn.style.display = isMine ? 'inline-flex' : 'none';
+    }
 
     document.getElementById('mon-detail-comment-box').style.display = state.user ? 'flex' : 'none';
     document.getElementById('mon-detail-comment-signin-hint').style.display = state.user ? 'none' : 'block';
@@ -1887,10 +1892,76 @@ function closeMonDetail() {
     openCommunityHub();
 }
 
-// import-to-collection and "Export As" used to live here; removed
-// deliberately - they'd hand over someone else's full-res artwork as a file,
-// undoing the point of shielding it on the page (js/core/art-shield.js).
-// removed, not hidden: a hidden button is still one console line from working.
+// ==================== owner-only export / add to collection ====================
+// These were removed once, because handing over a file gives away the full-res
+// artwork the page deliberately shields (js/core/art-shield.js). They are back
+// only for the person who published the post: their own artwork is theirs to
+// download, and nobody else's is reachable through them.
+//
+// The guard is applied twice on purpose. ownsOpenCommunityMon() decides whether
+// the buttons are rendered at all, and each action re-checks before it does
+// anything, so calling the function straight from the console on someone else's
+// post gets a refusal rather than a download. Staff are NOT an exception here:
+// moderation powers cover taking a post down, not taking a copy of it.
+
+function ownsOpenCommunityMon() {
+    const row = ensureCommunityState().openMonRow;
+    return !!(row && state.user && row.user_id === state.user.id);
+}
+
+// the post's own mon plus every family member it carries, in publish order
+function openCommunityMonRecords() {
+    const row = ensureCommunityState().openMonRow;
+    if (!row) return [];
+    const primary = row.fakemon_data || null;
+    const family = (Array.isArray(row.family_full) ? row.family_full : [])
+        .map(entry => entry?.mon)
+        .filter(mon => mon && mon !== primary);
+    return [primary, ...family].filter(Boolean);
+}
+
+function exportOpenCommunityMon() {
+    if (!ownsOpenCommunityMon()) {
+        api.showToast?.('You can only export your own published Fakemon.', 'error');
+        return;
+    }
+    const records = openCommunityMonRecords();
+    if (!records.length) { api.showToast?.('Nothing to export!', 'error'); return; }
+    const name = String(records[0].name || 'fakemon');
+    // same shape the file importer already reads, so this needs no new path
+    api.downloadJsonFile?.(`${name}-pokedex.json`, {
+        format: 'woogidex-collection',
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        primaryName: name,
+        fakemonDB: records
+    });
+    log.info('COMMUNITY', 'Owner exported their published mon', { id: ensureCommunityState().openMonId });
+    api.showToast?.(`${name} exported!`, 'success');
+}
+
+async function addOpenCommunityMonToCollection() {
+    if (!ownsOpenCommunityMon()) {
+        api.showToast?.('You can only add your own published Fakemon to your collection.', 'error');
+        return;
+    }
+    const records = openCommunityMonRecords();
+    if (!records.length) { api.showToast?.('Nothing to add!', 'error'); return; }
+    try {
+        const added = await api.addFakemonToCollection(records);
+        if (!added.length) { api.showToast?.('Could not add this to your collection.', 'error'); return; }
+        log.info('COMMUNITY', 'Owner copied their published mon back into their collection', { added: added.length });
+        api.showToast?.(added.length === 1
+            ? `${added[0].name} added to your collection!`
+            : `${added.length} Fakemon added to your collection!`, 'success');
+    } catch (e) {
+        log.error('COMMUNITY', 'Add to collection failed', e);
+        api.showToast?.('Could not add this to your collection.', 'error');
+    }
+}
+
+window.exportOpenCommunityMon = exportOpenCommunityMon;
+window.addOpenCommunityMonToCollection = addOpenCommunityMonToCollection;
 
 // comments are a React island (js/react/CommentList.jsx). #mon-detail-comments
 // is its container; loading/empty/list are three states of one component.
@@ -1932,4 +2003,5 @@ export {
     observeCardArtwork, requestCardArtwork,
     showCommunityLanding, browseCommunityFakemon, renderCommunityLanding,
     showCommunityPanel, renderCommunityUploads, openCommunityPublishModal, openCommunityUpdateModalFor,
+    exportOpenCommunityMon, addOpenCommunityMonToCollection,
 };

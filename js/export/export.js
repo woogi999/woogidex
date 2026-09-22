@@ -26,6 +26,10 @@ let pendingCollectionImportFile = null;
                 version: 2,
                 exportedAt: new Date().toISOString(),
                 fakemonDB: state.fakemonDB,
+                // without these, every item's folderId points at a folder the
+                // importing collection has never heard of, and the grid hides it
+                // everywhere except search results
+                folders: state.folders || [],
                 customMoves: state.customMoves || [],
                 customAbilities: state.customAbilities || [],
                 customItems: state.customItems || []
@@ -137,6 +141,7 @@ let pendingCollectionImportFile = null;
                 let importedMoves = isBundle && Array.isArray(parsed.customMoves) ? parsed.customMoves : [];
                 let importedAbilities = isBundle && Array.isArray(parsed.customAbilities) ? parsed.customAbilities : [];
                 let importedItems = isBundle && Array.isArray(parsed.customItems) ? parsed.customItems : [];
+                let importedFolders = isBundle && Array.isArray(parsed.folders) ? parsed.folders : [];
 
                 if (isBundle && Array.isArray(parsed.fakemonDB)) incomingSource = parsed.fakemonDB;
                 else if (!Array.isArray(incomingSource) && incomingSource && typeof incomingSource === 'object') {
@@ -149,33 +154,19 @@ let pendingCollectionImportFile = null;
                 if (!incoming.length && !importedMoves.length && !importedAbilities.length && !importedItems.length) throw new Error('No valid Fakemon, custom moves, or custom abilities were found in the file.');
 
                 const now = Date.now();
-                const idRemap = new Map();
-                incoming = incoming.map((f, index) => {
-                    const copy = JSON.parse(JSON.stringify(f));
-                    if (!Array.isArray(copy.learnset)) copy.learnset = [];
-                    if (!Array.isArray(copy.customMoves)) copy.customMoves = [];
-                    const customByName = new Map(copy.customMoves.filter(Boolean).map(m => [String(m.name || '').toLowerCase(), m]));
-                    copy.learnset = copy.learnset.map(m => {
-                        const key = String(m?.name || '').toLowerCase();
-                        return customByName.has(key) ? { ...m, ...customByName.get(key), source: 'custom', custom: true } : m;
-                    });
-                    copy.customMoves.forEach(m => {
-                        const key = String(m?.name || '').toLowerCase();
-                        if (key && !copy.learnset.some(x => String(x?.name || '').toLowerCase() === key)) copy.learnset.push({ ...m, source: 'custom', custom: true });
-                    });
-                    if (!Array.isArray(copy.abilities)) copy.abilities = [];
-                    if (!Array.isArray(copy.eggGroups)) copy.eggGroups = String(copy.eggGroups || '').split(/\s*\/\s*|\s*,\s*/).filter(Boolean);
-                    // fresh IDs so an imported collection can't overwrite anything present
-                    const previousId = String(copy.id ?? '');
-                    copy.id = `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`;
-                    if (previousId) idRemap.set(previousId, copy.id);
-                    copy.createdAt = now + index;
-                    copy.updatedAt = now + index;
-                    return copy;
-                });
+                const prepared = prepareIncomingFakemon(incoming, now);
+                incoming = prepared.list;
 
-                // fresh IDs orphan evolution-graph references; rewrite them to match
-                remapImportedEvolutionGraphs(incoming, idRemap);
+                // folders come across too, under fresh ids. Anything still pointing
+                // at a folder the file did not carry is moved to the root rather
+                // than left holding an id that matches no folder here - such items
+                // render nowhere but in search results.
+                const folderRemap = mergeImportedFolders(importedFolders, mode, now);
+                const applyFolderRemap = list => list.forEach(item => {
+                    if (!item || !item.folderId) return;
+                    item.folderId = folderRemap.get(String(item.folderId)) || null;
+                });
+                applyFolderRemap(incoming);
 
                 if (mode === 'replace') state.fakemonDB = incoming;
                 else state.fakemonDB = [...state.fakemonDB, ...incoming];
@@ -196,6 +187,7 @@ let pendingCollectionImportFile = null;
                             copy.learnMethod = 'none';
                             copy.level = null;
                         }
+                        applyFolderRemap([copy]);
                         state[targetKey].push(copy);
                         existing.add(String(copy.name).trim().toLowerCase());
                     });
@@ -226,6 +218,97 @@ let pendingCollectionImportFile = null;
                 const input = document.getElementById('import-file');
                 if (input) input.value = '';
             }
+        }
+
+        // Normalizes a batch of incoming Fakemon records and gives each a fresh id
+        // so an import can never overwrite something already in the collection.
+        // Evolution-graph references are rewritten onto the new ids in the same
+        // pass, since fresh ids would otherwise orphan them.
+        function prepareIncomingFakemon(list, now = Date.now()) {
+            const idRemap = new Map();
+            const prepared = list.map((f, index) => {
+                const copy = JSON.parse(JSON.stringify(f));
+                if (!Array.isArray(copy.learnset)) copy.learnset = [];
+                if (!Array.isArray(copy.customMoves)) copy.customMoves = [];
+                const customByName = new Map(copy.customMoves.filter(Boolean).map(m => [String(m.name || '').toLowerCase(), m]));
+                copy.learnset = copy.learnset.map(m => {
+                    const key = String(m?.name || '').toLowerCase();
+                    return customByName.has(key) ? { ...m, ...customByName.get(key), source: 'custom', custom: true } : m;
+                });
+                copy.customMoves.forEach(m => {
+                    const key = String(m?.name || '').toLowerCase();
+                    if (key && !copy.learnset.some(x => String(x?.name || '').toLowerCase() === key)) copy.learnset.push({ ...m, source: 'custom', custom: true });
+                });
+                if (!Array.isArray(copy.abilities)) copy.abilities = [];
+                if (!Array.isArray(copy.eggGroups)) copy.eggGroups = String(copy.eggGroups || '').split(/\s*\/\s*|\s*,\s*/).filter(Boolean);
+                const previousId = String(copy.id ?? '');
+                copy.id = `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+                if (previousId) idRemap.set(previousId, copy.id);
+                copy.createdAt = now + index;
+                copy.updatedAt = now + index;
+                return copy;
+            });
+            remapImportedEvolutionGraphs(prepared, idRemap);
+            return { list: prepared, idRemap };
+        }
+
+        /**
+         * Adds Fakemon records to the signed-in user's own collection under fresh
+         * ids, leaving everything already there untouched. Used by the Community
+         * Hub's "Add to My Collection", which hands over records that came from
+         * the database rather than from a file.
+         *
+         * @param {object[]} records raw Fakemon records
+         * @returns {Promise<object[]>} the copies that were added (empty on failure)
+         */
+        async function addFakemonToCollection(records) {
+            const usable = (Array.isArray(records) ? records : [records])
+                .filter(f => f && typeof f === 'object' && String(f.name || '').trim());
+            if (!usable.length) return [];
+            const { list } = prepareIncomingFakemon(usable);
+            // these came from somewhere else; their folderId means nothing here
+            list.forEach(f => { f.folderId = null; });
+            state.fakemonDB = [...state.fakemonDB, ...list];
+            await api.migrateLearnsetsToMinimal?.();
+            const saved = await api.saveToStorage();
+            if (saved === false) {
+                log.error('IMPORT', 'Collection refused the save; rolling the added Fakemon back');
+                const added = new Set(list.map(f => String(f.id)));
+                state.fakemonDB = state.fakemonDB.filter(f => !added.has(String(f.id)));
+                return [];
+            }
+            api.renderCollection?.();
+            return list;
+        }
+
+        // Copies the file's folders in under fresh ids and returns oldId -> newId,
+        // so imported items can be re-pointed at them. On "replace" the existing
+        // folders go with the collection they organized; on "add" a folder whose
+        // name and type already exist is reused rather than duplicated.
+        function mergeImportedFolders(importedFolders, mode, now) {
+            const remap = new Map();
+            if (mode === 'replace') state.folders = [];
+            if (!Array.isArray(state.folders)) state.folders = [];
+            if (!importedFolders.length) return remap;
+
+            const key = folder => `${String(folder.type || 'fakemon')}::${String(folder.name || '').trim().toLowerCase()}`;
+            const existingByKey = new Map(state.folders.map(f => [key(f), f]));
+
+            importedFolders.forEach((raw, index) => {
+                if (!raw || typeof raw !== 'object' || !String(raw.name || '').trim()) return;
+                const previousId = String(raw.id ?? '');
+                const match = existingByKey.get(key(raw));
+                if (match) {
+                    if (previousId) remap.set(previousId, String(match.id));
+                    return;
+                }
+                const copy = JSON.parse(JSON.stringify(raw));
+                copy.id = `folder_${now}_${index}_${Math.random().toString(36).slice(2, 6)}`;
+                state.folders.push(copy);
+                existingByKey.set(key(copy), copy);
+                if (previousId) remap.set(previousId, copy.id);
+            });
+            return remap;
         }
 
         // rewrites `fakemon:<oldId>` node ids/refIds onto the new import ids;
@@ -1128,4 +1211,4 @@ let pendingCollectionImportFile = null;
 
         
 
-export { refreshPlainTextExport, exportCollection, buildFakemonExportBundle, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon, exportCollectionAsPlainTextZip, buildPlainTextForFakemonData };
+export { refreshPlainTextExport, exportCollection, addFakemonToCollection, downloadJsonFile, buildFakemonExportBundle, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon, exportCollectionAsPlainTextZip, buildPlainTextForFakemonData };
