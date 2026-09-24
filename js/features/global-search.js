@@ -104,13 +104,13 @@ function placeResults(query, limit) {
 }
 
 function fakemonResults(query, limit) {
-    const regionName = id => (api.getRegions?.() || []).find(r => r.id === id)?.name || '';
+    const regionName = entry => (api.entryRegionIds?.(entry) || []).map(id => (api.getRegions?.() || []).find(r => String(r.id) === id)?.name).filter(Boolean).join(', ');
     return top((state.fakemonDB || []).map(f => ({
         title: f.name || 'Unnamed',
-        sub: [f.number, [f.type1, f.type2].filter(Boolean).join(' / '), f.species, regionName(f.regionId)].filter(Boolean).join(' · '),
+        sub: [f.number, [f.type1, f.type2].filter(Boolean).join(' / '), f.species, regionName(f)].filter(Boolean).join(' · '),
         art: f.artwork || '',
         icon: 'circle-dashed',
-        score: score(query, f.name, `${f.species || ''} ${f.type1 || ''} ${f.type2 || ''} ${f.number || ''} ${regionName(f.regionId)}`),
+        score: score(query, f.name, `${f.species || ''} ${f.type1 || ''} ${f.type2 || ''} ${f.number || ''} ${regionName(f)}`),
         run: () => api.editFakemon?.(f.id)
     })), limit);
 }

@@ -13,6 +13,7 @@
 
 import { log } from '../core/log.js';
 import { state, api } from '../core/app.js';
+import { confirmDialog } from '../core/confirm-dialog.js';
 import { getClient } from '../core/supabase.js';
 import { esc as escapeHtml } from '../core/html.js';
 
@@ -280,7 +281,7 @@ export async function removeFakemonFromCloud(fakemonId, event) {
 
 export async function deleteCloudBackup() {
     if (!state.user) return false;
-    if (!confirm('Delete your cloud backup? Your local collection on this device is not affected.')) return false;
+    if (!await confirmDialog({ title: 'Delete your cloud backup?', message: 'Your collection on this device is not affected.' })) return false;
     const client = await getClient();
     const { error } = await client.from('collections').delete().eq('user_id', state.user.id);
     if (error) {

@@ -1319,7 +1319,7 @@ function buildSpeciesEvolutionGraph(speciesId, selfFakemonId, regionId = null) {
     if (!(base.evos || []).length) return null;
 
     // the same species already made into a Fakemon in this region joins as that Fakemon
-    const copyOf = id => (state.fakemonDB || []).find(f => f.vanillaId === id && String(f.regionId || '') === String(regionId || '') && String(f.id) !== String(selfFakemonId));
+    const copyOf = id => (state.fakemonDB || []).find(f => f.vanillaId === id && !f.pendingVanilla && String(f.regionId || '') === String(regionId || '') && String(f.id) !== String(selfFakemonId));
     const nodeFor = id => {
         if (id === speciesId && selfFakemonId) return { id: `fakemon:${selfFakemonId}`, kind: 'fakemon', refId: selfFakemonId };
         const copy = copyOf(id);
@@ -1350,13 +1350,14 @@ function buildSpeciesEvolutionGraph(speciesId, selfFakemonId, regionId = null) {
 }
 
 /** Fills the open Fakemon's board with its species' line (see above). */
-function applyVanillaEvolutionLine(speciesId) {
+function applyVanillaEvolutionLine(speciesId, { persist = true } = {}) {
     if (!state.editingId) return false;
     const me = getFakemon(state.editingId);
     const g = buildSpeciesEvolutionGraph(speciesId, state.editingId, me?.regionId || null);
     if (!g) return false;
     initializeEvolutionGraph(g);
-    persistEvolutionGraph();
+    // persisting writes the graph onto the rest of the family too
+    if (persist) persistEvolutionGraph();
     log.info('EVOLUTION', 'Filled in a main-game evolution line', { speciesId, nodes: g.nodes.length });
     return true;
 }

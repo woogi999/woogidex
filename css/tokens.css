@@ -169,3 +169,10 @@ body[data-page="not-found-view"] #main-content { padding-top: 0; }
 @media (max-width: 640px) {
     .logo img, .logo-button img { height: 28px; }
 }
+
+/* the theme switch's expanding circle (toggleDarkMode in js/core/app.js):
+   the page snapshots swap with no cross-fade, so only the circle shows */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }

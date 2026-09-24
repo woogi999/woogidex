@@ -89,7 +89,7 @@ function resetEditor() {
             selectType('type1', fakemon.type1 || '');
             selectType('type2', fakemon.type2 || '');
             document.getElementById('fakemon-number').value = fakemon.number || '';
-            api.setEditorRegion?.(fakemon.regionId || null);
+            api.setEditorRegion?.(fakemon);
             document.getElementById('editor-level').value = fakemon.level || 100;
             document.getElementById('stat-hp').value = clampBaseStatValue(fakemon.stats?.hp ?? 60);
             document.getElementById('stat-atk').value = clampBaseStatValue(fakemon.stats?.atk ?? 60);

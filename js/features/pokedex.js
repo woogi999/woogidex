@@ -1,6 +1,7 @@
 import { esc as escapeLibraryHtml } from '../core/html.js';
 import { log } from '../core/log.js';
 import { state, api } from '../core/app.js';
+import { confirmDialog } from '../core/confirm-dialog.js';
 import { POKEMON_COLORS } from '../core/data.js';
 import { cachedFetch } from '../core/net-cache.js';
 // PokeAPI never rewrites a species entry, so a month is conservative.
@@ -45,26 +46,42 @@ const POKEAPI_CACHE = { cacheName: 'woogidex-pokeapi-v1', maxAgeMs: 30 * 8640000
             return name;
         }
 
-        async function startNewFakemonEditor(name, template) {
+        // options.pendingVanilla: a region's version of a main-game Pokemon,
+        // which stays pending (unsaved, not "edited") until something changes.
+        // options.asCopy: a Fakemon of your own that only starts from the species.
+        // options.background: fill it in without opening the editor (for a preview).
+        async function startNewFakemonEditor(name, template, options = {}) {
             api.autoSave(true);
             state.editingId = null;
             api.resetEditor();
             document.getElementById('fakemon-name').value = name;
-            api.activateTopLevelView?.('editor-view');
-            switchTab(null, 'basic');
+            if (!options.background) {
+                api.activateTopLevelView?.('editor-view');
+                switchTab(null, 'basic');
+                api.setRoute?.('editor', name || 'New Fakemon');
+            }
             document.getElementById('new-fakemon-modal')?.classList.remove('active');
             document.getElementById('pokemon-template-modal')?.classList.remove('active');
-            api.setRoute?.('editor', name || 'New Fakemon');
 
             // learnset hydrates immediately from the already-loaded Showdown dex; PokeAPI species/lore load async without blocking the editor.
-            state.pendingVanillaId = template?.id || null;
-            if (template) await applyPokemonTemplate(template, name);
-            api.updatePreview();
-            if (template) {
-                // a first save gives it an id, which its evolution board needs
-                await api.autoSave?.(true);
-                state.pendingVanillaId = null;
-                api.applyVanillaEvolutionLine?.(template.id);
+            state.pendingVanillaId = template && !options.asCopy ? template.id : null;
+            state.pendingVanillaDraft = !!(template && options.pendingVanilla);
+            try {
+                if (template) await applyPokemonTemplate(template, name);
+                api.updatePreview();
+                if (template) {
+                    // a first save gives it an id, which its evolution board needs
+                    await api.autoSave?.(true);
+                    state.pendingVanillaId = null;
+                    if (!options.asCopy) {
+                        // a pending version only shows the line; linking the rest of
+                        // the family to it waits until it's really the region's own
+                        api.applyVanillaEvolutionLine?.(template.id, { persist: !state.pendingVanillaDraft });
+                    }
+                    if (state.pendingVanillaDraft) api.markFakemonPendingBaseline?.();
+                }
+            } finally {
+                state.pendingVanillaDraft = false;
             }
         }
 
@@ -348,14 +365,15 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             }
         }
 
-        async function usePokemonTemplate(id) {
+        async function usePokemonTemplate(id, options = {}) {
             await api.ensureLearnsets?.(); // Learnsets load lazily
             const template=state.sdPokedex?.[id];
             if(!template) { api.showToast('That Pokemon could not be loaded. Please try another.', 'error'); return; }
             const enteredName=(document.getElementById('new-fakemon-name')?.value || '').trim();
             const name=enteredName || template.name || 'Fakemon';
-            startNewFakemonEditor(name,template);
-            api.showToast(`Loading ${template.name} species data...`, 'info');
+            const ready = startNewFakemonEditor(name,template,options);
+            if (!options.pendingVanilla && !options.background) api.showToast(`Loading ${template.name} species data...`, 'info');
+            await ready;
         }
 
         function editFakemon(id) {
@@ -412,15 +430,20 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             // reuse the editor's render pipeline: load into the hidden form, render, then clone the board into the popup.
             state.editingId = id;
             api.loadFakemonIntoEditor(fakemon);
+            openBoardPreview(() => editFakemon(id));
+            maybeAutoplayCry(fakemon);
+        }
+
+        // Shows whatever the (hidden) editor form holds as the preview popup.
+        function openBoardPreview(onEdit) {
             // the board's markup is read back on the next line, so it has to exist now
             api.updatePreviewNow();
             const source = document.getElementById('pokedex-board-container');
             const wrap = document.getElementById('preview-modal-board-wrap');
             wrap.innerHTML = source.innerHTML.replace(/id="pokedex-board-export"/, 'id="pokedex-board-preview-modal"');
             const editBtn = document.getElementById('preview-modal-edit-btn');
-            editBtn.onclick = () => { api.closeModal('fakemon-preview-modal'); editFakemon(id); };
+            editBtn.onclick = () => { api.closeModal('fakemon-preview-modal'); onEdit(); };
             document.getElementById('fakemon-preview-modal').classList.add('active');
-            maybeAutoplayCry(fakemon);
         }
 
 // ==================== create menu ====================
@@ -483,6 +506,20 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             document.getElementById('folder-name-modal').classList.add('active');
             setTimeout(() => { input.focus(); input.select(); }, 50);
         }
+        // Folders belong to the region they were made in, like everything else,
+        // so a region shows its own folders and "All" shows every folder.
+        function visibleFolders(kind) {
+            return (state.folders || []).filter(f => (kind === 'fakemon' ? (f.type || 'fakemon') === 'fakemon' : f.type === kind)
+                && api.entryInActiveRegion(f));
+        }
+        // one folder level: inside a folder, what's filed there; at the root,
+        // whatever isn't filed in a folder you can see from here
+        function atFolderLevel(items, kind) {
+            if (state.currentFolderId) return items.filter(i => String(i.folderId || '') === String(state.currentFolderId));
+            const shown = new Set(visibleFolders(kind).map(f => String(f.id)));
+            return items.filter(i => !i.folderId || !shown.has(String(i.folderId)));
+        }
+
         function confirmFolderName() {
             const name = document.getElementById('folder-name-input').value.trim();
             if (!name) { api.showToast('Please enter a folder name!', 'error'); return; }
@@ -490,12 +527,16 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
                 const folder = state.folders.find(f => f.id === folderNameModalTargetId);
                 if (folder) { folder.name = name; folder.color = folderColorSelection || null; }
             } else {
+                const region = api.getActiveRegion?.();
                 state.folders.push({
                     id: 'folder_' + Date.now().toString(),
                     name: name,
                     color: folderColorSelection || null,
                     pinned: false,
                     type: collectionView,
+                    // made inside a region, it lives there
+                    regionId: region?.id || null,
+                    regionIds: region ? [region.id] : [],
                     createdAt: Date.now()
                 });
             }
@@ -509,13 +550,13 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             document.getElementById('search-input').value = '';
             renderCollection();
         }
-        function deleteFolder(id, event) {
+        async function deleteFolder(id, event) {
             if (event) event.stopPropagation();
             const folder = state.folders.find(f => f.id === id);
             if (!folder) return;
             const kind = folder.type || 'fakemon';
             const label = kind === 'moves' ? 'Moves' : kind === 'abilities' ? 'Abilities' : 'Fakemon';
-            if (!confirm(`Delete "${folder.name}"? ${label} inside will be moved back to My Collection.`)) return;
+            if (!await confirmDialog({ title: `Delete the folder “${folder.name}”?`, message: `${label} inside aren’t deleted; they move back out of the folder.` })) return;
             if (kind === 'moves') (state.customMoves || []).forEach(m => { if (m.folderId === id) m.folderId = null; });
             else if (kind === 'abilities') (state.customAbilities || []).forEach(a => { if (a.folderId === id) a.folderId = null; });
             else if (kind === 'items') (state.customItems || []).forEach(i => { if (i.folderId === id) i.folderId = null; });
@@ -567,12 +608,12 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             api.showToast(`${item.name || 'Custom entry'} duplicated!`, 'success');
         }
 
-        function deleteCustomLibraryItem(kind, id, event) {
+        async function deleteCustomLibraryItem(kind, id, event) {
             if (event) event.stopPropagation();
             const arr = kind === 'moves' ? state.customMoves : kind === 'abilities' ? state.customAbilities : state.customItems;
             const item = (arr || []).find(x => x.id === id);
             if (!item) return;
-            if (!confirm(`Delete "${item.name}" from your ${kind === 'moves' ? 'move' : 'ability'} library?`)) return;
+            if (!await confirmDialog({ title: `Delete “${item.name}”?`, message: `It’s removed from your ${kind === 'moves' ? 'moves' : kind === 'abilities' ? 'abilities' : 'items'}. Fakémon that use it keep their copy.` })) return;
             if (kind === 'moves') state.customMoves = state.customMoves.filter(x => x.id !== id);
             else if (kind === 'abilities') state.customAbilities = state.customAbilities.filter(x => x.id !== id);
             else state.customItems = state.customItems.filter(x => x.id !== id);
@@ -657,11 +698,16 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
 // ==================== collection ====================
         let collectionView = 'fakemon';
 
-        const COLLECTION_LAYOUT_KEY = 'woogidex.collection.layout.v1';
-        let collectionLayout = (() => {
-            try { return localStorage.getItem(COLLECTION_LAYOUT_KEY) === 'list' ? 'list' : 'grid'; }
-            catch { return 'grid'; }
-        })();
+        // Grid or list is remembered per tab: Fakémon read best as art, the
+        // libraries as rows, so those start as lists.
+        const COLLECTION_LAYOUT_KEY = 'woogidex.collection.layout.v2';
+        const DEFAULT_LAYOUTS = { fakemon: 'grid', moves: 'list', abilities: 'list', items: 'list', types: 'list' };
+        function readLayouts() {
+            try { return { ...DEFAULT_LAYOUTS, ...(JSON.parse(localStorage.getItem(COLLECTION_LAYOUT_KEY) || '{}') || {}) }; }
+            catch { return { ...DEFAULT_LAYOUTS }; }
+        }
+        function layoutFor(view) { return readLayouts()[view] === 'list' ? 'list' : 'grid'; }
+        let collectionLayout = layoutFor('fakemon');
 
         function applyCollectionLayoutUI() {
             const grid = document.getElementById('collection-grid');
@@ -678,7 +724,7 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
 
         function toggleCollectionLayout() {
             collectionLayout = collectionLayout === 'list' ? 'grid' : 'list';
-            try { localStorage.setItem(COLLECTION_LAYOUT_KEY, collectionLayout); } catch {}
+            try { localStorage.setItem(COLLECTION_LAYOUT_KEY, JSON.stringify({ ...readLayouts(), [collectionView]: collectionLayout })); } catch {}
             applyCollectionLayoutUI();
             renderCollection();
         }
@@ -780,10 +826,16 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             const exportLabel = document.querySelector('#collection-export-btn span');
             if (exportLabel) exportLabel.textContent = api.getActiveRegion?.() ? `Export ${api.getActiveRegion().name}` : 'Export';
             if (region) {
+                const inFolder = state.folders.find(f => f.id === state.currentFolderId);
+                const regionLabel = `${region.color ? `<span class="region-dot region-dot-lg" style="--region-color:${escapeCollectionHtml(region.color)}"></span>` : ''}${escapeCollectionHtml(region.name)}`;
                 el.innerHTML = `
                     <span class="breadcrumb-root" onclick="selectRegion(null)" style="cursor:pointer;">My Collection</span>
                     <span class="breadcrumb-sep" style="color:var(--text-muted);"> / </span>
-                    <span class="breadcrumb-current">${region.color ? `<span class="region-dot region-dot-lg" style="--region-color:${escapeCollectionHtml(region.color)}"></span>` : ''}${escapeCollectionHtml(region.name)}</span>
+                    ${inFolder
+                        ? `<span class="breadcrumb-root" onclick="openFolder(null)" style="cursor:pointer;">${regionLabel}</span>
+                           <span class="breadcrumb-sep" style="color:var(--text-muted);"> / </span>
+                           <span class="breadcrumb-current">${escapeCollectionHtml(inFolder.name)}</span>`
+                        : `<span class="breadcrumb-current">${regionLabel}</span>`}
                 `;
                 const sub = document.querySelector('#collection-header-row .page-subtitle');
                 if (sub) sub.textContent = region.description || 'Everything in this region.';
@@ -810,6 +862,8 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             if (api.isRegionDetailsOpen?.()) api.closeRegionDetails?.();
             if (newView !== collectionView) state.currentFolderId = null;
             collectionView = newView;
+            collectionLayout = layoutFor(collectionView);
+            applyCollectionLayoutUI();
             document.querySelectorAll('[data-collection-view]').forEach(tab => {
                 const on = tab.dataset.collectionView === collectionView;
                 tab.classList.toggle('active', on);
@@ -889,7 +943,8 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             const isMove = kind === 'moves';
             const isAbility = kind === 'abilities';
             const source = isMove ? (state.customMoves || []) : isAbility ? (state.customAbilities || []) : (state.customItems || []);
-            let items = source.filter(item => {
+            // a region's copy of a main-game entry that was only opened, never changed
+            let items = source.filter(item => !item.pendingVanilla).filter(item => {
                 if (!search) return true;
                 const text = isMove
                     ? `${item.name || ''} ${item.type || ''} ${item.category || ''} ${item.desc || ''}`
@@ -898,14 +953,15 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             });
             const inRegion = !!api.getActiveRegionId?.();
             if (inRegion) items = items.filter(item => api.entryInActiveRegion(item));
-            else if (!search) items = items.filter(item => (item.folderId || null) === state.currentFolderId);
+            if (!search) items = atFolderLevel(items, kind);
             items = sortLibraryList(items, sortPrefs.by === 'name' ? (sortPrefs.order === 'asc' ? 'name-asc' : 'name-desc') : sortPrefs.order === 'asc' ? 'oldest' : 'newest');
 
             // folders only show at the root level, and only while not searching.
-            let folders = (!search && !state.currentFolderId && !inRegion) ? state.folders.filter(f => f.type === kind) : [];
+            let folders = (!search && !state.currentFolderId) ? visibleFolders(kind) : [];
             folders.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
-            const vanillaCards = collectionLayout === 'list' ? '' : (api.regionVanillaLibraryCards?.(kind, search) || '');
+            // the vanilla tiles share the library card markup, which the list layout restyles
+            const vanillaCards = api.regionVanillaLibraryCards?.(kind, search) || '';
             // an empty library still gets its "Add new" card; the message is for a search that found nothing
             if (search && !items.length && !folders.length && !vanillaCards) {
                 grid.style.display = 'grid';
@@ -928,13 +984,13 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             grid.style.display = collectionLayout === 'list' ? 'flex' : 'grid';
 
             const folderCards = folders.map(folder => {
-                const count = source.filter(item => item.folderId === folder.id).length;
+                const count = source.filter(item => item.folderId === folder.id && !item.pendingVanilla && api.entryInActiveRegion(item)).length;
                 const color = folder.color || null;
                 const cardStyle = color ? `border-color:${color};background:color-mix(in srgb, ${color} 10%, var(--bg-panel));` : '';
                 const iconStyle = color ? `color:${color};` : '';
                 return `
                     <div class="collection-card folder-card${folder.pinned ? ' pinned' : ''}" style="${cardStyle}" ondragover="handleFolderDragOver(event)" ondragleave="handleFolderDragLeave(event)" ondrop="handleFolderDrop('${folder.id}', event)" onclick="openFolder('${folder.id}')">
-                        <div class="card-actions">
+                        <div class="card-actions"><button type="button" class="card-actions-toggle" onclick="toggleCardActions(this, event)" title="Actions" aria-label="Actions"><i data-lucide="more-horizontal" style="width:16px;height:16px;"></i></button>
                             <button class="${folder.pinned ? 'pinned-btn' : ''}" onclick="toggleFolderPin('${folder.id}', event)" title="${folder.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin" style="width:14px;height:14px;"></i></button>
                             <button onclick="renameFolder('${folder.id}', event)" title="Rename / Color"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
                             <button class="card-delete-btn" onclick="deleteFolder('${folder.id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
@@ -991,9 +1047,12 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             const descLine = `<span class="library-tile-desc${item.desc ? '' : ' is-empty'}">${escapeCollectionHtml(item.desc || 'No description')}</span>`;
             if (kind === 'items') {
                 return {
+                    // a region's copy of a main-game item keeps the item's own icon
                     art: item.artwork
                         ? `<img src="${item.artwork}" alt="${escapeCollectionHtml(item.name)} artwork" draggable="false" loading="lazy" decoding="async">`
-                        : '<span class="library-emblem library-emblem-plain"><i data-lucide="gem"></i></span>',
+                        : item.vanillaId && api.itemIconEmblem
+                            ? api.itemIconEmblem(state.sdItems?.[item.vanillaId]?.name || item.name, state.sdItems?.[item.vanillaId])
+                            : '<span class="library-emblem library-emblem-plain"><i data-lucide="gem"></i></span>',
                     corner: '',
                     pills: `<span class="library-tag">${item.isMegaStone ? 'Mega Stone' : 'Item'}</span>`,
                     meta: descLine
@@ -1017,10 +1076,10 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             // card's three lines (name, one detail line, badges) so both are one size
             const desc = String(item.desc || '').trim();
             return `<div class="collection-card library-tile${item.pinned ? ' pinned' : ''}" draggable="true" ondragstart="handleLibraryCardDragStart('${kind}','${id}', event)" ondragend="handleCardDragEnd()" onclick="openLibraryEditorSheet('${kind}','${id}')"${desc ? ` title="${escapeCollectionHtml(desc)}"` : ''}>
-                <div class="card-actions">${libraryCardActions(kind, item, inFolder)}</div>
+                <div class="card-actions"><button type="button" class="card-actions-toggle" onclick="toggleCardActions(this, event)" title="Actions" aria-label="Actions"><i data-lucide="more-horizontal" style="width:16px;height:16px;"></i></button>${libraryCardActions(kind, item, inFolder)}</div>
                 <div class="card-art">${art}${corner ? `<span class="card-number library-tile-corner">${corner}</span>` : ''}${item.vanillaId ? '<span class="vanilla-card-tag">Edited</span>' : ''}</div>
                 <div class="card-body">
-                    <div class="card-name" title="${escapeCollectionHtml(item.name)}">${escapeCollectionHtml(item.name)}</div>
+                    <div class="card-name" title="${escapeCollectionHtml(item.name)}">${escapeCollectionHtml(item.name)}${item.vanillaId ? '<span class="vanilla-card-tag vanilla-card-tag-inline">Edited</span>' : ''}</div>
                     <div class="card-meta-row">${meta}</div>
                     ${pills === null
                         // keeps the row's height, so ability cards stay the size of the others
@@ -1117,7 +1176,7 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             const inFolder = !!f.folderId && !search;
             return `
                     <div class="collection-card${f.pinned ? ' pinned' : ''}" draggable="true" ondragstart="handleCardDragStart('${f.id}', event)" ondragend="handleCardDragEnd()" onclick="previewFakemon('${f.id}')">
-                        <div class="card-actions">
+                        <div class="card-actions"><button type="button" class="card-actions-toggle" onclick="toggleCardActions(this, event)" title="Actions" aria-label="Actions"><i data-lucide="more-horizontal" style="width:16px;height:16px;"></i></button>
                             ${collectionCardActions(f, search)}
                         </div>
                         <div class="card-art">${(state.collectionShinyPreview && f.shinyArtwork) ? `<img src="${f.shinyArtwork}" alt="${f.name} shiny" draggable="false" loading="lazy" decoding="async">` : (f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false" loading="lazy" decoding="async">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">')}${api.cloudBadgeHtml?.(f) || ''}<span class="card-number">${escapeCollectionHtml(f.number || '#???')}</span></div>
@@ -1142,7 +1201,7 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             const type2Class = f.type2 ? `type-${f.type2.toLowerCase()}` : '';
             return `
                 <div class="collection-card collection-list-card${f.pinned ? ' pinned' : ''}" draggable="true" ondragstart="handleCardDragStart('${f.id}', event)" ondragend="handleCardDragEnd()" onclick="previewFakemon('${f.id}')">
-                    <div class="card-actions">
+                    <div class="card-actions"><button type="button" class="card-actions-toggle" onclick="toggleCardActions(this, event)" title="Actions" aria-label="Actions"><i data-lucide="more-horizontal" style="width:16px;height:16px;"></i></button>
                         ${collectionCardActions(f, search)}
                     </div>
                     <div class="card-art">${(state.collectionShinyPreview && f.shinyArtwork) ? `<img src="${f.shinyArtwork}" alt="${f.name} shiny" draggable="false" loading="lazy" decoding="async">` : (f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false" loading="lazy" decoding="async">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">')}${api.cloudBadgeHtml?.(f) || ''}</div>
@@ -1176,6 +1235,12 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
 
         function renderCollectionNow() {
         log.debug('COLLECTION', 'Rendering collection', { count: state.fakemonDB.length, folders: state.folders.length });
+            // region copies of main-game moves/abilities/items that were opened and
+            // closed without a change go away once nothing has them open
+            const libraryEditorOpen = document.querySelector('#custom-move-modal.active, #custom-ability-modal.active, #custom-item-modal.active')
+                || document.getElementById('ability-block-editor-view')?.style.display === 'block';
+            if (!libraryEditorOpen) api.discardPendingVanillaCopies?.();
+            api.discardPendingFakemon?.();
             api.syncCustomTypes?.();
             renderBreadcrumb();
             api.renderRegionSidebar?.();
@@ -1210,25 +1275,24 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             const search = document.getElementById('search-input').value.toLowerCase();
             const sortPrefs = getCollectionSortPrefsFromUI();
 
-            let filtered = state.fakemonDB;
+            // a region's version of a main-game Pokemon that was only opened, never changed
+            const ownFakemon = state.fakemonDB.filter(f => !f.pendingVanilla);
+            let filtered = ownFakemon;
             if (search) {
-                filtered = state.fakemonDB.filter(f =>
+                filtered = ownFakemon.filter(f =>
                     f.name.toLowerCase().includes(search) ||
                     (f.species && f.species.toLowerCase().includes(search)) ||
                     (f.type1 && f.type1.toLowerCase().includes(search)) ||
                     (f.type2 && f.type2.toLowerCase().includes(search))
                 );
-            } else if (api.getActiveRegionId?.()) {
-                // a region is a flat view of its Fakemon, whatever folder they're in
-                filtered = state.fakemonDB;
             } else {
-                filtered = state.fakemonDB.filter(f => (f.folderId || null) === state.currentFolderId);
+                filtered = atFolderLevel(ownFakemon, 'fakemon');
             }
             if (api.getActiveRegionId?.()) filtered = filtered.filter(f => api.fakemonInActiveRegion(f));
             filtered = sortFakemonList(filtered, sortPrefs.by, sortPrefs.order);
 
             // folders only show at the root level, and only while not searching or in a region.
-            let folders = (!search && !state.currentFolderId && !api.getActiveRegionId?.()) ? state.folders.filter(f => (f.type || 'fakemon') === 'fakemon') : [];
+            let folders = (!search && !state.currentFolderId) ? visibleFolders('fakemon') : [];
             folders.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
             if (search && filtered.length === 0 && folders.length === 0) {
@@ -1248,13 +1312,13 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             empty.style.display = 'none';
 
             const folderCards = folders.map(folder => {
-                const count = state.fakemonDB.filter(f => f.folderId === folder.id).length;
+                const count = state.fakemonDB.filter(f => f.folderId === folder.id && !f.pendingVanilla && api.entryInActiveRegion(f)).length;
                 const color = folder.color || null;
                 const cardStyle = color ? `border-color:${color};background:color-mix(in srgb, ${color} 10%, var(--bg-panel));` : '';
                 const iconStyle = color ? `color:${color};` : '';
                 return `
                     <div class="collection-card folder-card${folder.pinned ? ' pinned' : ''}" style="${cardStyle}" ondragover="handleFolderDragOver(event)" ondragleave="handleFolderDragLeave(event)" ondrop="handleFolderDrop('${folder.id}', event)" onclick="openFolder('${folder.id}')">
-                        <div class="card-actions">
+                        <div class="card-actions"><button type="button" class="card-actions-toggle" onclick="toggleCardActions(this, event)" title="Actions" aria-label="Actions"><i data-lucide="more-horizontal" style="width:16px;height:16px;"></i></button>
                             <button class="${folder.pinned ? 'pinned-btn' : ''}" onclick="toggleFolderPin('${folder.id}', event)" title="${folder.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin" style="width:14px;height:14px;"></i></button>
                             <button onclick="renameFolder('${folder.id}', event)" title="Rename / Color"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
                             <button class="card-delete-btn" onclick="deleteFolder('${folder.id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
@@ -1274,11 +1338,31 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             ).join('');
 
             // the vanilla Pokemon a region brings over, after its own Fakemon
-            const vanillaCards = collectionLayout === 'list' ? '' : (api.regionVanillaPokemonCards?.(search) || '');
+            const vanillaCards = api.regionVanillaPokemonCards?.(search, collectionLayout) || '';
             grid.innerHTML = (search ? '' : addNewCardHtml('fakemon')) + folderCards + fakemonCards + vanillaCards;
             if (typeof lucide !== 'undefined') lucide.createIcons();
             api.updateCollectionShinyPreviewUI?.();
         }
+
+        // touch screens have no hover, so each card's actions sit behind one
+        // button (css/mobile.css); only one card's actions are open at a time
+        function toggleCardActions(btn, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            const bar = btn.closest('.card-actions');
+            if (!bar) return;
+            const open = !bar.classList.contains('open');
+            closeCardActions();
+            bar.classList.toggle('open', open);
+            // lifts the card above its neighbours while its actions are showing
+            bar.closest('.collection-card')?.classList.toggle('actions-open', open);
+        }
+        function closeCardActions() {
+            document.querySelectorAll('.card-actions.open').forEach(b => b.classList.remove('open'));
+            document.querySelectorAll('.collection-card.actions-open').forEach(c => c.classList.remove('actions-open'));
+        }
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.card-actions')) closeCardActions();
+        });
 
         function toggleCollectionFakemonExportMenu(id, event) {
             if (event) { event.preventDefault(); event.stopPropagation(); }
@@ -1312,4 +1396,4 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
 
         
 
-export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, toggleCustomLibraryPin, duplicateCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST, changeCollectionSort , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate, renderCollectionSkeleton, getPokemonTemplateSprite, applyCollectionLayoutUI, toggleCollectionLayout, openLibraryEditorSheet, getDraggedFakemonId, getDraggedLibraryItem, renderBreadcrumb};
+export { openBoardPreview, toggleCardActions, toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, toggleCustomLibraryPin, duplicateCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST, changeCollectionSort , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate, renderCollectionSkeleton, getPokemonTemplateSprite, applyCollectionLayoutUI, toggleCollectionLayout, openLibraryEditorSheet, getDraggedFakemonId, getDraggedLibraryItem, renderBreadcrumb};

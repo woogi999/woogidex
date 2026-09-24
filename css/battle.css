@@ -769,3 +769,12 @@
 .battle-findmatch.is-searching { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 /* the empty "nobody here" lines read as part of the list they describe */
 #battle-body .battle-section-head { margin-top: var(--sp-2); }
+
+/* the picker's My Regions tab: each region's name heads its row of Pokémon */
+.battle-picker-group {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 6px; padding: 4px 2px;
+    font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-secondary);
+}

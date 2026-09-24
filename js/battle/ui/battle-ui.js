@@ -4,6 +4,7 @@
 
 import { state, api } from '../../core/app.js';
 import { log } from '../../core/log.js';
+import { confirmDialog } from '../../core/confirm-dialog.js';
 import { NATURE_DATA } from '../../core/data.js';
 import { Battle, canSelectMove, ENGINE_VERSION, STRUGGLE, STRUGGLE_INDEX } from '../engine/battle.js';
 import { mountIsland } from '../../react/island.jsx';
@@ -842,9 +843,9 @@ export function duplicateBattleTeam(id) {
     copy.id = makeTeam().id; copy.name = `${t.name} copy`; copy.createdAt = Date.now();
     teams().push(copy); api.saveToStorage?.(); render();
 }
-export function deleteBattleTeam(id) {
+export async function deleteBattleTeam(id) {
     const t = findTeam(id); if (!t) return;
-    if (!confirm(`Delete team “${t.name}”?`)) return;
+    if (!await confirmDialog({ title: `Delete team “${t.name}”?`, message: 'The Fakémon in it stay in your collection.' })) return;
     state.battleTeams = teams().filter(x => x.id !== id);
     if (UI.editingTeamId === id) UI.editingTeamId = null;
     api.saveToStorage?.(); render();
@@ -936,6 +937,7 @@ function renderMonPickerGrid() {
     if (!grid || !tabs) return;
     tabs.innerHTML = `
       <button class="battle-picker-tab ${UI.pickerTab === 'custom' ? 'is-active' : ''}" type="button" onclick="setBattlePickerTab('custom')">My Fakémon</button>
+      ${regionEditedMons().length ? `<button class="battle-picker-tab ${UI.pickerTab === 'regions' ? 'is-active' : ''}" type="button" onclick="setBattlePickerTab('regions')">My Regions</button>` : ''}
       <button class="battle-picker-tab ${UI.pickerTab === 'vanilla' ? 'is-active' : ''}" type="button" onclick="setBattlePickerTab('vanilla')">Vanilla Pokémon</button>
       <button class="battle-picker-tab ${UI.pickerTab === 'community' ? 'is-active' : ''}" type="button" onclick="setBattlePickerTab('community')">Community</button>`;
     if (UI.pickerTab === 'community') {
@@ -953,6 +955,12 @@ function renderMonPickerGrid() {
             </div>`;
             }).join('') || '<div class="community-empty">Nothing has been published to the Community Hub yet.</div>';
         }
+    } else if (UI.pickerTab === 'regions') {
+        // each region's own versions of main-game Pokemon, under the region's name
+        const groups = (api.getRegions?.() || []).map(r => ({ r, mons: regionEditedMons().filter(f => api.entryInRegion?.(f, r.id)) })).filter(g => g.mons.length);
+        grid.innerHTML = groups.map(({ r, mons }) => `
+            <div class="battle-picker-group"><span class="region-dot" style="--region-color:${esc(r.color || '')}"></span>${esc(r.name)}</div>
+            ${mons.map(pickerCard).join('')}`).join('') || '<div class="community-empty">None of your regions has edited a main-game Pokémon yet.</div>';
     } else if (UI.pickerTab === 'vanilla') {
         const dex = Object.values(state.sdPokedex || {});
         grid.innerHTML = dex.map(p => `
@@ -963,14 +971,25 @@ function renderMonPickerGrid() {
               <div class="card-types">${(p.types || []).map(t => `<span class="type-badge type-${String(t).toLowerCase()}">${t}</span>`).join('')}</div>
             </div>`).join('') || '<div class="community-empty">Showdown data is still loading…</div>';
     } else {
-        grid.innerHTML = (state.fakemonDB || []).map(f => `
-            <div class="collection-card" onclick="pickBattleMon('${esc(f.id)}')">
-              <div class="card-art">${f.artwork ? `<img src="${esc(f.artwork)}" alt="" draggable="false">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="" draggable="false">'}</div>
-              <div class="card-name">${esc(f.name || 'Unnamed')}</div>
-              <div class="card-types">${[f.type1, f.type2].filter(Boolean).map(t => `<span class="type-badge type-${t.toLowerCase()}">${t}</span>`).join('')}</div>
-            </div>`).join('') || '<div class="community-empty">No Fakémon in your collection yet.</div>';
+        grid.innerHTML = (state.fakemonDB || []).filter(f => !f.pendingVanilla).map(pickerCard).join('')
+            || '<div class="community-empty">No Fakémon in your collection yet.</div>';
     }
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// a region's edited main-game Pokemon; ones only opened (pending) aren't real yet
+function regionEditedMons() {
+    return (state.fakemonDB || []).filter(f => f.vanillaId && !f.pendingVanilla && (api.entryRegionIds?.(f) || []).length);
+}
+
+function pickerCard(f) {
+    const regions = (api.entryRegionIds?.(f) || []).map(id => (api.getRegions?.() || []).find(r => String(r.id) === id)?.name).filter(Boolean);
+    return `
+            <div class="collection-card" onclick="pickBattleMon('${esc(f.id)}')"${regions.length ? ` title="${esc(regions.join(', '))}"` : ''}>
+              <div class="card-art">${f.artwork ? `<img src="${esc(f.artwork)}" alt="" draggable="false">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="" draggable="false">'}${f.vanillaId && regions.length ? `<span class="vanilla-card-tag">${esc(regions[0])}</span>` : ''}</div>
+              <div class="card-name">${esc(f.name || 'Unnamed')}</div>
+              <div class="card-types">${[f.type1, f.type2].filter(Boolean).map(t => `<span class="type-badge type-${t.toLowerCase()}">${t}</span>`).join('')}</div>
+            </div>`;
 }
 
 function vanillaArtSlug(p) {
@@ -2291,10 +2310,10 @@ export function chooseBattleSwitch(index) { UI.switchPanelOpen = false; submitCh
 // made the field flash every time the switch panel was opened.
 export function toggleBattleSwitchPanel() { UI.switchPanelOpen = !UI.switchPanelOpen; paintControls(); }
 
-export function forfeitBattle() {
+export async function forfeitBattle() {
     const b = UI.battle;
     if (!b || b.ended) return;
-    if (!confirm('Forfeit this battle?')) return;
+    if (!await confirmDialog({ title: 'Forfeit this battle?', message: 'It counts as a loss.', confirmLabel: 'Forfeit' })) return;
     if (UI.meta.mode === 'pvp') {
         // Forfeit ends the match immediately rather than waiting on the
         // normal choice lockstep -- the opponent doesn't need to act.

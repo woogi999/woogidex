@@ -1,5 +1,6 @@
 import { log } from './log.js';
 import { state, api } from './app.js';
+import { confirmDialog } from './confirm-dialog.js';
 
 // ==================== IndexedDB ====================
         const IDB_NAME = 'woogidex-db';
@@ -10,6 +11,44 @@ let storageWriteRevision = 0;
 let latestStorageWriteRevision = 0;
 let storageWriteChain = Promise.resolve();
 let autoSaveGeneration = 0;
+
+// A region's version of a main-game Pokemon is pending until its contents
+// differ from what the template filled in (js/features/regions.js). This is
+// that starting point, per Fakemon id; timestamps don't count as changes.
+const pendingBaselines = new Map();
+function pendingSignature(fakemon) {
+    const { id, createdAt, updatedAt, evolutionStage, pendingVanilla, ...rest } = fakemon || {};
+    return JSON.stringify(rest);
+}
+
+/**
+ * Drops pending region versions of main-game Pokemon that nobody changed,
+ * except the one the editor is showing right now. Invalidates any autosave
+ * still queued for a dropped one, so it can't come back as a real Fakemon.
+ */
+export function discardPendingFakemon() {
+    // one is being filled in right now (startNewFakemonEditor), or previewed
+    if (state.pendingVanillaDraft) return;
+    const editor = document.getElementById('editor-view');
+    const keep = editor && editor.style.display !== 'none' ? String(state.editingId ?? '') : null;
+    const ids = new Set((state.fakemonDB || []).filter(f => f?.pendingVanilla && String(f.id) !== keep).map(f => String(f.id)));
+    if (!ids.size) return;
+    if (ids.has(String(state.editingId))) {
+        if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
+        autoSaveGeneration++;
+        state.editingId = null;
+        state.lastSavedId = null;
+    }
+    if (ids.has(String(state.editorLoadedId))) state.editorLoadedId = null;
+    state.fakemonDB = state.fakemonDB.filter(f => !ids.has(String(f.id)));
+    ids.forEach(id => pendingBaselines.delete(id));
+}
+
+/** Records the open Fakemon, as the template left it, as its unedited state. */
+export function markFakemonPendingBaseline() {
+    const fakemon = buildFakemonObject();
+    if (fakemon && state.editingId) pendingBaselines.set(String(state.editingId), pendingSignature(fakemon));
+}
 
 // ==================== wipe guards ====================
 // Every previously-reported "my collection vanished" traced back to the same
@@ -279,7 +318,11 @@ function reattachOrphanedFolderItems() {
     // entries, and custom types (which live in the folders list themselves)
     for (const list of [state.fakemonDB, state.customMoves, state.customAbilities, state.customItems, state.folders]) {
         (list || []).forEach(x => {
-            if (x && x.regionId && !known.has(String(x.regionId))) { x.regionId = null; orphans++; }
+            if (!x) return;
+            const ids = Array.isArray(x.regionIds) ? x.regionIds : (x.regionId ? [x.regionId] : []);
+            const kept = ids.filter(id => known.has(String(id)));
+            if (kept.length !== ids.length) orphans++;
+            if (kept.length !== ids.length || (x.regionId && !Array.isArray(x.regionIds))) { x.regionIds = kept; x.regionId = kept[0] || null; }
         });
     }
     sweep(state.customMoves);
@@ -373,11 +416,23 @@ function normalizeCollections() {
                 state.editingId = savedId;
                 fakemon.id = savedId;
 
+                // still pending while it's being set up, or while it matches that setup
+                const prev = idx !== -1 ? state.fakemonDB[idx] : null;
+                let committedVanilla = false;
+                if (state.pendingVanillaDraft && (!prev || prev.pendingVanilla)) {
+                    fakemon.pendingVanilla = true;
+                } else if (prev?.pendingVanilla) {
+                    if (pendingBaselines.get(String(savedId)) === pendingSignature(fakemon)) fakemon.pendingVanilla = true;
+                    else { committedVanilla = true; pendingBaselines.delete(String(savedId)); }
+                }
+
                 if (idx !== -1) state.fakemonDB[idx] = fakemon;
                 else state.fakemonDB.push(fakemon);
                 // a brand-new Fakemon is the editor's from the moment it exists
                 state.editorLoadedId = savedId;
                 normalizeCollections();
+                // now really the region's own: link the rest of its family to it
+                if (committedVanilla) api.persistEvolutionGraph?.();
 
                 // a refused write must not be reported as a save; the guards in
                 // saveToStorage() only help if the user finds out it happened
@@ -426,7 +481,7 @@ function normalizeCollections() {
                 name: name,
                 folderId: state.editingId ? (state.fakemonDB.find(f => f.id === state.editingId)?.folderId ?? null) : (state.currentFolderId || null),
                 // the region, from the editor's Add to region button (js/features/regions.js)
-                regionId: document.getElementById('fakemon-region')?.value || null,
+                ...(() => { const ids = api.readRegionSelect?.('fakemon-region') || []; return { regionId: ids[0] || null, regionIds: ids }; })(),
                 // the main-game species it was made from, if any: links its evolution
                 // line, and stands in for that species inside a region
                 vanillaId: (state.editingId ? state.fakemonDB.find(f => f.id === state.editingId)?.vanillaId : state.pendingVanillaId) || null,
@@ -520,7 +575,7 @@ function normalizeCollections() {
         async function deleteFakemon(id, event) {
             event.stopPropagation();
             const shouldConfirm = api.getConfirmBeforeDelete ? api.getConfirmBeforeDelete() : true;
-            if (shouldConfirm && !confirm('Are you sure you want to delete this Fakemon?')) return;
+            if (shouldConfirm && !await confirmDialog({ title: 'Delete this Fakémon?', message: 'This can’t be undone.' })) return;
 
             // invalidate delayed/in-flight autosaves before removing the record
             if (state.autoSaveTimer) {
@@ -605,12 +660,15 @@ function normalizeCollections() {
 
             // snapshot now since IndexedDB writes are async and live arrays could
             // change from a delete/edit while a previous write is still in flight
+            // region copies of main-game entries that were only opened, never
+            // changed, stay out of storage (see js/features/regions.js)
+            const kept = list => JSON.parse(JSON.stringify((list || []).filter(x => !x?.pendingVanilla)));
             const snapshot = {
-                fakemonDB: JSON.parse(JSON.stringify(state.fakemonDB)),
+                fakemonDB: kept(state.fakemonDB),
                 folders: JSON.parse(JSON.stringify(state.folders)),
-                customMoves: JSON.parse(JSON.stringify(state.customMoves)),
-                customAbilities: JSON.parse(JSON.stringify(state.customAbilities)),
-                customItems: JSON.parse(JSON.stringify(state.customItems)),
+                customMoves: kept(state.customMoves),
+                customAbilities: kept(state.customAbilities),
+                customItems: kept(state.customItems),
                 // battle teams reference Fakemon ids, so editing one updates every team using it
                 battleTeams: JSON.parse(JSON.stringify(state.battleTeams || []))
             };

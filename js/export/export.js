@@ -48,8 +48,9 @@ let pendingCollectionImportFile = null;
                     .map(x => x.folderId).filter(Boolean).map(String));
                 // custom types include the region's own versions of main-game types
                 const regionId = String(lists.region.id);
+                // ...and the folders made in this region, even empty ones
                 folders = folders.filter(f => used.has(String(f.id)) || f === lists.region
-                    || (f.type === 'custom-type' && String(f.regionId || '') === regionId));
+                    || (f.type !== 'region' && api.entryInRegion?.(f, regionId)));
             }
             const bundle = {
                 format: 'woogidex-collection',
@@ -168,6 +169,16 @@ let pendingCollectionImportFile = null;
                     return;
                 }
 
+                if (parsed && typeof parsed === 'object' && parsed.format === 'woogidex-custom-type') {
+                    const entry = api.importCustomTypeEntry(parsed.item);
+                    await api.saveToStorage();
+                    api.renderCollection();
+                    closeModal('import-modal');
+                    pendingCollectionImportFile = null;
+                    api.showToast(`Imported custom type "${entry.name}"!`, 'success');
+                    return;
+                }
+
                 const isBundle = parsed && typeof parsed === 'object' && parsed.format === 'woogidex-collection';
                 let incomingSource = parsed;
                 let importedMoves = isBundle && Array.isArray(parsed.customMoves) ? parsed.customMoves : [];
@@ -198,7 +209,8 @@ let pendingCollectionImportFile = null;
                     if (!item) return;
                     if (item.folderId) item.folderId = folderRemap.get(String(item.folderId)) || null;
                     // regions travel in the folders list too (js/features/regions.js)
-                    if (item.regionId) item.regionId = folderRemap.get(String(item.regionId)) || null;
+                    const ids = Array.isArray(item.regionIds) ? item.regionIds : (item.regionId ? [item.regionId] : []);
+                    if (ids.length) api.setEntryRegionIds?.(item, ids.map(id => folderRemap.get(String(id))).filter(Boolean));
                 });
                 applyFolderRemap(incoming);
 
@@ -346,7 +358,8 @@ let pendingCollectionImportFile = null;
             });
             // a custom type points at its region, which only has its new id now
             added.forEach(copy => {
-                if (copy.regionId) copy.regionId = remap.get(String(copy.regionId)) || null;
+                const ids = Array.isArray(copy.regionIds) ? copy.regionIds : (copy.regionId ? [copy.regionId] : []);
+                if (ids.length) api.setEntryRegionIds?.(copy, ids.map(id => remap.get(String(id))).filter(Boolean));
             });
             return remap;
         }

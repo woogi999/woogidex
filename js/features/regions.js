@@ -1,7 +1,8 @@
 // ==================== regions ====================
 // A region is a Fakedex project: Kanto, Galar, or whatever you are building.
 // It holds your own Fakemon, custom moves, abilities, items and custom types
-// (each has a regionId), plus a choice of what it brings over from the main
+// (each has regionIds -- it can be in several -- with regionId kept as the
+// first of them for older saves), plus a choice of what it brings over from the main
 // games -- vanilla Pokemon, moves, items, abilities and types. By default
 // that is no Pokemon, and the latest National Dex for the rest.
 //
@@ -18,6 +19,7 @@
 
 import { log } from '../core/log.js';
 import { state, api } from '../core/app.js';
+import { confirmDialog } from '../core/confirm-dialog.js';
 import { esc } from '../core/html.js';
 import { POKEMON_TYPES } from '../core/data.js';
 import { iconSvg } from '../core/icons.js';
@@ -102,20 +104,44 @@ export function getActiveRegion() {
     return id && id !== NO_REGION ? regionById(id) : null;
 }
 
-/** @returns {boolean} whether this Fakemon / move / ability / item / type shows under the active region */
+/**
+ * The regions an entry (Fakemon, move, ability, item, type or folder) is in.
+ * Older saves only have regionId; newer ones have regionIds, with regionId
+ * mirroring the first so anything that reads one region still works.
+ * @returns {string[]}
+ */
+export function entryRegionIds(entry) {
+    if (!entry) return [];
+    const ids = Array.isArray(entry.regionIds) ? entry.regionIds : (entry.regionId ? [entry.regionId] : []);
+    return [...new Set(ids.filter(Boolean).map(String))];
+}
+
+/** Sets an entry's regions, keeping regionId in step. */
+export function setEntryRegionIds(entry, ids) {
+    if (!entry) return;
+    const clean = [...new Set((ids || []).filter(Boolean).map(String))];
+    entry.regionIds = clean;
+    entry.regionId = clean[0] || null;
+}
+
+/** @returns {boolean} whether the entry is in that region (NO_REGION: in none that exists) */
+export function entryInRegion(entry, regionId) {
+    const ids = entryRegionIds(entry);
+    if (regionId === NO_REGION) return !ids.some(id => regionById(id));
+    return ids.includes(String(regionId));
+}
+
+/** @returns {boolean} whether this Fakemon / move / ability / item / type / folder shows under the active region */
 export function entryInActiveRegion(entry) {
     const active = getActiveRegionId();
     if (!active) return true;
-    if (active === NO_REGION) return !entry.regionId || !regionById(entry.regionId);
-    return String(entry.regionId || '') === String(active);
+    return entryInRegion(entry, active);
 }
 // the name pokedex.js already calls
 export const fakemonInActiveRegion = entryInActiveRegion;
 
 function countIn(regionId) {
-    return (state.fakemonDB || []).filter(f => regionId === NO_REGION
-        ? (!f.regionId || !regionById(f.regionId))
-        : String(f.regionId || '') === String(regionId)).length;
+    return (state.fakemonDB || []).filter(f => !f.pendingVanilla && entryInRegion(f, regionId)).length;
 }
 
 // ---- choosing ----
@@ -221,14 +247,14 @@ export function saveRegionFromModal() {
     api.showToast?.(`${name} created. Open Region details to add a banner and bio.`, 'success');
 }
 
-export function deleteActiveRegion() {
+export async function deleteActiveRegion() {
     const region = getActiveRegion();
     if (!region) return;
     const count = countIn(region.id);
     const confirmFirst = api.getConfirmBeforeDelete?.() !== false;
-    if (confirmFirst && !window.confirm(`Delete the region "${region.name}"?${count ? ` Its ${count} Fakémon stay in your collection, just without a region.` : ''} Its moves, abilities, items and types stay too.`)) return;
+    if (confirmFirst && !await confirmDialog({ title: `Delete the region “${region.name}”?`, message: `${count ? `Its ${count} Fakémon stay in your collection, just without this region. ` : ''}Its moves, abilities, items and types stay too.` })) return;
     const lists = [state.fakemonDB, state.customMoves, state.customAbilities, state.customItems, state.folders];
-    lists.forEach(list => (list || []).forEach(x => { if (x && String(x.regionId || '') === String(region.id)) x.regionId = null; }));
+    lists.forEach(list => (list || []).forEach(x => { if (x && entryInRegion(x, region.id)) setEntryRegionIds(x, entryRegionIds(x).filter(id => id !== String(region.id))); }));
     state.folders = (state.folders || []).filter(f => f !== region);
     activeRegionId = null;
     regionPage = null;
@@ -242,12 +268,15 @@ function listFor(kind) {
     return kind === 'moves' ? state.customMoves : kind === 'abilities' ? state.customAbilities : kind === 'items' ? state.customItems : state.fakemonDB;
 }
 
+// Dropping onto a region adds it (an entry can be in several); dropping onto
+// "No region" takes it out of all of them.
 export function setEntryRegion(kind, entryId, regionId) {
     const entry = (listFor(kind) || []).find(x => String(x.id) === String(entryId));
     if (!entry) return;
     const target = regionId === NO_REGION ? null : (regionById(regionId)?.id || null);
-    if ((entry.regionId || null) === target) return;
-    entry.regionId = target;
+    const current = entryRegionIds(entry);
+    if (target ? current.includes(String(target)) : !current.length) return;
+    setEntryRegionIds(entry, target ? [...current, target] : []);
     entry.updatedAt = Date.now();
     api.saveToStorage?.();
     renderRegionSidebar();
@@ -288,36 +317,59 @@ export function handleRegionDrop(regionId, event) {
 // writes into a hidden <select> next to it, which the editor's save reads
 // (applyEntityRegion) -- so the button works the same before and after the
 // first save. The label names the region once one is chosen.
+// The select is a multiple one: every selected option is a region the entry is in.
+function selectedRegionIds(select) {
+    return [...(select?.selectedOptions || [])].map(o => o.value).filter(id => regionById(id));
+}
+
+function setSelectedRegionIds(select, ids) {
+    const want = new Set((ids || []).map(String));
+    [...select.options].forEach(o => { o.selected = want.has(o.value); });
+}
+
 function refreshRegionAssign(select) {
     const wrap = select?.closest('.region-assign');
     if (!wrap) return;
-    const region = regionById(select.value);
+    const regions = selectedRegionIds(select).map(regionById).filter(Boolean);
     const label = wrap.querySelector('.region-assign-label');
-    if (label) label.textContent = region ? region.name : 'Add to region';
+    if (label) label.textContent = regions.length > 1 ? `${regions.length} regions` : regions[0]?.name || 'Add to region';
     const btn = wrap.querySelector('.region-assign-btn');
-    btn?.classList.toggle('has-region', !!region);
-    btn?.style.setProperty('--region-color', region?.color || 'transparent');
+    if (btn) btn.title = regions.map(r => r.name).join(', ');
+    btn?.classList.toggle('has-region', regions.length > 0);
+    btn?.style.setProperty('--region-color', regions[0]?.color || 'transparent');
 }
 
 function fillSelectOptions(select) {
-    const regions = getRegions();
-    const keep = select.value;
-    select.innerHTML = `<option value="">No region</option>${regions.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}`;
-    select.value = regions.some(r => r.id === keep) ? keep : '';
+    select.multiple = true;
+    const keep = selectedRegionIds(select);
+    select.innerHTML = getRegions().map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
+    setSelectedRegionIds(select, keep);
 }
 
-export function fillEntityRegionSelect(selectId, regionId) {
+/** Region ids to show as chosen: an entry, an array of ids, or one id. */
+function idsFrom(value) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') return entryRegionIds(value);
+    return value ? [value] : [];
+}
+
+export function fillEntityRegionSelect(selectId, entryOrIds) {
     const select = document.getElementById(selectId);
     if (!select) return;
     fillSelectOptions(select);
-    select.value = regionById(regionId)?.id || '';
+    setSelectedRegionIds(select, idsFrom(entryOrIds).filter(id => regionById(id)));
     refreshRegionAssign(select);
+}
+
+/** The regions chosen in an editor's region select. */
+export function readRegionSelect(selectId) {
+    return selectedRegionIds(document.getElementById(selectId));
 }
 
 export function applyEntityRegion(entry, selectId) {
     const select = document.getElementById(selectId);
     if (!entry || !select) return;
-    entry.regionId = select.value || null;
+    setEntryRegionIds(entry, selectedRegionIds(select));
 }
 
 let openAssignMenu = null;
@@ -341,21 +393,29 @@ export function toggleRegionAssignMenu(btn, event) {
     if (openAssignMenu === menu) { closeAssignMenu(); return; }
     closeAssignMenu();
     fillSelectOptions(select);
-    const current = select.value;
-    const item = (id, name, color) => `<button type="button" class="region-assign-item${current === id ? ' on' : ''}" data-id="${esc(id)}">
-        ${color ? `<span class="region-dot" style="--region-color:${esc(color)}"></span>` : '<i data-lucide="circle-dashed"></i>'}
-        <span>${esc(name)}</span>${current === id ? '<i data-lucide="check" class="region-assign-check"></i>' : ''}</button>`;
-    menu.innerHTML = `<div class="region-assign-title">Region</div>`
-        + getRegions().map(r => item(r.id, r.name, r.color || REGION_COLORS[0])).join('')
-        + item('', 'No region', '')
-        + `<div class="region-assign-divider"></div><button type="button" class="region-assign-item" data-new="1"><i data-lucide="plus"></i><span>New region</span></button>`;
+    // several can be ticked; the menu stays open until you click away
+    const paint = () => {
+        const current = new Set(selectedRegionIds(select));
+        const item = (id, name, color, on) => `<button type="button" class="region-assign-item${on ? ' on' : ''}" data-id="${esc(id)}" role="menuitemcheckbox" aria-checked="${on}">
+            ${color ? `<span class="region-dot" style="--region-color:${esc(color)}"></span>` : '<i data-lucide="circle-dashed"></i>'}
+            <span>${esc(name)}</span>${on ? '<i data-lucide="check" class="region-assign-check"></i>' : ''}</button>`;
+        menu.innerHTML = `<div class="region-assign-title">Regions <small>pick any number</small></div>`
+            + getRegions().map(r => item(r.id, r.name, r.color || REGION_COLORS[0], current.has(String(r.id)))).join('')
+            + item('', 'No region', '', !current.size)
+            + `<div class="region-assign-divider"></div><button type="button" class="region-assign-item" data-new="1"><i data-lucide="plus"></i><span>New region</span></button>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    };
+    paint();
     menu.onclick = (e) => {
         const target = e.target.closest('.region-assign-item');
         if (!target) return;
-        closeAssignMenu();
-        if (target.dataset.new) { createRegion(); return; }
-        select.value = target.dataset.id || '';
+        e.stopPropagation();
+        if (target.dataset.new) { closeAssignMenu(); createRegion(); return; }
+        const id = target.dataset.id || '';
+        const current = selectedRegionIds(select);
+        setSelectedRegionIds(select, !id ? [] : current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
         refreshRegionAssign(select);
+        paint();
         select.dispatchEvent(new Event('change', { bubbles: true }));
     };
     menu.hidden = false;
@@ -388,7 +448,7 @@ export function renderRegionSidebar() {
     else delete document.body.dataset.activeRegion;
     const regions = getRegions();
     if (host) {
-        const rows = [rowHtml({ id: null, name: 'All', icon: 'layout-grid', count: (state.fakemonDB || []).length, active: !active })];
+        const rows = [rowHtml({ id: null, name: 'All', icon: 'layout-grid', count: (state.fakemonDB || []).filter(f => !f.pendingVanilla).length, active: !active })];
         for (const r of regions) {
             const isActive = active === r.id;
             rows.push(rowHtml({ id: r.id, name: r.name, color: r.color || REGION_COLORS[0], count: countIn(r.id), active: isActive && !regionPage, editable: true, droppable: true }));
@@ -420,10 +480,10 @@ function renderRegionSelects() {
 }
 
 /** Sets the editor's Region field (loading a Fakemon, or a fresh one). */
-export function setEditorRegion(regionId) {
+export function setEditorRegion(entryOrIds) {
     renderRegionSelects();
     const select = document.getElementById('fakemon-region');
-    if (select) { select.value = regionById(regionId)?.id || ''; refreshRegionAssign(select); }
+    if (select) { setSelectedRegionIds(select, idsFrom(entryOrIds).filter(id => regionById(id))); refreshRegionAssign(select); }
 }
 
 /** New things start in the region you're looking at. */
@@ -449,9 +509,199 @@ function vanillaSource(kind) {
     return { moves: state.sdMoves, items: state.sdItems, abilities: state.sdAbilities }[kind] || {};
 }
 
+// A region's copy of a main-game entry starts out *pending*: it exists so the
+// editor has something to open, but it isn't the region's own version until a
+// save actually changes something. Pending copies never reach storage (see
+// saveToStorage) and don't show as "Edited" -- the main-game card stays put.
+function anyCopy(kind, vanillaId, region) {
+    return (listFor(kind) || []).find(x => x.vanillaId === vanillaId && String(x.regionId || '') === String(region.id)) || null;
+}
+
 /** The region's own edited copy of a main-game entry, if it has one. */
 function editedCopy(kind, vanillaId, region) {
-    return (listFor(kind) || []).find(x => x.vanillaId === vanillaId && String(x.regionId || '') === String(region.id)) || null;
+    const copy = anyCopy(kind, vanillaId, region);
+    return copy && !copy.pendingVanilla ? copy : null;
+}
+
+/** Whether an entry is a region copy nobody has changed yet. */
+export function isPendingVanilla(entry) {
+    return !!entry?.pendingVanilla;
+}
+
+// what a fresh copy of a main-game entry looks like, before any edits
+function vanillaBaseCopy(kind, id, v, regionId) {
+    const base = { name: v.name || id, desc: v.desc || '', vanillaId: id, regionId, source: 'custom', custom: true };
+    if (kind === 'moves') {
+        return {
+            ...base,
+            type: v.type || 'Normal', category: v.category || 'Status',
+            basePower: v.basePower || 0, accuracy: v.accuracy === true ? 100 : (v.accuracy || 100),
+            pp: v.pp || 10, priority: v.priority || 0, flags: { ...(v.flags || {}) }
+        };
+    }
+    if (kind === 'items') return { ...base, artwork: '', isMegaStone: false };
+    return base;
+}
+
+// battle code only counts once there is some: an empty board is the default
+function blockSignature(blocks) {
+    if (!blocks) return '';
+    const n = (blocks.triggers || []).reduce((sum, t) => sum + (t?.body?.length || 0), 0) + (blocks.loose?.length || 0);
+    return n ? JSON.stringify(blocks) : '';
+}
+
+// the flags the move form can set; anything else can't have been edited there
+function editableMoveFlags() {
+    const inputs = [...document.querySelectorAll('#custom-move-flags input')].map(i => i.value);
+    return inputs.length ? inputs : null;
+}
+
+function copySignature(kind, x) {
+    const common = [x.name || '', String(x.desc || '').trim(), x.artwork || '', x.rawCode || '', blockSignature(x.blocks), x.regionId || ''];
+    if (kind === 'moves') {
+        const keys = editableMoveFlags() || Object.keys(x.flags || {});
+        const flags = keys.filter(k => x.flags?.[k]).sort().join(',');
+        return JSON.stringify([...common, x.type, x.category, Number(x.basePower) || 0, Number(x.accuracy) || 0, Number(x.pp) || 0, Number(x.priority) || 0, flags]);
+    }
+    if (kind === 'items') return JSON.stringify([...common, !!x.isMegaStone]);
+    return JSON.stringify(common);
+}
+
+/**
+ * Called by the move / ability / item editors (and the block editor) after a
+ * save: a region copy that now matches the original goes back to pending, one
+ * that differs becomes the region's own version.
+ * @returns {boolean} whether the entry is (still) unedited
+ */
+export function settleVanillaCopy(kind, entry) {
+    if (!entry?.vanillaId) return false;
+    const v = vanillaSource(kind)[entry.vanillaId];
+    if (!v) { delete entry.pendingVanilla; return false; }
+    const unchanged = copySignature(kind, entry) === copySignature(kind, vanillaBaseCopy(kind, entry.vanillaId, v, entry.regionId || null));
+    if (unchanged) entry.pendingVanilla = true; else delete entry.pendingVanilla;
+    return unchanged;
+}
+
+/** Drops pending copies (not the one still open, if given) so they can't pile up. */
+export function discardPendingVanillaCopies(keepId = null) {
+    for (const key of ['customMoves', 'customAbilities', 'customItems']) {
+        if (Array.isArray(state[key]) && state[key].some(x => x?.pendingVanilla && String(x.id) !== String(keepId))) {
+            state[key] = state[key].filter(x => !x?.pendingVanilla || String(x.id) === String(keepId));
+        }
+    }
+}
+
+// ---- pins for main-game entries, kept on the region ----
+function vanillaPins(region, kind) {
+    return Array.isArray(region?.vanillaPins?.[kind]) ? region.vanillaPins[kind] : [];
+}
+
+export function isVanillaPinned(kind, id) {
+    return vanillaPins(getActiveRegion(), kind).includes(id);
+}
+
+export function toggleVanillaPin(kind, id, event) {
+    event?.stopPropagation();
+    const region = getActiveRegion();
+    if (!region) return;
+    const pins = vanillaPins(region, kind);
+    const on = !pins.includes(id);
+    region.vanillaPins = { ...(region.vanillaPins || {}), [kind]: on ? [...pins, id] : pins.filter(x => x !== id) };
+    api.saveToStorage?.();
+    api.renderCollection?.();
+    const name = (kind === 'pokemon' ? state.sdPokedex : vanillaSource(kind))?.[id]?.name || id;
+    api.showToast?.(on ? `"${name}" pinned!` : `"${name}" unpinned!`, 'success');
+}
+
+/** Takes a main-game entry out of what the region brings over. */
+export async function removeVanillaFromRegion(kind, id, event) {
+    event?.stopPropagation();
+    const region = getActiveRegion();
+    if (!region) return;
+    const name = (kind === 'pokemon' ? state.sdPokedex : vanillaSource(kind))?.[id]?.name || id;
+    const confirmFirst = api.getConfirmBeforeDelete?.() !== false;
+    if (confirmFirst && !await confirmDialog({ title: `Remove ${name} from ${region.name}?`, message: 'It stays in the main games; you can bring it back from Region details.', confirmLabel: 'Remove' })) return;
+    region.vanilla ||= {};
+    region.vanilla[kind] = { mode: 'custom', ids: regionPoolIds(region, kind).filter(x => x !== id) };
+    if (region.vanillaPins?.[kind]) region.vanillaPins[kind] = region.vanillaPins[kind].filter(x => x !== id);
+    api.saveToStorage?.();
+    api.renderCollection?.();
+    api.showToast?.(`${name} removed from ${region.name}.`, 'info');
+}
+
+/** A new custom entry of your own, starting from a main-game one. */
+export function duplicateVanillaEntry(kind, id, event) {
+    event?.stopPropagation();
+    const region = getActiveRegion();
+    const v = vanillaSource(kind)[id];
+    if (!region || !v) return;
+    const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const copy = { ...vanillaBaseCopy(kind, id, v, region.id), name: `${v.name || id} Copy`, id: `${{ moves: 'cm', abilities: 'ca', items: 'ci' }[kind]}_${stamp}`, createdAt: Date.now() };
+    delete copy.vanillaId;
+    listFor(kind).push(copy);
+    api.saveToStorage?.();
+    api.renderCollection?.();
+    api.showToast?.(`${v.name || id} duplicated!`, 'success');
+}
+
+/** Downloads a main-game entry in the same format as a custom one, so it imports as one. */
+export function exportVanillaEntry(kind, id, event) {
+    event?.stopPropagation();
+    const v = vanillaSource(kind)[id];
+    if (!v) return;
+    const item = { ...vanillaBaseCopy(kind, id, v, null), id };
+    delete item.vanillaId;
+    delete item.regionId;
+    const noun = { moves: 'move', abilities: 'ability', items: 'item' }[kind];
+    const payload = { format: `woogidex-custom-${noun}`, version: 1, exportedAt: new Date().toISOString(), item };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${String(item.name).replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() || noun}-custom-${noun}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    api.showToast?.(`${item.name} exported!`, 'success');
+}
+
+const ACTION_ICON = n => `<i data-lucide="${n}" style="width:14px;height:14px;"></i>`;
+function vanillaActions(kind, id) {
+    const eid = esc(id);
+    const pinned = isVanillaPinned(kind, id);
+    const edit = kind === 'pokemon' ? `editVanillaPokemonInRegion('${eid}')` : `editVanillaInRegion('${kind}','${eid}')`;
+    const exportBtn = kind === 'pokemon'
+        ? `<div class="collection-card-export-wrap">
+                <button onclick="toggleCollectionFakemonExportMenu('vanilla-${eid}', event)" title="Export">${ACTION_ICON('download')}</button>
+                <div class="collection-card-export-menu" id="fakemon-export-menu-vanilla-${eid}" style="display:none;">
+                    ${[['png', 'PNG'], ['text', 'Plain Text'], ['json', 'JSON'], ['showdown', 'Showdown Mod'], ['essentials', 'Essentials Mod']].map(([f, label]) =>
+                        `<button type="button" onclick="exportVanillaPokemon('${eid}','${f}', event)">Export as ${label}</button>`).join('')}
+                </div>
+            </div>`
+        : `<div class="collection-card-export-wrap"><button onclick="exportVanillaEntry('${kind}','${eid}', event)" title="Export">${ACTION_ICON('download')}</button></div>`;
+    return `<div class="card-actions"><button type="button" class="card-actions-toggle" onclick="toggleCardActions(this, event)" title="Actions" aria-label="Actions"><i data-lucide="more-horizontal" style="width:16px;height:16px;"></i></button>
+        <button class="${pinned ? 'pinned-btn' : ''}" onclick="toggleVanillaPin('${kind}','${eid}', event)" title="${pinned ? 'Unpin' : 'Pin'}">${ACTION_ICON('pin')}</button>
+        <button onclick="${edit}; event.stopPropagation();" title="Edit">${ACTION_ICON('pencil')}</button>
+        <button onclick="duplicateVanilla${kind === 'pokemon' ? 'Pokemon' : 'Entry'}(${kind === 'pokemon' ? '' : `'${kind}',`}'${eid}', event)" title="Duplicate">${ACTION_ICON('copy')}</button>
+        ${exportBtn}
+        <button class="card-delete-btn" onclick="removeVanillaFromRegion('${kind}','${eid}', event)" title="Remove from region">${ACTION_ICON('trash-2')}</button>
+    </div>`;
+}
+
+/**
+ * A main-game item's emblem: its icon from Showdown's item sprite sheet (the
+ * sprites the sample sets and evolution methods show), found by the item's
+ * spritenum. Items without one fall back to Showdown's per-item image, and
+ * then to the plain gem.
+ */
+export function itemIconEmblem(name, item = null) {
+    const data = item || Object.values(state.sdItems || {}).find(i => i.name === name) || null;
+    const n = data?.spritenum;
+    if (Number.isFinite(n)) {
+        // the sheet is 16 icons of 24px a row
+        return `<span class="library-emblem library-emblem-plain has-item-icon"><span class="item-icon-sheet" style="background-position:${-(n % 16) * 24}px ${-Math.floor(n / 16) * 24}px" role="img" aria-label="${esc(name)}"></span></span>`;
+    }
+    const slug = String(name || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (!slug) return `<span class="library-emblem library-emblem-plain">${iconSvg('gem')}</span>`;
+    return `<span class="library-emblem library-emblem-plain has-item-icon"><img class="item-icon-sprite" src="https://play.pokemonshowdown.com/sprites/itemicons/${esc(slug)}.png" alt="" loading="lazy" decoding="async" draggable="false" onerror="this.parentElement.classList.remove('has-item-icon');this.remove()">${iconSvg('gem')}</span>`;
 }
 
 function vanillaTile(kind, id, v) {
@@ -466,16 +716,17 @@ function vanillaTile(kind, id, v) {
         meta = `<span class="card-bst"><em>BP</em>${v.basePower || '—'}</span><span class="card-bst"><em>ACC</em>${esc(acc)}</span><span class="card-bst"><em>PP</em>${v.pp || '—'}</span>`;
         pills = `<span class="type-badge type-${esc(type.toLowerCase())}">${esc(type)}</span>`;
     } else {
-        art = `<span class="library-emblem library-emblem-plain">${iconSvg(kind === 'items' ? 'gem' : 'sparkles')}</span>`;
+        art = kind === 'items' ? itemIconEmblem(v.name || id, v) : `<span class="library-emblem library-emblem-plain">${iconSvg('sparkles')}</span>`;
         meta = `<span class="library-tile-desc">${esc(v.desc || 'No description')}</span>`;
         pills = kind === 'items' ? '<span class="library-tag">Item</span>' : '';
     }
     const typesRow = kind === 'abilities'
         ? '<div class="card-types card-types-spacer" aria-hidden="true"></div>'
         : `<div class="card-types">${pills}</div>`;
-    return `<div class="collection-card library-tile vanilla-card" onclick="${onclick}" title="${esc(v.desc || v.name || id)}">
+    return `<div class="collection-card library-tile vanilla-card${isVanillaPinned(kind, id) ? ' pinned' : ''}" onclick="${onclick}" title="${esc(v.desc || v.name || id)}">
+        ${vanillaActions(kind, id)}
         <div class="card-art">${art}${corner ? `<span class="card-number library-tile-corner">${corner}</span>` : ''}<span class="vanilla-card-tag">Main games</span></div>
-        <div class="card-body"><div class="card-name">${name}</div><div class="card-meta-row">${meta}</div>${typesRow}</div>
+        <div class="card-body"><div class="card-name">${name}<span class="vanilla-card-tag vanilla-card-tag-inline">Main games</span></div><div class="card-meta-row">${meta}</div>${typesRow}</div>
     </div>`;
 }
 
@@ -494,6 +745,9 @@ export function regionVanillaLibraryCards(kind, search = '') {
         .filter(id => !q || String(source[id].name).toLowerCase().includes(q))
         .sort((a, b) => String(source[a].name).localeCompare(String(source[b].name)));
     if (!ids.length) return '';
+    // pinned ones lead, like pinned entries of your own
+    const pins = vanillaPins(region, kind);
+    ids.sort((a, b) => (pins.includes(b) ? 1 : 0) - (pins.includes(a) ? 1 : 0));
     const shown = showAllVanilla[kind] || q ? ids : ids.slice(0, VANILLA_PAGE);
     const more = shown.length < ids.length
         ? `<button type="button" class="collection-card vanilla-more-card" onclick="showAllRegionVanilla('${kind}')"><span class="card-art"><span class="collection-add-icon">${iconSvg('chevron-down')}</span></span><span class="card-body"><span class="card-name">Show all ${ids.length}</span><span class="library-tile-desc">From the main games</span></span></button>` : '';
@@ -515,30 +769,16 @@ export function editVanillaInRegion(kind, id) {
     const region = getActiveRegion();
     const v = vanillaSource(kind)[id];
     if (!region || !v) return;
-    let copy = editedCopy(kind, id, region);
+    let copy = anyCopy(kind, id, region);
+    discardPendingVanillaCopies(copy?.id);
     if (!copy) {
         const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        const base = { name: v.name || id, desc: v.desc || '', vanillaId: id, regionId: region.id, source: 'custom', custom: true, createdAt: Date.now() };
-        if (kind === 'moves') {
-            copy = {
-                ...base, id: `cm_${stamp}`,
-                type: v.type || 'Normal', category: v.category || 'Status',
-                basePower: v.basePower || 0, accuracy: v.accuracy === true ? 100 : (v.accuracy || 100),
-                pp: v.pp || 10, priority: v.priority || 0, flags: { ...(v.flags || {}) }
-            };
-            state.customMoves.push(copy);
-        } else if (kind === 'abilities') {
-            copy = { ...base, id: `ca_${stamp}` };
-            state.customAbilities.push(copy);
-        } else {
-            copy = { ...base, id: `ci_${stamp}`, artwork: '', isMegaStone: false };
-            state.customItems.push(copy);
-        }
-        api.saveToStorage?.();
-        api.showToast?.(`This is ${region.name}'s own ${copy.name}. Changes only apply in ${region.name}; delete it to go back to the original.`, 'info');
+        const prefix = { moves: 'cm', abilities: 'ca', items: 'ci' }[kind];
+        // not saved: it only becomes the region's own version once a save changes it
+        copy = { ...vanillaBaseCopy(kind, id, v, region.id), id: `${prefix}_${stamp}`, createdAt: Date.now(), pendingVanilla: true };
+        listFor(kind).push(copy);
     }
     api.openLibraryEditorSheet?.(kind, copy.id);
-    api.renderCollection?.();
 }
 
 /** What the Types tab shows for the current view. */
@@ -546,34 +786,97 @@ export function typesTabArgs() {
     const active = getActiveRegionId();
     const region = getActiveRegion();
     const custom = api.getCustomTypes?.() || [];
-    if (region) return { list: custom.filter(t => String(t.regionId || '') === String(region.id)), vanilla: regionPoolIds(region, 'types'), regionId: region.id, vanillaCards: true };
+    if (region) return { list: custom.filter(t => entryInRegion(t, region.id)), vanilla: regionPoolIds(region, 'types'), regionId: region.id, vanillaCards: true };
     // outside a region the main-game types can't be edited, so only yours get cards;
     // the chart still shows how they meet every main-game type
-    if (active === NO_REGION) return { list: custom.filter(t => !t.regionId || !regionById(t.regionId)), vanilla: VANILLA_TYPES, regionId: null, vanillaCards: false };
+    if (active === NO_REGION) return { list: custom.filter(t => entryInRegion(t, NO_REGION)), vanilla: VANILLA_TYPES, regionId: null, vanillaCards: false };
     return { list: custom, vanilla: VANILLA_TYPES, regionId: null, vanillaCards: false };
 }
 
 /** Cards for the vanilla Pokemon a region brings over, after its Fakemon. */
-export function regionVanillaPokemonCards(search = '') {
+export function regionVanillaPokemonCards(search = '', layout = 'grid') {
     const region = getActiveRegion();
     if (!region) return '';
     const q = search.trim().toLowerCase();
     // one the region already has its own version of shows as that Fakemon instead
-    const ids = regionPoolIds(region, 'pokemon').filter(id => state.sdPokedex?.[id] && !regionPokemonCopy(id, region));
+    const pins = vanillaPins(region, 'pokemon');
+    const ids = regionPoolIds(region, 'pokemon').filter(id => state.sdPokedex?.[id] && !regionPokemonCopy(id, region))
+        .sort((a, b) => (pins.includes(b) ? 1 : 0) - (pins.includes(a) ? 1 : 0));
     const mons = ids.map(id => state.sdPokedex[id]).filter(p => !q || p.name.toLowerCase().includes(q));
     if (!mons.length || poolOf(region, 'pokemon').mode === 'none') return '';
     return mons.slice(0, 400).map(p => {
         const sprite = api.getPokemonTemplateSprite?.(p) || '';
         const types = (p.types || []).map(t => `<span class="type-badge type-${esc(t.toLowerCase())}">${esc(t)}</span>`).join('');
-        return `<div class="collection-card vanilla-card" onclick="editVanillaPokemonInRegion('${esc(p.id)}')" title="${esc(p.name)}: click to make ${esc(region.name)}'s own version">
-            <div class="card-art">${sprite ? `<img src="${esc(sprite)}" alt="${esc(p.name)}" loading="lazy" decoding="async">` : ''}<span class="card-number">#${String(p.num).padStart(3, '0')}</span><span class="vanilla-card-tag">Main games</span></div>
-            <div class="card-body"><div class="card-name">${esc(p.name)}</div><div class="card-meta-row"><span class="card-bst"><em>BST</em>${Object.values(p.stats || {}).reduce((a, b) => a + b, 0)}</span></div><div class="card-types">${types}</div></div>
+        const art = sprite ? `<img src="${esc(sprite)}" alt="${esc(p.name)}" loading="lazy" decoding="async">` : '';
+        const number = `#${String(p.num).padStart(3, '0')}`;
+        const bst = Object.values(p.stats || {}).reduce((a, b) => a + b, 0);
+        const open = `<div class="collection-card vanilla-card${layout === 'list' ? ' collection-list-card' : ''}${pins.includes(p.id) ? ' pinned' : ''}" onclick="previewVanillaPokemonInRegion('${esc(p.id)}')" title="${esc(p.name)}">
+            ${vanillaActions('pokemon', p.id)}`;
+        // the list row mirrors collectionListCard() in pokedex.js
+        if (layout === 'list') {
+            return `${open}
+                <div class="card-art">${art}</div>
+                <div class="card-number">${number}</div>
+                <div class="card-name">${esc(p.name)} <span class="vanilla-card-tag vanilla-card-tag-inline">Main games</span></div>
+                <div class="card-types">${types}</div>
+                <div class="card-bst" style="font-size:11px;color:var(--text-muted);">BST ${bst}</div>
+            </div>`;
+        }
+        return `${open}
+            <div class="card-art">${art}<span class="card-number">${number}</span><span class="vanilla-card-tag">Main games</span></div>
+            <div class="card-body"><div class="card-name">${esc(p.name)}</div><div class="card-meta-row"><span class="card-bst"><em>BST</em>${bst}</span></div><div class="card-types">${types}</div></div>
         </div>`;
     }).join('');
 }
 
-function regionPokemonCopy(speciesId, region) {
-    return (state.fakemonDB || []).find(f => f.vanillaId === speciesId && String(f.regionId || '') === String(region.id)) || null;
+// a pending copy (opened, never changed) doesn't replace the main-game card
+function regionPokemonCopy(speciesId, region, { includePending = false } = {}) {
+    return (state.fakemonDB || []).find(f => f.vanillaId === speciesId && String(f.regionId || '') === String(region.id)
+        && (includePending || !f.pendingVanilla)) || null;
+}
+
+/**
+ * The quick preview a Fakemon card opens, for a main-game Pokemon. It shows
+ * the region's version (pending unless it was already edited) without opening
+ * the editor; its Edit button goes on to edit it.
+ */
+let previewing = false;
+export async function previewVanillaPokemonInRegion(speciesId) {
+    const region = getActiveRegion();
+    if (!region || !state.sdPokedex?.[speciesId] || previewing) return;
+    const copy = regionPokemonCopy(speciesId, region);
+    if (copy) { api.previewFakemon?.(copy.id); return; }
+    previewing = true;
+    try {
+        // fills the editor's form while it stays hidden, where nothing autosaves,
+        // so previewing creates nothing at all
+        const nameInput = document.getElementById('new-fakemon-name');
+        if (nameInput) nameInput.value = '';
+        await api.usePokemonTemplate?.(speciesId, { background: true });
+        api.openBoardPreview?.(() => editVanillaPokemonInRegion(speciesId));
+    } finally {
+        previewing = false;
+    }
+}
+
+/** A Fakemon of your own, starting from a main-game Pokemon (not the region's version of it). */
+export async function duplicateVanillaPokemon(speciesId, event) {
+    event?.stopPropagation();
+    const p = state.sdPokedex?.[speciesId];
+    if (!p) return;
+    const nameInput = document.getElementById('new-fakemon-name');
+    if (nameInput) nameInput.value = `${p.name} Copy`;
+    await api.usePokemonTemplate?.(speciesId, { asCopy: true });
+    if (nameInput) nameInput.value = '';
+}
+
+/** Opens the region's (pending) version and exports it; nothing is saved by doing so. */
+export async function exportVanillaPokemon(speciesId, format, event) {
+    event?.stopPropagation();
+    api.closeCollectionFakemonExportMenus?.();
+    await editVanillaPokemonInRegion(speciesId, { quiet: true });
+    const run = { png: 'exportAsPNG', text: 'openPlainTextExportModal', json: 'exportAsJSON', showdown: 'exportShowdownMod', essentials: 'exportEssentialsMod' }[format];
+    await api[run]?.();
 }
 
 /**
@@ -581,16 +884,17 @@ function regionPokemonCopy(speciesId, region) {
  * from it (the usual template, so its stats, moves, abilities and evolution
  * line come along), then opens it. The original is untouched elsewhere.
  */
-export async function editVanillaPokemonInRegion(speciesId) {
+export async function editVanillaPokemonInRegion(speciesId, { quiet = false } = {}) {
     const region = getActiveRegion();
     if (!region || !state.sdPokedex?.[speciesId]) return;
-    const copy = regionPokemonCopy(speciesId, region);
+    const copy = regionPokemonCopy(speciesId, region, { includePending: true });
     if (copy) { api.editFakemon?.(copy.id); return; }
     const nameInput = document.getElementById('new-fakemon-name');
     if (nameInput) nameInput.value = '';
-    // the new Fakemon starts in the region you're looking at (defaultRegionForNewFakemon)
-    await api.usePokemonTemplate?.(speciesId);
-    api.showToast?.(`This is ${region.name}'s own ${state.sdPokedex[speciesId].name}. Changes only apply in ${region.name}.`, 'info');
+    // the new Fakemon starts in the region you're looking at (defaultRegionForNewFakemon),
+    // pending until something in it actually changes (see autoSave in storage.js)
+    await api.usePokemonTemplate?.(speciesId, { pendingVanilla: true });
+    if (!quiet) api.showToast?.(`Changes you make to ${state.sdPokedex[speciesId].name} only apply in ${region.name}.`, 'info');
 }
 
 // ---- Region details ----
@@ -691,11 +995,11 @@ export function renderRegionDetails() {
         return;
     }
     const counts = {
-        fakemon: (state.fakemonDB || []).filter(f => f.regionId === region.id).length,
-        moves: (state.customMoves || []).filter(x => x.regionId === region.id).length,
-        abilities: (state.customAbilities || []).filter(x => x.regionId === region.id).length,
-        items: (state.customItems || []).filter(x => x.regionId === region.id).length,
-        types: (api.getCustomTypes?.() || []).filter(x => x.regionId === region.id).length
+        fakemon: (state.fakemonDB || []).filter(f => !f.pendingVanilla && entryInRegion(f, region.id)).length,
+        moves: (state.customMoves || []).filter(x => !x.pendingVanilla && entryInRegion(x, region.id)).length,
+        abilities: (state.customAbilities || []).filter(x => !x.pendingVanilla && entryInRegion(x, region.id)).length,
+        items: (state.customItems || []).filter(x => !x.pendingVanilla && entryInRegion(x, region.id)).length,
+        types: (api.getCustomTypes?.() || []).filter(x => entryInRegion(x, region.id)).length
     };
     const poolRow = kind => {
         const { mode } = poolOf(region, kind);
@@ -843,17 +1147,17 @@ export function saveRegionPicker() {
 export function getExportScope() {
     const region = getActiveRegion();
     if (!region) return null;
-    const mine = x => x && String(x.regionId || '') === String(region.id);
+    const mine = x => x && entryInRegion(x, region.id);
     const customTypes = (api.getCustomTypes?.() || []).filter(mine);
     const pools = {};
     for (const kind of POOL_KINDS) pools[kind] = { mode: poolOf(region, kind).mode, ids: regionPoolIds(region, kind) };
     return {
         region,
         slug: String(region.name).toLowerCase().replace(/[^a-z0-9]+/g, '') || 'region',
-        fakemonDB: (state.fakemonDB || []).filter(mine),
-        customMoves: (state.customMoves || []).filter(mine),
-        customAbilities: (state.customAbilities || []).filter(mine),
-        customItems: (state.customItems || []).filter(mine),
+        fakemonDB: (state.fakemonDB || []).filter(x => mine(x) && !x.pendingVanilla),
+        customMoves: (state.customMoves || []).filter(x => mine(x) && !x.pendingVanilla),
+        customAbilities: (state.customAbilities || []).filter(x => mine(x) && !x.pendingVanilla),
+        customItems: (state.customItems || []).filter(x => mine(x) && !x.pendingVanilla),
         customTypes,
         pools
     };

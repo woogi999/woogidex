@@ -65,6 +65,10 @@
     pointer-events: none;
     z-index: 1001;
 }
+/* a hidden tooltip still takes up scrollable room; on a card near the edge of
+   a phone screen that widened the whole page sideways */
+.profile-badge-tooltip:not(:hover):not(:focus-visible)::after,
+.profile-badge-tooltip:not(:hover):not(:focus-visible)::before { display: none; }
 .profile-badge-tooltip:hover::after,
 .profile-badge-tooltip:hover::before,
 .profile-badge-tooltip:focus-visible::after,

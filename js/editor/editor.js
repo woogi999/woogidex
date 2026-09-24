@@ -3,6 +3,7 @@ import { SD_MOVE_FIELDS } from '../battle/engine/dex.js';
 import { log } from '../core/log.js';
 import { iconSvg } from '../core/icons.js';
 import { state, api } from '../core/app.js';
+import { confirmDialog } from '../core/confirm-dialog.js';
 import { checkRawHooks, supportedHooks } from '../battle/engine/sd-hooks.js';
 
 import { POKEMON_TYPES, SELECTABLE_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } from '../core/data.js';
@@ -108,7 +109,7 @@ import { abilityRole, prepareLearnset } from './learnset-model.js';
                     const itemsRaw = JSON.parse(jsonStr);
                     for (const [key, i] of Object.entries(itemsRaw)) {
                         if (i.isNonstandard === 'Past') continue;
-                        state.sdItems[key] = { name: i.name || key, desc: i.desc || i.shortDesc || '', num: Number(i.num) || 0, nonstandard: i.isNonstandard || '' };
+                        state.sdItems[key] = { name: i.name || key, desc: i.desc || i.shortDesc || '', num: Number(i.num) || 0, nonstandard: i.isNonstandard || '', spritenum: Number.isFinite(Number(i.spritenum)) ? Number(i.spritenum) : null };
                     }
                 }
 
@@ -2052,9 +2053,9 @@ import { esc as escapeHtml, esc as escapeHtmlAttr } from '../core/html.js';
             document.getElementById('generated-learnset-modal')?.classList.add('active');
         }
 
-        function clearMoveset() {
+        async function clearMoveset() {
             if (!state.learnset.length) { api.showToast('Learnset is already empty.', 'info'); return; }
-            if (!confirm(`Clear all ${state.learnset.length} move${state.learnset.length === 1 ? '' : 's'} from the state.learnset? This cannot be undone.`)) return;
+            if (!await confirmDialog({ title: `Clear all ${state.learnset.length} move${state.learnset.length === 1 ? '' : 's'}?`, message: 'The whole learnset is emptied. This can’t be undone.', confirmLabel: 'Clear moveset' })) return;
             state.learnset = [];
             renderLearnset();
             updatePreview();
@@ -2298,14 +2299,14 @@ import { esc as escapeHtml, esc as escapeHtmlAttr } from '../core/html.js';
         function openCustomAbilityLibraryModal(id='') {
             document.getElementById('custom-ability-modal')?.classList.remove('as-sheet');
             const a=id?getCustomAbilityLibrary().find(x=>x.id===id):null;
-            document.getElementById('custom-ability-edit-id').value=id; document.getElementById('custom-ability-modal-title').textContent=a?'Edit Custom Ability':'Create Custom Ability'; document.getElementById('custom-ability-name').value=a?.name||''; document.getElementById('custom-ability-desc').value=a?.desc||''; api.fillEntityRegionSelect?.('custom-ability-region', a ? a.regionId : api.defaultRegionForNewFakemon?.()); api.setEntityArt?.('custom-ability', a?.artwork); fillEntityRawCode('custom-ability', a?.rawCode); document.getElementById('custom-ability-modal').classList.add('active');
+            document.getElementById('custom-ability-edit-id').value=id; document.getElementById('custom-ability-modal-title').textContent=a?'Edit Custom Ability':'Create Custom Ability'; document.getElementById('custom-ability-name').value=a?.name||''; document.getElementById('custom-ability-desc').value=a?.desc||''; api.fillEntityRegionSelect?.('custom-ability-region', a || api.defaultRegionForNewFakemon?.()); api.setEntityArt?.('custom-ability', a?.artwork); fillEntityRawCode('custom-ability', a?.rawCode); document.getElementById('custom-ability-modal').classList.add('active');
         }
         function saveCustomAbilityLibraryEntry(){
             const name=document.getElementById('custom-ability-name').value.trim(); if(!name){api.showToast('Please enter an ability name!','error');return;}
             const desc=document.getElementById('custom-ability-desc').value.trim(); let id=document.getElementById('custom-ability-edit-id').value;
             const rawCode=readEntityRawCode('custom-ability');
             const artwork=api.readEntityArt?.('custom-ability')||'';
-            if(id){const a=getCustomAbilityLibrary().find(x=>x.id===id); if(a){a.name=name;a.desc=desc;a.rawCode=rawCode;a.artwork=artwork;api.applyEntityRegion?.(a,'custom-ability-region');} state.fakemonDB.forEach(f=>(f.abilities||[]).forEach(a=>{if(a&&a.customId===id){a.name=name;a.desc=desc;a.source='custom';a.custom=true;}}));}
+            if(id){const a=getCustomAbilityLibrary().find(x=>x.id===id); if(a){a.name=name;a.desc=desc;a.rawCode=rawCode;a.artwork=artwork;api.applyEntityRegion?.(a,'custom-ability-region');api.settleVanillaCopy?.('abilities',a);} state.fakemonDB.forEach(f=>(f.abilities||[]).forEach(a=>{if(a&&a.customId===id){a.name=name;a.desc=desc;a.source='custom';a.custom=true;}}));}
             else {id='ca_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); const created={id,name,desc,rawCode,artwork}; api.applyEntityRegion?.(created,'custom-ability-region'); state.customAbilities.push(created); if(state.abilities.length<4 && document.getElementById('editor-view').style.display!=='none'){state.abilities.push({name,source:'custom',custom:true,customId:id,desc});renderAbilities();updatePreview();api.autoSave();}}
             api.saveToStorage(); api.renderCollection(); closeModal('custom-ability-modal'); api.showToast(id&&document.getElementById('custom-ability-edit-id').value?'Custom ability saved!':'Custom ability created!','success');
         }
@@ -2326,7 +2327,7 @@ function openCustomItemModal(id='', sampleSetTarget=null) {
     document.getElementById('custom-item-modal-title').textContent = item ? 'Edit Custom Item' : 'Create Custom Item';
     document.getElementById('custom-item-name').value = item?.name || '';
     document.getElementById('custom-item-desc').value = item?.desc || '';
-    api.fillEntityRegionSelect?.('custom-item-region', item ? item.regionId : api.defaultRegionForNewFakemon?.());
+    api.fillEntityRegionSelect?.('custom-item-region', item || api.defaultRegionForNewFakemon?.());
     fillEntityRawCode('custom-item', item?.rawCode);
     const megaStoneToggle = document.getElementById('custom-item-is-mega-stone');
     if (megaStoneToggle) megaStoneToggle.checked = item?.isMegaStone === true;
@@ -2357,6 +2358,7 @@ function saveCustomItemLibraryEntry() {
         Object.assign(item, { name, desc, artwork, isMegaStone, rawCode, source:'custom', custom:true });
     }
     api.applyEntityRegion?.(item, 'custom-item-region');
+    api.settleVanillaCopy?.('items', item);
     const target = pendingSampleSetItemTarget;
     pendingSampleSetItemTarget = null;
     if (target && Number.isInteger(target.setIndex) && state.sampleSets[target.setIndex]) {
@@ -2527,7 +2529,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
             updateCustomMoveFlagAvailability();
             // a move already in the library keeps its region; a new one starts in the one you're viewing
             const libMove = index !== undefined ? state.customMoves.find(x => x.id === state.learnset[index]?.customId) : null;
-            api.fillEntityRegionSelect?.('custom-move-region', libMove ? libMove.regionId : api.defaultRegionForNewFakemon?.());
+            api.fillEntityRegionSelect?.('custom-move-region', libMove || api.defaultRegionForNewFakemon?.());
             api.setEntityArt?.('custom-move', libMove?.artwork || (index !== undefined ? state.learnset[index]?.artwork : ''));
             document.getElementById('custom-move-modal').classList.add('active');
         }
@@ -2547,7 +2549,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
             const libraryId = document.getElementById('custom-move-library-edit-id').value;
             if (libraryId) {
                 const lib = state.customMoves.find(m => m.id === libraryId);
-                if (lib) { Object.assign(lib, move); api.applyEntityRegion?.(lib, 'custom-move-region'); }
+                if (lib) { Object.assign(lib, move); api.applyEntityRegion?.(lib, 'custom-move-region'); api.settleVanillaCopy?.('moves', lib); }
                 state.fakemonDB.forEach(f => (f.learnset||[]).forEach(m => { if (m && m.customId === libraryId) Object.assign(m, move, {source:'custom', custom:true, customId:libraryId, learnMethod:'none', level:null}); }));
                 // Keep the in-memory editor learnset in sync too, in case the Fakemon
                 // currently open in the (possibly hidden) editor has this move.
@@ -2610,7 +2612,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
             openCustomMoveModal();
             document.getElementById('custom-move-library-edit-id').value=id;
             document.getElementById('custom-move-edit-index').value='';
-            api.fillEntityRegionSelect?.('custom-move-region', m.regionId);
+            api.fillEntityRegionSelect?.('custom-move-region', m);
             api.setEntityArt?.('custom-move', m.artwork);
             document.getElementById('custom-move-modal-title').textContent='Edit Custom Move';
             document.getElementById('custom-move-name').value=m.name||''; document.getElementById('custom-move-type').value=m.type||'Normal'; setTypeDropdownValue('custom-move-type',m.type||'Normal','Select Type'); document.getElementById('custom-move-category').value=m.category||'Status'; setCatDropdownValue('custom-move-category',m.category||'Status','Status'); document.getElementById('custom-move-power').value=m.basePower||0; document.getElementById('custom-move-accuracy').value=m.accuracy??100; document.getElementById('custom-move-pp').value=m.pp||10; document.getElementById('custom-move-priority').value=m.priority||0; document.getElementById('custom-move-desc').value=m.desc||''; document.querySelectorAll('#custom-move-flags input').forEach(cb=>cb.checked=!!(m.flags&&m.flags[cb.value])); fillEntityRawCode('custom-move', m.rawCode); updateCustomMoveFlagAvailability();

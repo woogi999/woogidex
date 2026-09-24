@@ -1,4 +1,5 @@
 import { state, api } from './app.js';
+import { confirmDialog } from './confirm-dialog.js';
 
 const EVENTS_STATE = { events: [], expanded: new Set(), loaded: false, voting: null, picker: null };
 import { esc } from './html.js';
@@ -473,7 +474,7 @@ function closeContestVoting(){EVENTS_STATE.voting=null;const vv=document.getElem
 
 async function submitContestEntry(contestId,mon){if(!state.user)return api.showToast?.('Sign in first.','warning');if(!mon)return api.showToast?.('Choose a Fakemon first.','warning');const client=await api.getClient();const {error}=await client.from('contest_submissions').insert({contest_id:contestId,user_id:state.user.id,source_fakemon_id:String(mon.id),fakemon_data:mon});if(error)return api.showToast?.(error.message,'error');api.showToast?.('Contest entry submitted!','success');await loadEventsView();}
 async function withdrawContestEntry(submissionId){
-    if(!confirm('Withdraw this entry from the contest? You can submit a different Fakemon in its place while submissions are still open.')) return;
+    if(!await confirmDialog({ title: 'Withdraw this entry?', message: 'You can submit a different Fakémon in its place while submissions are still open.', confirmLabel: 'Withdraw' })) return;
     try{
         const client=await api.getClient();
         const {error}=await client.from('contest_submissions').delete().eq('id',submissionId);

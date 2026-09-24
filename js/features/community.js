@@ -8,6 +8,7 @@ import { getCommunityDexNumber } from './community-feed-model.js';
 import { getCachedArt, getCachedArtBatch, putCachedArt, dropCachedArt } from '../core/art-cache.js';
 import { shieldedArtHtml, artworkBlob, frameCount, maskedArtwork, artworkDataUri } from '../core/art-shield.js';
 import { avatarHtml } from '../core/avatar.js';
+import { cloudLimits, refreshCloudLimits, asCap } from './cloud-save.js';
 
 // ==================== live roles ====================
 // roles are db-driven so staff can edit them from the admin panel. cache
@@ -193,9 +194,23 @@ function monTextForScreening(payload) {
     return parts.filter(Boolean).join(' ');
 }
 
-// Mirrors max_published in published_mons_enforce_cooldown() - keep in sync
-// with the server-enforced number.
-const MAX_PUBLISHED_PER_USER = 20;
+// The server resolves each account's cap and cooldown (site defaults plus
+// badges; -1 = unlimited) in my_limits(); published_mons_enforce_cooldown()
+// is the real enforcement.
+function publishLimits() {
+    const limits = cloudLimits();
+    return {
+        max: asCap(limits.communityUploads),
+        cooldownSeconds: asCap(limits.publishCooldownSeconds)
+    };
+}
+
+function describeCooldown(seconds) {
+    if (!(seconds > 0) || seconds === Infinity) return '';
+    if (seconds % 3600 === 0) { const h = seconds / 3600; return h === 1 ? 'once an hour' : `once every ${h} hours`; }
+    if (seconds % 60 === 0) { const m = seconds / 60; return m === 1 ? 'once a minute' : `once every ${m} minutes`; }
+    return `once every ${seconds} seconds`;
+}
 
 async function publishSnapshot(mon, rulesChecked = false) {
     // show rules on every upload, even if previously accepted.
@@ -215,15 +230,17 @@ async function publishSnapshot(mon, rulesChecked = false) {
         .eq('user_id', state.user.id)
         .order('published_at', { ascending: false })
         .limit(1);
+    await refreshCloudLimits();
+    const { max, cooldownSeconds } = publishLimits();
     if (!recentError) {
-        if ((publishedCount ?? 0) >= MAX_PUBLISHED_PER_USER) {
-            api.showToast?.(`You have reached the limit of ${MAX_PUBLISHED_PER_USER} community uploads. Delete one of your listings to publish something new.`, 'warning');
+        if ((publishedCount ?? 0) >= max) {
+            api.showToast?.(`You have reached the limit of ${max} community uploads. Delete one of your listings to publish something new.`, 'warning');
             return;
         }
         const latest = recent?.[0];
-        if (latest) {
+        if (latest && cooldownSeconds > 0 && cooldownSeconds !== Infinity) {
             const elapsedMs = Date.now() - new Date(latest.published_at).getTime();
-            const cooldownMs = 60 * 60 * 1000;
+            const cooldownMs = cooldownSeconds * 1000;
             if (elapsedMs < cooldownMs) {
                 const remainingMin = Math.ceil((cooldownMs - elapsedMs) / 60000);
                 api.showToast?.(`You can publish again in ${remainingMin} minute${remainingMin === 1 ? '' : 's'}.`, 'warning');
@@ -1099,6 +1116,9 @@ function browseCommunityFakemon() { showCommunityPanel('browse'); }
 // ==================== my uploads ====================
 // publishing used to mean leaving the hub for the collection page's share
 // menu. this panel is both the list of live uploads and where you add to it.
+// Limits are fetched once per signed-in account; until then the meter shows
+// the site defaults, which would read "20" to someone with no cap at all.
+let uploadLimitsLoadedFor = null;
 function renderCommunityUploads() {
     const list = document.getElementById('community-uploads-list');
     const meter = document.getElementById('community-uploads-meter');
@@ -1110,18 +1130,34 @@ function renderCommunityUploads() {
         return;
     }
 
+    if (uploadLimitsLoadedFor !== state.user.id) {
+        uploadLimitsLoadedFor = state.user.id;
+        refreshCloudLimits().then(() => renderCommunityUploads()).catch(() => {});
+    }
+
     const cs = ensureCommunityState();
     const mine = (cs.mons || []).filter(row => row.user_id === state.user.id);
 
     if (meter) {
         const used = mine.length;
-        const pct = Math.min(100, Math.round((used / MAX_PUBLISHED_PER_USER) * 100));
-        const tone = used >= MAX_PUBLISHED_PER_USER ? 'is-full' : (pct >= 80 ? 'is-high' : '');
-        meter.innerHTML = `<div class="cloud-meter ${tone}">
-            <div class="cloud-meter-head"><span>Community uploads</span><span>${used}/${MAX_PUBLISHED_PER_USER}</span></div>
-            <div class="cloud-meter-track"><div class="cloud-meter-fill" style="width:${pct}%"></div></div>
-            <div class="cloud-meter-hint">You can publish once an hour, and hold up to ${MAX_PUBLISHED_PER_USER} listings at a time. Unpublishing one frees a slot.</div>
-        </div>`;
+        const { max, cooldownSeconds } = publishLimits();
+        const cadence = describeCooldown(cooldownSeconds);
+        const hintStart = cadence ? `You can publish ${cadence}` : 'You can publish any time';
+        if (max === Infinity) {
+            // a bar that can never fill would be misleading.
+            meter.innerHTML = `<div class="cloud-meter is-unlimited">
+                <div class="cloud-meter-head"><span>Community uploads</span><span>${used} / unlimited</span></div>
+                <div class="cloud-meter-hint">${hintStart}, with no limit on how many listings you hold.</div>
+            </div>`;
+        } else {
+            const pct = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 100;
+            const tone = used >= max ? 'is-full' : (pct >= 80 ? 'is-high' : '');
+            meter.innerHTML = `<div class="cloud-meter ${tone}">
+                <div class="cloud-meter-head"><span>Community uploads</span><span>${used}/${max}</span></div>
+                <div class="cloud-meter-track"><div class="cloud-meter-fill" style="width:${pct}%"></div></div>
+                <div class="cloud-meter-hint">${hintStart}, and hold up to ${max} listings at a time. Unpublishing one frees a slot.</div>
+            </div>`;
+        }
     }
 
     if (!mine.length) {

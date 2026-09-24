@@ -99,17 +99,35 @@ function loadDarkMode() {
                 updateDarkModeUI(false);
             }
         }
+        // where the last click or tap landed: the theme change spreads out from there
+        let themeOrigin = null;
+        document.addEventListener('pointerdown', e => { themeOrigin = { x: e.clientX, y: e.clientY }; }, true);
+
+        function applyDarkMode(dark) {
+            if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+            else document.documentElement.removeAttribute('data-theme');
+            try { localStorage.setItem('woogidex-dark-mode', String(dark)); } catch {}
+            updateDarkModeUI(dark);
+        }
+
+        // The new theme is revealed through a circle that grows from the switch
+        // (View Transitions; css/tokens.css turns off the default cross-fade).
+        // Without support, or with reduced motion, it just switches.
         function toggleDarkMode() {
-            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            if (isDark) {
-                document.documentElement.removeAttribute('data-theme');
-                localStorage.setItem('woogidex-dark-mode', 'false');
-                updateDarkModeUI(false);
-            } else {
-                document.documentElement.setAttribute('data-theme', 'dark');
-                localStorage.setItem('woogidex-dark-mode', 'true');
-                updateDarkModeUI(true);
-            }
+            const dark = document.documentElement.getAttribute('data-theme') !== 'dark';
+            const reduced = document.documentElement.classList.contains('reduce-motion')
+                || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+            if (!document.startViewTransition || reduced) { applyDarkMode(dark); return; }
+            const x = themeOrigin?.x ?? innerWidth / 2;
+            const y = themeOrigin?.y ?? innerHeight / 2;
+            const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+            const transition = document.startViewTransition(() => applyDarkMode(dark));
+            transition.ready.then(() => {
+                document.documentElement.animate(
+                    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+                    { duration: 560, easing: 'cubic-bezier(.4, 0, .2, 1)', pseudoElement: '::view-transition-new(root)' }
+                );
+            }).catch(() => {});
         }
         // the switch in the header's account menu (and Settings, via updateSettingsUI)
         function updateDarkModeUI(isDark) {

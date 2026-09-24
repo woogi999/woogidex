@@ -2043,6 +2043,7 @@ function saveAbilityBlockEditor() {
     const entry = abEntry();
     if (!entry) return;
     entry.blocks = JSON.parse(JSON.stringify(normalizeAbilityBlocks(abState)));
+    api.settleVanillaCopy?.({ move: 'moves', item: 'items' }[abKind] || 'abilities', entry);
     api.saveToStorage?.();
     api.showToast?.(`${abKindInfo().Noun} battle code saved!`, 'success');
     closeAbilityBlockEditor();

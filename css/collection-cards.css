@@ -126,6 +126,18 @@
 }
 .library-emblem svg { width: 44%; height: 44%; stroke-width: 1.8; }
 .library-emblem-plain { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
+/* a main-game item's Showdown icon: 24px pixel art, scaled up crisp */
+.library-emblem.has-item-icon { background: transparent; border-radius: 0; }
+.library-emblem.has-item-icon > svg { display: none; }
+.library-emblem .item-icon-sprite { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.library-emblem .item-icon-sheet {
+    width: 24px; height: 24px; flex: none;
+    background: url('https://play.pokemonshowdown.com/sprites/itemicons-sheet.png') no-repeat;
+    image-rendering: pixelated;
+    transform: scale(var(--item-icon-scale, 2.6));
+}
+.collection-grid.collection-list .library-emblem .item-icon-sheet { --item-icon-scale: 1.4; }
+@media (max-width: 640px) { .collection-grid:not(.collection-list) .library-emblem .item-icon-sheet { --item-icon-scale: 1.6; } }
 .collection-card .card-art .library-tile-corner {
     font-family: 'Exo 2', sans-serif; font-style: normal;
     font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
@@ -235,9 +247,8 @@ html.always-show-card-actions .collection-card .card-actions { opacity: 1; }
 .collection-tabs { margin-bottom: var(--sp-4); }
 .breadcrumb-root { cursor: pointer; }
 .breadcrumb-root:hover { color: var(--accent); }
-#collection-layout-toggle[aria-pressed="true"],
-#collection-shiny-toggle[aria-pressed="true"],
-#community-layout-toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+/* the grid/list toggles only swap their icon: which layout is on is plain to see */
+#collection-shiny-toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 @media (max-width: 640px) {
     .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }

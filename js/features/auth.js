@@ -4,6 +4,7 @@ import { frameCount } from '../core/art-shield.js';
 import { esc, publicName } from '../core/html.js';
 import { log } from '../core/log.js';
 import { state, api } from '../core/app.js';
+import { confirmDialog } from '../core/confirm-dialog.js';
 import { renderCommentMarkdown } from '../core/data.js';
 import { replaceRoute, currentRoute, routeUrl, emailLinkParams } from '../core/router.js';
 import { mountIsland } from '../react/island.jsx';
@@ -37,6 +38,9 @@ function mapUser(supabaseUser) {
     return {
         id: supabaseUser.id,
         email: supabaseUser.email,
+        // an 'email' identity is what signInWithPassword checks against;
+        // OAuth-only accounts have none until they set a password.
+        hasPassword: (supabaseUser.identities || []).some(i => i.provider === 'email'),
         hasRealEmail: !!supabaseUser.email && !supabaseUser.email.endsWith('@' + PLACEHOLDER_EMAIL_DOMAIN) && !supabaseUser.email.endsWith('@' + SYNTHETIC_EMAIL_DOMAIN),
         tosAcceptedAt: meta.tos_accepted_at || null,
         username: '',
@@ -219,7 +223,7 @@ function initAuth() {
             updateAuthUI();
 
             if (event === 'SIGNED_IN' && !wasLoggedIn) {
-                api.showToast?.(`Signed in as ${publicName(state.user)}`, 'success');
+                if (!signupInProgress) api.showToast?.(`Signed in as ${publicName(state.user)}`, 'success');
                 // OAuth sign-ins never touch signUp()/signIn(), so this is
                 // their only recording point. The edge function dedupes
                 // within the same minute; `wasLoggedIn` keeps a token
@@ -248,10 +252,24 @@ function initAuth() {
 // creates the auth account and claims the username; if the username is taken
 // (race with another signup) the auth account still exists - caller should
 // prompt for a new username rather than treat this as a failed signup.
+// Set while signUp() runs. client.auth.signUp() emits SIGNED_IN before the
+// username below is claimed, so the listener would otherwise see a nameless
+// account and ask for the username the form just collected.
+let signupInProgress = false;
+
 async function signUp(username, password, email, tosAccepted) {
     if (!USERNAME_PATTERN.test(username)) {
         throw new Error('Username must be 3-20 characters: letters, numbers, and underscores only.');
     }
+    signupInProgress = true;
+    try {
+        return await createAccount(username, password, email, tosAccepted);
+    } finally {
+        signupInProgress = false;
+    }
+}
+
+async function createAccount(username, password, email, tosAccepted) {
     const client = await getClient();
     const finalEmail = email && email.trim()
         ? email.trim()
@@ -272,8 +290,15 @@ async function signUp(username, password, email, tosAccepted) {
             await setUsername(username);
         } catch (usernameError) {
             log.error('AUTH', 'Username claim failed after signup', usernameError);
-            throw new Error(`Account created, but "${username}" is already taken. Please choose another username in Edit Profile.`);
+            // the account exists now, so the setup modal is the way forward.
+            signupInProgress = false;
+            closeAuthModal();
+            promptUsernameIfMissing();
+            const errorEl = document.getElementById('account-setup-error');
+            if (errorEl) errorEl.textContent = `Account created, but "${username}" is already taken. Please choose another.`;
+            return data;
         }
+        api.showToast?.(`Welcome to Woogidex, ${username}!`, 'success');
         recordAuthEvent('signup');
     }
     return data;
@@ -788,6 +813,69 @@ async function submitSetNewPasswordForm() {
         if (errorEl) errorEl.textContent = e.message || 'Something went wrong.';
     } finally {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Set Password'; }
+    }
+}
+
+// ==================== change password (signed in) ====================
+function openChangePasswordModal() {
+    if (!state.user) { openAuthModal('signin'); return; }
+    const modal = document.getElementById('change-password-modal');
+    if (!modal) return;
+    const needsCurrent = state.user.hasPassword !== false;
+    document.getElementById('change-password-current-group').style.display = needsCurrent ? '' : 'none';
+    document.getElementById('change-password-title').textContent = needsCurrent ? 'Change Password' : 'Set a Password';
+    for (const id of ['change-password-current', 'change-password-new', 'change-password-confirm']) {
+        document.getElementById(id).value = '';
+    }
+    const usernameField = document.getElementById('change-password-username');
+    if (usernameField) usernameField.value = state.user.username || '';
+    const errorEl = document.getElementById('change-password-error');
+    errorEl.textContent = '';
+    errorEl.style.color = '';
+    modal.classList.add('active');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    setTimeout(() => document.getElementById(needsCurrent ? 'change-password-current' : 'change-password-new')?.focus(), 0);
+}
+
+function closeChangePasswordModal() {
+    document.getElementById('change-password-modal')?.classList.remove('active');
+}
+
+async function submitChangePasswordForm() {
+    const needsCurrent = state.user?.hasPassword !== false;
+    const current = document.getElementById('change-password-current').value;
+    const password = document.getElementById('change-password-new').value;
+    const confirm = document.getElementById('change-password-confirm').value;
+    const errorEl = document.getElementById('change-password-error');
+    const submitBtn = document.getElementById('change-password-submit-btn');
+    errorEl.textContent = '';
+    errorEl.style.color = '';
+
+    if (!state.user) { errorEl.textContent = 'Sign in first.'; return; }
+    if (needsCurrent && !current) { errorEl.textContent = 'Enter your current password.'; return; }
+    if (password.length < 6) { errorEl.textContent = 'New password must be at least 6 characters.'; return; }
+    if (password !== confirm) { errorEl.textContent = 'New passwords do not match.'; return; }
+    if (needsCurrent && password === current) { errorEl.textContent = 'That is already your password.'; return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    try {
+        const client = await getClient();
+        if (needsCurrent) {
+            // Supabase's updateUser() doesn't ask for the old password, so an
+            // unattended signed-in tab could otherwise lock its owner out.
+            const { error } = await client.auth.signInWithPassword({ email: state.user.email, password: current });
+            if (error) throw new Error('Your current password is incorrect.');
+        }
+        await completePasswordReset(password);
+        state.user.hasPassword = true;
+        closeChangePasswordModal();
+        api.showToast?.('Password updated.', 'success');
+    } catch (e) {
+        errorEl.textContent = e.message || 'Could not update your password.';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Update Password';
     }
 }
 
@@ -1563,7 +1651,7 @@ async function submitRemoveEmail() {
         errorEl.textContent = 'Set a username first - you need a way to sign in once your email is removed.';
         return;
     }
-    if (!confirm('Remove the email from this account? You will only be able to sign in with your username afterward.')) return;
+    if (!await confirmDialog({ title: 'Remove your email?', message: 'You will only be able to sign in with your username afterward.', confirmLabel: 'Remove email' })) return;
 
     removeBtn.disabled = true;
     removeBtn.textContent = 'Removing…';
@@ -1692,7 +1780,7 @@ function closeHeaderProfilePopover() {
 // display_name has to be written through mirrorToProfile() for anyone else to
 // see it -- which OAuth's metadata-only setup never did.
 function promptUsernameIfMissing() {
-    if (!state.user || state.user.username) return;
+    if (!state.user || state.user.username || signupInProgress) return;
     const modal = document.getElementById('account-setup-modal');
     if (!modal) {          // markup missing: fall back to the old nudge
         api.showToast?.('Please choose a username to finish setting up your account.', 'warning');
@@ -1757,6 +1845,7 @@ export {
     openAuthModal, closeAuthModal, toggleAuthMode, submitAuthForm,
     openForgotPasswordModal, closeForgotPasswordModal, submitForgotPasswordForm,
     openSetNewPasswordModal, closeSetNewPasswordModal, submitSetNewPasswordForm,
+    openChangePasswordModal, closeChangePasswordModal, submitChangePasswordForm,
     requireAccount, invalidateProfile,
     showProfileView, showUserProfile, handleProfileRoute, exitProfileRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, onProfileAvatarFileChosen, submitProfileForm, renderProfilePage, renderProfileLoading, submitDisplayedBadges, submitProfileComment, deleteProfileComment,
     submitUsernameForm, submitEmailForm, submitRemoveEmail,

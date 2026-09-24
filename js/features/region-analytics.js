@@ -114,7 +114,7 @@ const typeBadge = t => `<span class="type-badge type-${esc(String(t).toLowerCase
 // Everything the region has to work with: its own entries (and its own
 // versions of main-game ones) plus the main-game ones it brings over.
 function regionLibrary(region, kind) {
-    const mine = (state[kind] || []).filter(x => String(x.regionId || '') === String(region.id));
+    const mine = (state[kind] || []).filter(x => !x.pendingVanilla && api.entryInRegion(x, region.id));
     const copied = new Set(mine.map(x => x.vanillaId).filter(Boolean));
     const poolKind = kind === 'customMoves' ? 'moves' : kind === 'customAbilities' ? 'abilities' : 'items';
     const source = { moves: state.sdMoves, abilities: state.sdAbilities, items: state.sdItems }[poolKind] || {};
@@ -150,7 +150,7 @@ function contentHtml(region, mons, own, matchup, allTypes) {
     const movesSec = section('Moves', 'What the region\'s Pokémon have to fight with.',
         movesOverview + `<div class="an-split">
             <div><h4 class="an-sub">Physical, special and status</h4>${barRows(cats.map(([label, value]) => ({ label: esc(label), value })))}</div>
-            <div><h4 class="an-sub">By type</h4>${barRows(moveTypes.slice(0, 8).map(([label, value]) => ({ label: typeBadge(label), value })))}</div>
+            <div><h4 class="an-sub">By type</h4>${barRows(moveTypes.slice(0, 8).map(([label, value]) => ({ label: typeBadge(label), value, cls: `type-${esc(String(label).toLowerCase())}` })))}</div>
         </div>
         <div class="an-notes">
             ${noStab.length ? `<p><strong>No damaging move to match their type:</strong> ${noStab.map(typeBadge).join(' ')}</p>` : '<p>Every type your Pokémon have has at least one damaging move.</p>'}
@@ -188,7 +188,7 @@ function contentHtml(region, mons, own, matchup, allTypes) {
     const best = [...offense].sort((a, b) => b.hits - a.hits)[0];
     const sturdiest = [...defense].sort((a, b) => a.weak - b.weak || b.immune - a.immune)[0];
     const frailest = [...defense].sort((a, b) => b.weak - a.weak)[0];
-    const customTypes = (api.getCustomTypes?.() || []).filter(t => String(t.regionId || '') === String(region.id));
+    const customTypes = (api.getCustomTypes?.() || []).filter(t => api.entryInRegion(t, region.id));
     const edits = api.getTypeOverrides?.(region.id) || [];
     const typesSec = section('Types', `${attack.length} types in play${customTypes.length ? `, ${customTypes.length} of them yours` : ''}${edits.length ? `, and ${edits.length} main-game type${edits.length === 1 ? '' : 's'} changed for ${esc(region.name)}` : ''}.`,
         `<div class="an-stats an-stats-small">
@@ -197,7 +197,7 @@ function contentHtml(region, mons, own, matchup, allTypes) {
             ${frailest ? statCard('Most weaknesses', typeBadge(frailest.t), `weak to ${frailest.weak}`) : ''}
         </div>
         ${customTypes.length ? `<h4 class="an-sub">Your types</h4>${barRows(customTypes.map(t => ({
-            label: typeBadge(t.name),
+            label: typeBadge(t.name), cls: `type-${esc(t.name.toLowerCase())}`,
             value: mons.filter(m => m.types.includes(t.name)).length,
             text: `${mons.filter(m => m.types.includes(t.name)).length} Pokémon · ${moves.all.filter(m => m.type === t.name).length} moves`
         })))}` : ''}`, true);
@@ -207,11 +207,11 @@ function contentHtml(region, mons, own, matchup, allTypes) {
 
 // ---- the page ----
 export function regionAnalyticsHtml(region) {
-    const own = (state.fakemonDB || []).filter(f => String(f.regionId || '') === String(region.id)).map(fromFakemon);
+    const own = (state.fakemonDB || []).filter(f => !f.pendingVanilla && api.entryInRegion(f, region.id)).map(fromFakemon);
     const vanillaIds = api.regionPoolIds?.(region, 'pokemon') || [];
     // the main-game Pokemon the region brings over always count, except ones
     // it has its own version of (that version is already in `own`)
-    const copied = new Set((state.fakemonDB || []).filter(f => String(f.regionId || '') === String(region.id) && f.vanillaId).map(f => f.vanillaId));
+    const copied = new Set((state.fakemonDB || []).filter(f => String(f.regionId || '') === String(region.id) && f.vanillaId && !f.pendingVanilla).map(f => f.vanillaId));
     const vanilla = vanillaIds.filter(id => !copied.has(id)).map(id => state.sdPokedex?.[id]).filter(Boolean).map(fromVanilla);
     const mons = [...own, ...vanilla];
     const head = `<div class="an-head"><div><h2>${esc(region.name)} analytics</h2><p>What your region looks like, from the basics to the numbers competitive players check.</p></div></div>`;
@@ -234,7 +234,7 @@ export function regionAnalyticsHtml(region) {
     const mono = mons.filter(m => m.types.length === 1).length;
     const combos = countBy(mons.map(m => [...m.types].sort().join(' / ')).filter(Boolean));
     const uniqueCombos = combos.filter(([, c]) => c === 1).length;
-    const lib = kind => (state[kind] || []).filter(x => String(x.regionId || '') === String(regionId)).length;
+    const lib = kind => (state[kind] || []).filter(x => !x.pendingVanilla && api.entryInRegion(x, regionId)).length;
     const overview = `<div class="an-stats">
         ${statCard('Pokémon', n, vanilla.length ? `${own.length} yours · ${vanilla.length} from the main games` : 'all yours')}
         ${statCard('Average BST', round(mean(bsts)), `median ${round(median(bsts))}`)}

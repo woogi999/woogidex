@@ -180,9 +180,21 @@ function getTarget(){
 function fakeDex(f){
   return {id:`woogidex-${f.id}`,name:f.name||'Unnamed Fakemon',num:99999,types:[f.type1,f.type2].filter(Boolean),stats:Object.fromEntries(STAT_KEYS.map(k=>[k,Number(f.stats?.[k])||0])),abilities:f.abilities||[],learnset:f.learnset||[],fake:true};
 }
+// A region as it stands: its own Fakemon (edited main-game ones included),
+// plus the main-game Pokemon it brings over that it hasn't replaced.
+function regionPool(regionId){
+  const region=(api.getRegions?.()||[]).find(r=>String(r.id)===String(regionId));
+  if(!region)return [];
+  const own=(state.fakemonDB||[]).filter(f=>!f.pendingVanilla&&api.entryInRegion?.(f,region.id));
+  const replaced=new Set(own.map(f=>f.vanillaId).filter(Boolean));
+  const dex=state.sdPokedex||{};
+  const vanilla=(api.regionPoolIds?.(region,'pokemon')||[]).filter(id=>!replaced.has(id)).map(id=>dex[id]).filter(p=>p?.stats&&p?.types&&!p.battleOnly);
+  return [...own.map(fakeDex),...vanilla];
+}
 function poolFor(cfg){
   if(cfg.pool==='collection')return (state.fakemonDB||[]).map(fakeDex);
   if(cfg.pool==='folder')return (state.fakemonDB||[]).filter(f=>(f.folderId||null)===(cfg.folder||null)).map(fakeDex);
+  if(cfg.pool==='region')return regionPool(cfg.region);
   if(cfg.pool==='pokemon'){
     const wanted=normalizeName(cfg.comparePokemon||'');
     return uniqueDex().filter(p=>normalizeName(p.name)===wanted || normalizeName(p.id)===wanted);
@@ -2187,12 +2199,13 @@ function analysisResultsSkeleton(){
     </div>
   `;
 }
-function getCfg(){return {pool:document.getElementById('analysis-pool')?.value||'generation',gen:Number(document.getElementById('analysis-gen')?.value||9),natdex:!!document.getElementById('analysis-natdex')?.checked,folder:document.getElementById('analysis-folder')?.value||'',comparePokemon:document.getElementById('analysis-pokemon')?.value||''};}
+function getCfg(){return {pool:document.getElementById('analysis-pool')?.value||'generation',gen:Number(document.getElementById('analysis-gen')?.value||9),natdex:!!document.getElementById('analysis-natdex')?.checked,folder:document.getElementById('analysis-folder')?.value||'',region:document.getElementById('analysis-region')?.value||'',comparePokemon:document.getElementById('analysis-pokemon')?.value||''};}
 function analysisPoolChanged(){
   const pool=document.getElementById('analysis-pool')?.value;if(!pool)return;
   document.getElementById('analysis-gen-wrap').style.display=(pool==='generation'?'':'none');
   document.getElementById('analysis-folder-wrap').style.display=(pool==='folder'?'':'none');
   document.getElementById('analysis-pokemon-wrap').style.display=(pool==='pokemon'?'':'none');
+  document.getElementById('analysis-region-wrap').style.display=(pool==='region'?'':'none');
   document.getElementById('analysis-natdex-wrap').style.display=(pool==='generation'?'':'none');
   scheduleAnalysis();
 }
@@ -2209,7 +2222,8 @@ function ensurePanel(){
   clearTimeout(analysisTimer);
   el.innerHTML=`<div class="analysis-shell">
     <div class="analysis-controls panel-lite">
-      <div class="analysis-control"><label>Compare Against</label><select id="analysis-pool" onchange="analysisPoolChanged()"><option value="generation">Generation</option><option value="pokemon">Single Pokémon</option><option value="collection">My Collection</option><option value="folder">Collection Folder</option></select></div>
+      <div class="analysis-control"><label>Compare Against</label><select id="analysis-pool" onchange="analysisPoolChanged()"><option value="generation">Generation</option><option value="pokemon">Single Pokémon</option><option value="collection">My Collection</option><option value="folder">Collection Folder</option>${(api.getRegions?.()||[]).length?'<option value="region">One of my regions</option>':''}</select></div>
+      <div id="analysis-region-wrap" class="analysis-control" style="display:none"><label>Region</label><select id="analysis-region" onchange="scheduleAnalysis()">${(api.getRegions?.()||[]).map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></div>
       <div id="analysis-gen-wrap" class="analysis-control"><label>Generation</label><select id="analysis-gen" onchange="scheduleAnalysis()">${[9,8,7,6,5,4,3,2,1].map(g=>`<option value="${g}">Gen ${g}</option>`).join('')}</select></div>
       <div id="analysis-pokemon-wrap" class="analysis-control" style="display:none"><label>Pokémon</label><select id="analysis-pokemon" onchange="scheduleAnalysis()">${uniqueDex().map(p=>`<option value="${esc(p.id||p.name)}">${esc(p.name)}</option>`).join('')}</select></div>
       <div id="analysis-folder-wrap" class="analysis-control" style="display:none"><label>Folder</label><select id="analysis-folder" onchange="scheduleAnalysis()">${(state.folders||[]).filter(f=>f.type==='fakemon').map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('')}</select></div>
@@ -2233,7 +2247,7 @@ async function runFakemonAnalysis(){
   const selectedFormat = cfg.natdex
     ? `National Dex${cfg.gen ? ` Gen ${cfg.gen}` : ''}`
     : `Gen ${cfg.gen || 9}`;
-  const key=JSON.stringify([cfg.pool,cfg.gen,cfg.natdex,cfg.folder,cfg.comparePokemon,getTarget().stats,getTarget().types,state.abilities?.map(a=>a.name),state.learnset?.map(m=>m.name)]);
+  const key=JSON.stringify([cfg.pool,cfg.gen,cfg.natdex,cfg.folder,cfg.region,cfg.comparePokemon,getTarget().stats,getTarget().types,state.abilities?.map(a=>a.name),state.learnset?.map(m=>m.name)]);
   if(key===lastAnalysisKey && results.innerHTML.trim())return;
   lastAnalysisKey=key;analysisBusy=true;
   results.innerHTML=analysisResultsSkeleton();

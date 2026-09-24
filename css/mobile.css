@@ -1,0 +1,230 @@
+/* ==================== mobile ====================
+   phone and touch overrides, kept together and loaded last so they win.
+   link order in index.html = cascade order; later files override earlier ones.
+
+   Three things drive this file:
+   - density: phones get three cards a row, not two, with the card body
+     scaled to match, so a collection reads like a dex rather than a feed;
+   - touch: there is no hover, so a card's actions sit behind one "more"
+     button instead of a permanent stack of five or six covering the art;
+   - room: toolbars and rows wrap or scroll instead of squeezing buttons.
+   ==================== */
+
+/* ---- card actions behind one button (touch) ---- */
+.card-actions-toggle { display: none !important; }
+
+@media (hover: none) {
+    .collection-card .card-actions .card-actions-toggle {
+        display: flex !important;
+        width: 30px; height: 30px; flex: 0 0 30px;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+        color: var(--text-secondary);
+    }
+    /* closed: only the toggle */
+    .collection-card .card-actions:not(.open) > :not(.card-actions-toggle) { display: none !important; }
+
+    /* grid: the toggle sits in the art's top-left corner; open, the actions
+       cover the art as a grid of finger-sized buttons */
+    .collection-grid:not(.collection-list) .collection-card .card-actions {
+        position: absolute; top: 6px; left: 6px; right: auto;
+        z-index: 3;
+        padding: 0;
+        flex-direction: row;
+        opacity: 1;
+    }
+    .collection-grid:not(.collection-list) .collection-card .card-actions.open {
+        top: 0; left: 0; right: 0;
+        aspect-ratio: 1;
+        padding: 8px;
+        flex-wrap: wrap;
+        align-content: center; justify-content: center;
+        gap: 6px;
+        border-radius: calc(var(--card-r) - 1px) calc(var(--card-r) - 1px) 0 0;
+        background: color-mix(in srgb, var(--bg-card) 86%, transparent);
+        -webkit-backdrop-filter: blur(4px);
+        backdrop-filter: blur(4px);
+    }
+    .collection-card .card-actions.open button:not(.card-actions-toggle),
+    .collection-card .card-actions.open .collection-card-export-wrap {
+        width: 34px; height: 34px; flex: 0 0 34px;
+    }
+    .collection-card .card-actions.open .collection-card-export-wrap > button { width: 100%; height: 100%; }
+    .collection-card .card-actions.open button svg { width: 15px; height: 15px; }
+    .collection-card.actions-open { z-index: 300; }
+    /* the dex number moves back to its corner: the toggle took the other one */
+    .collection-grid:not(.collection-list) .collection-card .card-art .card-number { left: auto; right: 8px; }
+
+    /* list: the toggle ends the row; open, the actions drop down beneath it */
+    .collection-grid.collection-list .collection-card .card-actions { position: static; margin-left: 6px; }
+    .collection-grid.collection-list .collection-card .card-actions.open {
+        position: absolute; top: calc(100% - 4px); right: 8px; z-index: 20;
+        flex-wrap: wrap; justify-content: flex-end; gap: 6px;
+        max-width: calc(100% - 16px);
+        padding: 8px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--card-r);
+        box-shadow: var(--shadow-md);
+    }
+    .collection-grid.collection-list .collection-card .card-actions.open .card-actions-toggle { display: none !important; }
+
+    /* the per-card export menu opens inside the card instead of off its edge */
+    .collection-card .card-actions.open .collection-card-export-menu {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        min-width: 220px; z-index: 1000;
+    }
+}
+
+/* the setting to always show them keeps its old meaning on touch too: the
+   whole row, wrapped inside the art rather than hanging off the card */
+@media (hover: none) {
+    html.always-show-card-actions .collection-card .card-actions .card-actions-toggle { display: none !important; }
+    html.always-show-card-actions .collection-card .card-actions > :not(.card-actions-toggle) { display: flex !important; }
+    html.always-show-card-actions .collection-grid:not(.collection-list) .collection-card .card-actions {
+        right: 6px; flex-wrap: wrap; gap: 4px;
+    }
+}
+
+/* ==================== phones ==================== */
+@media (max-width: 640px) {
+    /* ---- card grids: three a row ---- */
+    .collection-grid:not(.collection-list) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding-right: 0;
+    }
+    .collection-grid:not(.collection-list) .collection-card .card-art { padding: 6px; }
+    .collection-grid:not(.collection-list) .collection-card .card-body { gap: 2px; padding: 6px 7px 8px; }
+    .collection-grid:not(.collection-list) .collection-card .card-name { font-size: 12.5px; }
+    .collection-grid:not(.collection-list) .collection-card .card-meta-row { flex-wrap: wrap; gap: 2px 6px; }
+    .collection-grid:not(.collection-list) .collection-card .card-bst { font-size: 10px; }
+    .collection-grid:not(.collection-list) .collection-card .card-bst em { font-size: 8px; margin-right: 2px; }
+    .collection-grid:not(.collection-list) .collection-card .card-date { display: none; }
+    .collection-grid:not(.collection-list) .collection-card .card-types { gap: 3px; margin-top: 2px; flex-wrap: nowrap; overflow: hidden; }
+    .collection-grid:not(.collection-list) .collection-card .card-types .type-badge,
+    .collection-grid:not(.collection-list) .collection-card .library-tag {
+        min-width: 0; flex: 1 1 0; padding: 1px 3px;
+        font-size: 9px; text-align: center;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .collection-grid:not(.collection-list) .collection-card .library-tag { flex: 0 1 auto; padding: 1px 6px; }
+    .collection-grid:not(.collection-list) .collection-card .card-art .card-number { top: 5px; font-size: 10px; }
+    .collection-grid:not(.collection-list) .collection-card .card-art .library-tile-corner { font-size: 8.5px; letter-spacing: .03em; }
+    .collection-grid:not(.collection-list) .vanilla-card-tag { left: 5px; bottom: 5px; padding: 1px 6px; font-size: 8.5px; }
+    .collection-grid:not(.collection-list) .library-tile-desc { font-size: 10px; }
+    .collection-grid:not(.collection-list) .folder-card-art svg { width: 36px !important; height: 36px !important; }
+    /* "Add new": a slim first tile rather than a whole empty card */
+    .collection-grid:not(.collection-list) .collection-add-card .collection-add-icon { width: 36px; height: 36px; }
+    .collection-grid:not(.collection-list) .collection-add-card .collection-add-icon svg { width: 18px; height: 18px; }
+    .collection-grid:not(.collection-list) .collection-add-card .card-name { font-size: 12px; white-space: normal; }
+    /* type tiles */
+    .collection-grid:not(.collection-list) .type-tile .card-art .library-tile-corner { font-size: 8px; }
+
+    /* community cards share the grid: keep their rows level at the new size */
+    .collection-grid:not(.collection-list) .community-card .card-body { gap: 3px; }
+    .collection-grid:not(.collection-list) .community-card-stats { gap: 6px; font-size: 10px; }
+    .collection-grid:not(.collection-list) .community-card-stats svg,
+    .collection-grid:not(.collection-list) .community-stat-btn svg { width: 11px; height: 11px; }
+    .collection-grid:not(.collection-list) .community-card .community-card-author { font-size: 10.5px; }
+    .collection-grid:not(.collection-list) .community-card .community-card-author img,
+    .collection-grid:not(.collection-list) .community-card .community-card-author .avatar { width: 16px; height: 16px; font-size: 8px; }
+    .collection-grid:not(.collection-list) .community-card .card-art .community-card-evo-badge { left: 4px; bottom: 4px; padding: 1px 5px; font-size: 8.5px; }
+
+    /* hub landing shelves: three across, like the grids */
+    .community-landing-row { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; }
+    .community-landing-card .community-landing-art { padding: 6px; }
+    .community-landing-body { padding: 6px 7px 8px; gap: 2px; }
+    .community-landing-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .community-landing-body > :not(.community-landing-name):not(.community-landing-foot) { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .community-landing-foot { flex-direction: column; align-items: stretch; gap: 3px; margin-top: 3px; }
+    .community-landing-types .type-badge { flex: 1 1 0; padding: 1px 3px; font-size: 9px; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+    .community-landing-stats { font-size: 10px; gap: 6px; }
+    .community-landing-stats svg { width: 11px; height: 11px; }
+    .community-landing-section-head { gap: 8px; }
+
+    /* profile: a creator's Fakemon, three across */
+    .profile-mons-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px; }
+
+    /* ---- list rows: name, types and the one number that matters ---- */
+    .collection-grid.collection-list .collection-card { gap: 8px; padding-left: 10px; padding-right: 8px; }
+    .collection-grid.collection-list .card-name { flex: 1 1 auto; font-size: 13px; }
+    .collection-grid.collection-list .vanilla-card-tag-inline,
+    .collection-grid.collection-list .library-tile .card-meta-row,
+    .collection-grid.collection-list .card-number { display: none; }
+    .collection-grid.collection-list .card-bst { min-width: 0; }
+    .collection-grid.collection-list .card-types .type-badge { min-width: 0; padding: 2px 6px; font-size: 10px; }
+    /* main-game rows are told apart by a dot instead of the tag */
+    .collection-grid.collection-list .vanilla-card .card-name::before {
+        content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: middle;
+        border-radius: 50%; background: var(--text-muted); opacity: .6;
+    }
+
+    /* ---- toolbars: search on its own line, the sorts share the next ---- */
+    .search-bar { gap: 8px; margin-bottom: var(--sp-4); }
+
+    /* ---- tab strips scroll sideways instead of wrapping or clipping ---- */
+    .tabs {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tabs .tab { flex: 0 0 auto !important; white-space: nowrap; }
+
+    /* ---- modals: full width, room to breathe, never wider than the screen ---- */
+    .modal-overlay:not(.as-sheet) .modal { max-width: calc(100vw - 24px); }
+    .modal .modal-footer, .region-modal-actions { flex-wrap: wrap; gap: 8px; }
+
+    /* ---- the uploads meter reads as a bar, not a hairline ---- */
+    .cloud-meter-track { height: 8px; }
+
+    /* ---- type editor: the stops bar needs full width to drag on ---- */
+    .type-gradient-bar { height: 34px; }
+    .type-gradient-stop { width: 26px; height: 42px; }
+    .type-gradient-stop-row .btn span { display: none; }
+    .type-matchup-head, .type-matchup-row { gap: 6px; }
+
+    /* ---- analytics bars: the label column shrinks before the bar does ---- */
+    .an-grid { grid-template-columns: minmax(0, 1fr); }
+    .an-bar-row { grid-template-columns: minmax(64px, 96px) minmax(0, 1fr) 40px; gap: 8px; font-size: 12px; }
+    .an-bar-label .type-badge { min-width: 0; width: 100%; }
+    .an-card { padding: var(--sp-4); }
+}
+
+/* ---- editor, Moves tab: toolbars as tidy rows of equal buttons ---- */
+@media (max-width: 640px) {
+    /* search on its own line; the four filters two by two; Clear last */
+    .learnset-toolbar { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .learnset-toolbar > #learnset-search { grid-column: 1 / -1; min-width: 0 !important; }
+    .learnset-toolbar > .type-dropdown,
+    .learnset-toolbar > .cat-dropdown,
+    .learnset-toolbar > select { width: 100% !important; min-width: 0; }
+    .learnset-toolbar > .btn { grid-column: 1 / -1; }
+    /* the move box gets the whole line; method, Add and Browse share the next */
+    .learnset-add-row { flex-wrap: wrap; }
+    .learnset-add-row > .autocomplete-container { flex: 1 1 100% !important; }
+    .learnset-add-row > select, .learnset-add-row > .btn { flex: 1 1 0; min-width: 0; width: auto !important; }
+    .learnset-add-row > #move-level { flex: 0 0 64px; }
+    /* the tools as a two-column grid; the destructive one alone at the end */
+    .learnset-actions { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .learnset-actions > .btn { width: 100%; margin-left: 0 !important; justify-content: center; white-space: normal; line-height: 1.2; min-height: 36px; }
+    .learnset-actions > .btn-danger { grid-column: 1 / -1; }
+}
+
+/* tablets: four cards a row instead of three oversized ones */
+@media (min-width: 641px) and (max-width: 900px) {
+    .collection-grid:not(.collection-list) { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+
+/* the smallest phones (iPhone SE and narrower) */
+@media (max-width: 359px) {
+    /* the region picker gives up width before the header wraps to two lines */
+    .collection-header-actions { flex-wrap: nowrap !important; gap: 6px !important; }
+    .collection-header-actions .collection-regions-btn { flex: 1 1 auto; min-width: 0; }
+    .collection-header-actions .btn-icon, .collection-header-actions .btn:not(.collection-regions-btn) { flex: 0 0 auto; padding: 0 9px; }
+    .collection-grid:not(.collection-list),
+    .community-landing-row,
+    .profile-mons-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}

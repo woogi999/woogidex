@@ -23,8 +23,8 @@
 #collection-view.showing-region-details #empty-collection { display: none !important; }
 
 /* the vanilla Pokemon a region brings over: the card frame, marked as borrowed */
-.vanilla-card { cursor: default; }
-.vanilla-card:hover { transform: none; box-shadow: none; }
+/* clickable and hoverable like your own cards: same actions, same lift */
+.vanilla-card { cursor: pointer; }
 .vanilla-card .card-art img { image-rendering: pixelated; width: 70%; height: 70%; }
 .vanilla-card-tag {
     position: absolute; left: 8px; bottom: 8px;
@@ -143,6 +143,10 @@
 .type-icon-preview img { width: 70%; height: 70%; }
 /* list layout: a row like the other libraries */
 .collection-grid.collection-list .type-tile .type-emblem { font-size: 13px; box-shadow: none; }
+/* list rows: the tag can't sit on a 38px thumbnail, so it follows the name */
+.collection-grid.collection-list .card-art .vanilla-card-tag { display: none; }
+.vanilla-card-tag.vanilla-card-tag-inline { position: static; margin-left: 6px; vertical-align: middle; }
+.collection-grid:not(.collection-list) .vanilla-card-tag-inline { display: none; }
 .collection-grid.collection-list .type-tile .card-art .vanilla-card-tag,
 .collection-grid.collection-list .type-tile .card-art .library-tile-corner { display: none; }
 .types-hint {
@@ -260,7 +264,10 @@
 .region-assign-item:hover { background: var(--bg-panel); }
 .region-assign-item.on { color: var(--accent); }
 .region-assign-item > svg { width: 16px; height: 16px; }
-.region-assign-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the name takes the room; the dot (also a span) keeps its size */
+.region-assign-item span:not(.region-dot) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.region-assign-item .region-dot { flex: 0 0 10px; }
+.region-assign-title small { margin-left: 4px; font-size: 10px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .region-assign-check { color: var(--accent); }
 .region-assign-divider { height: 1px; margin: 4px 0; background: var(--border-light); }
 
@@ -306,6 +313,36 @@
 .type-gradient-opts { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); padding: var(--sp-3); border-radius: var(--card-r); background: var(--bg-panel); }
 .type-gradient-opts .seg { background: var(--bg-card); align-self: flex-start; }
 .type-gradient-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.type-gradient-label small { margin-left: 6px; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+#custom-type-colors { display: block; }
+.type-fill-mode { margin-bottom: var(--sp-3); }
+.type-gradient-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.type-gradient-preset { width: 40px; height: 26px; border-radius: 8px; border: 2px solid var(--border); cursor: pointer; padding: 0; }
+.type-gradient-preset:hover { border-color: var(--accent); transform: translateY(-1px); }
+/* the stops bar: handles sit on the bar, centred on their position */
+.type-gradient-bar {
+    position: relative; height: 30px; margin: 4px 11px 10px;
+    border-radius: 8px; border: 1px solid var(--border);
+    cursor: copy; touch-action: none;
+}
+.type-gradient-stop {
+    position: absolute; top: 50%; width: 22px; height: 38px; padding: 0;
+    transform: translate(-50%, -50%);
+    border-radius: 7px; border: 3px solid #fff;
+    background: var(--stop);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.25);
+    cursor: grab; touch-action: none;
+}
+.type-gradient-stop:active { cursor: grabbing; }
+.type-gradient-stop.on { box-shadow: 0 0 0 2px var(--accent), 0 2px 8px rgba(0,0,0,.3); z-index: 1; }
+.type-gradient-stop-edit { display: flex; flex-direction: column; gap: var(--sp-2); }
+.type-gradient-stop-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.type-gradient-pos { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-right: auto; }
+.type-gradient-pos input { width: 64px; padding: 6px 8px; }
+.type-gradient-angle { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.type-gradient-angle .seg-btn { min-width: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.type-gradient-angle input[type="range"] { flex: 1 1 140px; min-width: 120px; accent-color: var(--accent); }
+.type-gradient-angle-value { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; min-width: 40px; text-align: right; }
 
 /* ==================== region analytics ==================== */
 .an-head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-5); }
@@ -330,7 +367,11 @@
 .an-bar-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .an-bar-label .type-badge { min-width: 72px; text-align: center; font-size: 11px; }
 .an-bar-track { display: flex; height: 12px; border-radius: 999px; background: var(--bg-panel); overflow: hidden; }
-.an-bar-fill { height: 100%; background: var(--accent); }
+/* the accent is only for bars with no type: .type-* (css/controls.css) comes
+   earlier in the cascade, so a plain default here used to paint over every
+   type bar except ones with a region-specific (higher-specificity) rule */
+.an-bar-fill { height: 100%; }
+.an-bar-fill:not([class*="type-"]) { background: var(--accent); }
 .an-bar-secondary { opacity: .45; }
 .an-bar-value { text-align: right; font: 700 13px 'Inconsolata', monospace; font-variant-numeric: tabular-nums; }
 .an-bar-value small { color: var(--text-muted); font-weight: 400; }
@@ -363,3 +404,45 @@
 }
 .an-part { margin: var(--sp-6) 0 var(--sp-3); font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .an-stat strong .type-badge { font-size: 13px; padding: 3px 10px; vertical-align: middle; }
+
+/* ==================== type matchups: groups ==================== */
+.type-group-boards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.type-group-board { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.type-group-board header h4 { font-size: 13px; font-weight: 800; }
+.type-group-board header p { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+.type-group-zone {
+    --zone: var(--text-muted);
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 8px; min-height: 58px;
+    border: 1.5px dashed color-mix(in srgb, var(--zone) 45%, var(--border));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--zone) 7%, var(--bg-panel));
+    transition: background .12s ease, border-color .12s ease;
+}
+.type-group-zone.mult-4 { --zone: #1f9a4a; }
+.type-group-zone.mult-2 { --zone: #3fae5a; }
+.type-group-zone.mult-1 { --zone: #8a8f9c; }
+.type-group-zone.mult-05 { --zone: #e2574c; }
+.type-group-zone.mult-0 { --zone: #4b5563; }
+.type-group-zone.drag-over { border-style: solid; border-color: var(--zone); background: color-mix(in srgb, var(--zone) 18%, var(--bg-panel)); }
+.type-group-label { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+.type-group-label strong { color: var(--zone); font-size: 13px; font-weight: 800; min-width: 22px; }
+.type-group-label span { flex: 1; font-weight: 700; }
+.type-group-label em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.type-group-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
+.type-group-empty { font-size: 11px; color: var(--text-muted); font-style: italic; }
+.type-group-chip {
+    min-width: 0; padding: 3px 8px; font-size: 10.5px; border: 0; border-radius: 5px;
+    cursor: grab; touch-action: none; user-select: none;
+}
+.type-group-chip.dragging { opacity: .35; }
+.type-group-chip.picked { outline: 2px solid var(--accent); outline-offset: 2px; }
+.type-group-ghost {
+    position: fixed; z-index: 5000; pointer-events: none;
+    transform: translate(-50%, -60%) rotate(-3deg);
+    box-shadow: var(--shadow-md);
+}
+.chart-cell.mult-4 { background: color-mix(in srgb, #1f9a4a 45%, transparent); color: #fff; font-weight: 800; }
+@media (max-width: 640px) {
+    .type-group-boards { grid-template-columns: minmax(0, 1fr); }
+}

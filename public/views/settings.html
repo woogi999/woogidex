@@ -169,6 +169,16 @@
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeSettingsPage(); showProfileView(); editOwnProfile();">Edit Profile</button>
                 </div>
             </div>
+            <div class="settings-group">
+                <div class="settings-group-title"><span>Security</span></div>
+                <div class="settings-row settings-row-static">
+                    <span class="settings-row-text">
+                        <span class="settings-label">Password</span>
+                        <span class="settings-desc">Change the password you use to sign in with your username or email.</span>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openChangePasswordModal()">Change Password</button>
+                </div>
+            </div>
             <!-- signed-in only; filled in by oauth.js's updateConnectedAccountsUI(),
                  which only shows a provider once the project reports it enabled -->
             <div class="settings-group connected-accounts-group" id="settings-connections-group" style="display:none;">

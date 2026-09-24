@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import { readdirSync, readFileSync, writeFileSync } from 'fs';
 
 // static site on GitHub Pages, so this has to survive being served from a
 // subdirectory *and* from paths that don't exist on disk (/community/12).
@@ -39,6 +40,36 @@ function fallback404() {
     };
 }
 
+// Comments are for whoever edits the source, not for anyone opening dev tools
+// on the live site. JS and CSS lose theirs when they're minified; HTML (the
+// pages, and the views in public/ that are copied as-is) and the small inline
+// scripts in it are not minified, so this strips them from the built files.
+function stripComments(html) {
+    return html
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/(<script(?![^>]*\bsrc=)[^>]*>)([\s\S]*?)(<\/script>)/g,
+            (_, open, body, close) => open + body.replace(/^[ \t]*\/\/.*(?:\r?\n)?/gm, '') + close)
+        .replace(/\n[ \t]*(?:\r?\n[ \t]*)+\n/g, '\n\n');
+}
+
+function stripHtmlComments() {
+    let outDir = 'dist';
+    return {
+        name: 'woogidex-strip-html-comments',
+        apply: 'build',
+        configResolved(config) { outDir = resolve(config.root, config.build.outDir); },
+        // after everything is written, so it covers 404.html and public/views too
+        closeBundle() {
+            const walk = dir => readdirSync(dir, { withFileTypes: true }).forEach(entry => {
+                const full = resolve(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.name.endsWith('.html')) writeFileSync(full, stripComments(readFileSync(full, 'utf8')));
+            });
+            walk(outDir);
+        }
+    };
+}
+
 const SB_PROXY = {
     target: 'https://qstbascfeolkyxtrqqwv.supabase.co',
     changeOrigin: true,
@@ -48,7 +79,7 @@ const SB_PROXY = {
 export default defineConfig({
     base: './',
     publicDir: 'public',
-    plugins: [react(), fallback404()],
+    plugins: [react(), fallback404(), stripHtmlComments()],
     build: {
         outDir: 'dist',
         assetsDir: 'bundle',
