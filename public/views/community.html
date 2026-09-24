@@ -21,47 +21,37 @@
      Inline onclick handlers still work: every module assigns its exports onto
      window, so the contract is unchanged by the move.
      ==================== -->
-<div class="community-tabs-row">
-    <div class="tabs" id="community-tabs">
-        <button class="tab active" type="button" data-panel="landing" onclick="showCommunityPanel('landing')">Hub</button>
-        <button class="tab" type="button" data-panel="browse" onclick="showCommunityPanel('browse')">Browse</button>
-        <button class="tab" type="button" data-panel="events" onclick="showCommunityPanel('events')">Events</button>
-        <button class="tab" type="button" data-panel="uploads" onclick="showCommunityPanel('uploads')">My uploads</button>
+<!-- A page header like every other page: title, one line, and the one
+     action (Publish). The panels below it sit straight on the page, with no
+     card around them. -->
+<div class="page-header">
+    <div class="page-heading">
+        <h1 class="page-title">Community Hub</h1>
+        <p class="page-subtitle">Every Fakémon here was designed by someone in this community. Browse, comment, or publish one of your own.</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" type="button" onclick="openCommunityPublishModal()"><i data-lucide="upload"></i><span>Publish a Fakémon</span></button>
     </div>
 </div>
 
-<!-- Its own row under the tabs rather than sharing theirs: on the right of the
-     tab bar it read as a fifth tab, and it is a way out of the hub, not a
-     place in it. Left-aligned, where a back control is looked for. -->
-<div class="community-back-row">
-    <button class="btn btn-secondary btn-sm" onclick="closeCommunityHub()" title="Back to your collection"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+<div class="tabs community-tabs" id="community-tabs" role="tablist" aria-label="Community Hub">
+    <button class="tab active" type="button" role="tab" data-panel="landing" onclick="showCommunityPanel('landing')">Hub</button>
+    <button class="tab" type="button" role="tab" data-panel="browse" onclick="showCommunityPanel('browse')">Browse</button>
+    <button class="tab" type="button" role="tab" data-panel="events" onclick="showCommunityPanel('events')">Events</button>
+    <button class="tab" type="button" role="tab" data-panel="uploads" onclick="showCommunityPanel('uploads')">My uploads</button>
 </div>
 
 <div id="community-landing" class="community-landing">
-    <div class="panel community-hero">
-        <h2 class="community-hero-title">See what trainers are making</h2>
-        <p class="community-hero-sub">Every Fakémon here was designed by someone in this community. Browse them, leave a comment, or publish one of your own.</p>
-        <div class="community-hero-actions">
-            <button class="btn btn-primary" onclick="showCommunityPanel('browse')"><i data-lucide="layout-grid" style="width:16px;height:16px;"></i> Browse Fakémon</button>
-            <button class="btn btn-secondary" onclick="showCommunityPanel('uploads')"><i data-lucide="upload" style="width:16px;height:16px;"></i> Publish yours</button>
-        </div>
-        <!-- filled in by renderCommunityLanding() in js/features/community.js -->
-        <div id="community-hero-stats" class="community-hero-stats"></div>
-    </div>
-
+    <!-- filled in by renderCommunityLanding() in js/features/community.js -->
+    <div id="community-hero-stats" class="community-hero-stats"></div>
     <!-- sections written whole by renderCommunityLanding(); left empty here
          so a slow feed shows a skeleton rather than headings above nothing -->
     <div id="community-landing-sections"></div>
 </div>
 
-<div id="community-browse" class="panel" style="display:none;">
-    <div class="collection-title-row" id="community-header-row">
-        <div class="collection-title-left">
-            <h2 class="collection-heading">Browse Fakémon</h2>
-        </div>
-    </div>
+<div id="community-browse" class="community-panel" style="display:none;">
     <div class="search-bar community-controls">
-        <input type="text" id="community-search-input" placeholder="Search the community hub..." oninput="filterCommunity()" aria-label="Search the community hub">
+        <input type="search" id="community-search-input" placeholder="Search the Community Hub..." oninput="filterCommunity()" aria-label="Search the Community Hub">
         <select id="community-sort-by" onchange="changeCommunitySort()" aria-label="Sort the community hub by">
             <option value="activity">Activity</option>
             <option value="likes">Total likes</option>
@@ -76,7 +66,7 @@
             <option value="desc">Descending</option>
             <option value="asc">Ascending</option>
         </select>
-        <button class="btn btn-secondary btn-sm" id="community-layout-toggle" type="button" onclick="toggleCommunityLayout()" title="Toggle list / grid view" aria-label="Toggle list or grid view" aria-pressed="false">
+        <button class="btn btn-secondary btn-icon" id="community-layout-toggle" type="button" onclick="toggleCommunityLayout()" title="Toggle list / grid view" aria-label="Toggle list or grid view" aria-pressed="false">
             <i data-lucide="list" aria-hidden="true"></i>
         </button>
     </div>
@@ -85,13 +75,13 @@
 
 <!-- ids match what js/core/events.js looks up, unchanged when this markup
      moved here from views/events.html -->
-<div id="community-events" class="panel" style="display:none;">
+<div id="community-events" class="community-panel" style="display:none;">
     <div class="collection-title-row">
         <div class="collection-title-left">
             <h2 class="collection-heading">Events and contests</h2>
         </div>
         <div class="collection-header-actions">
-            <button class="btn btn-secondary btn-sm" type="button" onclick="loadEventsView()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh</button>
+            <button class="btn btn-secondary" type="button" onclick="loadEventsView()"><i data-lucide="refresh-cw"></i> Refresh</button>
         </div>
     </div>
     <div id="events-status" class="events-status"></div>
@@ -99,17 +89,8 @@
     <div id="contest-voting-view" class="contest-voting-view" style="display:none;"></div>
 </div>
 
-<!-- your own listings, and where you publish from, rather than leaving the
-     hub for the collection page's share menu -->
-<div id="community-uploads" class="panel" style="display:none;">
-    <div class="collection-title-row">
-        <div class="collection-title-left">
-            <h2 class="collection-heading">My uploads</h2>
-        </div>
-        <div class="collection-header-actions">
-            <button class="btn btn-primary btn-sm" type="button" onclick="openCommunityPublishModal()"><i data-lucide="upload" style="width:14px;height:14px;"></i> Publish a Fakémon</button>
-        </div>
-    </div>
-    <div id="community-uploads-meter" class="cloud-meters"></div>
+<!-- your own listings; the Publish button is in the page header -->
+<div id="community-uploads" class="community-panel" style="display:none;">
+    <div id="community-uploads-meter" class="cloud-meters community-uploads-meter"></div>
     <div id="community-uploads-list" class="community-uploads-list"></div>
 </div>

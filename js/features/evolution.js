@@ -1,4 +1,5 @@
 import { log } from '../core/log.js';
+import { iconSvg, iconPaths } from '../core/icons.js';
 import { state, api } from '../core/app.js';
 
 // evolution/forme whiteboard; graph persists on each participating Fakemon so any member restores the same board.
@@ -321,7 +322,7 @@ function renderEvolutionBoard() {
             el.style.left=`${Math.max(4,Math.min(W-NODE_W-4,n.x||20))}px`; el.style.top=`${Math.max(4,Math.min(H-NODE_H-4,n.y||20))}px`;
             el.innerHTML=`<button class="evo-handle evo-handle-left" type="button" title="Connect from previous node"></button>
                 <div class="evo-method-head"><span><span class="evo-method-kicker">Evo method</span><strong>${esc(getMethodLabel(n))}</strong></span>
-                <span style="display:flex;align-items:center;gap:4px;">${n.mergeGroup?'<span class="evo-method-stack-mark" title="Merged method group">◆</span>':''}<button class="evo-method-edit" type="button" title="Edit method">✎</button><button class="evo-remove" type="button" title="Remove">×</button></span></div>
+                <span style="display:flex;align-items:center;gap:4px;">${n.mergeGroup?`<span class="evo-method-stack-mark" title="Merged method group">${iconSvg('diamond', 10)}</span>`:''}<button class="evo-method-edit" type="button" title="Edit method" aria-label="Edit method">${iconSvg('pencil', 12)}</button><button class="evo-remove" type="button" title="Remove" aria-label="Remove">${iconSvg('x', 12)}</button></span></div>
                 <div class="evo-method-summary">${esc(getMethodSummary(n))}</div>
                 <button class="evo-handle evo-handle-right" type="button" title="Connect to next node"></button>`;
             el.addEventListener('pointerdown',e=>startNodeDrag(e,n.id));
@@ -345,7 +346,7 @@ function renderEvolutionBoard() {
         const safeOnErrorFallback = String(fallbackName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         el.innerHTML = `
           <button class="evo-handle evo-handle-left" type="button" title="Drag from this side to connect"></button>
-          <div class="evo-node-head"><span class="evo-stage">${esc(stageLabel)}</span><span style="display:flex;align-items:center;gap:5px;"><span class="evo-kind">${esc(info.kindLabel)}</span>${n.id !== me.id ? `<button class="evo-remove" type="button" title="Remove">×</button>` : ''}</span></div>
+          <div class="evo-node-head"><span class="evo-stage">${esc(stageLabel)}</span><span style="display:flex;align-items:center;gap:5px;"><span class="evo-kind">${esc(info.kindLabel)}</span>${n.id !== me.id ? `<button class="evo-remove" type="button" title="Remove" aria-label="Remove">${iconSvg('x', 12)}</button>` : ''}</span></div>
           <div class="evo-node-body">
             <div class="evo-sprite-wrap"><img src="${esc(spriteUrl)}" alt="${esc(info.name)}" loading="lazy" decoding="async" onerror="window.fallbackPokemonImage && window.fallbackPokemonImage(this, '${safeOnErrorName}', '${safeOnErrorFallback}')"></div>
             <div class="evo-node-name">
@@ -471,13 +472,15 @@ function drawEvolutionEdges() {
 
         const mx = (ax + bx) / 2;
         const my = (ay + by) / 2;
-        const scissors = document.createElementNS('http://www.w3.org/2000/svg','text');
-        scissors.setAttribute('x', mx);
-        scissors.setAttribute('y', my);
+        // an icon, not a glyph: nested <svg> centred on the wire's midpoint
+        const scissors = document.createElementNS('http://www.w3.org/2000/svg','svg');
+        scissors.setAttribute('x', mx - 9);
+        scissors.setAttribute('y', my - 9);
+        scissors.setAttribute('width', 18);
+        scissors.setAttribute('height', 18);
+        scissors.setAttribute('viewBox', '0 0 24 24');
         scissors.setAttribute('class','evo-wire-scissors');
-        scissors.setAttribute('text-anchor','middle');
-        scissors.setAttribute('dominant-baseline','central');
-        scissors.textContent = '✂';
+        scissors.innerHTML = iconPaths('scissors');
         scissors.setAttribute('pointer-events','none');
 
         hit.addEventListener('pointerenter', () => group.classList.add('hover'));
@@ -855,10 +858,22 @@ function editFakemonFromPreview(refId) {
 // base they belong to. Geometry is computed here rather than measured from the
 // DOM, so the same markup renders identically in the board export (html2canvas
 // never gets a second layout pass).
+//
+// A split (a column with 2+ members) swaps to compact side-by-side cards that
+// carry their own evolution method, since stacking full cards made an
+// Eevee-sized family over a thousand pixels tall. A big split off a single
+// parent additionally wraps into a grid inside one bracketed group, fed by a
+// single arrow, rather than fanning out one wire per branch.
 const PREVIEW_EVO_GEOM = {
     nodeW: 128, nodeH: 150,
-    specialH: 58, specialGap: 10,
-    colGap: 80, rowGap: 16
+    compactW: 196, compactH: 68,
+    specialH: 58, compactSpecialH: 36, specialGap: 8,
+    colGap: 80, rowGap: 16, compactGap: 10,
+    // a split wraps once it has more members than this per sub-column...
+    wrapRows: 4,
+    // ...into at most this many sub-columns; past that the column just grows
+    maxSubCols: 3,
+    groupPad: 10
 };
 
 /** Flat stage-ordered list of the family's base stages. Kept for callers that only want the members, not the shape. */
@@ -873,7 +888,7 @@ function getPreviewEvolutionChain() {
 
 /**
  * Positions every member of the current Fakemon's family on a grid.
- * @returns {null|{width:number,height:number,entries:Array,links:Array}}
+ * @returns {null|{width:number,height:number,entries:Array,links:Array,groups:Array}}
  *   null when there is nothing worth drawing (a lone Fakemon with no relatives).
  */
 function buildPreviewEvolutionModel() {
@@ -901,7 +916,13 @@ function buildPreviewEvolutionModel() {
     // is a real evolution step; Mega/forme edges never connect two bases
     const edges = effectiveEdges(g).filter(e => baseIds.has(e.from) && baseIds.has(e.to) && e.from !== e.to);
     const parentsOf = new Map(bases.map(n => [n.id, []]));
-    edges.forEach(e => parentsOf.get(e.to).push(e.from));
+    const childCount = new Map(bases.map(n => [n.id, 0]));
+    edges.forEach(e => { parentsOf.get(e.to).push(e.from); childCount.set(e.from, childCount.get(e.from) + 1); });
+    const edgeMethodMap = getEdgeMethodMap(g);
+    const methodLabel = e => {
+        const methodNode = edgeMethodMap.get(`${e.from}->${e.to}`);
+        return methodNode ? getMethodSummary(methodNode) : '';
+    };
 
     // ---- columns, one per evolution stage ----
     const stageOf = new Map(bases.map(n => [n.id, Math.max(1, stageMap[n.id] || 1)]));
@@ -920,68 +941,117 @@ function buildPreviewEvolutionModel() {
         col.forEach((n, i) => rowOf.set(n.id, i));
     });
 
-    // ---- geometry ----
+    // ---- per-column layout mode ----
     const G = PREVIEW_EVO_GEOM;
-    const cellHeight = node => G.nodeH + (specialsByBase.get(node.id) || []).length * (G.specialH + G.specialGap);
-    const colHeights = columns.map(col => col.reduce((sum, n) => sum + cellHeight(n), 0) + Math.max(0, col.length - 1) * G.rowGap);
-    const height = Math.max(...colHeights);
-    const width = columns.length * G.nodeW + Math.max(0, columns.length - 1) * G.colGap;
-
-    const box = new Map();
-    columns.forEach((col, c) => {
-        const x = c * (G.nodeW + G.colGap);
-        // columns of different depths read better centred against each other
-        let y = (height - colHeights[c]) / 2;
-        col.forEach(node => {
-            box.set(node.id, { x, y });
-            y += cellHeight(node) + G.rowGap;
-        });
+    const layouts = columns.map((col, c) => {
+        const compact = col.length >= 2;
+        const firstParents = parentsOf.get(col[0].id) || [];
+        // wrapping only works when nothing needs a wire into or out of an
+        // individual card: one shared parent in, no further stages out
+        const wrap = compact && c > 0 && col.length > G.wrapRows &&
+            firstParents.length === 1 &&
+            col.every(n => {
+                const p = parentsOf.get(n.id) || [];
+                return p.length === 1 && p[0] === firstParents[0] && !childCount.get(n.id);
+            });
+        const subCols = wrap ? Math.min(G.maxSubCols, Math.ceil(col.length / G.wrapRows)) : 1;
+        const rows = Math.ceil(col.length / subCols);
+        const w = compact ? G.compactW : G.nodeW;
+        const h = compact ? G.compactH : G.nodeH;
+        const sh = compact ? G.compactSpecialH : G.specialH;
+        const gap = compact ? G.compactGap : G.rowGap;
+        const pad = wrap ? G.groupPad : 0;
+        const cellH = node => h + (specialsByBase.get(node.id) || []).length * (sh + G.specialGap);
+        // column-major, so a wrapped split still reads top-to-bottom like a list
+        const grid = Array.from({ length: subCols }, (_, sc) => col.slice(sc * rows, (sc + 1) * rows));
+        const rowHeights = Array.from({ length: rows }, (_, r) => Math.max(0, ...grid.map(sub => sub[r] ? cellH(sub[r]) : 0)));
+        const innerH = rowHeights.reduce((a, b) => a + b, 0) + Math.max(0, rows - 1) * gap;
+        const innerW = subCols * w + (subCols - 1) * gap;
+        return { compact, wrap, grid, rowHeights, w, h, sh, gap, pad, width: innerW + pad * 2, height: innerH + pad * 2 };
     });
 
-    const makeEntry = (node, x, y, w, h, extra) =>
-        ({ id: node.id, kind: node.kind, refId: node.refId, info: getNodeInfo(node), x, y, w, h, ...extra });
+    const height = Math.max(...layouts.map(l => l.height));
+    const width = layouts.reduce((sum, l) => sum + l.width, 0) + Math.max(0, layouts.length - 1) * G.colGap;
+
+    const box = new Map();
+    const groups = [];
+    let colX = 0;
+    layouts.forEach((L, c) => {
+        // columns of different depths read better centred against each other
+        const top = (height - L.height) / 2;
+        L.grid.forEach((sub, sc) => {
+            const x = colX + L.pad + sc * (L.w + L.gap);
+            let y = top + L.pad;
+            sub.forEach((node, r) => {
+                box.set(node.id, { x, y, w: L.w, h: L.h, layout: L });
+                y += L.rowHeights[r] + L.gap;
+            });
+        });
+        if (L.wrap) groups.push({ x: colX, y: top, w: L.width, h: L.height, parent: parentsOf.get(columns[c][0].id)[0], count: columns[c].length });
+        colX += L.width + G.colGap;
+    });
+
+    const makeEntry = (node, b, extra) =>
+        ({ id: node.id, kind: node.kind, refId: node.refId, info: getNodeInfo(node), x: b.x, y: b.y, w: b.w, h: b.h, ...extra });
 
     const entries = [];
     const links = [];
-    const edgeMethodMap = getEdgeMethodMap(g);
 
     columns.forEach((col, c) => {
         col.forEach(node => {
-            const { x, y } = box.get(node.id);
-            entries.push(makeEntry(node, x, y, G.nodeW, G.nodeH, { stage: stages[c], isCurrent: node.id === me.id }));
+            const b = box.get(node.id);
+            const L = b.layout;
+            // a compact card says how it's reached itself, instead of a chip on the wire
+            const methods = L.compact
+                ? [...new Set(edges.filter(e => e.to === node.id).map(methodLabel).filter(Boolean))]
+                : [];
+            entries.push(makeEntry(node, b, { stage: stages[c], isCurrent: node.id === me.id, compact: L.compact, method: methods.join(' / ') }));
 
             // Mega / forme cards stack under their base, joined by a short dashed stem
-            let sy = y + G.nodeH;
+            let sy = b.y + b.h;
+            const stemX = L.compact ? b.x + 30 : b.x + b.w / 2;
             (specialsByBase.get(node.id) || []).forEach(sp => {
                 const top = sy + G.specialGap;
-                entries.push(makeEntry(sp, x, top, G.nodeW, G.specialH, {
-                    isCurrent: sp.id === me.id, isSpecial: true,
+                entries.push(makeEntry(sp, { x: b.x, y: top, w: b.w, h: L.sh }, {
+                    isCurrent: sp.id === me.id, isSpecial: true, compact: L.compact,
                     badge: sp.isMega ? 'Mega' : 'Forme'
                 }));
-                links.push({ kind: 'forme', d: `M ${x + G.nodeW / 2} ${sy} L ${x + G.nodeW / 2} ${top}` });
-                sy = top + G.specialH;
+                links.push({ kind: 'forme', d: `M ${stemX} ${sy} L ${stemX} ${top}` });
+                sy = top + L.sh;
             });
         });
+    });
+
+    const curve = (x1, y1, x2, y2) => {
+        const bend = Math.max(24, (x2 - x1) / 2);
+        // a curve rather than an elbow, so several branches leaving one
+        // parent stay tellable apart where they fan out
+        return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+    };
+
+    groups.forEach(gr => {
+        const from = box.get(gr.parent);
+        if (!from) return;
+        links.push({ kind: 'evolve', d: curve(from.x + from.w, from.y + from.h / 2, gr.x, gr.y + gr.h / 2), label: '' });
     });
 
     edges.forEach(e => {
         const from = box.get(e.from), to = box.get(e.to);
         if (!from || !to) return;
-        const x1 = from.x + G.nodeW, y1 = from.y + G.nodeH / 2;
-        const x2 = to.x, y2 = to.y + G.nodeH / 2;
-        const bend = Math.max(24, (x2 - x1) / 2);
-        const methodNode = edgeMethodMap.get(`${e.from}->${e.to}`);
+        // a wrapped group is fed by its one group arrow above
+        if (to.layout.wrap) return;
+        const x1 = from.x + from.w, y1 = from.y + from.h / 2;
+        const x2 = to.x, y2 = to.y + to.h / 2;
         links.push({
             kind: 'evolve',
-            // a curve rather than an elbow, so several branches leaving one
-            // parent stay tellable apart where they fan out
-            d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`,
-            label: methodNode ? getMethodSummary(methodNode) : '',
+            d: curve(x1, y1, x2, y2),
+            // compact targets carry the method in the card
+            label: to.layout.compact ? '' : methodLabel(e),
             labelAt: { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }
         });
     });
 
-    return { width, height, entries, links };
+    return { width, height, entries, links, groups };
 }
 
 function previewEvoNodeHtml(entry) {
@@ -992,7 +1062,7 @@ function previewEvoNodeHtml(entry) {
     const attrs = ` style="left:${entry.x}px;top:${entry.y}px;width:${entry.w}px;height:${entry.h}px;"` +
         `${clickable ? ` onclick="editFakemonFromPreview('${esc(entry.refId)}')"` : ' disabled'}` +
         ` title="${esc(titleText)}"`;
-    const cls = `${entry.isCurrent ? ' current' : ''}${clickable ? '' : ' not-clickable'}`;
+    const cls = `${entry.isCurrent ? ' current' : ''}${clickable ? '' : ' not-clickable'}${entry.compact ? ' compact' : ''}`;
 
     if (entry.isSpecial) {
         // compact card: at this size artwork and type pills would be unreadable,
@@ -1008,10 +1078,24 @@ function previewEvoNodeHtml(entry) {
     const safeName = String(info.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const safeFallback = String(fallbackName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const typesHtml = (info.types || []).map(t => `<span class="type-pill type-${String(t).toLowerCase()}">${esc(t)}</span>`).join('');
+    const spriteHtml = `<div class="preview-evo-sprite-wrap"><img src="${esc(spriteUrl)}" alt="${esc(info.name)}" onerror="window.fallbackPokemonImage && window.fallbackPokemonImage(this, '${safeName}', '${safeFallback}')"></div>`;
+
+    if (entry.compact) {
+        // sprite beside the text, so a split costs 68px a branch instead of 150
+        return `<button type="button" class="preview-evo-node${cls}"${attrs}>` +
+            spriteHtml +
+            `<span class="preview-evo-body">` +
+            `<span class="preview-evo-name">${esc(info.name)}</span>` +
+            `${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}` +
+            `${entry.method ? `<span class="preview-evo-card-method">${esc(entry.method)}</span>` : ''}` +
+            `</span>` +
+            `</button>`;
+    }
+
     const metaBits = [info.number, info.species].filter(Boolean);
     return `<button type="button" class="preview-evo-node${cls}"${attrs}>` +
         `<span class="preview-evo-stage">${esc(label)}</span>` +
-        `<div class="preview-evo-sprite-wrap"><img src="${esc(spriteUrl)}" alt="${esc(info.name)}" onerror="window.fallbackPokemonImage && window.fallbackPokemonImage(this, '${safeName}', '${safeFallback}')"></div>` +
+        spriteHtml +
         `<span class="preview-evo-name">${esc(info.name)}</span>` +
         `${metaBits.length ? `<span class="preview-evo-meta">${esc(metaBits.join(' · '))}</span>` : ''}` +
         `${typesHtml ? `<span class="preview-evo-types">${typesHtml}</span>` : ''}` +
@@ -1025,6 +1109,9 @@ function renderPreviewEvolutionChain() {
     // the marker id is unique per render because the board export clones this
     // markup next to the live copy, and duplicate ids would collapse to one defs entry
     const markerId = `preview-evo-arrow-${Math.random().toString(36).slice(2, 8)}`;
+    const groupRects = model.groups
+        .map(gr => `<rect class="preview-evo-group" x="${gr.x + 1}" y="${gr.y + 1}" width="${gr.w - 2}" height="${gr.h - 2}" rx="14" />`)
+        .join('');
     const paths = model.links.map(link => link.kind === 'forme'
         ? `<path class="preview-evo-wire preview-evo-wire-forme" d="${link.d}" />`
         : `<path class="preview-evo-wire" d="${link.d}" marker-end="url(#${markerId})" />`
@@ -1038,7 +1125,7 @@ function renderPreviewEvolutionChain() {
     const svg = `<svg class="preview-evo-wires" width="${model.width}" height="${model.height}" viewBox="0 0 ${model.width} ${model.height}" aria-hidden="true">` +
         `<defs><marker id="${markerId}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">` +
         `<path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" /></marker></defs>` +
-        paths +
+        groupRects + paths +
         `</svg>`;
 
     const nodes = model.entries.map(previewEvoNodeHtml).join('');
@@ -1194,6 +1281,87 @@ if (evolutionMethodItemInput) {
     evolutionMethodItemInput.addEventListener('blur', () => setTimeout(closeEvolutionMethodItemMenu, 180));
 }
 
+// ==================== a main-game species' own evolution line ====================
+// A Fakemon made from a main-game Pokemon (a template, or a region's own
+// version of one) starts with that species' family already on its board:
+// every stage, joined by the method the games use. Family members that
+// already exist as Fakemon (made from the same species, in the same region)
+// join as those Fakemon, so the whole line links up as you make it.
+const toSpeciesId = name => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// the games' method, as one of the board's method nodes
+function vanillaMethodFor(p) {
+    const cond = String(p.evoCondition || '').trim();
+    switch (p.evoType) {
+        case 'useItem': return { methodType: 'item', value: p.evoItem || '' };
+        case 'trade': return { methodType: 'custom', description: p.evoItem ? `Trade holding ${p.evoItem}` : 'Trade' };
+        case 'levelFriendship': return { methodType: 'custom', description: `Level up with high friendship${cond ? ` ${cond}` : ''}` };
+        case 'levelHold': return { methodType: 'custom', description: `Level up holding ${p.evoItem || 'an item'}${cond ? ` ${cond}` : ''}` };
+        case 'levelMove': return { methodType: 'custom', description: `Level up knowing ${p.evoMove || 'a move'}` };
+        case 'levelExtra': return { methodType: 'custom', description: cond ? `Level up ${cond}` : 'Level up under a special condition' };
+        case 'other': return { methodType: 'custom', description: cond || 'Special condition' };
+    }
+    if (p.evoLevel && !cond) return { methodType: 'level', value: p.evoLevel };
+    if (p.evoLevel) return { methodType: 'custom', description: `Level ${p.evoLevel} ${cond}` };
+    return { methodType: 'custom', description: cond || 'Evolves' };
+}
+
+/**
+ * The evolution board for a species' family, with `selfFakemonId` standing in
+ * for `speciesId`. null when the species doesn't evolve at all.
+ */
+function buildSpeciesEvolutionGraph(speciesId, selfFakemonId, regionId = null) {
+    const dex = state.sdPokedex || {};
+    let base = dex[speciesId];
+    if (!base) return null;
+    const seen = new Set();
+    while (base.prevo && dex[toSpeciesId(base.prevo)] && !seen.has(base.id)) { seen.add(base.id); base = dex[toSpeciesId(base.prevo)]; }
+    if (!(base.evos || []).length) return null;
+
+    // the same species already made into a Fakemon in this region joins as that Fakemon
+    const copyOf = id => (state.fakemonDB || []).find(f => f.vanillaId === id && String(f.regionId || '') === String(regionId || '') && String(f.id) !== String(selfFakemonId));
+    const nodeFor = id => {
+        if (id === speciesId && selfFakemonId) return { id: `fakemon:${selfFakemonId}`, kind: 'fakemon', refId: selfFakemonId };
+        const copy = copyOf(id);
+        return copy ? { id: `fakemon:${copy.id}`, kind: 'fakemon', refId: copy.id } : { id: `vanilla:${id}`, kind: 'vanilla', refId: id };
+    };
+    const g = DEFAULT_GRAPH();
+    const byDepth = [];
+    const place = (node, depth) => {
+        byDepth[depth] = (byDepth[depth] || 0) + 1;
+        Object.assign(node, { x: 30 + depth * 440, y: 30 + (byDepth[depth] - 1) * 130, isMega: false, isFormeChange: false });
+        g.nodes.push(node);
+        return node;
+    };
+    const walk = (p, depth) => {
+        const parent = g.nodes.find(n => n.id === nodeFor(p.id).id) || place(nodeFor(p.id), depth);
+        (p.evos || []).map(toSpeciesId).filter(id => dex[id]).forEach(id => {
+            const child = place(nodeFor(id), depth + 1);
+            const method = { id: methodNodeId(), kind: 'method', value: '', description: '', mergeGroup: null, ...vanillaMethodFor(dex[id]), x: parent.x + 225, y: child.y + 12 };
+            g.nodes.push(method);
+            g.edges.push({ from: parent.id, to: method.id, fromSide: 'right', toSide: 'left' });
+            g.edges.push({ from: method.id, to: child.id, fromSide: 'right', toSide: 'left' });
+            walk(dex[id], depth + 1);
+        });
+    };
+    walk(base, 0);
+    g.nodes.forEach(n => { if (n.kind !== 'method') n.name = n.kind === 'fakemon' ? (getFakemon(n.refId)?.name || 'Fakemon') : (dex[n.refId]?.name || n.refId); });
+    return g;
+}
+
+/** Fills the open Fakemon's board with its species' line (see above). */
+function applyVanillaEvolutionLine(speciesId) {
+    if (!state.editingId) return false;
+    const me = getFakemon(state.editingId);
+    const g = buildSpeciesEvolutionGraph(speciesId, state.editingId, me?.regionId || null);
+    if (!g) return false;
+    initializeEvolutionGraph(g);
+    persistEvolutionGraph();
+    log.info('EVOLUTION', 'Filled in a main-game evolution line', { speciesId, nodes: g.nodes.length });
+    return true;
+}
+
+export { buildSpeciesEvolutionGraph, applyVanillaEvolutionLine };
 export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, renderEvolutionNodeChooser, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, syncEvolutionOnBasicLoad, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, updateEvolutionMethodForm, saveEvolutionMethod, removeEvolutionMethod, populateEvolutionMethodItems,
     getPreviewEvolutionChain, getPreviewFormeVariants, renderPreviewEvolutionChain, renderPreviewFormeTabs, editFakemonFromPreview };
 

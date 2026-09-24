@@ -377,8 +377,10 @@ A couple things worth knowing:
 
         async function exportCollectionAsEssentialsMod() {
             try {
-                const fakemonList = (state.fakemonDB || []).filter(f => f && f.name);
-                if (!fakemonList.length) { api.showToast('Your collection is empty; nothing to export!', 'error'); return; }
+                // the whole collection, or just the region picked in the sidebar
+                const lists = api.exportLists();
+                const fakemonList = lists.fakemonDB.filter(f => f && f.name);
+                if (!fakemonList.length) { api.showToast(lists.region ? `${lists.region.name} has no Fakémon to export yet.` : 'Your collection is empty; nothing to export!', 'error'); return; }
                 if (typeof JSZip === 'undefined') { api.showToast('ZIP library failed to load. Check your connection and try again.', 'error'); return; }
 
                 const internalNames = makeUniqueInternalNames(fakemonList);
@@ -404,6 +406,10 @@ A couple things worth knowing:
                 pbsFolder.file('pokemon.txt', join(pokemonBlocks));
                 pbsFolder.file('pokemon_metrics.txt', join(metricsBlocks));
                 pbsFolder.file('pokemon_dexentries.txt', join(dexBlocks));
+                // custom types go in PBS/types.txt next to the species that use them
+                const typesTxt = api.buildEssentialsTypes?.(lists.customTypes, lists.region?.id || null);
+                if (typesTxt) pbsFolder.file('types.txt', typesTxt);
+                if (lists.region) zip.file('region.json', api.regionManifest(lists));
                 const abilitiesScript = api.buildEssentialsAbilitiesFile ? api.buildEssentialsAbilitiesFile(fakemonList) : null;
                 if (abilitiesScript) zip.file('Woogidex_Abilities.txt', abilitiesScript);
                 zip.file('README.txt', buildCollectionReadmeTxt(fakemonList, totalSkipped));
@@ -417,7 +423,7 @@ A couple things worth knowing:
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `pbs-essentials-mod.zip`;
+                link.download = lists.region ? `${lists.slug}-essentials-mod.zip` : `pbs-essentials-mod.zip`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);

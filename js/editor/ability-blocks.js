@@ -1,6 +1,6 @@
 import { log } from '../core/log.js';
 import { state, api } from '../core/app.js';
-import { POKEMON_TYPES } from '../core/data.js';
+import { SELECTABLE_TYPES } from '../core/data.js';
 // the same parser the battle engine uses, so exporters and pasted code can
 // never disagree about what a paste means
 import { parseRawEntry } from '../battle/engine/sd-hooks.js';
@@ -47,7 +47,7 @@ const WEATHERS = [
 ];
 const FRACTIONS = [{ id: '4', label: '1/4 max HP' }, { id: '8', label: '1/8 max HP' }, { id: '16', label: '1/16 max HP' }];
 const TARGETS = [{ value: 'self', label: 'this Pokémon' }, { value: 'foe', label: 'the opposing Pokémon' }];
-const TYPES = POKEMON_TYPES.map(t => ({ value: t, label: t }));
+const TYPES = SELECTABLE_TYPES.map(t => ({ value: t, label: t }));
 // a catalog rather than free-text; each entry can describe the state
 // properties it exposes so generic battle-effect blocks can inspect them
 // (e.g. Stockpile's layer count) without a one-off block per effect
@@ -166,7 +166,7 @@ const TRIGGERS = {
     },
     moveImmunity: {
         label: 'This Pokémon is hit by a move of a chosen type', icon: 'shield', kinds: ['ability', 'item'],
-        params: [{ key: 'type', label: 'Move Type', type: 'select', options: POKEMON_TYPES.map(t => ({ value: t, label: t })), default: 'Electric' }],
+        params: [{ key: 'type', label: 'Move Type', type: 'select', options: SELECTABLE_TYPES.map(t => ({ value: t, label: t })), default: 'Electric' }],
         allowed: ['boostStat', 'healDamage', 'setStatus', 'cureStatus', 'changeType', 'addVolatile', 'removeVolatile', 'showMessage'],
         sd: (ast) => ({ header: `onTryHit(target, source, move) {\n\t\t\tif (move.type !== '${ast.triggerParams.type || 'Electric'}') return;`, footer: 'return null;\n\t\t}', selfVar: 'target', foeVar: 'source', moveVar: 'move', preamble: '' }),
         es: (ast) => ({ adder: 'Battle::AbilityEffects::MoveImmunity', args: 'ability, user, target, move', selfVar: 'target', foeVar: 'user', moveVar: 'move', preamble: `next false if move.type != :${(ast.triggerParams.type || 'ELECTRIC').toUpperCase()}`, footer: 'next true' })
@@ -404,7 +404,7 @@ const CONDITIONS = {
         es: (c, p) => `$field.terrain == :${p.terrain || 'Electric'}`
     },
     moveTypeIs: {
-        label: 'move type is __', params: [{ key: 'type', type: 'select', options: POKEMON_TYPES.map(t => ({ value: t, label: t })), default: 'Fire' }],
+        label: 'move type is __', params: [{ key: 'type', type: 'select', options: SELECTABLE_TYPES.map(t => ({ value: t, label: t })), default: 'Fire' }],
         sd: (c, p) => `${c.moveVar || 'move'}.type === '${p.type}'`,
         es: (c, p) => `${c.moveVar || 'move'}.type == :${p.type.toUpperCase()}`
     },
@@ -419,7 +419,7 @@ const CONDITIONS = {
         es: (c) => `${c.moveVar || 'move'}.contactMove?`
     },
     selfIsType: {
-        label: 'type is __', params: [{ key: 'type', type: 'select', options: POKEMON_TYPES.map(t => ({ value: t, label: t })), default: 'Fire' }],
+        label: 'type is __', params: [{ key: 'type', type: 'select', options: SELECTABLE_TYPES.map(t => ({ value: t, label: t })), default: 'Fire' }],
         sd: (c, p) => `${c.selfVar}.hasType('${p.type}')`,
         es: (c, p) => `${c.selfVar}.pbHasType?(:${p.type.toUpperCase()})`
     },

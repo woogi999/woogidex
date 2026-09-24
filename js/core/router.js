@@ -8,10 +8,13 @@
 import { log } from './log.js';
 
 // Route segments the app owns. Order does not matter; these are matched as the
-// first path segment after the base. Anything else falls through to the
-// collection, which is also what "/" means.
+// first path segment after the base. "/" means the collection; anything else
+// is reported as NOT_FOUND so the app can show its 404 page.
 const ROUTES = ['collection', 'editor', 'ability-editor', 'community', 'events', 'battle', 'profile',
-    'privacy', 'terms', 'settings'];
+    'privacy', 'terms', 'settings', 'updates', 'search'];
+
+/** Route name for a path the app doesn't own; param holds the path as typed. */
+export const NOT_FOUND = 'not-found';
 
 let cachedBase = null;
 
@@ -27,7 +30,8 @@ export function basePath() {
 
 /**
  * Parses the address bar into a route.
- * @returns {{name: string, param: string}} name is '' for the app root
+ * @returns {{name: string, param: string}} name is '' for the app root and
+ *   NOT_FOUND for a path no route owns
  */
 export function currentRoute() {
     const path = window.location.pathname;
@@ -36,7 +40,7 @@ export function currentRoute() {
         .replace(/^\/+|\/+$/g, '');
     if (!rest || rest === 'index.html' || rest === '404.html') return { name: '', param: '' };
     const [name, ...tail] = rest.split('/');
-    if (!ROUTES.includes(name)) return { name: '', param: '' };
+    if (!ROUTES.includes(name)) return { name: NOT_FOUND, param: rest };
     return { name, param: decodeURIComponent(tail.join('/')) };
 }
 
@@ -56,10 +60,15 @@ export function routeUrl(path) {
  * @param {string} path route path without a leading slash, '' for the root
  */
 export function replaceRoute(path) {
-    const next = `${basePath()}${String(path || '').replace(/^\/+/, '')}`;
-    if (window.location.pathname === next && !window.location.hash) return;
+    const clean = String(path || '').replace(/^\/+/, '');
+    const next = `${basePath()}${clean}`;
+    // ?q= belongs to the search page; anywhere else it would just be stale
+    const params = new URLSearchParams(window.location.search);
+    if (!/^search(\/|$)/.test(clean)) params.delete('q');
+    const query = params.toString() ? `?${params}` : '';
+    if (window.location.pathname === next && window.location.search === query && !window.location.hash) return;
     try {
-        history.replaceState(null, '', `${next}${window.location.search}`);
+        history.replaceState(null, '', `${next}${query}`);
     } catch (err) {
         // only reachable from file://, where history is refused
         log.warn('ROUTER', 'Could not update the address bar', { path, error: String(err) });

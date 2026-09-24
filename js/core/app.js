@@ -6,8 +6,8 @@ import './vendor.js';
 // since ES modules finish every import before this module's body runs
 import '../features/updates.js';
 import { log } from './log.js';
-const { openUpdatesModal, closeUpdatesModal, renderUpdates, loadUpdates } = window;
-import { POKEMON_TYPES, POKEMON_COLORS } from './data.js';
+const { openUpdatesPage, openUpdatesModal, openCreditsModal, renderUpdates, loadUpdates } = window;
+import { SELECTABLE_TYPES, POKEMON_COLORS } from './data.js';
 import * as data from './data.js';
 import * as editor from '../editor/editor.js';
 import * as sampleSets from '../editor/sample-sets.js';
@@ -37,6 +37,11 @@ import * as siteNotice from '../features/site-notice.js';
 import * as legal from '../features/legal.js';
 import * as accountDeletion from '../features/account-deletion.js';
 import * as oauth from '../features/oauth.js';
+import * as globalSearch from '../features/global-search.js';
+import * as regions from '../features/regions.js';
+import * as customTypes from '../features/custom-types.js';
+import * as entityArt from '../editor/entity-art.js';
+import * as regionAnalytics from '../features/region-analytics.js';
 import { maybeShowOriginNotice } from './dev-notice.js';
 import { initArtShield } from './art-shield.js';
 import { initAvatars, paintAvatarSlots } from './avatar.js';
@@ -106,26 +111,12 @@ function loadDarkMode() {
                 updateDarkModeUI(true);
             }
         }
+        // the switch in the header's account menu (and Settings, via updateSettingsUI)
         function updateDarkModeUI(isDark) {
-            const btn = document.getElementById('dark-mode-btn');
-            // fixed selector rather than the icon's id: lucide.createIcons() swaps
-            // the <i data-lucide> for a fresh <svg>, so the id wouldn't be stable
-            const sidebarBtn = document.querySelector('.sidebar-nav-btn[onclick*="toggleDarkMode"]');
-            const sidebarLabel = document.getElementById('sidebar-dark-label');
-            const iconName = isDark ? 'sun' : 'moon';
-            const iconMarkup = `<i data-lucide="${iconName}" id="sidebar-dark-icon" style="width:18px;height:18px;"></i>`;
-
-            if (btn) {
-                btn.innerHTML = `<i data-lucide="${iconName}" style="width:20px;height:20px;"></i>`;
-                btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-                btn.setAttribute('title', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-            }
-            if (sidebarBtn) {
-                const currentIcon = sidebarBtn.querySelector('[data-lucide], svg');
-                if (currentIcon) currentIcon.outerHTML = iconMarkup;
-            }
-            if (sidebarLabel) sidebarLabel.textContent = isDark ? 'Light Mode' : 'Dark Mode';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+            const toggle = document.getElementById('header-dark-toggle');
+            if (toggle) toggle.checked = !!isDark;
+            const settingsToggle = document.getElementById('settings-dark-toggle');
+            if (settingsToggle) settingsToggle.checked = !!isDark;
         }
 
 // ---- boolean settings ----
@@ -272,8 +263,8 @@ function showToast(message, type = 'info') {
                 const tc = 'type-' + type.toLowerCase();
                 return `<div class="type-dropdown-option" onclick="selectType('${dropdownId}', '${type}'); event.stopPropagation();"><span class="type-pill ${tc}">${type}</span></div>`;
             };
-            type1Menu.innerHTML = makeOption('', 'type1') + POKEMON_TYPES.map(t => makeOption(t, 'type1')).join('');
-            type2Menu.innerHTML = makeOption('', 'type2') + POKEMON_TYPES.map(t => makeOption(t, 'type2')).join('');
+            type1Menu.innerHTML = makeOption('', 'type1') + SELECTABLE_TYPES.map(t => makeOption(t, 'type1')).join('');
+            type2Menu.innerHTML = makeOption('', 'type2') + SELECTABLE_TYPES.map(t => makeOption(t, 'type2')).join('');
 
             const learnsetTypeMenu = document.getElementById('learnset-filter-type-menu');
             if (learnsetTypeMenu) {
@@ -339,78 +330,6 @@ function showToast(message, type = 'info') {
         }
     
 
-// the rail is off-canvas only on mobile; on desktop it's a permanent icon
-// strip, so aria-hidden must only apply when genuinely off-screen, or it hides
-// nav from screen readers on desktop. `inert` also removes it from tab order,
-// which aria-hidden alone doesn't do.
-const SIDEBAR_OVERLAY_QUERY = '(max-width: 768px)';
-
-function setSidebarHidden(sidebar, hidden) {
-    if (!sidebar) return;
-    const offCanvas = hidden && window.matchMedia(SIDEBAR_OVERLAY_QUERY).matches;
-    // focus must leave before the element is hidden, not after
-    if (offCanvas && sidebar.contains(document.activeElement)
-        && document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-    }
-    sidebar.inert = offCanvas;
-    if (offCanvas) sidebar.setAttribute('aria-hidden', 'true');
-    else sidebar.removeAttribute('aria-hidden');
-}
-
-// re-evaluate on breakpoint change, or widening from phone-width keeps the rail inert
-try {
-    window.matchMedia(SIDEBAR_OVERLAY_QUERY).addEventListener('change', () => {
-        const sidebar = document.getElementById('app-sidebar');
-        if (sidebar) setSidebarHidden(sidebar, !sidebar.classList.contains('open'));
-    });
-} catch { /* older Safari: the initial state is still correct */ }
-
-function toggleSidebar() {
-    const sidebar = document.getElementById('app-sidebar');
-    const backdrop = document.getElementById('sidebar-backdrop');
-    const toggle = document.getElementById('menu-toggle');
-    if (!sidebar || !backdrop) return;
-    const open = !sidebar.classList.contains('open');
-    sidebar.classList.toggle('open', open);
-    if (open) sidebar.classList.remove('force-closed');
-    backdrop.classList.toggle('open', open);
-    setSidebarHidden(sidebar, !open);
-    toggle?.setAttribute('aria-expanded', String(open));
-    if (open && typeof lucide !== 'undefined') lucide.createIcons();
-}
-function closeSidebar() {
-    const sidebar = document.getElementById('app-sidebar');
-    const backdrop = document.getElementById('sidebar-backdrop');
-    const toggle = document.getElementById('menu-toggle');
-    sidebar?.classList.remove('open');
-    backdrop?.classList.remove('open');
-    setSidebarHidden(sidebar, true);
-    toggle?.setAttribute('aria-expanded', 'false');
-    // desktop rail stays widened via :hover/:focus-within after .open is
-    // removed if the pointer/focus is still on it; force collapse regardless
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    if (sidebar) {
-        sidebar.classList.add('force-closed');
-        const clear = () => sidebar.classList.remove('force-closed');
-        sidebar.addEventListener('mouseleave', clear, { once: true });
-        setTimeout(clear, 1500);
-    }
-}
-
-// dims/blurs the page behind the icon rail while hover-expanded on desktop;
-// purely visual, no onclick, so it never intercepts clicks
-function initSidebarHoverDim() {
-    const sidebar = document.getElementById('app-sidebar');
-    const backdrop = document.getElementById('sidebar-backdrop');
-    if (!sidebar || !backdrop) return;
-    const show = () => backdrop.classList.add('hover-active');
-    const hide = () => backdrop.classList.remove('hover-active');
-    sidebar.addEventListener('mouseenter', show);
-    sidebar.addEventListener('mouseleave', hide);
-    sidebar.addEventListener('focusin', show);
-    sidebar.addEventListener('focusout', (e) => { if (!sidebar.contains(e.relatedTarget)) hide(); });
-}
 
 // keeps the address bar/title in sync with the current view; always
 // replaceState, never pushState, so in-app navigation doesn't pile up
@@ -439,8 +358,15 @@ const TOP_LEVEL_VIEW_IDS = [
     'battle-view',
     'profile-view',
     'legal-view',
-    'settings-view'
+    'settings-view',
+    'updates-view',
+    'search-view',
+    'not-found-view'
 ];
+
+// Views that open as a sheet over another page rather than replacing it,
+// mapped to the page they sit on. The editor slides in over My Collection.
+const SHEET_VIEWS = { 'editor-view': 'collection-view' };
 
 function activateTopLevelView(viewId, options = {}) {
     const { preserveAbilityEditor = false } = options;
@@ -453,16 +379,46 @@ function activateTopLevelView(viewId, options = {}) {
     const leavingBattle = document.getElementById('battle-view')?.style.display === 'block' && viewId !== 'battle-view';
     if (leavingBattle) api.onBattleViewLeave?.();
 
+    // a library editor panel belongs to My Collection; leaving closes it
+    document.querySelectorAll('.modal-overlay.as-sheet.active').forEach(el => el.classList.remove('active'));
+
+    // a sheet keeps (or brings up) the page it belongs over
+    const pageId = SHEET_VIEWS[viewId] || viewId;
+    const pageWasShowing = document.getElementById(pageId)?.style.display === 'block';
+
     // synchronous: markup was already fetched at boot (js/core/views.js)
+    views.mountView(pageId);
     views.mountView(viewId);
+
+    // header tab highlight; a Community post is still "in" the Community section
+    const navId = pageId === 'community-detail-view' ? 'community-view' : pageId;
+    document.querySelectorAll('.header-nav-btn[data-nav]').forEach(btn => {
+        const on = btn.dataset.nav === navId;
+        btn.classList.toggle('active', on);
+        if (on) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
+    });
 
     TOP_LEVEL_VIEW_IDS.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.display = id === viewId ? 'block' : 'none';
+        if (el) el.style.display = (id === viewId || id === pageId) ? 'block' : 'none';
     });
 
+    // the shell reads these: the sidebar only exists on My Collection, the 404
+    // hides the header, and an open sheet locks the page scroll behind it
+    document.body.dataset.page = pageId;
+    document.body.classList.toggle('editor-sheet-open', viewId === 'editor-view');
+
+    // the page under a sheet stays put; only what just appeared animates in
     const target = document.getElementById(viewId);
-    if (target) {
+    const page = document.getElementById(pageId);
+    if (page && page !== target && !pageWasShowing) {
+        page.classList.remove('top-level-view-enter');
+        void page.offsetWidth;
+        page.classList.add('top-level-view-enter');
+    }
+    // a sheet has its own slide-in (css/editor.css); the page enter animation's
+    // transform would also re-anchor the sheet's fixed-position scrim
+    if (target && !SHEET_VIEWS[viewId]) {
         // force a reflow so the enter animation replays (same trick as switchTab())
         target.classList.remove('top-level-view-enter');
         void target.offsetWidth;
@@ -474,9 +430,10 @@ function activateTopLevelView(viewId, options = {}) {
 
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleUI, abilityBlocks, nameRoll, fieldRoll, protect, views, router, recovery, cloudSave, siteNotice, legal, accountDeletion, oauth, settingsApi, {
-    openUpdatesModal, closeUpdatesModal, renderUpdates, loadUpdates,
-    loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, closeSettingsPage, switchSettingsTab, toggleSidebar, closeSidebar,
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleUI, abilityBlocks, nameRoll, fieldRoll, protect, views, router, recovery, cloudSave, siteNotice, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, regionAnalytics, settingsApi, {
+    openUpdatesModal, renderUpdates, loadUpdates,
+    openUpdatesPage, openCreditsModal,
+    loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, closeSettingsPage, switchSettingsTab,
     setRoute, setPageTitle, activateTopLevelView,
     updateSettingsUI, loadSettings, showToast,
     initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor
@@ -555,6 +512,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     await api.initAuth();
     await api.loadFromStorage();
+    // custom types join the shared type lists before anything draws a type picker
+    api.syncCustomTypes?.(true);
     // Showdown data (moves/abilities/items/pokedex, 1MB+) is only needed
     // up front by routes that look something up in it before rendering
     // (editor, community preview, battle); the collection grid draws only
@@ -570,15 +529,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!handled) api.renderCollection();
     loadDarkMode();
     loadSettings();
-    initSidebarHoverDim();
     api.initContentProtection?.();
     initArtShield();
     // avatars come from the same masked pipe artwork does; this hands the
     // module a client getter rather than letting it import the feature layer
     initAvatars(() => api.getClient());
     paintAvatarSlots();
-    // rail's initial hidden state: inert on a phone, available on desktop
-    setSidebarHidden(document.getElementById('app-sidebar'), true);
     if (typeof lucide !== 'undefined') lucide.createIcons();
     api.updateEditorStats();
     api.populateStatTemplateOptions?.();
@@ -596,9 +552,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!api.maybeWarnAboutCollectionHealth?.()) {
         if (!(await api.checkForLostFakemon?.())) api.maybeShowSiteTransferNotice?.();
     }
-    // last on purpose: refreshUpdatesBadge() checks for an already-open modal
-    // before opening its own, but still fills the unread count either way
-    window.refreshUpdatesBadge?.({ autoOpen: true });
+    // the unread count on the header's Updates tab
+    window.refreshUpdatesBadge?.();
 });
 
 // restores whichever page a URL names, on load and on back/forward, so both
@@ -634,8 +589,20 @@ async function handleRoute(route) {
     if (name === 'events') { await api.openEvents?.(); return true; }
     if (name === 'battle') { await api.openBattle?.(); return true; }
     if (name === 'settings') { api.openSettings?.(); return true; }
+    if (name === 'search') { await api.openSearchPage?.(new URLSearchParams(window.location.search).get('q') || ''); return true; }
+    if (name === 'updates') { await api.openUpdatesPage?.(param === 'credits' ? 'credits' : 'updates'); return true; }
     if (name === 'collection' || name === '') { api.showCollection?.(); return true; }
+    if (name === router.NOT_FOUND) { showNotFound(param); return true; }
     return false;
+}
+
+// the address bar is left alone so the bad link stays visible and copyable
+function showNotFound(path) {
+    const pathEl = document.getElementById('not-found-path');
+    if (pathEl) pathEl.textContent = `/${path}`;
+    activateTopLevelView('not-found-view');
+    setPageTitle('Page not found');
+    log.info('ROUTER', 'No route for this path', { path });
 }
 
 // the app only calls replaceState, so this fires for browser navigation only
@@ -643,22 +610,31 @@ window.addEventListener('popstate', async () => {
     await handleRoute(router.currentRoute());
 });
 
-function openCreditsModal() {
-    const modal = document.getElementById('credits-modal');
-    if (!modal) return;
-    modal.classList.add('active');
-    document.body.classList.add('modal-open');
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-}
+// a click on the dimmed page beside the sheet lands on #editor-view itself
+// (its ::before is the scrim), and closes the editor like the X does
+document.addEventListener('click', (event) => {
+    if (event.target?.id === 'editor-view') api.showCollection?.();
+    // the same for a library editor panel (a modal shown as a sheet)
+    if (event.target?.classList?.contains('as-sheet') && event.target.classList.contains('modal-overlay')) event.target.classList.remove('active');
+});
 
-function closeCreditsModal() {
-    const modal = document.getElementById('credits-modal');
-    if (!modal) return;
-    modal.classList.remove('active');
-    document.body.classList.remove('modal-open');
-}
+// Esc closes a library editor panel, unless a dialog opened on top of it
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    const sheet = document.querySelector('.modal-overlay.as-sheet.active');
+    if (!sheet || document.querySelector('.modal-overlay.active:not(.as-sheet)')) return;
+    sheet.classList.remove('active');
+});
 
-window.openCreditsModal = openCreditsModal;
-window.closeCreditsModal = closeCreditsModal;
+// Esc closes the editor sheet, unless a dialog opened from inside it is
+// what the key is meant for (those close themselves first)
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    if (!document.body.classList.contains('editor-sheet-open')) return;
+    if (document.querySelector('.modal-overlay.active')) return;
+    // a menu or picker inside the sheet takes the first Esc
+    if (document.activeElement?.closest?.('.global-search, .export-as-wrap, .type-dropdown.open')) return;
+    api.showCollection?.();
+});
 
 export { loadDarkMode, toggleDarkMode, updateDarkModeUI, showToast, initTypeSelects, toggleTypeDropdown, toggleCatDropdown, selectType, initColorPicker, selectColor };

@@ -30,6 +30,7 @@ function resetEditor() {
             selectType('type1', '');
             selectType('type2', '');
             document.getElementById('fakemon-number').value = getNextPokedexNumber();
+            api.setEditorRegion?.(api.defaultRegionForNewFakemon?.() || null);
             document.getElementById('editor-level').value = 100;
             document.getElementById('stat-hp').value = 60;
             document.getElementById('stat-atk').value = 60;
@@ -88,6 +89,7 @@ function resetEditor() {
             selectType('type1', fakemon.type1 || '');
             selectType('type2', fakemon.type2 || '');
             document.getElementById('fakemon-number').value = fakemon.number || '';
+            api.setEditorRegion?.(fakemon.regionId || null);
             document.getElementById('editor-level').value = fakemon.level || 100;
             document.getElementById('stat-hp').value = clampBaseStatValue(fakemon.stats?.hp ?? 60);
             document.getElementById('stat-atk').value = clampBaseStatValue(fakemon.stats?.atk ?? 60);
@@ -396,6 +398,30 @@ function resetEditor() {
                     window.removeEventListener('pointerup', onUp);
                 };
 
+                // a real slider to keyboards and screen readers too
+                const row = barEl.closest('.editor-stat-row');
+                barEl.setAttribute('role', 'slider');
+                barEl.setAttribute('tabindex', '0');
+                barEl.setAttribute('aria-valuemin', '1');
+                barEl.setAttribute('aria-valuemax', '255');
+                barEl.setAttribute('aria-label', `${row?.querySelector('.editor-stat-label')?.textContent || 'Stat'} base stat`);
+                barEl.addEventListener('keydown', (event) => {
+                    const input = document.getElementById('stat-' + row?.dataset?.stat);
+                    if (!input) return;
+                    const current = clampBaseStatValue(input.value);
+                    const step = event.shiftKey ? 10 : 1;
+                    const next = {
+                        ArrowRight: current + step, ArrowUp: current + step,
+                        ArrowLeft: current - step, ArrowDown: current - step,
+                        PageUp: current + 10, PageDown: current - 10,
+                        Home: 1, End: 255
+                    }[event.key];
+                    if (next === undefined) return;
+                    event.preventDefault();
+                    input.value = clampBaseStatValue(next);
+                    updateEditorStats();
+                });
+
                 barEl.addEventListener('pointerdown', (event) => {
                     dragging = true;
                     barEl.classList.add('dragging');
@@ -419,7 +445,13 @@ function resetEditor() {
                 if (input) input.value = base;
                 bst += base;
                 const bar = document.getElementById('editor-bar-' + stat);
-                if (bar) bar.style.width = Math.min(base / 255 * 100, 100) + '%';
+                if (bar) {
+                    const pct = Math.min(base / 255 * 100, 100) + '%';
+                    bar.style.width = pct;
+                    // drives the handle (css/editor-stats.css)
+                    bar.parentElement.style.setProperty('--stat-pct', pct);
+                    bar.parentElement.setAttribute('aria-valuenow', base);
+                }
                 // neutral nature, 0 EVs, 31 IVs
                 const calc = calcStat(base, 0, 31, 'Hardy', stat, level);
                 const calcEl = document.getElementById('calc-' + stat);
@@ -1021,7 +1053,10 @@ function getGenderRatioValue() {
             let lowValue = false;
             try { lowValue = !sampleMoveIsActuallyUseful(m); } catch (e) { lowValue = false; }
             const fadeClass = (typeof api.getFadeUselessMoves === 'function' ? api.getFadeUselessMoves() : true) && lowValue ? ' low-value' : '';
-            return `<span class="move-tag ${catClass}${fadeClass}" onclick="showMoveDetail('${m.name}')">${m.name}</span>`;
+            // a custom move's optional image (js/editor/entity-art.js)
+            const art = m.customId ? (state.customMoves || []).find(x => x.id === m.customId)?.artwork || m.artwork : m.artwork;
+            const artHtml = art ? `<img class="move-tag-art" src="${art}" alt="">` : '';
+            return `<span class="move-tag ${catClass}${fadeClass}${art ? ' has-art' : ''}" onclick="showMoveDetail('${m.name}')">${artHtml}${m.name}</span>`;
         }
 
 
@@ -1175,6 +1210,8 @@ function updatePreviewNow() {
             if (document.getElementById('editor-view')?.style.display !== 'none') {
                 api.setPageTitle?.(name);
             }
+            const sheetTitle = document.getElementById('editor-sheet-title');
+            if (sheetTitle) sheetTitle.textContent = document.getElementById('fakemon-name').value.trim() || 'New Fakémon';
             const speciesRaw = document.getElementById('fakemon-species').value.trim();
             const species = speciesRaw ? (/^the\s/i.test(speciesRaw) ? speciesRaw : 'The ' + speciesRaw) : '';
             const type1 = document.getElementById('fakemon-type1').value;
@@ -1233,37 +1270,42 @@ function updatePreviewNow() {
 
             let abilitiesHtml = '';
             if (allAbilities.length > 0) {
-                abilitiesHtml = '<div class="board-abilities-compact"><div class="board-section-title" style="margin-bottom:6px; font-size: 12px;">Abilities</div>';
+                abilitiesHtml = '<section class="board-block board-abilities"><h3 class="board-section-title">Abilities</h3><div class="board-ability-list">';
                 allAbilities.forEach((a, abilityIndex) => {
                     const isCustom = a.source === 'custom' || a.custom === true;
                     const role = getAbilityRole(abilityIndex);
                     const roleHtml = role ? '<span class="board-ability-role ' + role.toLowerCase() + '">' + role + '</span>' : '';
                     const sdEntry = Object.entries(state.sdAbilities).find(([k,v]) => v.name === a.name);
                     const desc = isCustom ? (a.desc || a.description || '') : ((sdEntry && sdEntry[1].desc) || a.desc || '');
-                    abilitiesHtml += '<div class="board-ability-item' + (isCustom ? ' board-ability-custom' : '') + '"><div class="board-ability-name-row"><span class="ability-name">' + escapeHtml(a.name) + '</span>' + roleHtml + '</div>';
+                    // a custom ability's optional image (js/editor/entity-art.js)
+                    const art = isCustom ? (state.customAbilities || []).find(x => x.id === a.customId)?.artwork : '';
+                    const artHtml = art ? '<img class="board-entity-art" src="' + escapeHtml(art) + '" alt="">' : '';
+                    abilitiesHtml += '<div class="board-ability-item' + (isCustom ? ' board-ability-custom' : '') + '"><div class="board-ability-name-row">' + artHtml + '<span class="ability-name">' + escapeHtml(a.name) + '</span>' + roleHtml + '</div>';
                     if (desc) abilitiesHtml += '<span class="ability-desc">' + escapeHtml(desc) + '</span>';
                     abilitiesHtml += '</div>';
                 });
-                abilitiesHtml += '</div>';
+                abilitiesHtml += '</div></section>';
             }
 
             // pre-compute dex entries HTML
             let dexHtml = '';
             if (dex1 || dex2) {
-                dexHtml = '<div class="board-dex-entries-compact" style="margin-top:0;"><div class="board-section-title">Pokedex Entries</div><div class="dex-entries">';
-                if (dex1) dexHtml += '<div class="dex-entry"><div class="dex-entry-label">Entry 1</div>' + dex1 + '</div>';
-                if (dex2) dexHtml += '<div class="dex-entry"><div class="dex-entry-label">Entry 2</div>' + dex2 + '</div>';
-                dexHtml += '</div></div>';
+                dexHtml = '<section class="board-block board-dex"><h3 class="board-section-title">Pokédex Entries</h3><div class="dex-entries">';
+                if (dex1) dexHtml += '<p class="dex-entry">' + escapeHtml(dex1) + '</p>';
+                if (dex2) dexHtml += '<p class="dex-entry">' + escapeHtml(dex2) + '</p>';
+                dexHtml += '</div></section>';
             }
 
-            // custom moves live inside the learnset section; no separate panel
+            // custom moves live inside the learnset section; no separate panel.
+            // category labels are text only: the icons are pokemondb.net images,
+            // which the PNG export can't read cross-origin, so they came out blank
             let learnsetHtml = '';
             const hasLearnset = !!(physTags || specTags || statTags || customMoveTags || customMoves.length);
             if (hasLearnset) {
-                learnsetHtml = '<div class="board-section board-learnset-col"><div class="board-section-title">Learnset</div>';
-                if (physTags) learnsetHtml += '<div class="move-category physical"><div class="move-category-title">' + getCategoryIcon('Physical', 18) + ' Physical</div><div class="move-list">' + physTags + '</div></div>';
-                if (specTags) learnsetHtml += '<div class="move-category special"><div class="move-category-title">' + getCategoryIcon('Special', 18) + ' Special</div><div class="move-list">' + specTags + '</div></div>';
-                if (statTags) learnsetHtml += '<div class="move-category status"><div class="move-category-title">' + getCategoryIcon('Status', 18) + ' Status</div><div class="move-list">' + statTags + '</div></div>';
+                learnsetHtml = '<section class="board-section board-learnset-col"><h3 class="board-section-title">Learnset</h3>';
+                if (physTags) learnsetHtml += '<div class="move-category physical"><div class="move-category-title">Physical</div><div class="move-list">' + physTags + '</div></div>';
+                if (specTags) learnsetHtml += '<div class="move-category special"><div class="move-category-title">Special</div><div class="move-list">' + specTags + '</div></div>';
+                if (statTags) learnsetHtml += '<div class="move-category status"><div class="move-category-title">Status</div><div class="move-list">' + statTags + '</div></div>';
 
                 customMoves.forEach(m => {
                     const typeClass = 'type-' + (m.type || 'Normal').toLowerCase();
@@ -1273,43 +1315,47 @@ function updatePreviewNow() {
                     const methodText = m.learnMethod === 'level' && m.level ? ' · Level ' + m.level : m.learnMethod === 'tm' ? ' · TM' : m.learnMethod === 'egg' ? ' · Egg' : '';
                     learnsetHtml += '<div class="board-custom-move-item board-custom-move-inline" onclick="handlePreviewCustomMove(' + state.learnset.indexOf(m) + ')"><span class="cm-type ' + typeClass + '">' + escapeHtml(m.type || 'Normal') + '</span><div class="cm-body"><div class="cm-name">' + escapeHtml(m.name) + '</div><div class="cm-stats">' + escapeHtml(m.category || 'Status') + ' · ' + (m.basePower || '-') + ' BP · ' + accText + ' acc · ' + (m.pp || '-') + ' PP' + methodText + (m.priority ? ' · Priority ' + m.priority : '') + '</div>' + (m.desc ? '<div class="cm-desc">' + escapeHtml(m.desc) + '</div>' : '') + flagHtml + '</div></div>';
                 });
-                learnsetHtml += '</div>';
+                learnsetHtml += '</section>';
             }
 
             // pre-compute sample sets HTML
             let setsHtml = '';
             if (state.sampleSets.length > 0) {
-                setsHtml = '<div class="board-section board-sets-col"><div class="board-section-title">Sample Sets</div>';
+                setsHtml = '<section class="board-section board-sets-col"><h3 class="board-section-title">Sample Sets</h3>';
                 state.sampleSets.forEach((set, i) => {
                     const exportText = generateShowdownExport(name, set);
                     // escape HTML and preserve line breaks for the preview
                     const escapedText = esc(exportText);
                     const safeText = esc(exportText);
-                    setsHtml += '<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">' + (set.name || 'Set ' + (i+1)) + '</div><div class="sample-set-output" style="margin-top:0;"><button class="sample-set-copy" data-copy-text="' + safeText + '" title="Copy to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><span class="sample-set-output-text">' + escapedText + '</span></div></div>';
+                    setsHtml += '<div class="board-set"><div class="board-set-name">' + esc(set.name || 'Set ' + (i+1)) + '</div><div class="sample-set-output"><button class="sample-set-copy" data-copy-text="' + safeText + '" title="Copy to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><span class="sample-set-output-text">' + escapedText + '</span></div></div>';
                 });
-                setsHtml += '</div>';
+                setsHtml += '</section>';
             }
 
             const container = document.getElementById('pokedex-board-container');
+            // one component for the editor, the Community Hub copy and the PNG
+            // export; it lays itself out by its own width (container queries in
+            // css/pokedex-board.css), never the window's, so all three agree
+            const facts = [['Height', height], ['Weight', weight], ['Color', color], ['Egg Group', eggs && eggs !== 'None' ? eggs : '']]
+                .filter(([, v]) => v)
+                .map(([k, v]) => `<div class="board-data-row"><dt class="label">${k}</dt><dd class="value">${esc(v)}</dd></div>`)
+                .join('');
             container.innerHTML = `
-                <div class="pokedex-board" id="pokedex-board-export">
+                <article class="pokedex-board" id="pokedex-board-export">
                     ${api.renderPreviewFormeTabs ? api.renderPreviewFormeTabs() : ''}
-                    <div class="board-header">
-                        <div class="board-number">${number || '#???'}</div>
-                    </div>
-
-                    <!-- Centered Name & Species -->
-                    <div style="text-align: center; margin-bottom: 16px;">
-                        <div class="board-name"><h2>${name}</h2></div>
-                        ${species ? `<div class="board-species">${species}</div>` : ''}
-                        <div class="board-types" style="justify-content: center; margin-top: 8px;">
-                            ${type1 ? `<span class="type-badge ${type1Class}">${type1}</span>` : ''}
-                            ${type2 ? `<span class="type-badge ${type2Class}">${type2}</span>` : ''}
+                    <header class="board-head">
+                        <div class="board-title">
+                            <h2 class="board-name">${esc(name)}</h2>
+                            ${species ? `<p class="board-species">${esc(species)}</p>` : ''}
+                            <div class="board-types">
+                                ${type1 ? `<span class="type-badge ${type1Class}">${esc(type1)}</span>` : ''}
+                                ${type2 ? `<span class="type-badge ${type2Class}">${esc(type2)}</span>` : ''}
+                            </div>
                         </div>
-                    </div>
+                        <div class="board-number">${esc(number || '#???')}</div>
+                    </header>
 
-                    <!-- Top Row: Art (left) | Data + Dex Entries (right, side by side) -->
-                    <div class="board-top-row">
+                    <div class="board-main">
                         <div class="board-artwork-left">
                             ${(state.shinyArtworkData || state.cryData) ? `<div class="board-artwork-mode" aria-label="Preview controls">
                                 ${state.shinyArtworkData ? `<button type="button" class="collection-shiny-toggle board-artwork-shiny-toggle" id="board-artwork-shiny-toggle" onclick="togglePreviewArtworkMode(event)" title="Show shiny artwork" aria-label="Show shiny artwork" aria-pressed="false"><i data-lucide="sparkles" aria-hidden="true"></i></button>` : ''}
@@ -1318,43 +1364,34 @@ function updatePreviewNow() {
                             <div id="board-artwork-image"></div>
                             ${state.artCredit ? `<div class="board-artwork-credit">${formatArtCreditHtml(state.artCredit)}</div>` : ''}
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                            <div class="board-data-right">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;">
-                                    ${height ? `<div class="board-data-row"><span class="label">Height</span><span class="value">${height}</span></div>` : ''}
-                                    ${weight ? `<div class="board-data-row"><span class="label">Weight</span><span class="value">${weight}</span></div>` : ''}
-                                    ${color ? `<div class="board-data-row"><span class="label">Color</span><span class="value">${color}</span></div>` : ''}
-                                    ${eggs && eggs !== 'None' ? `<div class="board-data-row"><span class="label">Egg</span><span class="value">${eggs}</span></div>` : ''}
-                                </div>
-                                <div class="board-gender-compact">
-                                    <span class="label" style="min-width: 60px; font-size: 10px;">Gender</span>
-                                    <div class="gender-bar">${genderBarHtml}</div>
-                                    <span class="gender-label">${genderLabels[genderRatio] || genderRatio}</span>
-                                </div>
-                                ${abilitiesHtml}
+                        <section class="board-block board-facts">
+                            <h3 class="board-section-title">Profile</h3>
+                            ${facts ? `<dl class="board-facts-grid">${facts}</dl>` : ''}
+                            <div class="board-gender-compact">
+                                <span class="label">Gender</span>
+                                <div class="gender-bar">${genderBarHtml}</div>
+                                <span class="gender-label">${genderLabels[genderRatio] || genderRatio}</span>
                             </div>
-                            ${dexHtml}
-                        </div>
+                        </section>
+                        ${abilitiesHtml}
+                        ${dexHtml}
                     </div>
 
-                    <!-- Bottom Row: Learnset (left) | Stats + Sample Sets stacked (right) -->
                     <div class="board-lower-row">
+                        <section class="board-section board-stats-narrow">
+                            <h3 class="board-section-title">Base Stats</h3>
+                                <div class="stat-bar-container"><span class="stat-label">HP</span><span class="stat-value">${hp}</span><div class="stat-bar-bg"><div class="stat-bar-fill hp" style="width:${Math.min(hp/255*100,100)}%"></div></div></div>
+                                <div class="stat-bar-container"><span class="stat-label">Atk</span><span class="stat-value">${atk}</span><div class="stat-bar-bg"><div class="stat-bar-fill atk" style="width:${Math.min(atk/255*100,100)}%"></div></div></div>
+                                <div class="stat-bar-container"><span class="stat-label">Def</span><span class="stat-value">${def}</span><div class="stat-bar-bg"><div class="stat-bar-fill def" style="width:${Math.min(def/255*100,100)}%"></div></div></div>
+                                <div class="stat-bar-container"><span class="stat-label">SpA</span><span class="stat-value">${spa}</span><div class="stat-bar-bg"><div class="stat-bar-fill spa" style="width:${Math.min(spa/255*100,100)}%"></div></div></div>
+                                <div class="stat-bar-container"><span class="stat-label">SpD</span><span class="stat-value">${spd}</span><div class="stat-bar-bg"><div class="stat-bar-fill spd" style="width:${Math.min(spd/255*100,100)}%"></div></div></div>
+                                <div class="stat-bar-container"><span class="stat-label">Spe</span><span class="stat-value">${spe}</span><div class="stat-bar-bg"><div class="stat-bar-fill spe" style="width:${Math.min(spe/255*100,100)}%"></div></div></div>
+                            <div class="board-bst-display"><span class="label">Total</span><span class="value">${bst}</span></div>
+                        </section>
                         <div class="board-learnset-slot">${learnsetHtml || ''}${api.renderPreviewEvolutionChain ? api.renderPreviewEvolutionChain() : ''}</div>
-                        <div class="board-sets-slot">
-                            <div class="board-section board-stats-narrow">
-                                <div class="board-section-title">Base Stats</div>
-                                <div class="stat-bar-container"><span class="stat-label">HP</span><div class="stat-bar-bg"><div class="stat-bar-fill hp" style="width:${Math.min(hp/255*100,100)}%"></div></div><span class="stat-value">${hp}</span></div>
-                                <div class="stat-bar-container"><span class="stat-label">ATK</span><div class="stat-bar-bg"><div class="stat-bar-fill atk" style="width:${Math.min(atk/255*100,100)}%"></div></div><span class="stat-value">${atk}</span></div>
-                                <div class="stat-bar-container"><span class="stat-label">DEF</span><div class="stat-bar-bg"><div class="stat-bar-fill def" style="width:${Math.min(def/255*100,100)}%"></div></div><span class="stat-value">${def}</span></div>
-                                <div class="stat-bar-container"><span class="stat-label">SPA</span><div class="stat-bar-bg"><div class="stat-bar-fill spa" style="width:${Math.min(spa/255*100,100)}%"></div></div><span class="stat-value">${spa}</span></div>
-                                <div class="stat-bar-container"><span class="stat-label">SPD</span><div class="stat-bar-bg"><div class="stat-bar-fill spd" style="width:${Math.min(spd/255*100,100)}%"></div></div><span class="stat-value">${spd}</span></div>
-                                <div class="stat-bar-container"><span class="stat-label">SPE</span><div class="stat-bar-bg"><div class="stat-bar-fill spe" style="width:${Math.min(spe/255*100,100)}%"></div></div><span class="stat-value">${spe}</span></div>
-                                <div class="board-bst-display"><span class="label">Base Stat Total</span><span class="value">${bst}</span></div>
-                            </div>
-                            ${setsHtml || ''}
-                        </div>
+                        ${setsHtml ? `<div class="board-sets-slot">${setsHtml}</div>` : ''}
                     </div>
-                </div>
+                </article>
             `;
             autoSave();
             // attach copy button listeners for preview sample sets

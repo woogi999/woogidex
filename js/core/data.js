@@ -4,6 +4,11 @@ const POKEMON_TYPES = [
             'Fighting','Poison','Ground','Flying','Psychic','Bug',
             'Rock','Ghost','Dragon','Dark','Steel','Fairy'
         ];
+// what a Fakemon or move can be given. ??? (the typeless type) and Stellar
+// (Tera) are pickable but stay out of POKEMON_TYPES, which drives matchup
+// charts and coverage math: both are neutral both ways, so they'd only add
+// a pair of 1x rows everywhere
+const SELECTABLE_TYPES = [...POKEMON_TYPES, '???', 'Stellar'];
         const POKEMON_COLORS = [
             {name:'Red',hex:'#ef4444'},{name:'Blue',hex:'#3b82f6'},{name:'Yellow',hex:'#eab308'},
             {name:'Green',hex:'#22c55e'},{name:'Black',hex:'#1f2937'},{name:'Brown',hex:'#92400e'},
@@ -198,5 +203,5 @@ function renderBadgeRow(badgeKeys, size) {
 }
 
 
-export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
+export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, SELECTABLE_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
     ROLES, BADGES, roleAtLeast, canDeleteAnyContent, setBadgeDefinitions, renderBadge, renderBadgeRow, renderCommentMarkdown };

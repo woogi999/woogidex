@@ -3,51 +3,99 @@
    link order in index.html = cascade order; later files override earlier ones.
    ==================== */
 
-        /* board is full width above the form: a 50/50 editor/preview split left too
-           little room and wrapped the dex entries/height-weight figures one word per line */
-        .editor-stack > .editor-preview-col { margin-bottom: var(--sp-5); }
-        /* action bar sits above the board, right-aligned; --sp-3 gap avoids mis-clicks without reading as a deliberate gap */
-        .editor-actionbar {
-            display: flex;
-            align-items: center;
-            margin-bottom: var(--sp-5);
-        }
-        .editor-actionbar-group {
-            display: flex;
-            align-items: center;
-            gap: var(--sp-2);
-            flex-wrap: wrap;
-            width: 100%;
-            justify-content: flex-end;
-        }
-        /* Back is navigation, not an action on the Fakemon; pushed away from the rest so it reads as separate */
-        .editor-actionbar-group > .btn:first-child { margin-right: auto; }
-        /* tab strip stays sticky while the form scrolls, so switching tabs doesn't require scrolling to the top first */
-        .editor-form-col .tabs {
-            position: sticky;
-            /* the app header is fixed, so 0 would slide the strip under it */
+        /* ---------- the editor sheet ----------
+           slides in from the right over My Collection and covers about 60% of
+           the screen, under the header so the top tabs stay usable. A head
+           (close, name, save state, actions), the tab strip, then the body
+           scrolls on its own. The live board is the Preview tab. */
+        #editor-view {
+            position: fixed;
             top: var(--header-h);
-            z-index: 5;
-            background: var(--bg-card);
-            margin: calc(var(--sp-5) * -1) calc(var(--sp-5) * -1) var(--sp-4);
-            padding: var(--sp-3) var(--sp-5);
-            border-radius: var(--panel-r) var(--panel-r) 0 0;
-            /* no outline of its own (would double up with the panel's border in css/controls.css); just the separator rule below */
-            border: 0 !important;
-            border-bottom: 1px solid var(--border) !important;
+            right: 0;
+            bottom: 0;
+            z-index: 11500;
+            width: clamp(min(100vw, 680px), 60vw, 1180px);
         }
-        @media (max-width: 640px) {
-            .editor-form-col .tabs {
-                margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-3);
-                padding: var(--sp-2) var(--sp-4);
-                /* prevents css/responsive.css's phone wrap turning 4 tabs into stacked rows that stay on screen since the strip is sticky */
-                flex-wrap: nowrap !important;
-                overflow-x: auto;
-                scrollbar-width: none;
-                -webkit-overflow-scrolling: touch;
-            }
-            .editor-form-col .tabs::-webkit-scrollbar { display: none; }
-            .editor-form-col .tab { flex: 0 0 auto !important; white-space: nowrap; }
+        /* no transform on #editor-view itself: it would make the fixed scrim
+           below position against the sheet instead of the window */
+        #editor-view .editor-sheet { animation: editor-sheet-in .26s cubic-bezier(.2, .8, .2, 1) both; }
+        /* the collection behind it dims; clicking it closes the editor */
+        #editor-view::before {
+            content: "";
+            position: fixed;
+            top: var(--header-h); left: 0; bottom: 0;
+            right: 0;
+            z-index: -1;
+            background: rgba(17, 17, 20, .32);
+            animation: editor-scrim-in .2s ease both;
+        }
+        @keyframes editor-sheet-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+        @keyframes editor-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+        .reduce-motion #editor-view .editor-sheet, .reduce-motion #editor-view::before { animation: none; }
+        @media (prefers-reduced-motion: reduce) { #editor-view .editor-sheet, #editor-view::before { animation: none; } }
+        .no-overlay-blur #editor-view::before { background: transparent; }
+        /* the page behind doesn't scroll while the sheet is open */
+        body.editor-sheet-open { overflow: hidden; }
+
+        .editor-sheet {
+            position: relative;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-card);
+            border-left: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+        }
+        .editor-sheet-head {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-3);
+            padding: var(--sp-3) var(--sp-5);
+            border-bottom: 1px solid var(--border-light);
+        }
+        .editor-sheet-heading { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; flex: 1; }
+        .editor-sheet-title {
+            font-size: 18px; font-weight: 800;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .editor-sheet-head .save-status { flex: 0 0 auto; }
+        .editor-actionbar-group { display: flex; align-items: center; gap: var(--sp-2); flex: 0 0 auto; }
+        .editor-actionbar-group .btn svg { width: 14px; height: 14px; }
+
+        .editor-tabs {
+            flex: 0 0 auto;
+            padding: 0 var(--sp-5);
+            margin: 0 !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .editor-tabs::-webkit-scrollbar { display: none; }
+        .editor-tabs .tab { flex: 0 0 auto !important; white-space: nowrap; }
+        /* Preview is a different kind of tab (a view, not a form section):
+           pushed to the end of the strip */
+        .editor-tabs .editor-preview-tab { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+        .editor-tabs .editor-preview-tab svg { width: 15px; height: 15px; }
+
+        .editor-sheet-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding: var(--sp-5);
+            scrollbar-width: thin;
+        }
+        .editor-preview-pane { max-width: 1100px; margin: 0 auto; }
+
+        @media (max-width: 760px) {
+            #editor-view { width: 100vw; }
+            .editor-sheet { border-left: 0; }
+            .editor-sheet-head { padding: var(--sp-2) var(--sp-3); gap: var(--sp-2); }
+            .editor-sheet-title { font-size: 16px; }
+            .editor-actionbar-group .btn span { display: none; }
+            .editor-actionbar-group .btn { width: var(--ctl-h-sm); padding: 0; }
+            .editor-tabs { padding: 0 var(--sp-3); }
+            .editor-sheet-body { padding: var(--sp-4) var(--sp-3); }
         }
 
         .artwork-preview {
@@ -82,17 +130,13 @@
         .autocomplete-item:last-child { border-bottom: none; }
         .autocomplete-item:hover, .autocomplete-item.highlighted { background: var(--bg-panel); }
         .autocomplete-item .meta { font-size: 11px; color: var(--text-muted); }
-        .recommend-move-item {
-            display: flex; align-items: center; justify-content: space-between; gap: 10px;
-            padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
-            margin-bottom: 8px; cursor: pointer; transition: all 0.15s; background: var(--bg-input);
-        }
-        .recommend-move-item:hover { background: var(--bg-panel); border-color: var(--text-secondary); }
+        .recommend-move-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
+        .recommend-move-item:hover { background: var(--bg-panel); }
         .recommend-move-item.added { opacity: 0.45; cursor: default; }
         .recommend-move-item .move-name { font-weight: 600; font-size: 14px; }
         .recommend-move-item .move-why { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
         .recommend-move-item .meta-right { display:flex; align-items:center; gap:8px; }
-        .recommend-move-item .power-text { font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+        .recommend-move-item .power-text { font-size: 12px; color: var(--text-muted); font-family: 'Inconsolata', monospace; }
         .recommend-move-item .cat-pill {
             font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 700;
         }
@@ -104,21 +148,13 @@
         .cat-physical { background: rgba(204,136,68,0.15); color: #995511; }
         .cat-special { background: rgba(68,102,204,0.15); color: #2244aa; }
         .cat-status { background: rgba(107,114,128,0.15); color: #4b5563; }
-        .custom-entity-row {
-            display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-            padding: 10px; background: var(--bg-dark); border-radius: 10px; border: 1px solid var(--border);
-        }
+        .custom-entity-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 10px; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
         .custom-entity-row .entity-name { flex: 1; font-weight: 600; font-size: 14px; }
         .custom-entity-row .entity-desc { flex: 2; font-size: 12px; color: var(--text-secondary); }
         .custom-entity-row input { background: transparent; border: none; color: var(--text-primary); font-family: 'Exo 2', sans-serif; font-size: 14px; padding: 4px; }
         .custom-entity-row input:focus { outline: none; }
-        .custom-entity-row input.desc-input { font-size: 12px; color: var(--text-secondary); border: 1.5px solid var(--nb-ink); border-radius: 6px; }
-        .learnset-item {
-            display: flex; align-items: center; gap: 10px;
-            padding: 10px 12px; background: var(--bg-dark); border-radius: 10px;
-            border: 1px solid var(--border); margin-bottom: 6px;
-            cursor: pointer; transition: all 0.15s;
-        }
+        .custom-entity-row input.desc-input { font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border-strong); border-radius: 6px; }
+        .learnset-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: all 0.15s; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
         .learnset-item:hover { background: var(--bg-panel); transform: translateX(4px); }
         .learnset-item .move-name { flex: 1; font-weight: 600; font-size: 14px; }
         .learnset-item .move-meta { display: flex; gap: 8px; align-items: center; }
@@ -127,7 +163,7 @@
         .learnset-item .cat-pill {
             font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 700;
         }
-        .learnset-item .power-text { font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+        .learnset-item .power-text { font-size: 12px; color: var(--text-muted); font-family: 'Inconsolata', monospace; }
         .learnset-item .remove-btn {
             width: 24px; height: 24px; border-radius: 6px; border: none;
             background: transparent; color: var(--text-muted); cursor: pointer;
@@ -175,10 +211,7 @@
         ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
         /* sample set styles */
-        .sample-set-card {
-            background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
-            padding: 16px; margin-bottom: 12px; position: relative;
-        }
+        .sample-set-card { background: var(--bg-panel); border-radius: 12px; padding: 16px; margin-bottom: 12px; position: relative; border: 0; }
         .sample-set-header {
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
         }
@@ -236,7 +269,7 @@
         .sample-set-evs input {
             padding: 6px 8px; background: var(--bg-input);
             border: 1px solid var(--border); border-radius: 6px;
-            font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: center;
+            font-family: 'Inconsolata', monospace; font-size: 12px; text-align: center;
             color: var(--text-primary);
         }
         .sample-set-evs input:focus { outline: none; border-color: var(--text-secondary); }
@@ -246,7 +279,7 @@
         .sample-set-output {
             background: var(--bg-dark); color: var(--text-primary);
             border-radius: 10px; padding: 16px 44px 16px 16px;
-            font-family: 'JetBrains Mono', monospace; font-size: 13px;
+            font-family: 'Inconsolata', monospace; font-size: 13px;
             line-height: 1.6; margin-top: 12px;
             border: 1px solid var(--border);
             position: relative;
@@ -282,224 +315,6 @@
         }
         .sample-set-add:hover { border-color: var(--text-secondary); color: var(--text-primary); }
     
-        /* new board layout */
-        .board-top-row {
-            display: grid;
-            grid-template-columns: 320px 1fr;
-            gap: 18px;
-            margin-bottom: 16px;
-            align-items: start;
-        }
-        .board-artwork-left {
-            width: 320px;
-            height: 320px;
-            background: var(--bg-panel);
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            border: 2px solid var(--border);
-            position: relative;
-            flex-shrink: 0;
-        }
-        .board-artwork-left img { width: 100%; height: 100%; object-fit: contain; }
-        .board-artwork-left .placeholder { font-size: 100px; opacity: 0.3; color: var(--text-muted); }
-        .board-data-right {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .board-data-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 17px;
-        }
-        .board-data-row .label {
-            font-weight: 700;
-            color: var(--text-secondary);
-            font-size: 12px;
-            letter-spacing: 0.5px;
-            min-width: 75px;
-        }
-        .board-data-row .value {
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        .board-abilities-compact {
-            margin-top: 6px;
-        }
-        .board-ability-item {
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-            padding: var(--sp-2) var(--sp-3);
-            background: var(--bg-dark);
-            border-radius: 8px;
-            border: 1px solid var(--border-light);
-            margin-bottom: var(--sp-1);
-        }
-        .board-ability-item .ability-name {
-            font-weight: 700;
-            font-size: 16px;
-            color: var(--text-primary);
-        }
-        .board-ability-item .ability-desc {
-            font-size: 14px;
-            color: var(--text-secondary);
-            line-height: 1.35;
-        }
-        .board-gender-compact {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 4px;
-        }
-        .board-gender-compact .gender-bar {
-            width: 160px;
-            height: 16px;
-            border-radius: 8px;
-            overflow: hidden;
-            flex-shrink: 0;
-        }
-        .board-gender-compact .gender-label {
-            font-size: 14px;
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
-        .board-bottom-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            align-items: start;
-        }
-        .board-stats-narrow {
-            max-width: 100%;
-        }
-        /* six stat bars are scanned as a group, so tighter than the default 20px/8px chrome */
-        .board-stats-narrow .stat-bar-container {
-            margin-bottom: var(--sp-1);
-            gap: var(--sp-2);
-        }
-        .board-stats-narrow .stat-bar-bg {
-            height: 13px;
-            border-radius: 7px;
-        }
-        .board-stats-narrow .stat-bar-fill {
-            border-radius: 7px;
-        }
-        .board-stats-narrow .stat-label {
-            width: 34px;
-            font-size: 11px;
-        }
-        .board-stats-narrow .stat-value {
-            width: 30px;
-            font-size: 12px;
-        }
-        .board-bst-display .label {
-            font-size: 11px;
-        }
-        .board-bst-display .value {
-            font-size: 17px;
-        }
-        .board-dex-entries-compact {
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 14px 16px;
-        }
-        .board-dex-entries-compact .board-section-title {
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-        .board-dex-entries-compact .dex-entry {
-            font-size: 16px;
-            padding: 12px;
-        }
-        .board-dex-entries-compact .dex-entry-label {
-            font-size: 13px;
-        }
-        .board-lower-row {
-            display: grid;
-            grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-            gap: 14px;
-            margin-top: 14px;
-            align-items: start;
-            width: 100%;
-        }
-        .board-lower-row > .board-learnset-col {
-            grid-column: 1;
-            width: 100%;
-            min-width: 0;
-        }
-        .board-lower-row > .board-sets-col {
-            grid-column: 2;
-            width: 100%;
-            min-width: 0;
-        }
-        .board-learnset-col {
-            min-width: 0;
-        }
-
-        .board-lower-row > .board-learnset-slot,
-        .board-lower-row > .board-sets-slot {
-            min-width: 0;
-            width: 100%;
-        }
-        .board-lower-row > .board-learnset-slot { grid-column: 1; }
-        .board-lower-row > .board-sets-slot { grid-column: 2; display: flex; flex-direction: column; gap: 14px; }
-        /* hides the learnset slot when empty, instead of a blank titled panel taking up half the row */
-        .board-lower-row > .board-learnset-slot:empty { display: none; }
-        .board-learnset-col .move-category-title {
-            font-size: 16px;
-            padding: 6px 12px;
-        }
-        .board-learnset-col .move-tag {
-            font-size: 16px;
-            padding: 6px 12px;
-        }
-        .board-sets-col {
-            min-width: 0;
-        }
-        .board-sets-col .sample-set-output {
-            font-size: 14px;
-            padding: 10px;
-        }
-        .board-sets-col .board-section-title {
-            font-size: 16px;
-        }
-        .board-section-title {
-            font-size: 16px;
-        }
-        .board-name h2 {
-            font-size: 46px;
-            color: var(--text-primary);
-        }
-        .board-species {
-            font-size: 22px;
-        }
-        .board-number {
-            font-size: 18px;
-            padding: 8px 18px;
-        }
-        /* type-badge sizing lives in css/controls.css (one fixed tier for a Fakemon own type badges everywhere) */
-        @media (max-width: 768px) {
-            .board-top-row { grid-template-columns: 1fr; }
-            .board-artwork-left { width: 100%; height: 320px; margin: 0 auto; }
-            .board-bottom-row { grid-template-columns: 1fr; }
-            .board-lower-row { grid-template-columns: 1fr; }
-            .board-lower-row > .board-learnset-slot, .board-lower-row > .board-sets-slot { grid-column: 1; }
-        }
-
-            .board-artwork-left { width: 100%; height: 280px; margin: 0 auto; }
-            .board-bottom-row { grid-template-columns: 1fr; }
-            .board-lower-row { grid-template-columns: 1fr; }
-            .board-lower-row > .board-learnset-slot, .board-lower-row > .board-sets-slot { grid-column: 1; }
-        /* NOTE: the four rules above lost their `@media` opener at some point, so
-           they apply at every width -- which is what's shipping. Left as-is since
-           wrapping them in a media query would change desktop layout. */
-
         .method-pill {
             font-size: 11px;
             padding: 3px 10px;
@@ -516,19 +331,7 @@
         .method-egg { background: linear-gradient(135deg, #ec4899, #db2777); }
         .method-none { background: linear-gradient(135deg, #9ca3af, #6b7280); }
 
-        .learnset-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 14px;
-            background: var(--bg-dark);
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.15s;
-            position: relative;
-        }
+        .learnset-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; position: relative; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
         .learnset-item:hover { background: var(--bg-panel); transform: translateX(4px); }
         .learnset-item .move-name { 
             flex: 1; 
@@ -565,7 +368,7 @@
             padding: 4px 8px;
             border: 1px solid var(--border);
             border-radius: 8px;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             font-size: 12px;
             font-weight: 700;
             background: var(--bg-input);
@@ -586,7 +389,7 @@
         .learnset-item .power-text { 
             font-size: 12px; 
             color: var(--text-muted); 
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             font-weight: 600;
         }
         .learnset-item .remove-btn {
@@ -605,3 +408,16 @@
         }
         .learnset-item .remove-btn:hover { background: var(--danger); color: white; }
 
+
+        /* the long tab names on wide screens, short ones on phones */
+        .editor-tabs .tab-short { display: none; }
+        @media (max-width: 760px) {
+            .editor-tabs { padding: 0 var(--sp-2); gap: 0; overflow-x: auto; }
+            .editor-tabs .tab { flex: 1 1 auto !important; justify-content: center; padding-left: 6px; padding-right: 6px; font-size: 13px; }
+            .editor-tabs .tab-long { display: none; }
+            .editor-tabs .tab-short { display: inline; }
+            .editor-tabs .editor-preview-tab { margin-left: 0; }
+            .editor-tabs .editor-preview-tab svg { display: none; }
+            /* above the bottom tab bar, which lives in the header's layer */
+            #editor-view, .modal-overlay.as-sheet { z-index: 12100; }
+        }

@@ -1,5 +1,6 @@
 import { calcStat as calcBattleStat } from '../battle/engine/dex.js';
 import { log } from '../core/log.js';
+import { iconSvg } from '../core/icons.js';
 import { state, api } from '../core/app.js';
 
 import { NATURE_DATA, NATURES, STAT_NAMES } from '../core/data.js';
@@ -2519,7 +2520,7 @@ import { updatePreview } from './editor-core.js';
             }, false);
             const add = document.createElement('div');
             add.className = 'autocomplete-item sample-set-add-custom-item';
-            add.innerHTML = '<span>＋ Add Custom Item</span>';
+            add.innerHTML = `<span>${iconSvg('plus', 14)} Add Custom Item</span>`;
             add.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 dropdown.classList.remove('active');
@@ -3006,7 +3007,7 @@ function updateStatDisplay(setIndex, statKey, evVal, ivVal) {
                                 <div class="type-dropdown" id="tera-type-${i}-dropdown">
                                     <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('tera-type-${i}')">
                                         <span class="type-dropdown-value" id="tera-type-${i}-value">${set.teraType ? `<span class="type-pill type-${set.teraType.toLowerCase()}">${set.teraType}</span>` : 'None'}</span>
-                                        <span class="type-dropdown-arrow">▼</span>
+                                        <span class="type-dropdown-arrow">${iconSvg('chevron-down', 12)}</span>
                                     </button>
                                     <div class="type-dropdown-menu" id="tera-type-${i}-menu">${buildTypeMenuOptions(t => `selectTeraType(${i}, '${t}')`, true, 'None')}</div>
                                 </div>
@@ -3053,7 +3054,7 @@ function updateStatDisplay(setIndex, statKey, evVal, ivVal) {
             popup.innerHTML = `
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;position:sticky;top:0;background:var(--bg-card);padding-bottom:4px;">
                     <h3>${title}</h3>
-                    <button class="modal-close" type="button">&times;</button>
+                    <button class="modal-close" type="button" aria-label="Close">${iconSvg('x', 20)}</button>
                 </div>
                 ${content}
             `;

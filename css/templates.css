@@ -12,12 +12,12 @@
 .pokemon-template-controls input:focus { outline:none; border-color:var(--text-secondary); box-shadow:0 0 0 3px var(--accent-glow); }
 .pokemon-template-status { min-height:18px; margin:4px 0 10px; color:var(--text-muted); font-size:11px; }
 .pokemon-template-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-height:55vh; overflow-y:auto; padding-right:3px; }
-.pokemon-template-card { display:grid; grid-template-columns:62px 1fr auto; align-items:center; gap:10px; min-width:0; padding:8px 10px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:transform .15s ease,border-color .15s ease,background .15s ease; font:inherit; color:var(--text-primary); text-align:left; }
-.pokemon-template-card:hover { transform:translateY(-1px); border-color:var(--text-secondary); background:var(--bg-card); }
+.pokemon-template-card { display:grid; grid-template-columns:62px 1fr auto; align-items:center; gap:10px; min-width:0; padding:8px 10px; background:var(--bg-panel); border-radius:10px; cursor:pointer; transition:transform .15s ease,border-color .15s ease,background .15s ease; font:inherit; color:var(--text-primary); text-align:left; border: 0; }
+.pokemon-template-card:hover { transform:translateY(-1px); outline: 1.5px solid var(--text-secondary); outline-offset: -1.5px;  background:var(--bg-card); }
 .pokemon-template-sprite { width:58px; height:58px; object-fit:contain; image-rendering:pixelated; }
 .pokemon-template-info { min-width:0; }
 .pokemon-template-name { display:block; font-weight:700; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pokemon-template-number { display:block; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-size:10px; margin-bottom:3px; }
+.pokemon-template-number { display:block; color:var(--text-muted); font-family:'Inconsolata',monospace; font-size:10px; margin-bottom:3px; }
 .pokemon-template-meta { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; align-items:center; }
 .pokemon-template-bst { color:var(--text-muted); font-size:10px; white-space:nowrap; }
 .pokemon-template-arrow { color:var(--text-muted); font-size:18px; }

@@ -52,8 +52,9 @@ function AbilityEditRow({ ability, index, role, desc, dragProps, dragState = '' 
                 type="button"
                 title="Remove"
                 onClick={e => { stop(e); call('removeAbility', index); }}
+                aria-label="Remove"
             >
-                ×
+                <Icon name="x" style={{ width: 14, height: 14 }} />
             </button>
         </div>
     );
@@ -100,8 +101,9 @@ function AbilityRow({ ability, index, role, desc, isCustom, isCoded, dragProps, 
                 type="button"
                 title="Remove"
                 onClick={e => { stop(e); call('removeAbility', index); }}
+                aria-label="Remove"
             >
-                ×
+                <Icon name="x" style={{ width: 14, height: 14 }} />
             </button>
         </div>
     );
@@ -215,7 +217,7 @@ export function LearnsetRow({ move, index, isCustom, categoryIcon }) {
                     />
                 </div>
             </div>
-            <button className="remove-btn" onClick={e => { stop(e); call('removeLearnsetMove', index); }}>×</button>
+            <button className="remove-btn" onClick={e => { stop(e); call('removeLearnsetMove', index); }} aria-label="Remove"><Icon name="x" style={{ width: 14, height: 14 }} /></button>
         </div>
     );
 }

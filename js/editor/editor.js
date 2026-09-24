@@ -1,10 +1,11 @@
 import { cachedFetch } from '../core/net-cache.js';
 import { SD_MOVE_FIELDS } from '../battle/engine/dex.js';
 import { log } from '../core/log.js';
+import { iconSvg } from '../core/icons.js';
 import { state, api } from '../core/app.js';
 import { checkRawHooks, supportedHooks } from '../battle/engine/sd-hooks.js';
 
-import { POKEMON_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } from '../core/data.js';
+import { POKEMON_TYPES, SELECTABLE_TYPES, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS } from '../core/data.js';
 import { showDetailPopup, updateSampleSet } from './sample-sets.js';
 import { getFlagLabels, updateBulkComparison, updatePreview } from './editor-core.js';
 import { mountIsland } from '../react/island.jsx';
@@ -94,7 +95,9 @@ import { abilityRole, prepareLearnset } from './learnset-model.js';
                         state.sdAbilities[key] = {
                             name: a.name || key,
                             desc: a.shortDesc || a.desc || '',
-                            rating: typeof a.rating === 'number' ? a.rating : null
+                            rating: typeof a.rating === 'number' ? a.rating : null,
+                            // CAP abilities are negative; Browse Abilities hides them
+                            num: Number(a.num) || 0
                         };
                     }
                 }
@@ -105,7 +108,7 @@ import { abilityRole, prepareLearnset } from './learnset-model.js';
                     const itemsRaw = JSON.parse(jsonStr);
                     for (const [key, i] of Object.entries(itemsRaw)) {
                         if (i.isNonstandard === 'Past') continue;
-                        state.sdItems[key] = { name: i.name || key, desc: i.desc || i.shortDesc || '' };
+                        state.sdItems[key] = { name: i.name || key, desc: i.desc || i.shortDesc || '', num: Number(i.num) || 0, nonstandard: i.isNonstandard || '' };
                     }
                 }
 
@@ -119,6 +122,10 @@ import { abilityRole, prepareLearnset } from './learnset-model.js';
                         if (move[field] === undefined && m[field] !== undefined) move[field] = m[field];
                     }
                     move.desc = m.desc || m.shortDesc || '';
+                    // what a region's "National Dex" pool leaves out (js/features/regions.js)
+                    if (m.isNonstandard) move.nonstandard = m.isNonstandard;
+                    if (m.isZ) move.isZ = true;
+                    if (m.isMax) move.isMax = true;
                     state.sdMoves[key] = move;
                 }
 
@@ -145,6 +152,12 @@ import { abilityRole, prepareLearnset } from './learnset-model.js';
                         genderPct,
                         forme: p.forme || '',
                         baseSpecies: p.baseSpecies || '',
+                        nonstandard: p.isNonstandard || '',
+                        // the evolution line, so a Fakemon made from this species
+                        // gets its family on the evolution board (see evolution.js)
+                        prevo: p.prevo || '', evos: p.evos || [],
+                        evoLevel: p.evoLevel || null, evoType: p.evoType || '', evoItem: p.evoItem || '',
+                        evoCondition: p.evoCondition || '', evoMove: p.evoMove || '',
                         // kept with the species record so template creation can
                         // populate the editor without guessing abilities from names
                         abilities: p.abilities || {}
@@ -517,6 +530,108 @@ import { abilityRole, prepareLearnset } from './learnset-model.js';
         window.toggleMoveBrowserFlag = toggleMoveBrowserFlag;
         window.clearMoveBrowserFilters = clearMoveBrowserFilters;
 
+// ==================== ability browser ====================
+        // every Showdown ability, grouped the way the Showdown client's
+        // teambuilder groups them for Balanced Hackmons (battle-dex-search.ts,
+        // BattleAbilitySearch): by the ability's own rating, with Normalize
+        // bumped to 3. The client's top bucket (3+) is split in two here so
+        // the best abilities stand out from the merely solid ones.
+        const ABILITY_GROUPS = [
+            { id: 'good', label: 'Good Abilities', min: 4 },
+            { id: 'normal', label: 'Normal Abilities', min: 3 },
+            { id: 'situational', label: 'Situational Abilities', min: 2 },
+            { id: 'unviable', label: 'Unviable Abilities', min: -Infinity }
+        ];
+
+        function abilityGroupFor(id, rating) {
+            const r = id === 'normalize' ? 3 : (Number(rating) || 0);
+            return ABILITY_GROUPS.find(g => r >= g.min);
+        }
+
+        let browsableAbilityCache = null;
+        let browsableAbilitySource = null;
+        function getBrowsableAbilities() {
+            if (browsableAbilityCache && browsableAbilitySource === state.sdAbilities) return browsableAbilityCache;
+            browsableAbilityCache = Object.entries(state.sdAbilities || {})
+                // CAP abilities have num < 0; "No Ability" is 0
+                .filter(([, a]) => a && a.name && (Number(a.num) || 0) > 0)
+                .map(([id, a]) => ({ id, name: a.name, desc: a.desc || '', group: abilityGroupFor(id, a.rating) }));
+            browsableAbilitySource = state.sdAbilities;
+            return browsableAbilityCache;
+        }
+
+        function openAbilityBrowserModal() {
+            if (!state.sdLoaded) { api.showToast('Ability data is still loading. Try again in a moment.', 'info'); return; }
+            const name = document.getElementById('ab-filter-name');
+            if (name) name.value = '';
+            const group = document.getElementById('ab-filter-group');
+            if (group) group.value = '';
+            const sort = document.getElementById('ab-filter-sort');
+            if (sort) sort.value = 'default';
+            filterAbilityBrowser();
+            document.getElementById('ability-browser-modal')?.classList.add('active');
+            setTimeout(() => name?.focus(), 0);
+        }
+
+        function abilityRowHtml(a, taken, full) {
+            const added = taken.has(a.name.toLowerCase());
+            const title = added ? 'Already added' : full ? 'This Fakemon already has 4 abilities' : 'Click to add';
+            return `<button type="button" class="ability-browser-row${added ? ' added' : ''}" onclick="addAbilityFromBrowser('${escapeHtml(a.id)}')" title="${title}">
+                    <span class="ab-row-head">
+                        <span class="ab-row-name">${escapeHtml(a.name)}</span>
+                        <span class="ab-group-tag ab-group-${a.group.id}">${a.group.label.replace(' Abilities', '')}</span>
+                        ${added ? '<span class="ab-row-added">Added</span>' : ''}
+                    </span>
+                    <span class="ab-row-desc">${escapeHtml(a.desc)}</span>
+                </button>`;
+        }
+
+        function filterAbilityBrowser() {
+            const list = document.getElementById('ability-browser-results');
+            const countEl = document.getElementById('ability-browser-count');
+            if (!list) return;
+            const query = (document.getElementById('ab-filter-name')?.value || '').trim().toLowerCase();
+            const group = document.getElementById('ab-filter-group')?.value || '';
+            const sort = document.getElementById('ab-filter-sort')?.value || 'default';
+
+            const matches = getBrowsableAbilities()
+                .filter(a => (!group || a.group.id === group) &&
+                    (!query || a.name.toLowerCase().includes(query) || a.desc.toLowerCase().includes(query)))
+                .sort((a, b) => a.name.localeCompare(b.name));
+            if (sort === 'za') matches.reverse();
+
+            if (countEl) countEl.textContent = `${matches.length} abilit${matches.length === 1 ? 'y' : 'ies'}`;
+            if (!matches.length) {
+                list.innerHTML = '<div class="move-browser-empty">No abilities match those filters.</div>';
+                return;
+            }
+            const taken = new Set(state.abilities.map(a => (a.name || '').toLowerCase()));
+            const full = state.abilities.length >= 4;
+            if (sort !== 'default') {
+                list.innerHTML = matches.map(a => abilityRowHtml(a, taken, full)).join('');
+                return;
+            }
+            // default: the client's BH layout, one headed section per group
+            list.innerHTML = ABILITY_GROUPS.map(g => {
+                const rows = matches.filter(a => a.group.id === g.id);
+                if (!rows.length) return '';
+                return `<div class="ab-group-header">${g.label}<span>${rows.length}</span></div>` +
+                    rows.map(a => abilityRowHtml(a, taken, full)).join('');
+            }).join('');
+        }
+
+        function addAbilityFromBrowser(id) {
+            const ability = state.sdAbilities?.[id];
+            if (!ability) return;
+            if (state.abilities.some(a => (a.name || '').toLowerCase() === ability.name.toLowerCase())) return;
+            addAbility(ability.name, 'sd');
+            filterAbilityBrowser();
+        }
+
+        window.openAbilityBrowserModal = openAbilityBrowserModal;
+        window.filterAbilityBrowser = filterAbilityBrowser;
+        window.addAbilityFromBrowser = addAbilityFromBrowser;
+
 // ==================== MOVE LOOKUP ====================
         function findClosestMove(query) {
             if (!query.trim()) return null;
@@ -639,7 +754,7 @@ import { abilityRole, prepareLearnset } from './learnset-model.js';
 
         function normalizeMoveTypeInput(value) {
             const v = String(value || '').trim().toLowerCase();
-            const match = POKEMON_TYPES.find(t => t.toLowerCase() === v);
+            const match = SELECTABLE_TYPES.find(t => t.toLowerCase() === v);
             return match || 'Normal';
         }
 
@@ -1264,7 +1379,7 @@ import { esc as escapeHtml, esc as escapeHtmlAttr } from '../core/html.js';
             Grass: '#78C850', Ice: '#98D8D8', Fighting: '#C03028', Poison: '#A040A0',
             Ground: '#E0C068', Flying: '#A890F0', Psychic: '#F85888', Bug: '#A8B820',
             Rock: '#B8A038', Ghost: '#705898', Dragon: '#7038F8', Dark: '#705848',
-            Steel: '#B8B8D0', Fairy: '#EE99AC'
+            Steel: '#B8B8D0', Fairy: '#EE99AC', '???': '#68A090', Stellar: '#40B5A5'
         };
         const CATEGORY_COLORS = { Physical: '#cc8844', Special: '#4466cc', Status: '#44aa44' };
         const METHOD_META = {
@@ -1318,7 +1433,7 @@ import { esc as escapeHtml, esc as escapeHtmlAttr } from '../core/html.js';
                 <div style="display:flex;align-items:center;gap:6px;font-size:12px;line-height:1;white-space:nowrap;">
                     <span style="width:10px;height:10px;border-radius:2px;background:${s.color};display:inline-block;flex-shrink:0;"></span>
                     <span style="color:var(--text-primary);">${s.label}</span>
-                    <span style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:11px;">${s.value} · ${Math.round(s.value / total * 100)}%</span>
+                    <span style="font-family:'Inconsolata',monospace;color:var(--text-muted);font-size:11px;">${s.value} · ${Math.round(s.value / total * 100)}%</span>
                 </div>
             `).join('');
             wrap.innerHTML = `<div style="display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap;">${svg}<div style="display:flex;flex-direction:column;gap:4px;">${legend}</div></div>`;
@@ -2027,8 +2142,8 @@ import { esc as escapeHtml, esc as escapeHtmlAttr } from '../core/html.js';
             });
 
             const addButton = isAbility
-                ? `<button class="btn btn-primary" type="button" onclick="closeModal('custom-entity-chooser-modal'); openCustomAbilityLibraryModal();" style="width:100%;justify-content:center;margin-bottom:14px;">＋ Make a New Ability</button>`
-                : `<button class="btn btn-primary" type="button" onclick="closeModal('custom-entity-chooser-modal'); openCustomMoveModal();" style="width:100%;justify-content:center;margin-bottom:14px;">＋ Make a New Move</button>`;
+                ? `<button class="btn btn-primary" type="button" onclick="closeModal('custom-entity-chooser-modal'); openCustomAbilityLibraryModal();" style="width:100%;justify-content:center;margin-bottom:14px;">${iconSvg('plus', 16)}Make a New Ability</button>`
+                : `<button class="btn btn-primary" type="button" onclick="closeModal('custom-entity-chooser-modal'); openCustomMoveModal();" style="width:100%;justify-content:center;margin-bottom:14px;">${iconSvg('plus', 16)}Make a New Move</button>`;
 
             const placeholder = isAbility ? 'Search your custom abilities...' : 'Search your custom moves...';
             const emptyText = query
@@ -2181,15 +2296,17 @@ import { esc as escapeHtml, esc as escapeHtmlAttr } from '../core/html.js';
             renderCustomEntityChooser('ability');
         }
         function openCustomAbilityLibraryModal(id='') {
+            document.getElementById('custom-ability-modal')?.classList.remove('as-sheet');
             const a=id?getCustomAbilityLibrary().find(x=>x.id===id):null;
-            document.getElementById('custom-ability-edit-id').value=id; document.getElementById('custom-ability-modal-title').textContent=a?'Edit Custom Ability':'Create Custom Ability'; document.getElementById('custom-ability-name').value=a?.name||''; document.getElementById('custom-ability-desc').value=a?.desc||''; fillEntityRawCode('custom-ability', a?.rawCode); document.getElementById('custom-ability-modal').classList.add('active');
+            document.getElementById('custom-ability-edit-id').value=id; document.getElementById('custom-ability-modal-title').textContent=a?'Edit Custom Ability':'Create Custom Ability'; document.getElementById('custom-ability-name').value=a?.name||''; document.getElementById('custom-ability-desc').value=a?.desc||''; api.fillEntityRegionSelect?.('custom-ability-region', a ? a.regionId : api.defaultRegionForNewFakemon?.()); api.setEntityArt?.('custom-ability', a?.artwork); fillEntityRawCode('custom-ability', a?.rawCode); document.getElementById('custom-ability-modal').classList.add('active');
         }
         function saveCustomAbilityLibraryEntry(){
             const name=document.getElementById('custom-ability-name').value.trim(); if(!name){api.showToast('Please enter an ability name!','error');return;}
             const desc=document.getElementById('custom-ability-desc').value.trim(); let id=document.getElementById('custom-ability-edit-id').value;
             const rawCode=readEntityRawCode('custom-ability');
-            if(id){const a=getCustomAbilityLibrary().find(x=>x.id===id); if(a){a.name=name;a.desc=desc;a.rawCode=rawCode;} state.fakemonDB.forEach(f=>(f.abilities||[]).forEach(a=>{if(a&&a.customId===id){a.name=name;a.desc=desc;a.source='custom';a.custom=true;}}));}
-            else {id='ca_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); state.customAbilities.push({id,name,desc,rawCode}); if(state.abilities.length<4 && document.getElementById('editor-view').style.display!=='none'){state.abilities.push({name,source:'custom',custom:true,customId:id,desc});renderAbilities();updatePreview();api.autoSave();}}
+            const artwork=api.readEntityArt?.('custom-ability')||'';
+            if(id){const a=getCustomAbilityLibrary().find(x=>x.id===id); if(a){a.name=name;a.desc=desc;a.rawCode=rawCode;a.artwork=artwork;api.applyEntityRegion?.(a,'custom-ability-region');} state.fakemonDB.forEach(f=>(f.abilities||[]).forEach(a=>{if(a&&a.customId===id){a.name=name;a.desc=desc;a.source='custom';a.custom=true;}}));}
+            else {id='ca_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); const created={id,name,desc,rawCode,artwork}; api.applyEntityRegion?.(created,'custom-ability-region'); state.customAbilities.push(created); if(state.abilities.length<4 && document.getElementById('editor-view').style.display!=='none'){state.abilities.push({name,source:'custom',custom:true,customId:id,desc});renderAbilities();updatePreview();api.autoSave();}}
             api.saveToStorage(); api.renderCollection(); closeModal('custom-ability-modal'); api.showToast(id&&document.getElementById('custom-ability-edit-id').value?'Custom ability saved!':'Custom ability created!','success');
         }
         function addExistingCustomAbility(id){const a=getCustomAbilityLibrary().find(x=>x.id===id);if(!a)return;if(document.getElementById('editor-view')?.style.display==='none'){api.showToast('Open a Fakemon in the editor before adding a custom ability.','info');return;}if(state.abilities.length>=4){api.showToast('A Pokemon can have a maximum of 4 abilities.','error');return;}if(state.abilities.some(x=>x&&x.customId===id)){api.showToast('That custom ability is already on this Fakemon.','info');return;}state.abilities.push({name:a.name,source:'custom',custom:true,customId:id,desc:a.desc||''});closeModal('custom-entity-chooser-modal');renderAbilities();updatePreview();api.autoSave();api.showToast('Custom ability added!','success');}
@@ -2204,10 +2321,12 @@ function openCustomItemModal(id='', sampleSetTarget=null) {
     const item = id ? getCustomItemLibrary().find(x => x.id === id) : null;
     const modal = document.getElementById('custom-item-modal');
     if (!modal) return;
+    modal.classList.remove('as-sheet');
     document.getElementById('custom-item-edit-id').value = id;
     document.getElementById('custom-item-modal-title').textContent = item ? 'Edit Custom Item' : 'Create Custom Item';
     document.getElementById('custom-item-name').value = item?.name || '';
     document.getElementById('custom-item-desc').value = item?.desc || '';
+    api.fillEntityRegionSelect?.('custom-item-region', item ? item.regionId : api.defaultRegionForNewFakemon?.());
     fillEntityRawCode('custom-item', item?.rawCode);
     const megaStoneToggle = document.getElementById('custom-item-is-mega-stone');
     if (megaStoneToggle) megaStoneToggle.checked = item?.isMegaStone === true;
@@ -2237,6 +2356,7 @@ function saveCustomItemLibraryEntry() {
     } else {
         Object.assign(item, { name, desc, artwork, isMegaStone, rawCode, source:'custom', custom:true });
     }
+    api.applyEntityRegion?.(item, 'custom-item-region');
     const target = pendingSampleSetItemTarget;
     pendingSampleSetItemTarget = null;
     if (target && Number.isInteger(target.setIndex) && state.sampleSets[target.setIndex]) {
@@ -2283,7 +2403,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
                 const tc = 'type-' + type.toLowerCase();
                 return `<div class="type-dropdown-option" onclick="${makeOnclick(type)}; event.stopPropagation();"><span class="type-pill ${tc}">${type}</span></div>`;
             };
-            return (allowNone ? opt('') : '') + POKEMON_TYPES.map(opt).join('');
+            return (allowNone ? opt('') : '') + SELECTABLE_TYPES.map(opt).join('');
         }
         function setTypeDropdownValue(which, type, noneLabel) {
             const valueEl = document.getElementById(which + '-value');
@@ -2357,6 +2477,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
 
         function openCustomMoveModal(index) {
         log.debug('CUSTOM MOVE', 'Opening custom move modal', { index });
+            document.getElementById('custom-move-modal')?.classList.remove('as-sheet');
             const menu = document.getElementById('custom-move-type-menu');
             if (menu && !menu.innerHTML) {
                 menu.innerHTML = buildTypeMenuOptions(t => `selectCustomMoveType('${t}')`, false, '');
@@ -2404,6 +2525,10 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
             }
 
             updateCustomMoveFlagAvailability();
+            // a move already in the library keeps its region; a new one starts in the one you're viewing
+            const libMove = index !== undefined ? state.customMoves.find(x => x.id === state.learnset[index]?.customId) : null;
+            api.fillEntityRegionSelect?.('custom-move-region', libMove ? libMove.regionId : api.defaultRegionForNewFakemon?.());
+            api.setEntityArt?.('custom-move', libMove?.artwork || (index !== undefined ? state.learnset[index]?.artwork : ''));
             document.getElementById('custom-move-modal').classList.add('active');
         }
 
@@ -2418,11 +2543,11 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
                 flags[cb.value] = 1;
             });
             const rawCode = readEntityRawCode('custom-move');
-            const move = { rawCode, name, type:document.getElementById('custom-move-type').value, category, basePower:parseInt(document.getElementById('custom-move-power').value)||0, accuracy:parseInt(document.getElementById('custom-move-accuracy').value)||100, pp:parseInt(document.getElementById('custom-move-pp').value)||10, priority:parseInt(document.getElementById('custom-move-priority').value)||0, flags, desc:document.getElementById('custom-move-desc').value.trim() };
+            const move = { rawCode, name, type:document.getElementById('custom-move-type').value, category, basePower:parseInt(document.getElementById('custom-move-power').value)||0, accuracy:parseInt(document.getElementById('custom-move-accuracy').value)||100, pp:parseInt(document.getElementById('custom-move-pp').value)||10, priority:parseInt(document.getElementById('custom-move-priority').value)||0, flags, desc:document.getElementById('custom-move-desc').value.trim(), artwork: api.readEntityArt?.('custom-move') || '' };
             const libraryId = document.getElementById('custom-move-library-edit-id').value;
             if (libraryId) {
                 const lib = state.customMoves.find(m => m.id === libraryId);
-                if (lib) Object.assign(lib, move);
+                if (lib) { Object.assign(lib, move); api.applyEntityRegion?.(lib, 'custom-move-region'); }
                 state.fakemonDB.forEach(f => (f.learnset||[]).forEach(m => { if (m && m.customId === libraryId) Object.assign(m, move, {source:'custom', custom:true, customId:libraryId, learnMethod:'none', level:null}); }));
                 // Keep the in-memory editor learnset in sync too, in case the Fakemon
                 // currently open in the (possibly hidden) editor has this move.
@@ -2439,6 +2564,7 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
             const libraryEntry = { ...move, id };
             const existingLib = state.customMoves.find(m => m.id === id);
             if (existingLib) Object.assign(existingLib, libraryEntry); else state.customMoves.push(libraryEntry);
+            api.applyEntityRegion?.(existingLib || libraryEntry, 'custom-move-region');
             if (inEditor) {
                 if (editIndex !== '') {
                     const existing = state.learnset[parseInt(editIndex)];
@@ -2484,6 +2610,8 @@ function handleCustomItemArtworkDrop(event) { event.preventDefault(); event.stop
             openCustomMoveModal();
             document.getElementById('custom-move-library-edit-id').value=id;
             document.getElementById('custom-move-edit-index').value='';
+            api.fillEntityRegionSelect?.('custom-move-region', m.regionId);
+            api.setEntityArt?.('custom-move', m.artwork);
             document.getElementById('custom-move-modal-title').textContent='Edit Custom Move';
             document.getElementById('custom-move-name').value=m.name||''; document.getElementById('custom-move-type').value=m.type||'Normal'; setTypeDropdownValue('custom-move-type',m.type||'Normal','Select Type'); document.getElementById('custom-move-category').value=m.category||'Status'; setCatDropdownValue('custom-move-category',m.category||'Status','Status'); document.getElementById('custom-move-power').value=m.basePower||0; document.getElementById('custom-move-accuracy').value=m.accuracy??100; document.getElementById('custom-move-pp').value=m.pp||10; document.getElementById('custom-move-priority').value=m.priority||0; document.getElementById('custom-move-desc').value=m.desc||''; document.querySelectorAll('#custom-move-flags input').forEach(cb=>cb.checked=!!(m.flags&&m.flags[cb.value])); fillEntityRawCode('custom-move', m.rawCode); updateCustomMoveFlagAvailability();
         }

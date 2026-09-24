@@ -1,0 +1,367 @@
+/* ==================== header ====================
+   The fixed top bar (css/tokens.css sets its frame and height): logo and
+   global search on the left, the four icon tabs in the middle, notifications
+   and the account menu on the right. Laid out like Facebook's top bar.
+   ==================== */
+
+/* ---------- centre tabs ---------- */
+.header-nav {
+    display: flex;
+    align-items: stretch;
+    align-self: stretch;
+    gap: 4px;
+}
+.header-nav-btn {
+    position: relative;
+    width: 104px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+/* the hover plate sits inset, so the active underline still touches the edge */
+.header-nav-btn::before {
+    content: "";
+    position: absolute;
+    inset: 4px 0;
+    border-radius: var(--ctl-r);
+    transition: background .12s ease;
+}
+.header-nav-btn:hover::before { background: var(--bg-panel); }
+.header-nav-btn svg { position: relative; width: 22px; height: 22px; }
+.header-nav-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: var(--ctl-r); }
+/* the page you are on; set by activateTopLevelView() from data-nav */
+.header-nav-btn.active { color: var(--accent); }
+.header-nav-btn.active:hover::before { background: transparent; }
+.header-nav-btn.active::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--accent);
+}
+.header-nav-badge {
+    position: absolute;
+    top: 7px; left: calc(50% + 6px);
+    min-width: 17px; height: 17px; padding: 0 4px;
+    border-radius: 999px;
+    border: 2px solid var(--bg-card);
+    background: var(--danger); color: #fff;
+    font: 700 10px/1 'Exo 2', sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    box-sizing: content-box;
+}
+
+/* ---------- global search ---------- */
+.global-search { position: relative; min-width: 0; }
+.global-search-field {
+    position: relative;
+    display: flex; align-items: center;
+    width: 260px; max-width: 100%;
+}
+.global-search-icon {
+    position: absolute; left: 12px;
+    width: 16px; height: 16px;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+.global-search-field input,
+.global-search-field input:where([type="search"]) {
+    width: 100%;
+    height: 38px;
+    padding: 0 14px 0 36px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    font: 500 14px 'Exo 2', sans-serif;
+    outline: none;
+    box-shadow: none;
+}
+.global-search-field input::placeholder { color: var(--text-muted); }
+.global-search-field input:focus { border-color: var(--accent); background: var(--bg-card); box-shadow: 0 0 0 3px var(--accent-glow); }
+.global-search-field input { padding-right: 38px; }
+/* every search box on the site: no browser-drawn clear glyph */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.global-search-clear {
+    position: absolute; right: 6px;
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 50%;
+    background: transparent; color: var(--text-muted);
+    cursor: pointer;
+}
+.global-search-clear[hidden] { display: none; }
+.global-search-clear:hover { background: var(--border-light); color: var(--text-primary); }
+.global-search-clear svg { width: 15px; height: 15px; }
+/* phone-only controls */
+.global-search-toggle, .global-search-back { display: none; }
+.global-search-toggle,
+.global-search-back {
+    width: 38px; height: 38px; flex: 0 0 38px;
+    align-items: center; justify-content: center;
+    border: 0; border-radius: 50%;
+    background: var(--bg-panel); color: var(--text-secondary);
+    cursor: pointer;
+}
+.global-search-back { background: transparent; }
+.global-search-toggle svg, .global-search-back svg { width: 18px; height: 18px; }
+.global-search-toggle:hover, .global-search-back:hover { color: var(--text-primary); background: var(--border-light); }
+
+.global-search-results {
+    position: absolute;
+    top: calc(100% + 8px); left: 0;
+    width: 380px; max-width: calc(100vw - 24px);
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+    padding: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--card-r);
+    box-shadow: var(--shadow-md);
+    scrollbar-width: thin;
+}
+.global-search-results[hidden] { display: none; }
+.gs-group-label {
+    padding: 10px 10px 4px;
+    font-size: 10.5px; font-weight: 700;
+    letter-spacing: .09em; text-transform: uppercase;
+    color: var(--text-muted);
+}
+.gs-group-label:first-child { padding-top: 4px; }
+.gs-item {
+    width: 100%;
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px;
+    border: 0; border-radius: var(--ctl-r);
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit; text-align: left;
+    cursor: pointer;
+}
+.gs-item:hover, .gs-item.is-active { background: var(--bg-panel); }
+.gs-thumb {
+    width: 34px; height: 34px; flex: 0 0 34px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    overflow: hidden;
+}
+.gs-item:hover .gs-thumb, .gs-item.is-active .gs-thumb { background: var(--border-light); }
+.gs-thumb svg { width: 17px; height: 17px; }
+.gs-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.gs-thumb.is-art { border-radius: 8px; }
+.gs-text { display: flex; flex-direction: column; min-width: 0; }
+.gs-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-title mark { background: none; color: var(--accent); font-weight: 800; }
+.gs-sub { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-empty, .gs-status { padding: 18px 12px; text-align: center; font-size: 13px; color: var(--text-muted); }
+.gs-status { padding: 8px 12px 10px; text-align: left; }
+
+/* ---------- account menu, signed out ---------- */
+.header-profile-wrap.is-signed-out [data-auth="in"],
+.header-profile-wrap:not(.is-signed-out) [data-auth="out"] { display: none !important; }
+.header-profile-wrap.is-signed-out .header-profile-avatar { background: var(--bg-panel); color: var(--text-secondary); }
+.header-profile-avatar svg { width: 18px; height: 18px; }
+#header-profile-avatar-fallback { display: flex; align-items: center; justify-content: center; }
+/* Sign In lives in the header on wider screens; on phones the header button
+   is hidden (no room), so the menu carries it instead */
+.header-profile-popover-mobile-signin { display: none; }
+.header-profile-popover-signin { width: calc(100% - 16px); margin: 4px 8px 8px; }
+@media (max-width: 760px) {
+    .header-profile-wrap.is-signed-out .header-profile-popover-mobile-signin { display: block; }
+}
+
+/* the identity row is a link to your profile */
+button.header-profile-popover-identity {
+    width: 100%;
+    border: 0; border-radius: 9px;
+    background: transparent;
+    color: inherit; font: inherit; text-align: left;
+    cursor: pointer;
+    padding: 8px;
+}
+button.header-profile-popover-identity:hover { background: var(--bg-panel); }
+
+/* ---------- theme switch ---------- */
+.header-theme-row { position: relative; }
+.header-theme-row > span:not(.header-theme-switch) { flex: 1; }
+.header-theme-input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.header-theme-switch {
+    position: relative;
+    width: 34px; height: 20px; flex: 0 0 34px;
+    border-radius: 999px;
+    background: var(--border-strong);
+    transition: background .15s ease;
+}
+.header-theme-switch::after {
+    content: "";
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: var(--shadow-sm);
+    transition: transform .15s ease;
+}
+.header-theme-input:checked + .header-theme-switch { background: var(--accent); }
+.header-theme-input:checked + .header-theme-switch::after { transform: translateX(14px); }
+.header-theme-input:focus-visible + .header-theme-switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.header-profile-popover-legal {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px;
+    margin-top: 4px;
+    padding: 8px 8px 2px;
+    border-top: 1px solid var(--border-light);
+    font-size: 11px; color: var(--text-muted);
+}
+.header-profile-popover-legal button {
+    border: 0; background: none; padding: 0;
+    font: inherit; color: inherit; cursor: pointer;
+}
+.header-profile-popover-legal button:hover { color: var(--text-primary); text-decoration: underline; }
+
+/* ---------- narrower screens ---------- */
+@media (max-width: 1100px) {
+    .header-nav-btn { width: 76px; }
+    .global-search-field { width: 220px; }
+}
+/* ---------- phones: a bottom tab bar ----------
+   The header keeps the logo, search, notifications and your account; the four
+   places move to a bar along the bottom, with names under their icons, like a
+   phone app. */
+.header-nav-label { display: none; }
+@media (max-width: 760px) {
+    :root { --bottom-nav-h: 58px; }
+    .header { grid-template-columns: minmax(0, 1fr) auto; }
+    .header-signin-btn { display: none !important; }
+    .header-nav {
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        gap: 0;
+        background: var(--bg-card);
+        border-top: 1px solid var(--border);
+        box-shadow: 0 -4px 16px rgba(0,0,0,.04);
+    }
+    .header-nav-btn {
+        flex: 1 1 0; width: auto;
+        flex-direction: column; gap: 3px;
+    }
+    .header-nav-btn::before { inset: 5px 8px; }
+    .header-nav-btn svg { width: 21px; height: 21px; }
+    .header-nav-label { display: block; position: relative; font: 600 10.5px 'Exo 2', sans-serif; }
+    /* the active marker moves to the bar's top edge */
+    .header-nav-btn.active::after { top: -1px; bottom: auto; left: 22%; right: 22%; border-radius: 0 0 3px 3px; }
+    .header-nav-badge { top: 4px; left: calc(50% + 4px); }
+    /* room under the page for the bar */
+    #main-content { padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-4)); }
+    .header-actions { gap: 6px; }
+}
+/* search folds to a button; open, it spans the whole header */
+@media (max-width: 900px) {
+    .global-search-toggle { display: flex; }
+    .global-search-field { display: none; }
+    .global-search.open .global-search-field {
+        display: flex;
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: var(--header-h);
+        width: auto; max-width: none;
+        gap: 6px;
+        padding: 0 var(--sp-3);
+        background: var(--bg-card);
+        border-bottom: 1px solid var(--border);
+        z-index: 2;
+    }
+    .global-search.open .global-search-back { display: flex; }
+    .global-search.open .global-search-icon { left: 58px; }
+    .global-search-results {
+        position: fixed;
+        top: var(--header-h); left: 0; right: 0;
+        width: auto; max-width: none;
+        max-height: calc(100vh - var(--header-h));
+        border-radius: 0; border-width: 0 0 1px;
+    }
+}
+@media (max-width: 400px) {
+    .header-nav-label { font-size: 10px; }
+}
+
+/* the bell matches the other round header buttons (search, account) */
+.header .notifications-bell-btn {
+    width: 38px; height: 38px;
+    border: 0; border-radius: 50%;
+    background: var(--bg-panel);
+}
+.header .notifications-bell-btn:hover { background: var(--border-light); }
+.header .header-profile-btn { width: 38px; height: 38px; }
+
+/* ==================== the search results page (views/search.html) ==================== */
+#search-view { max-width: 860px; margin: 0 auto; }
+.search-page-form {
+    position: relative;
+    display: flex; gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+}
+.search-page-form > svg {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 18px; height: 18px; color: var(--text-muted); pointer-events: none;
+}
+.search-page-form input,
+.search-page-form input:where([type="search"]) {
+    flex: 1; min-width: 0;
+    height: 44px; padding: 0 14px 0 42px;
+    border-radius: 999px;
+    font-size: 15px;
+}
+.search-page-form .btn { height: 44px; border-radius: 999px; padding: 0 var(--sp-5); }
+.search-page-tabs { margin-bottom: var(--sp-5); }
+.search-tab-count {
+    margin-left: 6px; padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--bg-panel); color: var(--text-muted);
+    font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.search-page-tabs .tab.active .search-tab-count { background: var(--accent-soft); color: var(--accent); }
+.search-section { margin-bottom: var(--sp-6); }
+.search-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.search-section-head h2 { font-size: 16px; font-weight: 800; }
+.search-list {
+    display: flex; flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--card-r);
+    overflow: hidden;
+}
+.search-list .gs-item.search-row {
+    border-radius: 0;
+    padding: 10px var(--sp-4);
+    border-bottom: 1px solid var(--border-light);
+}
+.search-list .gs-item.search-row:last-child { border-bottom: 0; }
+.search-row .gs-thumb { width: 48px; height: 48px; flex-basis: 48px; }
+.search-row .gs-thumb.is-art { border-radius: 10px; }
+.search-row .gs-thumb svg { width: 20px; height: 20px; }
+.search-row .gs-title { font-size: 15px; }
+.search-row .gs-sub { font-size: 12.5px; }
+.gs-thumb canvas { width: 100%; height: 100%; object-fit: contain; }
+.search-section-status { padding: 10px 2px; font-size: 13px; color: var(--text-muted); }
+.search-page-empty {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 56px 16px; text-align: center; color: var(--text-muted);
+}
+.search-page-empty svg { width: 34px; height: 34px; color: var(--accent); margin-bottom: 4px; }
+.search-page-empty p { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.search-page-empty span { font-size: 13px; }
+/* the dropdown's "See all results" row */
+.gs-see-all { margin-top: 4px; border-top: 1px solid var(--border-light); border-radius: 0 0 var(--ctl-r) var(--ctl-r); }
+.gs-see-all .gs-title { color: var(--accent); }
+@media (max-width: 640px) {
+    .search-page-form .btn { display: none; }
+}

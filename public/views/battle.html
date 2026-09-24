@@ -9,15 +9,15 @@
      Inline onclick handlers still work -- every module assigns its
      exports onto window, so the contract is unchanged by the move.
      ==================== -->
-<div class="panel">
-    <div class="collection-title-row">
-        <div class="collection-title-left">
-            <h2 class="collection-heading">Battle</h2>
-        </div>
-        <div class="collection-header-actions">
-            <span id="battle-status" class="events-status"></span>
-        </div>
+<!-- a page header like every other page, and the battle UI straight on the
+     page (no card around it); #battle-body is filled by js/battle/ui/battle-ui.js -->
+<div class="page-header battle-page-header">
+    <div class="page-heading">
+        <h1 class="page-title">Battle</h1>
+        <p class="page-subtitle">Build a team from your Fakémon and battle other trainers.</p>
     </div>
-    <div id="battle-body"></div>
+    <div class="page-actions">
+        <span id="battle-status" class="events-status battle-status"></span>
+    </div>
 </div>
-
+<div id="battle-body" class="battle-body"></div>

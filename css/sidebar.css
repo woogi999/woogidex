@@ -1,165 +1,185 @@
 /* ==================== sidebar ====================
-   the sidebar navigation and its brand row.
-   link order in index.html = cascade order; later files override earlier ones.
+   My Collection's side column, fixed under the header. It only exists on that
+   page (body[data-page], set by activateTopLevelView() in js/core/app.js) and
+   is empty for now. Navigation lives in the header (css/header.css).
+   Width comes from --sidebar-w (css/tokens.css), which the content column
+   clears on the same page.
    ==================== */
 
-.header-left { display:flex; align-items:center; gap:12px; min-width:0; }
-.menu-toggle {
-    width:44px; height:44px; border:1px solid var(--border); border-radius:12px;
-    background:var(--bg-panel); color:var(--text-primary); display:inline-flex;
-    align-items:center; justify-content:center; cursor:pointer; transition:all .2s ease;
-    flex:0 0 auto;
-}
-.menu-toggle:hover { background:var(--border-light); transform:translateY(-1px); }
-/* rail replaces the old hamburger-drawer sidebar; its header row and toggle are irrelevant on desktop, restored below for mobile overlay */
-.sidebar-header, .sidebar-brand, .sidebar-close, .sidebar-header-spacer { display:none !important; }
-.menu-toggle { display:none !important; }
-/* permanent icon rail on desktop (72px collapsed, 252px on hover/focus/.open); still a slide-in overlay below 769px */
-:root { --header-h: 56px; }
 .app-sidebar {
-    position:fixed !important; top:var(--header-h) !important; left:0 !important; bottom:0 !important;
-    width:72px !important; min-width:72px;
-    background:var(--bg-card);
-    border-right: var(--nb-border-w) solid var(--nb-ink);
-    border-top:1px solid transparent;
-    box-shadow:4px 0 24px rgba(0,0,0,.06); z-index:11000 !important;
-    transform:none !important; transition:width .22s cubic-bezier(.2,.8,.2,1);
-    display:flex; flex-direction:column; padding:14px 10px !important;
-    overflow:hidden auto; scrollbar-width:thin;
+    position: fixed;
+    top: var(--header-h);
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-w);
+    z-index: 11000;
+    display: none;
+    flex-direction: column;
+    padding: var(--sp-4) var(--sp-3);
+    background: var(--bg-card);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    scrollbar-width: thin;
 }
-/* expand on hover (desktop) or when JS adds .open (mobile overlay) */
-.app-sidebar:hover,
-.app-sidebar:focus-within,
-.app-sidebar.open { width:252px !important; box-shadow:10px 0 40px rgba(0,0,0,.14); }
-/* forces collapsed width after a nav click, since :hover/:focus-within can still be true right after */
-.app-sidebar.force-closed,
-.app-sidebar.force-closed:hover,
-.app-sidebar.force-closed:focus-within { width:72px !important; }
-/* main content clears the rail on desktop */
-@media (min-width:769px) { body { padding-left:72px; } }
-.reduce-motion .app-sidebar { transition:none !important; }
-.sidebar-backdrop {
-    position:fixed; inset:0; background:rgba(0,0,0,.34); z-index:10599 !important; opacity:0;
-    pointer-events:none; transition:opacity .25s ease; backdrop-filter:none; -webkit-backdrop-filter:none;
-}
-.sidebar-backdrop.open { opacity:1; pointer-events:auto; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
-/* same darken+blur as the mobile overlay, but never intercepts clicks since the rail opens/closes on hover, not a tap */
-.sidebar-backdrop.hover-active { opacity:1; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+body[data-page="collection-view"] .app-sidebar { display: flex; }
 
-/* "Blur & dim effects" off: strips blur and dark scrim from every overlay site-wide, not just the sidebar */
-.no-overlay-blur .sidebar-backdrop.hover-active,
-.no-overlay-blur .sidebar-backdrop.open,
+/* data-loading status: kept for the scripts that write to it, not shown */
+.sidebar-status { display: none; }
+
+/* ---- narrow screens: the sidebar is a drawer ----
+   opened by the Regions button in My Collection's header (toggleRegionDrawer
+   in js/features/regions.js); picking a region closes it again */
+.region-drawer-backdrop, .region-drawer-close, .collection-regions-btn { display: none; }
+@media (max-width: 900px) {
+    body[data-page="collection-view"] .app-sidebar {
+        z-index: 12050;
+        width: min(300px, 86vw);
+        bottom: 0;
+        transform: translateX(-102%);
+        transition: transform .22s cubic-bezier(.2,.8,.2,1);
+        box-shadow: var(--shadow-lg);
+        padding-bottom: calc(var(--bottom-nav-h, 0px) + env(safe-area-inset-bottom, 0px) + var(--sp-4));
+    }
+    body.region-drawer-open[data-page="collection-view"] .app-sidebar { transform: none; }
+    body[data-page="collection-view"] .region-drawer-backdrop {
+        display: block;
+        position: fixed; inset: var(--header-h) 0 0 0;
+        z-index: 12040;
+        background: rgba(17,17,20,.34);
+        opacity: 0; pointer-events: none;
+        transition: opacity .2s ease;
+    }
+    body.region-drawer-open[data-page="collection-view"] .region-drawer-backdrop { opacity: 1; pointer-events: auto; }
+    .region-drawer-close { display: flex; justify-content: center; margin: var(--sp-2) var(--sp-1) 0; }
+    .collection-regions-btn { display: inline-flex; }
+    .reduce-motion .app-sidebar { transition: none; }
+}
+
+/* "Blur & dim effects" off: strips the scrim from every overlay site-wide */
 .no-overlay-blur .modal-overlay.active,
-.no-overlay-blur .overlay-dark.active {
+.no-overlay-blur .overlay-dark.active,
+.no-overlay-blur .editor-sheet-backdrop,
+.no-overlay-blur .region-drawer-backdrop {
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
-.sidebar-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:2px 4px 20px; border-bottom:1px solid var(--border-light); }
-.sidebar-kicker { font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1.5px; color:var(--text-muted); margin-bottom:4px; }
-.sidebar-header h2 { font-size:22px; line-height:1; }
-.sidebar-close { width:38px; height:38px; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); color:var(--text-primary); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
-.sidebar-close:hover { background:var(--border-light); }
-/* sidebar-status stays off on desktop (would push nav buttons down on hover-expand); mobile query below re-enables it for the overlay */
-.sidebar-status { display:none; flex-direction:column; gap:7px; padding:16px 4px; }
-.sidebar-status .api-status, .sidebar-status .save-status { display:block; width:100%; text-align:left; }
-.sidebar-footer { display:none; }
-.app-sidebar:hover .sidebar-footer,
-.app-sidebar:focus-within .sidebar-footer,
-.app-sidebar.open .sidebar-footer { display:flex; }
-.sidebar-nav { display:flex; flex-direction:column; gap:6px; }
-.sidebar-nav-btn {
-    width:100%; border:1px solid transparent; border-radius:12px !important; background:transparent;
-    color:var(--text-primary); padding:12px 13px !important; display:flex; align-items:center;
-    justify-content:flex-start; gap:12px !important;
-    font:600 14px 'Exo 2',sans-serif; cursor:pointer; text-align:left;
-    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-/* icon position fixed in both states; only label visibility changes, so the rail never jumps on hover */
-.sidebar-nav-btn svg { width:20px; height:20px; margin:0; color:var(--text-secondary); flex:0 0 auto; }
-/* no outline on hover; it looked too busy/boxy next to the rail's own edge */
-.sidebar-nav-btn:hover { background:var(--bg-panel); border-color:transparent; box-shadow:none; transform:translateX(3px); }
-.sidebar-nav-btn:active { transform: translateX(1px) scale(0.98); }
-/* labels keep the same padding/position in both states; only opacity and rail width animate */
-.sidebar-nav-btn span,
-.sidebar-footer-links span[aria-hidden] {
-    opacity:0; white-space:nowrap; transition:opacity .1s ease;
-}
-/* collapsed rail: hide labels entirely so nothing peeks out */
-.app-sidebar:not(:hover):not(:focus-within):not(.open) .sidebar-nav-btn span { visibility:hidden; }
-/* fade labels in only once the rail has mostly finished widening, so text doesn't pop in mid-animation */
-.app-sidebar:hover .sidebar-nav-btn span,
-.app-sidebar:focus-within .sidebar-nav-btn span,
-.app-sidebar.open .sidebar-nav-btn span { opacity:1; transition:opacity .15s ease .12s; }
-/* unread count pushed to the far end by margin-left:auto, regardless of label length */
-.sidebar-nav-badge {
-    margin-left:auto; min-width:18px; height:18px; padding:0 5px; border-radius:999px;
-    background:var(--danger); color:#fff; font:700 10px 'Exo 2',sans-serif;
-    display:flex; align-items:center; justify-content:center; flex:0 0 auto;
-}
-.sidebar-divider { height:1px; background:var(--border-light); margin:8px 4px; }
-.sidebar-footer { margin-top:auto; padding:14px 5px 2px; color:var(--text-muted); font-size:11px; flex-direction:column; gap:3px; }
-@media (max-width:640px) {
-    .app-sidebar { width:min(310px, 90vw); padding:18px 14px; }
-    .header { flex-direction:row !important; align-items:center !important; justify-content:space-between !important; }
-    .header-left { flex:1; }
-    .logo { justify-content:flex-start !important; }
-    .logo img { height:52px !important; max-width:calc(100vw - 150px); }
-    .header-actions { width:auto !important; flex-wrap:nowrap !important; justify-content:flex-end !important; }
-    .header-actions .btn { flex:0 0 auto !important; }
-}
-
-/* --- mobile: rail hides off-canvas; menu button brings it back as overlay --- */
-@media (max-width: 768px) {
-    .menu-toggle { display: inline-flex !important; }
-    body { padding-left: 0; }
-    .app-sidebar {
-        transform: translateX(-105%) !important;
-        width: min(280px, 84vw) !important;
-        box-shadow: 18px 0 50px rgba(0,0,0,.2);
-    }
-    .app-sidebar.open { transform: translateX(0) !important; }
-    .app-sidebar.open .sidebar-status { display: flex; }
-}
-
-.logo-button{border:0;background:transparent;padding:0;cursor:pointer;color:inherit;display:flex;align-items:center;}
-.logo-button:hover{transform:translateY(-1px);}
-.sidebar-header-spacer{min-height:38px;}
-
-/* ==================== sidebar brand + mobile refinement ==================== */
-.sidebar-header {
-    min-height: 48px;
-}
-.sidebar-brand {
-    border: 0;
-    background: transparent;
-    color: var(--text-primary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    cursor: pointer;
-    min-width: 0;
-}
-/* same icon as the main header */
-.sidebar-brand-logo { height:42px; width:auto; max-width:150px; object-fit:contain; flex:0 0 auto; display:block; }
-@media (max-width: 600px) {
-  .sidebar-brand-logo { height:36px; max-width:130px; }
-}
-
-@media (max-width: 380px) {
-    .app-sidebar { width: 88vw; }
-    .sidebar-nav-btn { gap: 10px; }
-}
-
-/* full-screen backdrop blur is expensive on mobile GPUs; use a lighter radius on small screens */
-@media (max-width: 640px) {
-    .modal-overlay.active { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
-    .overlay-dark.active { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
-    .sidebar-backdrop.open { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
-}
 
 @media (prefers-reduced-motion: reduce) {
-    .modal-overlay, .modal, .overlay-dark, .sidebar-backdrop, .app-sidebar { transition: none !important; }
+    .modal-overlay, .modal, .overlay-dark { transition: none !important; }
 }
 
+/* ==================== regions (js/features/regions.js) ==================== */
+.sidebar-section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-1) var(--sp-1) var(--sp-2) var(--sp-3);
+}
+.sidebar-section-label {
+    font-size: 10.5px; font-weight: 700;
+    letter-spacing: .09em; text-transform: uppercase;
+    color: var(--text-muted);
+}
+.sidebar-section-add {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 6px;
+    background: transparent; color: var(--text-muted);
+    cursor: pointer;
+}
+.sidebar-section-add:hover { background: var(--bg-panel); color: var(--text-primary); }
+.sidebar-section-add svg { width: 16px; height: 16px; }
+
+.region-list { display: flex; flex-direction: column; gap: 2px; }
+.region-row {
+    position: relative;
+    display: flex; align-items: center;
+    border-radius: var(--ctl-r);
+    transition: background .12s ease, box-shadow .12s ease;
+}
+.region-row:hover { background: var(--bg-panel); }
+.region-row.active { background: var(--accent-soft); }
+/* a Fakémon card being dragged over it */
+.region-row.drag-over { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.region-row-main {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px var(--sp-3);
+    border: 0; background: transparent;
+    color: var(--text-secondary);
+    font: 600 13.5px 'Exo 2', sans-serif;
+    text-align: left;
+    cursor: pointer;
+}
+.region-row.active .region-row-main { color: var(--accent-dark); }
+[data-theme="dark"] .region-row.active .region-row-main { color: #b9a8ff; }
+.region-row-main > svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.region-row-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.region-row-count {
+    font: 700 11px 'Inconsolata', monospace;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.region-row-edit {
+    position: absolute; right: 4px;
+    width: 26px; height: 26px;
+    display: none; align-items: center; justify-content: center;
+    border: 0; border-radius: 6px;
+    background: var(--bg-card); color: var(--text-muted);
+    cursor: pointer;
+}
+.region-row-edit svg { width: 13px; height: 13px; }
+.region-row:hover .region-row-edit, .region-row-edit:focus-visible { display: flex; }
+.region-row:hover .region-row-count { visibility: hidden; }
+.region-row-edit:hover { color: var(--text-primary); }
+.region-dot {
+    width: 10px; height: 10px; flex: 0 0 10px;
+    margin: 0 3px;
+    border-radius: 50%;
+    background: var(--region-color, var(--accent));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--region-color, var(--accent)) 22%, transparent);
+}
+.region-dot-lg { display: inline-block; width: 14px; height: 14px; margin: 0 10px 2px 2px; vertical-align: middle; }
+.region-new-btn { margin: var(--sp-3) var(--sp-1) 0; justify-content: center; }
+.region-new-btn svg { width: 16px; height: 16px; }
+
+/* the region modal */
+.label-optional { font-weight: 500; color: var(--text-muted); }
+.region-modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+.region-modal-spacer { flex: 1; }
+.region-delete-btn { color: var(--danger); }
+.region-delete-btn svg { width: 15px; height: 15px; }
+.region-delete-btn:hover { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--bg-card)); }
+#region-color-options .color-option { border: 0; padding: 0; }
+
+/* the editor: dex number and region side by side */
+.dex-region-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4); }
+@media (max-width: 520px) { .dex-region-row { grid-template-columns: 1fr; } }
+
+
+/* ---- a region's own page, from the sidebar ---- */
+.region-subrow {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0 0 2px 22px;
+    padding: 6px var(--sp-3);
+    border: 0; border-radius: var(--ctl-r);
+    background: transparent;
+    color: var(--text-secondary);
+    font: 600 12.5px 'Exo 2', sans-serif;
+    text-align: left; cursor: pointer;
+}
+.region-subrow svg { width: 15px; height: 15px; }
+.region-subrow:hover { background: var(--bg-panel); color: var(--text-primary); }
+.region-subrow.active { background: var(--accent-soft); color: var(--accent-dark); }
+[data-theme="dark"] .region-subrow.active { color: #b9a8ff; }
+
+/* the phone button that opens the drawer */
+.collection-regions-btn { gap: 6px; max-width: 200px; }
+.collection-regions-btn span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.collection-regions-btn .collection-regions-chev { width: 14px; height: 14px; opacity: .6; }
+@media (max-width: 640px) {
+    #collection-header-row .collection-regions-btn { flex: 1 1 auto; max-width: none; justify-content: flex-start; padding: 0 var(--sp-3); }
+    /* the other header buttons go icon-only here; this one keeps its label */
+    #collection-header-row .collection-regions-btn span { display: inline; }
+    #collection-header-row .collection-regions-btn .collection-regions-chev { margin-left: auto; }
+    #collection-header-row .page-actions { width: 100%; }
+}

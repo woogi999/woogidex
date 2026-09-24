@@ -19,7 +19,7 @@
     padding: 6px 12px;
     border-radius: 8px;
     border: 1px solid var(--border);
-    background: var(--bg-secondary, transparent);
+    background: var(--bg-panel);
     cursor: pointer;
     font-family: inherit;
     text-align: left;
@@ -134,14 +134,15 @@
     width: 128px;
     padding: 12px 10px 10px;
     border-radius: 12px;
-    border: 1px solid var(--border);
-    background: var(--bg-secondary, transparent);
+    /* a tinted well, not a bordered card: it already sits inside the board */
+    border: 1px solid transparent;
+    background: var(--bg-panel);
     cursor: pointer;
     font-family: inherit;
     transition: background .15s ease, border-color .15s ease, transform .1s ease;
 }
 .preview-evo-node:hover:not(:disabled) {
-    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg-panel));
     transform: translateY(-1px);
 }
 .preview-evo-node:disabled,
@@ -150,10 +151,9 @@
     opacity: .75;
 }
 .preview-evo-node.current {
-    border-color: var(--accent);
-    background: var(--accent-glow);
     /* the one you're editing has to stand out where several branches compete */
-    box-shadow: 0 0 0 2px var(--accent-glow);
+    border-color: var(--accent);
+    background: var(--accent-soft);
 }
 /* inside the graph, a node is placed over the wires */
 .preview-evo-graph .preview-evo-node { z-index: 1; box-sizing: border-box; }
@@ -203,7 +203,15 @@
     flex-wrap: wrap;
     justify-content: center;
 }
-/* type-pill sizing lives in css/controls.css */
+/* type-pill sizing lives in css/controls.css; its 56px min-width puts two
+   pills over a card's width, which wrapped them and squashed the name away */
+.preview-evo-types .type-pill { min-width: 0; padding: 2px 6px; }
+/* when a card is tight, the sprite gives way, never the text */
+.preview-evo-node > .preview-evo-stage,
+.preview-evo-node > .preview-evo-name,
+.preview-evo-node > .preview-evo-meta,
+.preview-evo-node > .preview-evo-types { flex-shrink: 0; }
+.preview-evo-node:not(.compact) > .preview-evo-sprite-wrap { flex-shrink: 1; min-height: 0; }
 .preview-evo-connector {
     display: flex;
     flex-direction: column;
@@ -222,8 +230,9 @@
     font-weight: 600;
     color: var(--text-secondary);
     white-space: nowrap;
-    background: var(--bg-secondary, transparent);
-    border: 1px solid var(--border-light);
+    /* opaque, so the wire it sits on doesn't strike through the text */
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 5px;
     padding: 1px 6px;
 }
@@ -241,4 +250,97 @@
     /* siblings of one stage stack, which is what shows the split */
     gap: 8px;
     align-items: center;
+}
+
+/* ---- splits ----
+   buildPreviewEvolutionModel() switches any stage with 2+ members to these
+   side-by-side cards and sizes them itself (PREVIEW_EVO_GEOM.compactW/H), so
+   the numbers here only need to fit inside that box. */
+.preview-evo-node.compact {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    text-align: left;
+}
+.preview-evo-node.compact .preview-evo-sprite-wrap {
+    width: 48px;
+    height: 48px;
+    flex: none;
+}
+.preview-evo-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
+.preview-evo-node.compact .preview-evo-name { text-align: left; }
+.preview-evo-node.compact .preview-evo-types { margin-top: 0; justify-content: flex-start; flex-wrap: nowrap; }
+/* how this branch is reached, carried on the card since a split's wires are too crowded for chips */
+.preview-evo-card-method {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    max-width: 100%;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.preview-evo-card-method::before {
+    content: "\2192";
+    font-weight: 800;
+    flex: none;
+}
+/* a Mega/forme under a compact card is one slim row */
+.preview-evo-node-special.compact {
+    justify-content: flex-start;
+    padding: 4px 10px;
+}
+.preview-evo-node-special.compact .preview-evo-name { font-size: 12px; }
+
+/* a big split off one parent wraps into a grid; this is the bracket around it */
+.preview-evo-group {
+    fill: var(--accent-glow);
+    fill-opacity: .45;
+    stroke: var(--accent);
+    stroke-opacity: .55;
+    stroke-width: 1.5;
+    stroke-dasharray: 5 5;
+}
+
+/* community strip: same idea with CSS layout, since it has no computed geometry */
+.community-evo-column.split .preview-evo-node:not(.preview-evo-node-special) {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-areas: "sprite name" "sprite types";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 3px;
+    width: 196px;
+    padding: 8px 10px;
+    text-align: left;
+}
+.community-evo-column.split .preview-evo-node .preview-evo-stage,
+.community-evo-column.split .preview-evo-node .preview-evo-meta { display: none; }
+.community-evo-column.split .preview-evo-sprite-wrap {
+    grid-area: sprite;
+    width: 48px;
+    height: 48px;
+}
+.community-evo-column.split .preview-evo-name { grid-area: name; text-align: left; align-self: end; }
+.community-evo-column.split .preview-evo-types { grid-area: types; justify-content: flex-start; align-self: start; margin-top: 0; }
+.community-evo-column.split .preview-evo-node-special { width: 196px; }
+.community-evo-column.split.wrap {
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 8px;
+    padding: 10px;
+    border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--accent-glow) 45%, transparent);
 }

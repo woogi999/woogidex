@@ -36,18 +36,14 @@
 <div class="modal-overlay" id="auth-modal" data-mode="signin">
     <div class="modal auth-modal">
         <div class="modal-header">
-            <h3 id="auth-modal-title">Sign In</h3>
+            <!-- the site's name stays in the title: an unbranded credential
+                 box is itself a phishing signal (see the header above) -->
+            <h3 id="auth-modal-title">Sign in to Woogidex</h3>
             <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">
                 <i data-lucide="x" style="width:20px;height:20px;"></i>
             </button>
         </div>
         <div class="modal-body">
-            <!-- branding: an unbranded credential box is itself a phishing
-                 signal, and it is what a user is told to look for -->
-            <div class="auth-brand">
-                <img src="assets/woogidex_icon.png" alt="" width="28" height="28">
-                <span>Sign in to <strong>Woogidex</strong></span>
-            </div>
             <p class="auth-modal-error" id="auth-modal-error"></p>
             <!-- filled in by oauth.js from whatever providers are enabled;
                  stays empty and hidden if none are -->

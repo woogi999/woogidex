@@ -1,4 +1,5 @@
 import { log } from '../core/log.js';
+import { iconSvg } from '../core/icons.js';
 import { state, api } from '../core/app.js';
 import { sampleMoveIsActuallyUseful } from '../editor/sample-sets.js';
 import { POKEMON_TYPES, TYPE_EFFECTIVENESS, STAT_NAMES } from '../core/data.js';
@@ -2180,8 +2181,8 @@ function analysisResultsSkeleton(){
         <div class="analysis-matchups-score"><span class="skel skel-text" style="width:40px;height:9px;"></span><b class="skel skel-text" style="width:34px;height:16px;"></b></div>
       </div>
       <div class="analysis-matchup-columns">
-        <div class="analysis-matchup-group favorable"><h4><span>✓</span> Looks good into</h4><div class="analysis-matchup-list">${matchupCard()}${matchupCard()}${matchupCard()}${matchupCard()}</div></div>
-        <div class="analysis-matchup-group unfavorable"><h4><span>×</span> Looks rough into</h4><div class="analysis-matchup-list">${matchupCard()}${matchupCard()}${matchupCard()}${matchupCard()}</div></div>
+        <div class="analysis-matchup-group favorable"><h4><span>${iconSvg('check', 14)}</span> Looks good into</h4><div class="analysis-matchup-list">${matchupCard()}${matchupCard()}${matchupCard()}${matchupCard()}</div></div>
+        <div class="analysis-matchup-group unfavorable"><h4><span>${iconSvg('x', 14)}</span> Looks rough into</h4><div class="analysis-matchup-list">${matchupCard()}${matchupCard()}${matchupCard()}${matchupCard()}</div></div>
       </div>
     </div>
   `;
@@ -2451,8 +2452,8 @@ async function runFakemonAnalysis(){
       </div>
 
       <div class="analysis-two-col analysis-strength-row">
-        <div class="analysis-card panel-lite analysis-strength-card"><h3><span class="analysis-section-icon analysis-positive">↑</span>Strengths</h3><ul>${(strengths.length?strengths:['No major strength crossed the current thresholds.']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
-        <div class="analysis-card panel-lite analysis-strength-card"><h3><span class="analysis-section-icon analysis-negative">↓</span>Weaknesses</h3><ul>${(weaknesses.length?weaknesses:['No major weakness crossed the current thresholds.']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+        <div class="analysis-card panel-lite analysis-strength-card"><h3><span class="analysis-section-icon analysis-positive">${iconSvg('arrow-up', 14)}</span>Strengths</h3><ul>${(strengths.length?strengths:['No major strength crossed the current thresholds.']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+        <div class="analysis-card panel-lite analysis-strength-card"><h3><span class="analysis-section-icon analysis-negative">${iconSvg('arrow-down', 14)}</span>Weaknesses</h3><ul>${(weaknesses.length?weaknesses:['No major weakness crossed the current thresholds.']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
       </div>
 
       <div class="analysis-detail-grid">
@@ -2468,10 +2469,10 @@ async function runFakemonAnalysis(){
       <div class="analysis-card panel-lite analysis-matchups-card">
         <div class="analysis-matchups-header"><div><h3>Metagame matchups</h3><p>${matchup.usingComparableTier?`Weighted matchups against ${esc(tier.tier)} Pokémon. It's not a perfect tool. Use common sense.`:'Using the selected environment because there were not enough same-tier Pokémon to make a useful sample.'}</p></div><div class="analysis-matchups-score"><span>Overall</span><b>${matchup.weightedScore==null?'-':Math.round(matchup.weightedScore)+'/100'}</b></div></div>
         <div class="analysis-matchup-columns">
-          <div class="analysis-matchup-group favorable"><h4><span>✓</span> Looks good into</h4>
+          <div class="analysis-matchup-group favorable"><h4><span>${iconSvg('check', 14)}</span> Looks good into</h4>
             <div class="analysis-matchup-list">${(matchup.good||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>${esc(matchupScenario(x))}</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear favorable matchups.</div>'}</div>
           </div>
-          <div class="analysis-matchup-group unfavorable"><h4><span>×</span> Looks rough into</h4>
+          <div class="analysis-matchup-group unfavorable"><h4><span>${iconSvg('x', 14)}</span> Looks rough into</h4>
             <div class="analysis-matchup-list">${(matchup.bad||[]).map(x=>`<div class="analysis-matchup-card"><div class="analysis-matchup-icon">${matchupSpriteHtml(x.p)}</div><div class="analysis-matchup-info"><strong>${esc(x.p.name)}</strong><span>${esc(matchupScenario(x))}</span></div><b class="analysis-matchup-score">${Math.round(x.score)}</b></div>`).join('')||'<div class="analysis-muted">No clear unfavorable matchups.</div>'}</div>
           </div>
         </div>
@@ -2479,7 +2480,7 @@ async function runFakemonAnalysis(){
 `;
 
     const loadedUsageCount=Object.values(tierUsage).reduce((n,t)=>n+Object.keys(t||{}).length,0);
-    status.innerHTML=`<span class="analysis-ok">✓</span><span>Analysis updated · ${pool.length} comparison Pokémon · ${metagameEntries.length} usage-weighted in ${esc(selectedFormat)} · ${loadedUsageCount} usage records loaded</span>`;
+    status.innerHTML=`<span class="analysis-ok">${iconSvg('check', 14)}</span><span>Analysis updated · ${pool.length} comparison Pokémon · ${metagameEntries.length} usage-weighted in ${esc(selectedFormat)} · ${loadedUsageCount} usage records loaded</span>`;
     if(typeof lucide!=='undefined')lucide.createIcons();
   }catch(e){
     log.error('ANALYSIS', 'Analysis failed', e);
@@ -2487,5 +2488,5 @@ async function runFakemonAnalysis(){
     results.innerHTML=`<div class="analysis-error panel-lite">${esc(e.message||'Analysis failed.')}</div>`;
   }finally{analysisBusy=false;}
 }
-function openAnalysisTab(){const tab=document.querySelector('.tab[onclick*="analysis"]');if(tab)switchTab(tab,'analysis');}
+function openAnalysisTab(){switchTab(null,'analysis');}
 export {ensurePanel as renderAnalysis,runFakemonAnalysis,analysisPoolChanged,openAnalysisTab,scheduleAnalysis};

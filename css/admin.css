@@ -20,7 +20,7 @@
     --warn-bg:   rgba(184,134,11,0.14);
     --ok:        #2d8a3e;
     --font: 'Exo 2', sans-serif;
-    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace;
+    --mono: 'Inconsolata', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace;
 }
 
 [data-theme="dark"] {

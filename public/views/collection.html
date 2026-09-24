@@ -9,66 +9,76 @@
      Inline onclick handlers still work -- every module assigns its
      exports onto window, so the contract is unchanged by the move.
      ==================== -->
-<div class="panel">
-    <div class="collection-title-row" id="collection-header-row">
-        <div class="collection-title-left">
-            <h2 class="collection-heading" id="collection-heading"><span class="breadcrumb-root" onclick="openFolder(null)">My Collection</span></h2>
-            <select id="collection-view-select" class="collection-view-select" aria-label="Collection view" onchange="setCollectionView(this.value)">
-                <option value="fakemon">Fakemon</option>
-                <option value="moves">Moves</option>
-                <option value="abilities">Abilities</option>
-                <option value="items">Items</option>
-            </select>
-        </div>
-        <div class="collection-header-actions">
-            <button class="btn btn-secondary btn-sm" id="collection-layout-toggle" type="button" onclick="toggleCollectionLayout()" title="Toggle list / grid view" aria-label="Toggle list or grid view" aria-pressed="false">
-                <i data-lucide="list" aria-hidden="true"></i>
-            </button>
-            <button class="btn btn-secondary btn-sm collection-shiny-toggle" id="collection-shiny-toggle" type="button" onclick="toggleCollectionShinyPreview()" title="Show shiny artwork in your collection" aria-label="Toggle shiny artwork in collection" aria-pressed="false">
-                <i data-lucide="sparkles" aria-hidden="true"></i>
-            </button>
-            <button class="btn btn-secondary btn-sm" id="collection-import-btn" onclick="openImportModal()">Import</button>
-            <div class="export-as-wrap">
-                <button class="btn btn-primary btn-sm" id="collection-export-btn" type="button" onclick="toggleCollectionExportMenu(event)">Export Collection <span style="font-size:10px;">▼</span></button>
-                <div id="collection-export-menu" class="export-as-menu" style="display:none;">
-                    <button class="export-as-menu-item" type="button" onclick="exportCollection(); closeCollectionExportMenu();">Export as JSON</button>
-                    <button class="export-as-menu-item" type="button" onclick="exportCollectionAsShowdownMod(); closeCollectionExportMenu();">Export as Showdown Mod</button>
-                    <button class="export-as-menu-item" type="button" onclick="exportCollectionAsEssentialsMod(); closeCollectionExportMenu();">Export as Essentials Mod</button>
-                    <button class="export-as-menu-item" type="button" onclick="exportCollectionAsPlainTextZip(); closeCollectionExportMenu();">Export as Plain Text (.zip)</button>
-                </div>
-            </div>
-        </div>
+<!-- the active region's banner, when it has one (renderBreadcrumb in js/features/pokedex.js) -->
+<div class="collection-region-banner" id="collection-region-banner" hidden></div>
+<div class="page-header" id="collection-header-row">
+    <div class="page-heading">
+        <h1 class="page-title collection-heading" id="collection-heading"><span class="breadcrumb-root" onclick="openFolder(null)">My Collection</span></h1>
+        <p class="page-subtitle">Your Fakémon, folders, and custom moves, abilities and items.</p>
     </div>
-    <div class="search-bar">
-        <input type="text" id="search-input" placeholder="Search your Fakemon..." oninput="filterCollection()">
-        <select id="collection-sort-by" onchange="changeCollectionSort()" aria-label="Sort collection by">
-            <option value="created">Date Added</option>
-            <option value="name">Name</option>
-            <option value="number">Pokédex Number</option>
-            <option value="bst">BST</option>
-            <option value="updated">Last Updated</option>
-        </select>
-        <select id="collection-sort-order" onchange="changeCollectionSort()" aria-label="Sort direction">
-            <option value="desc">Descending</option>
-            <option value="asc">Ascending</option>
-        </select>
+    <div class="page-actions collection-header-actions">
+        <!-- phones: the regions sidebar is a drawer, opened from here -->
+        <button class="btn btn-secondary collection-regions-btn" id="collection-regions-btn" type="button" onclick="toggleRegionDrawer()" aria-expanded="false" aria-controls="app-sidebar"><i data-lucide="map"></i><span id="collection-regions-label">All</span><i data-lucide="chevron-down" class="collection-regions-chev"></i></button>
+        <button class="btn btn-secondary btn-icon" id="collection-layout-toggle" type="button" onclick="toggleCollectionLayout()" title="Toggle list / grid view" aria-label="Toggle list or grid view" aria-pressed="false">
+            <i data-lucide="list" aria-hidden="true"></i>
+        </button>
+        <button class="btn btn-secondary btn-icon collection-shiny-toggle" id="collection-shiny-toggle" type="button" onclick="toggleCollectionShinyPreview()" title="Show shiny artwork in your collection" aria-label="Toggle shiny artwork in collection" aria-pressed="false">
+            <i data-lucide="sparkles" aria-hidden="true"></i>
+        </button>
+        <button class="btn btn-secondary" id="collection-import-btn" onclick="openImportModal()"><i data-lucide="upload" aria-hidden="true"></i><span>Import</span></button>
         <div class="export-as-wrap">
-            <button class="btn btn-primary" type="button" onclick="toggleCreateMenu(event)">Create <span style="font-size:10px;">▼</span></button>
-            <div id="create-menu" class="export-as-menu" style="display:none;">
-                <button class="export-as-menu-item" id="create-fakemon-menu-item" type="button" onclick="createNewFakemon(); closeCreateMenu();">＋ New Fakemon</button>
-                <button class="export-as-menu-item" id="create-folder-menu-item" type="button" onclick="createFolder(); closeCreateMenu();">＋ New Folder</button>
-                <button class="export-as-menu-item" id="create-move-menu-item" type="button" onclick="openCustomMoveModal(); closeCreateMenu();">＋ New Custom Move</button>
-                <button class="export-as-menu-item" id="create-ability-menu-item" type="button" onclick="openCustomAbilityLibraryModal(); closeCreateMenu();">＋ New Custom Ability</button>
-                <button class="export-as-menu-item" id="create-item-menu-item" type="button" onclick="openCustomItemModal(); closeCreateMenu();">＋ New Custom Item</button>
+            <button class="btn btn-secondary" id="collection-export-btn" type="button" onclick="toggleCollectionExportMenu(event)"><i data-lucide="download" aria-hidden="true"></i><span>Export</span></button>
+            <div id="collection-export-menu" class="export-as-menu" style="display:none;">
+                <button class="export-as-menu-item" type="button" onclick="exportCollection(); closeCollectionExportMenu();">Export as JSON</button>
+                <button class="export-as-menu-item" type="button" onclick="exportCollectionAsShowdownMod(); closeCollectionExportMenu();">Export as Showdown Mod</button>
+                <button class="export-as-menu-item" type="button" onclick="exportCollectionAsEssentialsMod(); closeCollectionExportMenu();">Export as Essentials Mod</button>
+                <button class="export-as-menu-item" type="button" onclick="exportCollectionAsPlainTextZip(); closeCollectionExportMenu();">Export as Plain Text (.zip)</button>
             </div>
         </div>
-    </div>
-    <div id="collection-grid" class="collection-grid"></div>
-    <div id="empty-collection" class="empty-state" style="display: none;">
-        <div class="icon">?</div>
-        <h3>No Fakemon Yet</h3>
-        <p>Create your first custom Pokemon to get started!</p>
-        <button class="btn btn-primary" onclick="createNewFakemon()" style="margin-top: 16px;">Create Fakemon</button>
+        <div class="export-as-wrap">
+            <button class="btn btn-primary" type="button" onclick="toggleCreateMenu(event)"><i data-lucide="plus" aria-hidden="true"></i><span>Create</span></button>
+            <div id="create-menu" class="export-as-menu" style="display:none;">
+                <button class="export-as-menu-item" id="create-fakemon-menu-item" type="button" onclick="createNewFakemon(); closeCreateMenu();">New Fakémon</button>
+                <button class="export-as-menu-item" id="create-folder-menu-item" type="button" onclick="createFolder(); closeCreateMenu();">New Folder</button>
+                <button class="export-as-menu-item" id="create-move-menu-item" type="button" onclick="openLibraryEditorSheet('moves'); closeCreateMenu();">New Custom Move</button>
+                <button class="export-as-menu-item" id="create-ability-menu-item" type="button" onclick="openLibraryEditorSheet('abilities'); closeCreateMenu();">New Custom Ability</button>
+                <button class="export-as-menu-item" id="create-item-menu-item" type="button" onclick="openLibraryEditorSheet('items'); closeCreateMenu();">New Custom Item</button>
+                <button class="export-as-menu-item" id="create-type-menu-item" type="button" onclick="openLibraryEditorSheet('types'); closeCreateMenu();">New Custom Type</button>
+                <button class="export-as-menu-item" id="create-region-menu-item" type="button" onclick="createRegion(); closeCreateMenu();">New Region</button>
+            </div>
+        </div>
     </div>
 </div>
-
+<!-- the four libraries; setCollectionView() keeps .active in sync -->
+<div class="tabs collection-tabs" role="tablist" aria-label="Collection view">
+    <button class="tab active" type="button" role="tab" data-collection-view="fakemon" onclick="setCollectionView('fakemon')">Fakémon</button>
+    <button class="tab" type="button" role="tab" data-collection-view="moves" onclick="setCollectionView('moves')">Moves</button>
+    <button class="tab" type="button" role="tab" data-collection-view="abilities" onclick="setCollectionView('abilities')">Abilities</button>
+    <button class="tab" type="button" role="tab" data-collection-view="items" onclick="setCollectionView('items')">Items</button>
+    <button class="tab" type="button" role="tab" data-collection-view="types" onclick="setCollectionView('types')">Types</button>
+</div>
+<div class="search-bar collection-toolbar">
+    <input type="text" id="search-input" placeholder="Search your Fakemon..." oninput="filterCollection()">
+    <select id="collection-sort-by" onchange="changeCollectionSort()" aria-label="Sort collection by">
+        <option value="created">Date Added</option>
+        <option value="name">Name</option>
+        <option value="number">Pokédex Number</option>
+        <option value="bst">BST</option>
+        <option value="updated">Last Updated</option>
+    </select>
+    <select id="collection-sort-order" onchange="changeCollectionSort()" aria-label="Sort direction">
+        <option value="desc">Descending</option>
+        <option value="asc">Ascending</option>
+    </select>
+</div>
+<div id="collection-grid" class="collection-grid"></div>
+<!-- below the grid: the Types tab's chart -->
+<div id="collection-extra"></div>
+<!-- a region's own page (renderRegionDetails in js/features/regions.js) -->
+<section id="region-details" class="region-details" hidden></section>
+<div id="empty-collection" class="empty-state" style="display: none;">
+    <div class="icon"><i data-lucide="sparkles" aria-hidden="true"></i></div>
+    <h3>No Fakémon yet</h3>
+    <p>Create your first custom Pokémon to get started.</p>
+    <button class="btn btn-primary" onclick="createNewFakemon()"><i data-lucide="plus" aria-hidden="true"></i>Create Fakémon</button>
+</div>

@@ -9,37 +9,43 @@
      Inline onclick handlers still work -- every module assigns its
      exports onto window, so the contract is unchanged by the move.
      ==================== -->
-                <div class="editor-stack">
-                    <div class="editor-preview-col">
-                        <div class="editor-actionbar">
-                            <div class="editor-actionbar-group">
-                                <button class="btn btn-secondary btn-sm" type="button" onclick="showCollection()"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
-                                <button class="btn btn-secondary btn-sm" type="button" onclick="publishCurrentEditorFakemon()">Publish to Community</button>
-                                <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()">Import</button>
-                                <div class="export-as-wrap">
-                                <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)">Export As <span style="font-size:10px;">▼</span></button>
-                                <div id="export-as-menu" class="export-as-menu" style="display:none;">
-                                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeExportMenu();">Export as PNG</button>
-                                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeExportMenu();">Export as Plain Text</button>
-                                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeExportMenu();">Export as JSON</button>
-                                    <button class="export-as-menu-item" type="button" onclick="exportShowdownMod(); closeExportMenu();">Export as Showdown Mod</button>
-                                    <button class="export-as-menu-item" type="button" onclick="exportEssentialsMod(); closeExportMenu();">Export as Essentials Mod</button>
-                                </div>
-                                </div>
-                                <input type="file" id="fakemon-import-file" accept=".json,.txt,application/json,text/plain" style="display:none;" onchange="handleFakemonImport(event)">
-                            </div>
-                        </div>
-                        <div id="pokedex-board-container"></div>
-                    </div>
+<!-- The editor is a sheet that slides in from the right over My Collection
+     (activateTopLevelView() in js/core/app.js keeps the collection showing
+     underneath). The live Pokedex board is its last tab, Preview. -->
+<div class="editor-sheet" role="dialog" aria-labelledby="editor-sheet-title">
+    <div class="editor-sheet-head">
+        <button class="btn btn-secondary btn-icon btn-sm editor-sheet-close" type="button" onclick="showCollection()" aria-label="Close the editor" title="Close (Esc)"><i data-lucide="x"></i></button>
+        <div class="editor-sheet-heading">
+            <h2 class="editor-sheet-title" id="editor-sheet-title">New Fakémon</h2>
+            <div class="region-assign" data-select="fakemon-region"><select id="fakemon-region" class="entity-region-select" onchange="autoSave(); renderRegionSidebar();" hidden aria-hidden="true"><option value="">No region</option></select><button type="button" class="btn btn-secondary btn-sm region-assign-btn" onclick="toggleRegionAssignMenu(this, event)" aria-haspopup="true" aria-expanded="false"><i data-lucide="map"></i><span class="region-assign-label">Add to region</span></button><div class="region-assign-menu" hidden></div></div>
+        </div>
+        <div class="editor-actionbar-group">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="publishCurrentEditorFakemon()"><i data-lucide="upload"></i><span>Publish</span></button>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="openFakemonImport()"><i data-lucide="file-input"></i><span>Import</span></button>
+            <div class="export-as-wrap">
+                <button class="btn btn-primary btn-sm" type="button" onclick="toggleExportMenu(event)"><i data-lucide="download"></i><span>Export</span></button>
+                <div id="export-as-menu" class="export-as-menu" style="display:none;">
+                    <button class="export-as-menu-item" type="button" onclick="exportAsPNG(); closeExportMenu();">Export as PNG</button>
+                    <button class="export-as-menu-item" type="button" onclick="openPlainTextExportModal(); closeExportMenu();">Export as Plain Text</button>
+                    <button class="export-as-menu-item" type="button" onclick="exportAsJSON(); closeExportMenu();">Export as JSON</button>
+                    <button class="export-as-menu-item" type="button" onclick="exportShowdownMod(); closeExportMenu();">Export as Showdown Mod</button>
+                    <button class="export-as-menu-item" type="button" onclick="exportEssentialsMod(); closeExportMenu();">Export as Essentials Mod</button>
+                </div>
+            </div>
+            <input type="file" id="fakemon-import-file" accept=".json,.txt,application/json,text/plain" style="display:none;" onchange="handleFakemonImport(event)">
+        </div>
+    </div>
 
-                    <div class="panel editor-form-col">
-                        <div class="tabs">
-                            <button class="tab active" onclick="switchTab(this, 'basic')">Basic Info</button>
-                            <button class="tab" onclick="switchTab(this, 'stats')">Stats, Abilities, &amp; Evos</button>
-                            <button class="tab" onclick="switchTab(this, 'moves')">Moves & Sets</button>
-                            <button class="tab" onclick="switchTab(this, 'analysis')">Analysis</button>
-                        </div>
+    <div class="tabs editor-tabs" role="tablist" aria-label="Editor sections">
+        <!-- short names on phones, so all five fit without scrolling sideways -->
+        <button class="tab active" type="button" onclick="switchTab(this, 'basic')"><span class="tab-long">Basic Info</span><span class="tab-short">Basics</span></button>
+        <button class="tab" type="button" onclick="switchTab(this, 'stats')"><span class="tab-long">Stats, Abilities, &amp; Evos</span><span class="tab-short">Stats</span></button>
+        <button class="tab" type="button" onclick="switchTab(this, 'moves')"><span class="tab-long">Moves &amp; Sets</span><span class="tab-short">Moves</span></button>
+        <button class="tab" type="button" onclick="switchTab(this, 'analysis')"><span class="tab-long">Analysis</span><span class="tab-short">Analysis</span></button>
+        <button class="tab editor-preview-tab" type="button" onclick="switchTab(this, 'preview')"><i data-lucide="eye"></i><span>Preview</span></button>
+    </div>
 
+    <div class="editor-sheet-body editor-form-col">
                         <div id="tab-analysis" class="tab-content" style="display:none;">
                             <div class="analysis-shell"><div class="analysis-status">Loading analysis tools…</div></div>
                         </div>
@@ -87,7 +93,7 @@
                                     <div class="type-dropdown" id="type1-dropdown">
                                         <button class="type-dropdown-trigger" onclick="toggleTypeDropdown('type1')" type="button">
                                             <span class="type-dropdown-value" id="type1-value">Select Type</span>
-                                            <span class="type-dropdown-arrow">▼</span>
+                                            <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                                         </button>
                                         <div class="type-dropdown-menu" id="type1-menu"></div>
                                     </div>
@@ -98,7 +104,7 @@
                                     <div class="type-dropdown" id="type2-dropdown">
                                         <button class="type-dropdown-trigger" onclick="toggleTypeDropdown('type2')" type="button">
                                             <span class="type-dropdown-value" id="type2-value">None</span>
-                                            <span class="type-dropdown-arrow">▼</span>
+                                            <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                                         </button>
                                         <div class="type-dropdown-menu" id="type2-menu"></div>
                                     </div>
@@ -353,7 +359,10 @@
                                 </div>
                                 <p style="font-size:12px;color:var(--text-muted);margin:8px 0;">Drag the abilities to reorder. If you have more than 1 ability, the last one will be the Hidden Ability. If you have 4, the 3rd one is the Hidden Ability, the last one is Event Ability.</p>
                                 <div id="abilities-list"></div>
-                                <button class="btn btn-secondary btn-sm" onclick="openCustomAbilityChooser()" style="margin-top:8px;">＋ Add Custom Ability</button>
+                                <div class="ability-actions">
+                                    <button class="btn btn-secondary btn-sm" type="button" onclick="openAbilityBrowserModal()"><i data-lucide="list-filter" style="width:14px;height:14px;"></i> Browse Abilities</button>
+                                    <button class="btn btn-secondary btn-sm" type="button" onclick="openCustomAbilityChooser()"><i data-lucide="plus"></i>Add Custom Ability</button>
+                                </div>
                             </div>
 
                             <div class="section-divider"></div>
@@ -364,9 +373,9 @@
                                         <div id="evolution-status" class="evolution-status">1 Pokémon · 0 connections</div>
                                     </div>
                                     <div class="evolution-toolbar">
-                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('fakemon')">＋ Add Fakemon</button>
-                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('vanilla')">＋ Add Vanilla Pokémon</button>
-                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionMethodEditor()">＋ Add Evo Method</button>
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('fakemon')"><i data-lucide="plus"></i>Add Fakemon</button>
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionNodeChooser('vanilla')"><i data-lucide="plus"></i>Add Vanilla Pokémon</button>
+                                        <button class="btn btn-secondary btn-sm" type="button" onclick="openEvolutionMethodEditor()"><i data-lucide="plus"></i>Add Evo Method</button>
                                     </div>
                                 </div>
                                 <div id="evolution-board" class="evolution-board">
@@ -388,7 +397,7 @@
                                     <div class="type-dropdown" id="learnset-filter-type-dropdown" style="width:130px;">
                                         <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('learnset-filter-type')">
                                             <span class="type-dropdown-value" id="learnset-filter-type-value">All Types</span>
-                                            <span class="type-dropdown-arrow">▼</span>
+                                            <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                                         </button>
                                         <div class="type-dropdown-menu" id="learnset-filter-type-menu"></div>
                                     </div>
@@ -396,7 +405,7 @@
                                     <div class="cat-dropdown" id="learnset-filter-category-dropdown" style="width:150px;">
                                         <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('learnset-filter-category')">
                                             <span class="cat-dropdown-value" id="learnset-filter-category-value">All Categories</span>
-                                            <span class="type-dropdown-arrow">▼</span>
+                                            <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                                         </button>
                                         <div class="cat-dropdown-menu" id="learnset-filter-category-menu"></div>
                                     </div>
@@ -409,8 +418,8 @@
                                         <option value="category">Sort: Category</option>
                                     </select>
                                     <select id="learnset-order" style="width:100px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="renderLearnset()">
-                                        <option value="desc">Desc ▼</option>
-                                        <option value="asc">Asc ▲</option>
+                                        <option value="desc">Desc</option>
+                                        <option value="asc">Asc</option>
                                     </select>
                                     <button class="btn btn-secondary btn-sm" onclick="clearLearnsetFilters()" title="Clear all filters">Clear</button>
                                 </div>
@@ -427,7 +436,7 @@
                                         <option value="tm">TM</option>
                                         <option value="egg">Egg</option>
                                     </select>
-                                    <input type="number" id="move-level" placeholder="Lv" min="1" max="100" style="width:64px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:13px;display:none;">
+                                    <input type="number" id="move-level" placeholder="Lv" min="1" max="100" style="width:64px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Inconsolata',monospace;font-size:13px;display:none;">
                                     <button class="btn btn-secondary btn-sm" onclick="addMoveFromInput()">Add</button>
                                     <button class="btn btn-secondary btn-sm" onclick="openMoveBrowserModal()" title="Browse all moves with filters">Browse Moves</button>
                                 </div>
@@ -458,6 +467,12 @@
                             </div>
                         </div>
 
-                        <div class="section-divider"></div>
-                    </div>
-                </div>
+
+                        <!-- the live board: also what Export as PNG captures and
+                             what the Community Hub copies, so it is rendered
+                             even while this tab is hidden -->
+                        <div id="tab-preview" class="tab-content editor-preview-pane" style="display:none;">
+                            <div id="pokedex-board-container"></div>
+                        </div>
+    </div>
+</div>

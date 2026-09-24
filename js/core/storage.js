@@ -274,6 +274,14 @@ function reattachOrphanedFolderItems() {
         orphans++;
     });
     sweep(state.fakemonDB);
+    // regions are entries in the same list (type 'region'), so the same check
+    // covers anything pointing at a region that is gone -- Fakemon, library
+    // entries, and custom types (which live in the folders list themselves)
+    for (const list of [state.fakemonDB, state.customMoves, state.customAbilities, state.customItems, state.folders]) {
+        (list || []).forEach(x => {
+            if (x && x.regionId && !known.has(String(x.regionId))) { x.regionId = null; orphans++; }
+        });
+    }
     sweep(state.customMoves);
     sweep(state.customAbilities);
     sweep(state.customItems);
@@ -417,6 +425,11 @@ function normalizeCollections() {
                 id: state.editingId || Date.now().toString(),
                 name: name,
                 folderId: state.editingId ? (state.fakemonDB.find(f => f.id === state.editingId)?.folderId ?? null) : (state.currentFolderId || null),
+                // the region, from the editor's Add to region button (js/features/regions.js)
+                regionId: document.getElementById('fakemon-region')?.value || null,
+                // the main-game species it was made from, if any: links its evolution
+                // line, and stands in for that species inside a region
+                vanillaId: (state.editingId ? state.fakemonDB.find(f => f.id === state.editingId)?.vanillaId : state.pendingVanillaId) || null,
                 pinned: state.editingId ? (state.fakemonDB.find(f => f.id === state.editingId)?.pinned || false) : false,
                 species: document.getElementById('fakemon-species').value.trim(),
                 isMega: !!document.getElementById('fakemon-is-mega')?.checked,

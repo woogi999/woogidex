@@ -634,7 +634,7 @@ function setAuthMode(mode) {
     const forgotLink = document.getElementById('auth-forgot-link');
     modal.dataset.mode = mode;
     if (mode === 'signup') {
-        title.textContent = 'Create Account';
+        title.textContent = 'Create a Woogidex account';
         submitBtn.textContent = 'Sign Up';
         switchLink.textContent = 'Already have an account? Sign in';
         identifierLabel.textContent = 'Username';
@@ -645,7 +645,7 @@ function setAuthMode(mode) {
         if (signupNote) signupNote.style.display = 'block';
         if (forgotLink) forgotLink.style.display = 'none';
     } else {
-        title.textContent = 'Sign In';
+        title.textContent = 'Sign in to Woogidex';
         submitBtn.textContent = 'Sign In';
         switchLink.textContent = "Don't have an account? Sign up";
         identifierLabel.textContent = 'Username or Email';
@@ -818,7 +818,6 @@ async function showProfileView(userId = null, options = {}) {
         await loadPublicProfile(userId);
         renderProfilePage();
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        closeSidebar?.();
         const username = state.profilePageUser?.username;
         if (username) replaceRoute(`profile/${encodeURIComponent(username)}`);
         document.title = `${state.profilePageUser?.display_name || username || 'Profile'} · Woogidex`;
@@ -1586,7 +1585,6 @@ function updateAuthUI() {
     const nameEl = document.getElementById('auth-user-name');
     const avatarImg = document.getElementById('auth-avatar-img');
     const avatarFallback = document.getElementById('auth-avatar-fallback');
-    const sidebarAuthBtn = document.getElementById('sidebar-auth-btn');
     const headerSigninBtn = document.getElementById('header-signin-btn');
     const headerProfileWrap = document.getElementById('header-profile-wrap');
     const headerAvatarImg = document.getElementById('header-profile-avatar-img');
@@ -1607,7 +1605,7 @@ function updateAuthUI() {
         if (signedInEl) signedInEl.style.display = 'flex';
         if (nameEl) nameEl.textContent = publicName(state.user);
         if (headerSigninBtn) headerSigninBtn.style.display = 'none';
-        if (headerProfileWrap) headerProfileWrap.style.display = '';
+        headerProfileWrap?.classList.remove('is-signed-out');
         const initial = (state.user.displayName || state.user.username || '?').charAt(0).toUpperCase();
         if (headerAvatarImg && headerAvatarFallback) {
             if (state.user.avatarUrl) { paintAvatarInto(headerAvatarImg.parentElement, state.user.id, state.user.avatarUrl); headerAvatarImg.style.display = 'block'; headerAvatarFallback.style.display = 'none'; }
@@ -1623,7 +1621,6 @@ function updateAuthUI() {
             popoverName.innerHTML = `${nameSafe}` + (api.renderBadgeRow ? api.renderBadgeRow(state.user.displayBadges || [], 12) : '');
         }
         if (popoverUsername) popoverUsername.textContent = state.user.username ? '@' + state.user.username : 'Edit profile';
-        if (sidebarAuthBtn) { sidebarAuthBtn.innerHTML = '<i data-lucide="log-out"></i><span>Sign Out</span>'; sidebarAuthBtn.onclick = () => { handleSignOutClick(); closeSidebar(); }; }
         if (typeof lucide !== 'undefined') lucide.createIcons();
         if (avatarImg && avatarFallback) {
             if (state.user.avatarUrl) {
@@ -1639,9 +1636,14 @@ function updateAuthUI() {
     } else {
         if (signedOutEl) signedOutEl.style.display = 'flex';
         if (signedInEl) signedInEl.style.display = 'none';
-        if (headerProfileWrap) { headerProfileWrap.style.display = 'none'; closeHeaderProfilePopover(); }
+        // the account menu stays: signed out it holds Sign In, Settings and the theme
+        if (headerProfileWrap && !headerProfileWrap.classList.contains('is-signed-out')) {
+            headerProfileWrap.classList.add('is-signed-out');
+            closeHeaderProfilePopover();
+        }
+        if (headerAvatarImg) headerAvatarImg.style.display = 'none';
+        if (headerAvatarFallback) { headerAvatarFallback.style.display = 'flex'; headerAvatarFallback.innerHTML = '<i data-lucide="user"></i>'; }
         if (headerSigninBtn) headerSigninBtn.style.display = '';
-        if (sidebarAuthBtn) { sidebarAuthBtn.innerHTML = '<i data-lucide="log-in"></i><span>Sign In</span>'; sidebarAuthBtn.onclick = () => { openAuthModal('signin'); closeSidebar(); }; }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 }

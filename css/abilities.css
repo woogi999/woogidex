@@ -18,24 +18,19 @@
 .ability-drag-handle:active { cursor: grabbing; }
 .ability-row { cursor: default; }
 .ability-row.ability-dragging { opacity: 0.45; }
-.ability-row.ability-drag-over { border-color: var(--text-secondary); box-shadow: 0 0 0 2px var(--accent-glow); }
+.ability-row.ability-drag-over { background: var(--accent-soft); box-shadow: inset 0 2px 0 var(--accent); }
 .ability-custom .ability-desc-input { color: var(--text-secondary); }
 
 .ability-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 12px;
-    background: var(--bg-dark);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    margin-bottom: 8px;
-    transition: all 0.15s;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--border-light);
+    transition: background 0.15s;
 }
-.ability-row.ability-custom {
-    background: linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(212, 175, 55, 0.03));
-    border-color: rgba(212, 175, 55, 0.4);
-}
+.ability-row:first-child { border-top: 1px solid var(--border-light); }
+.ability-row:hover { background: var(--bg-panel); }
 .ability-row.ability-custom .ability-name-text,
 .ability-row.ability-custom .ability-name-input {
     color: #c9a227;
@@ -191,14 +186,7 @@
     background: rgba(184, 134, 11, 0.05);
 }
 .custom-move-showcase-list { display: flex; flex-direction: column; gap: 8px; }
-.custom-move-showcase-card {
-    padding: 12px 14px;
-    border: 1px solid rgba(184, 134, 11, 0.4);
-    border-radius: 10px;
-    background: var(--bg-card);
-    cursor: pointer;
-    transition: all .15s ease;
-}
+.custom-move-showcase-card { padding: 12px 14px; border-radius: 10px; background: var(--bg-card); cursor: pointer; transition: all .15s ease; border: 0; }
 .custom-move-showcase-card:hover { background: var(--bg-panel); transform: translateX(3px); }
 .custom-move-showcase-header { display:flex; align-items:center; gap:9px; }
 .custom-move-showcase-name { flex:1; font-weight:700; font-size:14px; color:var(--text-primary); }
@@ -208,3 +196,38 @@
 .custom-move-showcase-flags { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
 .custom-move-showcase-flags span { font-size:10px; padding:2px 6px; border-radius:5px; background:var(--bg-panel); color:var(--text-muted); }
 
+
+/* ==================== Browse Abilities modal ====================
+   a flat, divided list (no cards inside the modal), grouped like the
+   Showdown client's BH teambuilder; see filterAbilityBrowser() */
+.ability-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.ab-filter-input { flex: 1; min-width: 180px; }
+.ab-count { font-size: 11px; color: var(--text-muted); margin: 8px 0; }
+.ability-browser-results { max-height: 56vh; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.ab-group-header {
+    position: sticky; top: 0; z-index: 1;
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 12px 0 6px; background: var(--bg-card);
+    font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+.ab-group-header span { font-family: 'Inconsolata', monospace; font-weight: 400; letter-spacing: 0; }
+.ability-browser-row {
+    display: flex; flex-direction: column; gap: 3px; width: 100%;
+    padding: 10px 8px; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0;
+    background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.ability-browser-row:hover { background: var(--bg-panel); }
+.ability-browser-row.added { opacity: .5; }
+.ab-row-head { display: flex; align-items: center; gap: 8px; }
+.ab-row-name { font-weight: 700; font-size: 13.5px; color: var(--text-primary); }
+.ab-row-added { margin-left: auto; font-size: 10px; font-weight: 700; color: var(--success); }
+.ab-row-desc { font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+.ab-group-tag { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.ab-group-good { color: #1f7a3a; background: color-mix(in srgb, #2d8a3e 14%, transparent); }
+.ab-group-normal { color: var(--accent-dark); background: var(--accent-glow); }
+.ab-group-situational { color: #9a6a00; background: color-mix(in srgb, #d69e00 16%, transparent); }
+.ab-group-unviable { color: var(--text-muted); background: var(--bg-panel); }
+[data-theme="dark"] .ab-group-good { color: #6fd58a; }
+[data-theme="dark"] .ab-group-normal { color: #b3a1ff; }
+[data-theme="dark"] .ab-group-situational { color: #f0c040; }

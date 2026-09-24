@@ -20,7 +20,6 @@ const POKEAPI_CACHE = { cacheName: 'woogidex-pokeapi-v1', maxAgeMs: 30 * 8640000
                 await api.autoSave(true);
             }
             api.activateTopLevelView?.('collection-view');
-            document.getElementById('save-status').style.display = 'none';
             setCollectionView(collectionView || 'fakemon');
             api.setRoute?.('collection', null);
         }
@@ -52,15 +51,21 @@ const POKEAPI_CACHE = { cacheName: 'woogidex-pokeapi-v1', maxAgeMs: 30 * 8640000
             api.resetEditor();
             document.getElementById('fakemon-name').value = name;
             api.activateTopLevelView?.('editor-view');
-            document.getElementById('save-status').style.display = '';
-            switchTab(document.querySelector('.tab'), 'basic');
+            switchTab(null, 'basic');
             document.getElementById('new-fakemon-modal')?.classList.remove('active');
             document.getElementById('pokemon-template-modal')?.classList.remove('active');
             api.setRoute?.('editor', name || 'New Fakemon');
 
             // learnset hydrates immediately from the already-loaded Showdown dex; PokeAPI species/lore load async without blocking the editor.
+            state.pendingVanillaId = template?.id || null;
             if (template) await applyPokemonTemplate(template, name);
             api.updatePreview();
+            if (template) {
+                // a first save gives it an id, which its evolution board needs
+                await api.autoSave?.(true);
+                state.pendingVanillaId = null;
+                api.applyVanillaEvolutionLine?.(template.id);
+            }
         }
 
         function createBlankFakemonFromModal() {
@@ -363,8 +368,7 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             api.exitCommunityRoute?.();
             api.exitProfileRoute?.();
             api.activateTopLevelView?.('editor-view');
-            document.getElementById('save-status').style.display = '';
-            switchTab(document.querySelector('.tab'), 'basic');
+            switchTab(null, 'basic');
             api.updatePreview();
             api.setRoute?.(`editor/${encodeURIComponent(id)}`, fakemon.name || 'Editor');
             maybeAutoplayCry(fakemon);
@@ -376,11 +380,14 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             if (!api.getAutoplayCry?.()) return;
             try { new Audio(fakemon.cry).play().catch(() => {}); } catch {}
         }
+        // the editor's own tabs only: the collection's tab strip stays on screen
+        // underneath the editor sheet and must keep its own .active
         function switchTab(tabEl, tabName) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
-            if (tabEl) tabEl.classList.add('active');
-            else document.querySelector(`.tab[onclick*="'${tabName}'"]`).classList.add('active');
+            const editor = document.getElementById('editor-view');
+            if (!editor) return;
+            editor.querySelectorAll('.editor-tabs .tab').forEach(t => t.classList.remove('active'));
+            editor.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+            (tabEl || editor.querySelector(`.editor-tabs .tab[onclick*="'${tabName}'"]`))?.classList.add('active');
             const target = document.getElementById(`tab-${tabName}`);
             target.style.display = 'block';
             // force a reflow between removing/re-adding the class so the enter animation replays on every switch, not just the first.
@@ -613,6 +620,9 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
             event.dataTransfer.effectAllowed = 'move';
             try { event.dataTransfer.setData('text/plain', id); } catch (e) {}
         }
+        // regions.js accepts Fakemon cards dropped on the sidebar
+        function getDraggedFakemonId() { return draggedFakemonId; }
+        function getDraggedLibraryItem() { return draggedLibraryItem; }
         function handleCardDragEnd() {
             draggedFakemonId = null;
             draggedLibraryItem = null;
@@ -760,6 +770,27 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
         function renderBreadcrumb() {
             const el = document.getElementById('collection-heading');
             if (!el) return;
+            const region = api.activeRegionBreadcrumb?.() || null;
+            const bannerEl = document.getElementById('collection-region-banner');
+            if (bannerEl) {
+                const showBanner = !!(region && region.banner);
+                bannerEl.hidden = !showBanner;
+                bannerEl.style.backgroundImage = showBanner ? `url('${region.banner}')` : '';
+            }
+            const exportLabel = document.querySelector('#collection-export-btn span');
+            if (exportLabel) exportLabel.textContent = api.getActiveRegion?.() ? `Export ${api.getActiveRegion().name}` : 'Export';
+            if (region) {
+                el.innerHTML = `
+                    <span class="breadcrumb-root" onclick="selectRegion(null)" style="cursor:pointer;">My Collection</span>
+                    <span class="breadcrumb-sep" style="color:var(--text-muted);"> / </span>
+                    <span class="breadcrumb-current">${region.color ? `<span class="region-dot region-dot-lg" style="--region-color:${escapeCollectionHtml(region.color)}"></span>` : ''}${escapeCollectionHtml(region.name)}</span>
+                `;
+                const sub = document.querySelector('#collection-header-row .page-subtitle');
+                if (sub) sub.textContent = region.description || 'Everything in this region.';
+                return;
+            }
+            const sub = document.querySelector('#collection-header-row .page-subtitle');
+            if (sub) sub.textContent = 'Your Fakémon, folders, and custom moves, abilities and items.';
             if (!state.currentFolderId) {
                 el.innerHTML = `<span class="breadcrumb-root" onclick="openFolder(null)" style="cursor:pointer;">My Collection</span>`;
                 return;
@@ -774,11 +805,16 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
         }
 
         function setCollectionView(view) {
-            const newView = ['fakemon', 'moves', 'abilities', 'items'].includes(view) ? view : 'fakemon';
+            const newView = ['fakemon', 'moves', 'abilities', 'items', 'types'].includes(view) ? view : 'fakemon';
+            // choosing a tab leaves a region's details page
+            if (api.isRegionDetailsOpen?.()) api.closeRegionDetails?.();
             if (newView !== collectionView) state.currentFolderId = null;
             collectionView = newView;
-            const select = document.getElementById('collection-view-select');
-            if (select) select.value = collectionView;
+            document.querySelectorAll('[data-collection-view]').forEach(tab => {
+                const on = tab.dataset.collectionView === collectionView;
+                tab.classList.toggle('active', on);
+                tab.setAttribute('aria-selected', String(on));
+            });
 
             const searchInput = document.getElementById('search-input');
             const sortBy = document.getElementById('collection-sort-by');
@@ -814,7 +850,7 @@ import { esc as escapeTemplateHtml } from '../core/html.js';
                 if (itemCreate) itemCreate.style.display = '';
             } else {
                 if (shinyToggle) shinyToggle.style.display = 'none';
-                if (searchInput) searchInput.placeholder = collectionView === 'moves' ? 'Search your custom moves...' : collectionView === 'abilities' ? 'Search your custom abilities...' : 'Search your custom items...';
+                if (searchInput) searchInput.placeholder = collectionView === 'moves' ? 'Search your custom moves...' : collectionView === 'abilities' ? 'Search your custom abilities...' : collectionView === 'types' ? 'Search your custom types...' : 'Search your custom items...';
                 if (sortBy) {
                     sortBy.innerHTML = '<option value="name">Name</option><option value="created">Date Added</option><option value="updated">Last Updated</option>';
                 }
@@ -860,14 +896,18 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
                     : `${item.name || ''} ${item.desc || ''}`;
                 return text.toLowerCase().includes(search);
             });
-            if (!search) items = items.filter(item => (item.folderId || null) === state.currentFolderId);
+            const inRegion = !!api.getActiveRegionId?.();
+            if (inRegion) items = items.filter(item => api.entryInActiveRegion(item));
+            else if (!search) items = items.filter(item => (item.folderId || null) === state.currentFolderId);
             items = sortLibraryList(items, sortPrefs.by === 'name' ? (sortPrefs.order === 'asc' ? 'name-asc' : 'name-desc') : sortPrefs.order === 'asc' ? 'oldest' : 'newest');
 
             // folders only show at the root level, and only while not searching.
-            let folders = (!search && !state.currentFolderId) ? state.folders.filter(f => f.type === kind) : [];
+            let folders = (!search && !state.currentFolderId && !inRegion) ? state.folders.filter(f => f.type === kind) : [];
             folders.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
-            if (!items.length && !folders.length) {
+            const vanillaCards = collectionLayout === 'list' ? '' : (api.regionVanillaLibraryCards?.(kind, search) || '');
+            // an empty library still gets its "Add new" card; the message is for a search that found nothing
+            if (search && !items.length && !folders.length && !vanillaCards) {
                 grid.style.display = 'grid';
                 grid.innerHTML = '';
                 empty.style.display = 'block';
@@ -900,15 +940,17 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
                             <button class="card-delete-btn" onclick="deleteFolder('${folder.id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
                         </div>
                         <div class="card-art folder-card-art" style="${iconStyle}"><i data-lucide="folder" style="width:48px;height:48px;"></i></div>
+                        <div class="card-body">
                         <div class="card-name">${escapeCollectionHtml(folder.name)}</div>
-                        <div class="card-bst" style="font-size:11px;color:var(--text-muted);">${count} ${isMove ? 'Move' : isAbility ? 'Ability' : 'Item'}${count === 1 ? '' : 's'}</div>
+                        <div class="card-bst">${count} ${isMove ? 'Move' : isAbility ? 'Ability' : 'Item'}${count === 1 ? '' : 's'}</div>
+                        </div>
                     </div>
                 `;
             }).join('');
 
             const itemCards = items.map(item => libraryCard(kind, item, !!item.folderId && !search)).join('');
 
-            grid.innerHTML = folderCards + itemCards;
+            grid.innerHTML = (search ? '' : addNewCardHtml(kind)) + folderCards + itemCards + vanillaCards;
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
@@ -916,53 +958,109 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
         function libraryCardActions(kind, item, inFolder) {
             const id = escapeCollectionHtml(item.id);
             const singular = kind === 'moves' ? 'move' : kind === 'abilities' ? 'ability' : 'item';
-            const edit = kind === 'moves' ? 'editCustomMoveLibrary'
-                : kind === 'abilities' ? 'editCustomAbilityLibrary' : 'editCustomItemLibrary';
             return `
                 <button class="${item.pinned ? 'pinned-btn' : ''}" onclick="toggleCustomLibraryPin('${kind}','${id}', event)" title="${item.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin" style="width:14px;height:14px"></i></button>
-                <button onclick="${edit}('${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+                <button onclick="openLibraryEditorSheet('${kind}','${id}');event.stopPropagation();" title="Edit"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
                 ${inFolder ? `<button onclick="moveLibraryItemOutOfFolder('${kind}','${id}', event)" title="Remove from folder"><i data-lucide="folder-output" style="width:14px;height:14px;"></i></button>` : ''}
                 <button onclick="duplicateCustomLibraryItem('${kind}','${id}', event)" title="Duplicate"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
                 <div class="collection-card-export-wrap"><button onclick="exportCustomLibraryItem('${singular}','${id}');event.stopPropagation();" title="Export"><i data-lucide="download" style="width:14px;height:14px"></i></button></div>
                 <button class="card-delete-btn" onclick="deleteCustomLibraryItem('${kind}','${id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>`;
         }
 
-        // Moves/items/abilities differ only in what they display, described once here and laid out once below.
+        // Moves/items/abilities differ only in what they display, described once
+        // here and laid out once below, on the same card frame as a Fakemon.
+        const CATEGORY_ICONS = { Physical: 'swords', Special: 'sparkle', Status: 'circle-dot' };
         function libraryCardParts(kind, item) {
             if (kind === 'moves') {
-                const typeClass = `type-${String(item.type || 'Normal').toLowerCase()}`;
+                const type = String(item.type || 'Normal');
+                const category = String(item.category || 'Status');
                 const acc = (item.accuracy === true || item.accuracy === undefined || item.accuracy === false)
-                    ? '-' : `${item.accuracy}%`;
+                    ? '—' : `${item.accuracy}%`;
                 return {
-                    artwork: '',
-                    title: escapeCollectionHtml(item.name),
-                    meta: `<span class="type-pill ${typeClass}">${escapeCollectionHtml(item.type || 'Normal')}</span> · ${escapeCollectionHtml(item.category || 'Status')} · ${item.basePower || '-'} BP · ${acc} · ${item.pp || '-'} PP`
+                    // the move's own image if it has one; otherwise the type's colour fills
+                    // the emblem and the category is its icon
+                    art: item.artwork
+                        ? `<img src="${item.artwork}" alt="" draggable="false" loading="lazy" decoding="async">`
+                        : `<span class="library-emblem type-${escapeCollectionHtml(type.toLowerCase())}"><i data-lucide="${CATEGORY_ICONS[category] || 'zap'}"></i></span>`,
+                    corner: escapeCollectionHtml(category),
+                    pills: `<span class="type-badge type-${escapeCollectionHtml(type.toLowerCase())}">${escapeCollectionHtml(type)}</span>`,
+                    meta: `<span class="card-bst"><em>BP</em>${escapeCollectionHtml(item.basePower || '—')}</span><span class="card-bst"><em>ACC</em>${escapeCollectionHtml(acc)}</span><span class="card-bst"><em>PP</em>${escapeCollectionHtml(item.pp || '—')}</span>`
                 };
             }
+            // no stats to show: the description's first line takes the meta row
+            const descLine = `<span class="library-tile-desc${item.desc ? '' : ' is-empty'}">${escapeCollectionHtml(item.desc || 'No description')}</span>`;
             if (kind === 'items') {
                 return {
-                    artwork: item.artwork || '',
-                    title: escapeCollectionHtml(item.name) + (item.isMegaStone
-                        ? ' <span class="mega-stone-badge"><i data-lucide="gem" style="width:12px;height:12px;"></i> Mega Stone</span>' : ''),
-                    meta: ''
+                    art: item.artwork
+                        ? `<img src="${item.artwork}" alt="${escapeCollectionHtml(item.name)} artwork" draggable="false" loading="lazy" decoding="async">`
+                        : '<span class="library-emblem library-emblem-plain"><i data-lucide="gem"></i></span>',
+                    corner: '',
+                    pills: `<span class="library-tag">${item.isMegaStone ? 'Mega Stone' : 'Item'}</span>`,
+                    meta: descLine
                 };
             }
-            return { artwork: '', title: escapeCollectionHtml(item.name), meta: '' };
+            return {
+                art: item.artwork
+                    ? `<img src="${item.artwork}" alt="" draggable="false" loading="lazy" decoding="async">`
+                    : '<span class="library-emblem library-emblem-plain"><i data-lucide="sparkles"></i></span>',
+                corner: '',
+                // no badge row for abilities: it only ever said "Ability"
+                pills: null,
+                meta: descLine
+            };
         }
 
         function libraryCard(kind, item, inFolder) {
             const id = escapeCollectionHtml(item.id);
-            const { artwork, title, meta } = libraryCardParts(kind, item);
-            const isList = collectionLayout === 'list';
-            return `<div class="collection-library-card${isList ? ' collection-library-list-card' : ''}${item.pinned ? ' pinned' : ''}" draggable="true" ondragstart="handleLibraryCardDragStart('${kind}','${id}', event)" ondragend="handleCardDragEnd()">
-                ${artwork ? `<div class="collection-library-artwork"><img src="${artwork}" alt="${escapeCollectionHtml(item.name)} artwork" loading="lazy" decoding="async"></div>` : ''}
-                <div class="collection-library-card-body">
-                    <div class="collection-library-card-title">${title}</div>
-                    ${meta ? `<div class="collection-library-card-meta">${meta}</div>` : ''}
-                    <div class="collection-library-card-desc">${escapeCollectionHtml(item.desc || 'No description')}</div>
-                </div>
+            const { art, corner, pills, meta } = libraryCardParts(kind, item);
+            // the full description is the tooltip; the tile keeps the Fakemon
+            // card's three lines (name, one detail line, badges) so both are one size
+            const desc = String(item.desc || '').trim();
+            return `<div class="collection-card library-tile${item.pinned ? ' pinned' : ''}" draggable="true" ondragstart="handleLibraryCardDragStart('${kind}','${id}', event)" ondragend="handleCardDragEnd()" onclick="openLibraryEditorSheet('${kind}','${id}')"${desc ? ` title="${escapeCollectionHtml(desc)}"` : ''}>
                 <div class="card-actions">${libraryCardActions(kind, item, inFolder)}</div>
+                <div class="card-art">${art}${corner ? `<span class="card-number library-tile-corner">${corner}</span>` : ''}${item.vanillaId ? '<span class="vanilla-card-tag">Edited</span>' : ''}</div>
+                <div class="card-body">
+                    <div class="card-name" title="${escapeCollectionHtml(item.name)}">${escapeCollectionHtml(item.name)}</div>
+                    <div class="card-meta-row">${meta}</div>
+                    ${pills === null
+                        // keeps the row's height, so ability cards stay the size of the others
+                        ? '<div class="card-types card-types-spacer" aria-hidden="true"></div>'
+                        : `<div class="card-types">${pills}</div>`}
+                </div>
             </div>`;
+        }
+
+        // The custom move / ability / item editors, opened from My Collection:
+        // the same forms as everywhere else, but as a panel sliding in from the
+        // right (css/modals.css .as-sheet) to match the Fakemon editor. The
+        // openers clear .as-sheet, so opened from the editor they stay modals.
+        const LIBRARY_EDITOR_MODALS = { moves: 'custom-move-modal', abilities: 'custom-ability-modal', items: 'custom-item-modal' };
+        function openLibraryEditorSheet(kind, id = '') {
+            if (kind === 'moves') { if (id) api.editCustomMoveLibrary?.(id); else api.openCustomMoveModal?.(); }
+            else if (kind === 'abilities') api.openCustomAbilityLibraryModal?.(id);
+            else if (kind === 'items') api.openCustomItemModal?.(id);
+            else if (kind === 'types') { api.openCustomTypeEditor?.(id); return; }
+            else return;
+            document.getElementById(LIBRARY_EDITOR_MODALS[kind])?.classList.add('as-sheet');
+        }
+
+        // The first tile of each library: "Add new ...", the same action as the
+        // Create menu's matching item. Left out while searching, where it would
+        // read as a result.
+        const ADD_NEW = {
+            fakemon: { label: 'Fakémon', run: 'createNewFakemon()' },
+            moves: { label: 'move', run: "openLibraryEditorSheet('moves')" },
+            abilities: { label: 'ability', run: "openLibraryEditorSheet('abilities')" },
+            items: { label: 'item', run: "openLibraryEditorSheet('items')" },
+            types: { label: 'type', run: "openLibraryEditorSheet('types')" }
+        };
+        function addNewCardHtml(kind) {
+            const spec = ADD_NEW[kind];
+            if (!spec) return '';
+            return `<button type="button" class="collection-card collection-add-card" onclick="${spec.run}">
+                <span class="card-art"><span class="collection-add-icon"><i data-lucide="plus"></i></span></span>
+                <span class="card-body"><span class="card-name">Add new ${spec.label}</span></span>
+            </button>`;
         }
 
         // mirrors the real card markup so the first paint (before storage loads) has the right shape and swapping in real cards causes no layout shift.
@@ -970,13 +1068,14 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
             return `
                 <div class="collection-card skel-card">
                     <div class="card-art skel"></div>
-                    <div class="skel skel-text skel-number"></div>
-                    <div class="skel skel-text skel-name"></div>
-                    <div class="card-types">
-                        <span class="skel skel-pill"></span>
-                        <span class="skel skel-pill"></span>
+                    <div class="card-body">
+                        <div class="skel skel-text skel-name"></div>
+                        <div class="skel skel-text skel-bst"></div>
+                        <div class="card-types">
+                            <span class="skel skel-pill"></span>
+                            <span class="skel skel-pill"></span>
+                        </div>
                     </div>
-                    <div class="skel skel-text skel-bst"></div>
                 </div>
             `;
         }
@@ -1021,17 +1120,18 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
                         <div class="card-actions">
                             ${collectionCardActions(f, search)}
                         </div>
-                        <div class="card-art">${(state.collectionShinyPreview && f.shinyArtwork) ? `<img src="${f.shinyArtwork}" alt="${f.name} shiny" draggable="false" loading="lazy" decoding="async">` : (f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false" loading="lazy" decoding="async">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">')}${api.cloudBadgeHtml?.(f) || ''}</div>
-                        <div class="card-meta-row">
-                            <span class="card-number">${escapeCollectionHtml(f.number || '#???')}</span>
-                            <span class="card-bst"><em>BST</em>${getFakemonBST(f)}</span>
+                        <div class="card-art">${(state.collectionShinyPreview && f.shinyArtwork) ? `<img src="${f.shinyArtwork}" alt="${f.name} shiny" draggable="false" loading="lazy" decoding="async">` : (f.artwork ? `<img src="${f.artwork}" alt="${f.name}" draggable="false" loading="lazy" decoding="async">` : '<img class="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false">')}${api.cloudBadgeHtml?.(f) || ''}<span class="card-number">${escapeCollectionHtml(f.number || '#???')}</span></div>
+                        <div class="card-body">
+                            <div class="card-name" title="${escapeCollectionHtml(f.name)}">${escapeCollectionHtml(f.name)}</div>
+                            <div class="card-meta-row">
+                                <span class="card-bst"><em>BST</em>${getFakemonBST(f)}</span>
+                                ${api.getShowCollectionCardDate?.() === false ? '' : `<span class="card-date">${new Date(f.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>`}
+                            </div>
+                            <div class="card-types">
+                                ${f.type1 ? `<span class="type-badge ${type1Class}">${escapeCollectionHtml(f.type1)}</span>` : ''}
+                                ${f.type2 ? `<span class="type-badge ${type2Class}">${escapeCollectionHtml(f.type2)}</span>` : ''}
+                            </div>
                         </div>
-                        <div class="card-name" title="${escapeCollectionHtml(f.name)}">${f.name}</div>
-                        <div class="card-types">
-                            ${f.type1 ? `<span class="type-badge ${type1Class}">${f.type1}</span>` : ''}
-                            ${f.type2 ? `<span class="type-badge ${type2Class}">${f.type2}</span>` : ''}
-                        </div>
-                        ${api.getShowCollectionCardDate?.() === false ? '' : `<div class="card-date">${new Date(f.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>`}
                     </div>
                 `;
         }
@@ -1076,11 +1176,35 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
 
         function renderCollectionNow() {
         log.debug('COLLECTION', 'Rendering collection', { count: state.fakemonDB.length, folders: state.folders.length });
+            api.syncCustomTypes?.();
             renderBreadcrumb();
+            api.renderRegionSidebar?.();
             const grid = document.getElementById('collection-grid');
             const empty = document.getElementById('empty-collection');
+            const extra = document.getElementById('collection-extra');
+            if (extra) extra.innerHTML = '';
+
+            // a region's details page replaces the tabs and grid
+            const details = document.getElementById('region-details');
+            const detailsOpen = !!api.isRegionDetailsOpen?.();
+            document.getElementById('collection-view')?.classList.toggle('showing-region-details', detailsOpen);
+            if (details) details.hidden = !detailsOpen;
+            if (detailsOpen) { api.renderRegionDetails?.(); return; }
+
+            if (collectionView === 'types') {
+                empty.style.display = 'none';
+                grid.style.display = collectionLayout === 'list' ? 'flex' : 'grid';
+                const search = (document.getElementById('search-input')?.value || '').trim();
+                // the view decides which custom and main-game types show, and the chart covers them all
+                const html = api.typesTabParts?.({ search, ...(api.typesTabArgs?.() || {}) }) || { cards: '', after: '' };
+                grid.innerHTML = html.cards;
+                if (extra) extra.innerHTML = html.after;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                return;
+            }
             if (collectionView !== 'fakemon') {
                 renderCustomLibraryCollection(collectionView);
+                if (typeof lucide !== 'undefined') lucide.createIcons();
                 return;
             }
             const search = document.getElementById('search-input').value.toLowerCase();
@@ -1094,16 +1218,20 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
                     (f.type1 && f.type1.toLowerCase().includes(search)) ||
                     (f.type2 && f.type2.toLowerCase().includes(search))
                 );
+            } else if (api.getActiveRegionId?.()) {
+                // a region is a flat view of its Fakemon, whatever folder they're in
+                filtered = state.fakemonDB;
             } else {
                 filtered = state.fakemonDB.filter(f => (f.folderId || null) === state.currentFolderId);
             }
+            if (api.getActiveRegionId?.()) filtered = filtered.filter(f => api.fakemonInActiveRegion(f));
             filtered = sortFakemonList(filtered, sortPrefs.by, sortPrefs.order);
 
-            // folders only show at the root level, and only while not searching.
-            let folders = (!search && !state.currentFolderId) ? state.folders.filter(f => (f.type || 'fakemon') === 'fakemon') : [];
+            // folders only show at the root level, and only while not searching or in a region.
+            let folders = (!search && !state.currentFolderId && !api.getActiveRegionId?.()) ? state.folders.filter(f => (f.type || 'fakemon') === 'fakemon') : [];
             folders.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
-            if (filtered.length === 0 && folders.length === 0) {
+            if (search && filtered.length === 0 && folders.length === 0) {
                 grid.style.display = 'none';
                 empty.style.display = 'block';
                 // reset empty-state copy to Fakemon defaults (switching views could otherwise leave stale text/button).
@@ -1132,8 +1260,10 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
                             <button class="card-delete-btn" onclick="deleteFolder('${folder.id}', event)" title="Delete"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
                         </div>
                         <div class="card-art folder-card-art" style="${iconStyle}"><i data-lucide="folder" style="width:48px;height:48px;"></i></div>
-                        <div class="card-name">${folder.name}</div>
-                        <div class="card-bst" style="font-size:11px;color:var(--text-muted);">${count} Fakemon</div>
+                        <div class="card-body">
+                            <div class="card-name">${escapeCollectionHtml(folder.name)}</div>
+                            <div class="card-bst">${count} Fakemon</div>
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -1143,7 +1273,9 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
                 : gridCardFor(f, search)
             ).join('');
 
-            grid.innerHTML = folderCards + fakemonCards;
+            // the vanilla Pokemon a region brings over, after its own Fakemon
+            const vanillaCards = collectionLayout === 'list' ? '' : (api.regionVanillaPokemonCards?.(search) || '');
+            grid.innerHTML = (search ? '' : addNewCardHtml('fakemon')) + folderCards + fakemonCards + vanillaCards;
             if (typeof lucide !== 'undefined') lucide.createIcons();
             api.updateCollectionShinyPreviewUI?.();
         }
@@ -1180,4 +1312,4 @@ import { esc as escapeCollectionHtml } from '../core/html.js';
 
         
 
-export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, toggleCustomLibraryPin, duplicateCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST, changeCollectionSort , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate, renderCollectionSkeleton, getPokemonTemplateSprite, applyCollectionLayoutUI, toggleCollectionLayout};
+export { toggleCollectionFakemonExportMenu, closeCollectionFakemonExportMenus, showCollection, createNewFakemon, editFakemon, previewFakemon, switchTab, setCollectionView, renderCollection, renderCustomLibraries, filterCollection, toggleCreateMenu, closeCreateMenu, createFolder, confirmFolderName, selectFolderColor, openFolder, renameFolder, deleteFolder, toggleFolderPin, toggleFakemonPin, moveFakemonToFolder, moveFakemonOutOfFolder, moveLibraryItemToFolder, moveLibraryItemOutOfFolder, deleteCustomLibraryItem, toggleCustomLibraryPin, duplicateCustomLibraryItem, handleCardDragStart, handleCardDragEnd, handleLibraryCardDragStart, handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, sortFakemonList, getFakemonBST, changeCollectionSort , createBlankFakemonFromModal, openPokemonTemplateChooser, renderPokemonTemplateChooser, usePokemonTemplate, renderCollectionSkeleton, getPokemonTemplateSprite, applyCollectionLayoutUI, toggleCollectionLayout, openLibraryEditorSheet, getDraggedFakemonId, getDraggedLibraryItem, renderBreadcrumb};

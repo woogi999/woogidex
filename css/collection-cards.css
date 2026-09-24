@@ -1,258 +1,261 @@
 /* ==================== collection-cards ====================
-   collection and community cards, grid and list layouts.
+   collection and community cards, grid and list layouts, and the search /
+   sort toolbar above them.
    link order in index.html = cascade order; later files override earlier ones.
+
+   A card is one surface: a full-bleed art bed on top, a padded body below.
+   Nothing inside it gets its own border.
    ==================== */
 
-        .collection-card .card-art {
-            width: 100%;
-            /* square aspect box tracks column width instead of a fixed height, so art scales with the grid */
-            height: auto; aspect-ratio: 1;
-            background:
-                linear-gradient(var(--border-light) 1px, transparent 1px) 0 0 / 14px 14px,
-                linear-gradient(90deg, var(--border-light) 1px, transparent 1px) 0 0 / 14px 14px,
-                var(--bg-panel);
-            border: 1.5px solid var(--nb-ink);
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-            margin-bottom: var(--sp-2); overflow: hidden;
-            /* anchors .card-cloud-badge (css/cloud-backup.css) to this box's corner */
-            position: relative;
-        }
-        .collection-card .card-art img { width: 100%; height: 100%; object-fit: contain; }
-        .collection-card .card-art .placeholder { font-size: 40px; opacity: 0.3; color: var(--text-muted); }
-        /* number is a short monospace tag, so it rides alongside the name instead of its own line */
-        .collection-card .card-meta-row {
-            display: flex; align-items: baseline; justify-content: space-between;
-            gap: var(--sp-2); margin-bottom: 1px;
-        }
-        .collection-card .card-meta-row .card-number { margin: 0; }
-        .collection-card .card-meta-row .card-bst {
-            font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 700;
-            color: var(--text-secondary); letter-spacing: .02em;
-        }
-        /* inline small-caps label disambiguates the bare number without costing an extra line */
-        .collection-card .card-meta-row .card-bst em {
-            font-style: normal; font-size: 8.5px; font-weight: 800;
-            letter-spacing: .06em; color: var(--text-muted); margin-right: 3px;
-        }
-        .collection-card .card-date {
-            font-size: 10px; color: var(--text-muted); margin-top: 1px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .collection-card .card-number {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--text-muted);
-            letter-spacing: 0.04em;
-            margin-bottom: 0;
-            line-height: 1.2;
-        }
-        .collection-card .card-name {
-            font-weight: 700; font-size: 13.5px; line-height: 1.25;
-            margin-bottom: var(--sp-1);
-            /* keeps long names from pushing type badges out of alignment between cards */
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .collection-card .card-types { display: flex; gap: var(--sp-1); margin-bottom: var(--sp-1); flex-wrap: wrap; }
-        /* .type-badge (css/controls.css) is sized for one badge in a roomy context;
-           scaled down here so two fit side by side on a ~150px card without wrapping */
-        .collection-card .card-types .type-badge {
-            min-width: 52px; font-size: 9px; padding: 2px 7px; border-radius: 5px; letter-spacing: 0.3px;
-        }
-        .collection-card .card-bst { font-family: 'JetBrains Mono', monospace; font-size: 10.5px !important; line-height: 1.3; color: var(--text-muted); }
-        .collection-card .card-actions {
-            position: absolute; top: var(--sp-2); right: var(--sp-2);
-            display: flex; gap: 3px; opacity: 0; transition: opacity 0.2s;
-        }
-        .collection-card:hover .card-actions { opacity: 1; }
-        .collection-card .card-actions button {
-            width: 24px; height: 24px; border-radius: 5px; border: none;
-            background: var(--bg-panel); color: var(--text-primary); cursor: pointer;
-            font-size: 14px; display: flex; align-items: center; justify-content: center;
-        }
-        .collection-card .card-actions button svg { width: 12px; height: 12px; }
-        .collection-card .card-actions button:hover { background: var(--accent); color: white; }
-        .collection-card .card-actions button.card-delete-btn:hover { background: var(--danger); color: white; }
-        .collection-card .card-actions button.pinned-btn { background: var(--accent); color: white; }
-        .collection-card.pinned { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
-        html.always-show-card-actions .collection-card .card-actions { opacity: 1; }
-        @media (hover: none) {
-            .collection-card .card-actions { opacity: 1; }
-        }
+.collection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+    gap: var(--sp-4);
+}
+.collection-card {
+    position: relative;
+    display: flex; flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--card-r);
+    cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.collection-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+.collection-card.pinned { border-color: var(--accent); }
+.collection-card[draggable="true"] { cursor: grab; }
+.collection-card[draggable="true"]:active { cursor: grabbing; }
 
-        /* ==================== card actions strip: out of the card ====================
-           up to 7 buttons as a row overflowed a ~150px card, so they're stacked
-           vertically just outside the card's right edge instead. .collection-library-card
-           renders into the same grid and matches .card-actions by class, so it needs the
-           same rules everywhere .collection-card appears here. */
-        .collection-grid:not(.collection-list) .collection-card,
-        .collection-grid:not(.collection-list) .collection-library-card { overflow: visible; }
-        /* padding-left (not margin-left) folds the gap inside the hit box, so the pointer never crosses a dead zone moving card -> strip */
-        .collection-grid:not(.collection-list) .card-actions {
-            position: absolute; top: 0; right: auto; left: 100%;
-            padding-left: var(--sp-1); margin-left: 0; box-sizing: content-box;
-            flex-direction: column; gap: 3px;
-        }
-        /* keep the strip shown while it's directly hovered, even if the pointer left the card, so a fast crossing doesn't drop opacity */
-        .collection-grid:not(.collection-list) .card-actions:hover { opacity: 1; }
-        /* strip overlaps the next card in the DOM; z-index on the strip alone only orders within its own card's subtree, so the hovered card itself must be lifted */
-        .collection-grid:not(.collection-list) .collection-card:hover,
-        .collection-grid:not(.collection-list) .collection-card:has(.card-actions:hover),
-        .collection-grid:not(.collection-list) .collection-library-card:hover,
-        .collection-grid:not(.collection-list) .collection-library-card:has(.card-actions:hover) {
-            z-index: 300;
-        }
-        .collection-grid:not(.collection-list) .card-actions { z-index: 1; }
-        .collection-grid:not(.collection-list) .card-actions button {
-            box-sizing: border-box; width: 26px; height: 26px; padding: 0; flex: 0 0 26px;
-            border: 1px solid var(--border); border-radius: 6px;
-            background: var(--bg-panel); color: var(--text-secondary);
-            box-shadow: 0 2px 8px rgba(0,0,0,.16);
-        }
-        .collection-grid:not(.collection-list) .card-actions button svg { width: 13px; height: 13px; }
-        .collection-grid:not(.collection-list) .card-actions button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .collection-grid:not(.collection-list) .card-actions button.card-delete-btn:hover { background: var(--danger); border-color: var(--danger); }
-        .collection-grid:not(.collection-list) .card-actions button.pinned-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
-        /* export wrapper is a flex item too; must match button size or it sets its own strip width */
-        .collection-grid:not(.collection-list) .card-actions .collection-card-export-wrap {
-            display: flex; flex: 0 0 26px; width: 26px; height: 26px;
-        }
-        /* reserves the strip's width as padding so the rightmost column's strip never overflows the panel edge */
-        .collection-grid:not(.collection-list) { padding-right: 30px; }
-        .card-art img { -webkit-user-drag: none; user-drag: none; user-select: none; pointer-events: none; }
-        .folder-card { border-color: var(--text-secondary); background: var(--bg-panel); }
-        .folder-card .card-art.folder-card-art { color: var(--accent); }
-        .folder-card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); transform: translateY(-2px); }
-        .collection-card[draggable="true"] { cursor: grab; }
-        .collection-card[draggable="true"]:active { cursor: grabbing; }
+.collection-card .card-art {
+    position: relative;
+    aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--sp-3);
+    background: var(--bg-panel);
+    border-radius: calc(var(--card-r) - 1px) calc(var(--card-r) - 1px) 0 0;
+    overflow: hidden;
+}
+.collection-card .card-art img { width: 100%; height: 100%; object-fit: contain; }
+.collection-card .card-art .placeholder { font-size: 40px; opacity: .3; color: var(--text-muted); }
+.card-art img { -webkit-user-drag: none; user-select: none; pointer-events: none; }
+/* the dex number sits on the art like a page corner */
+.collection-card .card-art .card-number {
+    position: absolute; top: 8px; right: 10px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px; font-weight: 700; font-style: italic;
+    color: var(--text-muted);
+    pointer-events: none;
+}
 
-        /* --- list layout: a real table-like row --- smaller art + tighter padding for scanning many at once */
-        .collection-grid.collection-list {
-            display: flex;
-            flex-direction: column;
-            gap: var(--sp-1);
-        }
-        .collection-grid.collection-list .collection-card {
-            display: flex;
-            align-items: center;
-            gap: var(--sp-3);
-            padding: var(--sp-2) var(--sp-3);
-            border-radius: 9px;
-        }
-        .collection-grid.collection-list .collection-card:hover { transform: none; }
-        .collection-grid.collection-list .card-art {
-            width: 34px;
-            height: 34px;
-            margin-bottom: 0;
-            border-radius: 6px;
-            flex: 0 0 34px;
-            aspect-ratio: auto;
-        }
-        /* number and BST are separate columns in the table row, so unwrap back into inline cells */
-        .collection-grid.collection-list .card-meta-row { display: contents; }
-        .collection-grid.collection-list .card-number {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 10.5px;
-            margin-bottom: 0;
-            flex: 0 0 46px; /* fixed width so names line up into a column */
-        }
-        /* bounded share for the name, types sit right after it — avoids a wide empty gap between them */
-        .collection-grid.collection-list .card-name {
-            font-size: 13.5px;
-            margin-bottom: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            flex: 0 1 260px;
-        }
-        .collection-grid.collection-list .card-number,
-        .collection-grid.collection-list .card-name {
-            min-width: 0;
-        }
-        .collection-grid.collection-list .card-types {
-            margin-bottom: 0;
-            margin-left: var(--sp-4);
-            margin-right: auto;
-            min-width: 0;
-            flex: none;
-        }
-        .collection-grid.collection-list .card-bst {
-            flex: none;
-            white-space: nowrap;
-            min-width: 70px;
-            text-align: right;
-            font-size: 11px !important;
-            color: var(--text-secondary);
-            font-weight: 700;
-        }
-        /* rides in-flow at the row's end rather than absolutely positioned (which covered
-           type badges/BST); `order` moves it last since markup has it first */
-        .collection-grid.collection-list .card-actions {
-            position: static;
-            order: 9;
-            flex: none;
-            margin-left: 10px;
-        }
-        .collection-grid.collection-list .card-art { order: 0; }
-        .collection-grid.collection-list .card-number { order: 1; }
-        .collection-grid.collection-list .card-name { order: 2; }
-        .collection-grid.collection-list .card-types { order: 3; margin-left: auto; }
-        .collection-grid.collection-list .card-bst { order: 4; }
-        /* community cards reuse the same frame but carry extra children instead of a BST figure; explicit order/shrink so they don't fall through to default (which lands them ahead of the art) */
-        .collection-grid.collection-list .community-card { padding-right: 14px; }
-        .collection-grid.collection-list .community-card-evo-badge { order: 3; margin-left: auto; white-space: nowrap; }
-        .collection-grid.collection-list .card-types + .community-card-evo-badge { margin-left: 10px; }
-        .collection-grid.collection-list .community-card .card-types { order: 3; margin-left: auto; flex: none; }
-        .collection-grid.collection-list .community-card-stats { order: 4; flex: none; margin: 0 10px; }
-        .collection-grid.collection-list .community-card-author { order: 5; flex: 0 0 auto; max-width: 160px; }
-        .collection-grid.collection-list .community-card-author .community-author-link {
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .collection-grid.collection-list .community-unpublish-btn { order: 9; position: static; margin-left: 6px; }
-        @media (max-width: 720px) {
-            .collection-grid.collection-list .community-card-author { display: none; }
-        }
-        .breadcrumb-root:hover { color: var(--accent); }
-        /* search row shares one toolbar band with the title row above it, rather than a full band of its own */
-        .search-bar { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-4); flex-wrap: wrap; }
-        .search-bar input {
-            /* capped width leaves room for sort controls on the same line */
-            flex: 1 1 240px; min-width: 180px; max-width: 420px;
-            padding: 0 var(--sp-4) !important; background: var(--bg-input);
-            border: 1.5px solid var(--nb-ink); border-radius: var(--ctl-r) !important;
-            color: var(--text-primary); font-family: 'Exo 2', sans-serif; font-size: 13px !important;
-            height: var(--ctl-h) !important;
-        }
-        .search-bar input:focus { outline: none; border-color: var(--accent) !important; box-shadow: 3px 3px 0 var(--nb-shadow) !important; }
-        .search-bar select {
-            height: var(--ctl-h) !important; border-radius: var(--ctl-r) !important; font-size: 13px !important;
-            padding: 0 26px 0 var(--sp-3) !important; border: 1px solid var(--border) !important;
-            background: var(--bg-input) !important; color: var(--text-primary) !important;
-            font-weight: 600; cursor: pointer;
-        }
-        /* square icon footprint + pressed state so toggle state is answerable without looking at the grid */
-        #collection-layout-toggle, #collection-shiny-toggle, #community-layout-toggle { width: var(--ctl-h); height: var(--ctl-h); padding: 0; }
-        #collection-layout-toggle svg, #collection-shiny-toggle svg, #community-layout-toggle svg { width: 16px; height: 16px; }
-        #collection-layout-toggle[aria-pressed="true"],
-        #collection-shiny-toggle[aria-pressed="true"],
-        #community-layout-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-        /* <=760px rewrite of these mobile rules lives in css/responsive.css, which must load after this file to win the cascade */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
-            z-index: 11000; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; backdrop-filter: none; -webkit-backdrop-filter: none;
-        }
-        .modal-overlay.active { opacity: 1; pointer-events: all; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-        .modal {
-            background: var(--bg-card);
-            border: var(--nb-border-w) solid var(--nb-ink);
-            border-radius: 14px;
-            padding: var(--sp-5); max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;
-            box-shadow: 8px 8px 0 var(--nb-shadow);
-            transform: scale(0.92) translateY(8px);
-            transition: transform 0.22s cubic-bezier(.34,1.56,.64,1);
-        }
-        .modal-overlay.active .modal { transform: scale(1) translateY(0); }
-        .reduce-motion .modal,
-        .reduce-motion .modal-overlay.active .modal { transition: opacity 0.15s ease; transform: scale(1); }
+.collection-card .card-body { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-3) var(--sp-3) var(--sp-4); min-width: 0; }
+.collection-card .card-name {
+    font-weight: 700; font-size: 15px; line-height: 1.25;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.collection-card .card-meta-row { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; }
+.collection-card .card-bst { font-family: 'Inconsolata', monospace; font-size: 11px; font-weight: 700; color: var(--text-secondary); }
+.collection-card .card-bst em { font-style: normal; font-size: 9px; letter-spacing: .06em; color: var(--text-muted); margin-right: 3px; }
+.collection-card .card-date { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.collection-card .card-date::before { content: "·"; margin-right: var(--sp-2); }
+.collection-card .card-types { display: flex; gap: var(--sp-1); flex-wrap: wrap; margin-top: 4px; }
+.collection-card .card-types .type-badge { min-width: 56px; padding: 2px 8px; font-size: 10.5px; border-radius: 5px; }
+
+/* folders: same card, an icon where the art goes */
+.folder-card .card-art.folder-card-art { color: var(--accent); }
+.folder-card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+/* "Add new ..." -- the first tile of every library; a dashed outline of a
+   card, so it reads as a slot to fill rather than something you made */
+/* doubled class: css/library.css (later in the cascade) sets the library
+   card's solid border and fill */
+.collection-add-card.collection-add-card {
+    font: inherit; color: var(--text-secondary); text-align: left;
+    background: transparent;
+    border: 1.5px dashed var(--border-strong);
+}
+.collection-add-card.collection-add-card:hover,
+.collection-add-card.collection-add-card:focus-visible {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: none;
+    transform: none;
+    outline: none;
+}
+.collection-card.collection-add-card .card-art { background: transparent; }
+.collection-add-card .card-name { color: inherit; }
+.collection-add-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--bg-panel);
+    color: inherit;
+    transition: background .15s ease;
+}
+.collection-add-card:hover .collection-add-icon { background: var(--bg-card); }
+.collection-add-icon svg { width: 24px; height: 24px; }
+/* custom moves / abilities / items: icon and label on one line */
+.collection-library-card.collection-add-card {
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-3);
+    min-height: 84px;
+    cursor: pointer;
+    font-weight: 700; font-size: 14px;
+}
+.collection-library-card.collection-add-card .collection-add-icon { width: 36px; height: 36px; }
+.collection-library-card.collection-add-card .collection-add-icon svg { width: 18px; height: 18px; }
+/* list layout: a row like the others */
+.collection-grid.collection-list .collection-add-card {
+    border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0;
+}
+.collection-grid.collection-list .collection-card.collection-add-card .collection-add-icon { width: 30px; height: 30px; }
+.collection-grid.collection-list .collection-card.collection-add-card .collection-add-icon svg { width: 16px; height: 16px; }
+.collection-grid.collection-list .collection-library-card.collection-add-card { min-height: 0; justify-content: flex-start; padding: var(--sp-3) var(--sp-4); }
+
+/* custom moves / abilities / items: the Fakémon card frame, with an emblem
+   (or an item's artwork) where the Fakémon art goes -- same width and height
+   as a Fakémon card, so the libraries line up the same way */
+.library-emblem {
+    width: 46%; aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    color: #fff;
+    box-shadow: inset 0 -6px 0 rgba(0,0,0,.08);
+}
+.library-emblem svg { width: 44%; height: 44%; stroke-width: 1.8; }
+.library-emblem-plain { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
+.collection-card .card-art .library-tile-corner {
+    font-family: 'Exo 2', sans-serif; font-style: normal;
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+}
+.library-tile .card-meta-row { gap: var(--sp-3); }
+.library-tile-desc {
+    min-width: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.library-tile-desc.is-empty { color: var(--text-muted); font-style: italic; }
+/* a quiet badge in the slot where a Fakémon shows its types */
+.library-tag {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px;
+    border-radius: 5px;
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-size: 10.5px; font-weight: 700;
+}
+/* list layout: one line, the description fills the middle */
+.collection-grid.collection-list .library-emblem { width: 100%; box-shadow: none; }
+.collection-grid.collection-list .library-tile .card-art .library-tile-corner { display: none; }
+.collection-grid.collection-list .library-tile .card-meta-row { order: 3; flex: 1 1 auto; min-width: 0; margin-left: var(--sp-3); }
+
+/* ==================== card actions ====================
+   up to 7 buttons: too many for a card's width, so they stack in a strip just
+   outside the card's right edge, shown on hover. .collection-library-card
+   renders into the same grid and shares the rules. */
+.collection-card .card-actions { display: flex; gap: 3px; opacity: 0; transition: opacity .15s ease; }
+.collection-card:hover .card-actions,
+html.always-show-card-actions .collection-card .card-actions { opacity: 1; }
+@media (hover: none) { .collection-card .card-actions { opacity: 1; } }
+.collection-card .card-actions button {
+    width: 26px; height: 26px; padding: 0; flex: 0 0 26px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-card); color: var(--text-secondary);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+}
+.collection-card .card-actions button svg { width: 13px; height: 13px; }
+.collection-card .card-actions button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.collection-card .card-actions button.card-delete-btn:hover { background: var(--danger); border-color: var(--danger); }
+.collection-card .card-actions button.pinned-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.collection-grid:not(.collection-list) .collection-card,
+.collection-grid:not(.collection-list) .collection-library-card { overflow: visible; }
+.collection-grid:not(.collection-list) .card-actions {
+    position: absolute; top: 0; left: 100%; z-index: 1;
+    flex-direction: column;
+    /* padding, not margin, so the pointer never crosses a dead zone card -> strip */
+    padding-left: var(--sp-1);
+}
+.collection-grid:not(.collection-list) .card-actions:hover { opacity: 1; }
+/* the strip overlaps the next card; lift the hovered card above its neighbours */
+.collection-grid:not(.collection-list) .collection-card:hover,
+.collection-grid:not(.collection-list) .collection-card:has(.card-actions:hover),
+.collection-grid:not(.collection-list) .collection-library-card:hover,
+.collection-grid:not(.collection-list) .collection-library-card:has(.card-actions:hover) { z-index: 300; }
+.collection-grid:not(.collection-list) .card-actions .collection-card-export-wrap { display: flex; flex: 0 0 26px; width: 26px; height: 26px; }
+/* room for the rightmost column's strip */
+.collection-grid:not(.collection-list) { padding-right: 30px; }
+
+/* ==================== list layout ====================
+   one divided table instead of a stack of cards */
+.collection-grid.collection-list {
+    display: flex; flex-direction: column; gap: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--card-r);
+    overflow: hidden;
+}
+.collection-grid.collection-list .collection-card {
+    flex-direction: row; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-4);
+    border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0;
+}
+.collection-grid.collection-list .collection-card:last-child { border-bottom: 0; }
+.collection-grid.collection-list .collection-card:hover { transform: none; box-shadow: none; background: var(--bg-panel); }
+.collection-grid.collection-list .card-art { width: 38px; height: 38px; flex: 0 0 38px; padding: 2px; aspect-ratio: auto; border-radius: 8px; order: 0; }
+.collection-grid.collection-list .card-number { position: static; font-family: 'Inconsolata', monospace; font-size: 11px; color: var(--text-muted); flex: 0 0 48px; order: 1; }
+.collection-grid.collection-list .card-name { font-weight: 700; font-size: 14px; flex: 0 1 260px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; order: 2; }
+.collection-grid.collection-list .card-types { display: flex; gap: var(--sp-1); margin-left: auto; flex: none; order: 3; }
+.collection-grid.collection-list .card-bst { flex: none; min-width: 70px; text-align: right; font-family: 'Inconsolata', monospace; font-size: 11px; font-weight: 700; color: var(--text-secondary); white-space: nowrap; order: 4; }
+.collection-grid.collection-list .card-body { display: contents; }
+.collection-grid.collection-list .card-actions { position: static; order: 9; flex: none; margin-left: 10px; }
+/* community cards reuse this frame with their own extras */
+.collection-grid.collection-list .community-card { padding-right: 14px; }
+.collection-grid.collection-list .community-card-evo-badge { order: 3; margin-left: auto; white-space: nowrap; }
+.collection-grid.collection-list .card-types + .community-card-evo-badge { margin-left: 10px; }
+.collection-grid.collection-list .community-card .card-types { order: 3; margin-left: auto; flex: none; }
+.collection-grid.collection-list .community-card-stats { order: 4; flex: none; margin: 0 10px; }
+.collection-grid.collection-list .community-card-author { order: 5; flex: 0 0 auto; max-width: 160px; }
+.collection-grid.collection-list .community-card-author .community-author-link { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.collection-grid.collection-list .community-unpublish-btn { order: 9; position: static; margin-left: 6px; }
+@media (max-width: 720px) { .collection-grid.collection-list .community-card-author { display: none; } }
+
+/* ==================== toolbar ==================== */
+.search-bar {
+    display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+    margin-bottom: var(--sp-5);
+}
+.search-bar input { flex: 1 1 260px; min-width: 180px; max-width: 440px; }
+.search-bar select { flex: 0 0 auto; font-weight: 600; cursor: pointer; }
+.collection-tabs { margin-bottom: var(--sp-4); }
+.breadcrumb-root { cursor: pointer; }
+.breadcrumb-root:hover { color: var(--accent); }
+#collection-layout-toggle[aria-pressed="true"],
+#collection-shiny-toggle[aria-pressed="true"],
+#community-layout-toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 640px) {
+    .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+    .search-bar input { flex: 1 1 100%; max-width: none; }
+    .search-bar select { flex: 1 1 0; min-width: 0; }
+    .collection-header-actions .btn span { display: none; }
+    .collection-header-actions .btn { padding: 0 var(--sp-3); }
+}
+
+/* the Community Hub's cards have no side action strip, so no room kept for one */
+#community-grid.collection-grid:not(.collection-list) { padding-right: 0; }
+/* phones: no spare width beside the cards, so the action strip moves inside
+   the card's top-right corner instead of hanging off its edge */
+@media (max-width: 640px) {
+    .collection-grid:not(.collection-list) { padding-right: 0; }
+    .collection-grid:not(.collection-list) .card-actions {
+        top: 6px; left: auto; right: 6px;
+        padding-left: 0;
+    }
+    .collection-grid:not(.collection-list) .collection-card .card-number { right: auto; left: 10px; }
+}

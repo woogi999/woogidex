@@ -449,11 +449,13 @@ ${entries}
 
         async function exportCollectionAsShowdownMod() {
             try {
-                const fakemonList = (state.fakemonDB || []).filter(f => f && f.name);
-                if (!fakemonList.length) { api.showToast('Your collection is empty; nothing to export!', 'error'); return; }
+                // the whole collection, or just the region picked in the sidebar
+                const lists = api.exportLists();
+                const fakemonList = lists.fakemonDB.filter(f => f && f.name);
+                if (!fakemonList.length) { api.showToast(lists.region ? `${lists.region.name} has no Fakémon to export yet.` : 'Your collection is empty; nothing to export!', 'error'); return; }
                 if (typeof JSZip === 'undefined') { api.showToast('ZIP library failed to load. Check your connection and try again.', 'error'); return; }
 
-                const modId = 'woogidexmod';
+                const modId = lists.region ? `woogidex${lists.slug}` : 'woogidexmod';
                 const speciesIds = makeUniqueSpeciesIds(fakemonList);
 
                 const zip = new JSZip();
@@ -467,6 +469,10 @@ ${entries}
                 if (movesTs) modFolder.file('moves.ts', movesTs);
                 const itemsTs = api.buildShowdownItemsFile ? api.buildShowdownItemsFile(fakemonList) : null;
                 if (itemsTs) modFolder.file('items.ts', itemsTs);
+                // custom types need a typechart covering them, or Showdown rejects the species
+                const typechartTs = api.buildShowdownTypechart?.(lists.customTypes, lists.region?.id || null);
+                if (typechartTs) modFolder.file('typechart.ts', typechartTs);
+                if (lists.region) zip.file('region.json', api.regionManifest(lists));
                 zip.file('README.txt', buildCollectionReadmeTxt(fakemonList, modId, totalSkipped));
                 const evolutionNotes = buildEvolutionNotesText(fakemonList);
                 if (evolutionNotes) zip.file('evolution_notes.txt', evolutionNotes);
@@ -480,7 +486,7 @@ ${entries}
                 link.click();
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
-                api.showToast('Collection exported as a Showdown mod!', 'success');
+                api.showToast(lists.region ? `${lists.region.name} exported as a Showdown mod!` : 'Collection exported as a Showdown mod!', 'success');
             } catch (err) {
                 log.error('SHOWDOWN EXPORT', 'Collection Showdown mod export failed', err);
                 api.showToast('Collection Showdown mod export failed!', 'error');

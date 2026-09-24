@@ -6,10 +6,10 @@
         /* type dropdown styles */
         .type-dropdown { position: relative; }
         .type-dropdown-trigger {
-            width: 100%; padding: 10px 14px; background: var(--bg-input);
-            border: 1px solid var(--border); border-radius: 10px;
+            width: 100%; min-height: var(--ctl-h); padding: 4px var(--sp-3); background: var(--bg-input);
+            border: 1px solid var(--border-strong); border-radius: var(--ctl-r);
             color: var(--text-primary); font-family: 'Exo 2', sans-serif;
-            font-size: 14px; cursor: pointer; transition: all 0.2s ease;
+            font-size: 13px; white-space: nowrap; cursor: pointer; transition: border-color .15s ease;
             display: flex; align-items: center; justify-content: space-between;
             text-align: left;
         }
@@ -36,10 +36,10 @@
         /* category dropdown styles (mirrors type dropdown) */
         .cat-dropdown { position: relative; }
         .cat-dropdown-trigger {
-            width: 100%; padding: 10px 14px; background: var(--bg-input);
-            border: 1px solid var(--border); border-radius: 10px;
+            width: 100%; min-height: var(--ctl-h); padding: 4px var(--sp-3); background: var(--bg-input);
+            border: 1px solid var(--border-strong); border-radius: var(--ctl-r);
             color: var(--text-primary); font-family: 'Exo 2', sans-serif;
-            font-size: 14px; cursor: pointer; transition: all 0.2s ease;
+            font-size: 13px; white-space: nowrap; cursor: pointer; transition: border-color .15s ease;
             display: flex; align-items: center; justify-content: space-between;
             text-align: left;
         }
@@ -108,7 +108,7 @@
             background: var(--bg-input);
             border: 1px solid var(--border);
             border-radius: 8px;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             font-size: 13px;
             font-weight: 700;
             text-align: center;
@@ -146,36 +146,50 @@
         }
         .editor-stat-bar-bg {
             flex: 1;
-            height: 28px;
-            background: var(--bg-dark);
-            border: 1px solid var(--border-light);
-            border-radius: 8px;
-            overflow: hidden;
+            height: 12px;
+            background: var(--bg-panel);
+            border-radius: 999px;
             position: relative;
             cursor: pointer;
             touch-action: none;
             user-select: none;
         }
-        .editor-stat-bar-bg:hover {
-            border-color: var(--text-secondary);
-        }
-        .editor-stat-bar-bg.dragging {
-            border-color: var(--text-secondary);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
+        /* a taller invisible hit area, so the slim track is still easy to grab */
+        .editor-stat-bar-bg::before { content: ""; position: absolute; inset: -9px 0; }
         .editor-stat-bar-fill {
+            position: absolute; left: 0; top: 0;
             height: 100%;
-            border-radius: 8px;
+            border-radius: 999px;
             transition: width 0.15s ease;
-            position: absolute;
-            left: 0;
-            top: 0;
-            opacity: 0.85;
             pointer-events: none;
         }
-        .editor-stat-bar-bg.dragging .editor-stat-bar-fill {
-            transition: none;
+        .editor-stat-bar-bg.dragging .editor-stat-bar-fill { transition: none; }
+        /* the grab handle; --stat-pct is set by updateEditorStats(). clamped
+           so it never hangs off either end of the track at 1 or 255 */
+        .editor-stat-bar-bg::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: clamp(9px, var(--stat-pct, 0%), calc(100% - 9px));
+            width: 18px;
+            height: 18px;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: #fff;
+            border: 1px solid var(--border-strong);
+            box-shadow: 0 1px 3px rgba(0,0,0,.25);
+            transition: left 0.15s ease, transform 0.12s ease, box-shadow 0.12s ease;
+            pointer-events: none;
         }
+        .editor-stat-bar-bg:hover::after,
+        .editor-stat-bar-bg:focus-visible::after { box-shadow: 0 0 0 5px var(--accent-glow), 0 1px 3px rgba(0,0,0,.25); }
+        .editor-stat-bar-bg.dragging { cursor: grabbing; }
+        .editor-stat-bar-bg.dragging::after {
+            transition: none;
+            transform: translate(-50%, -50%) scale(1.15);
+            box-shadow: 0 0 0 6px var(--accent-glow), 0 2px 6px rgba(0,0,0,.3);
+        }
+        .editor-stat-bar-bg:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
         .editor-stat-bar-fill.hp { background: #cc4444; }
         .editor-stat-bar-fill.atk { background: #cc8844; }
         .editor-stat-bar-fill.def { background: #ccaa44; }
@@ -188,7 +202,7 @@
             background: var(--bg-input);
             border: 1px solid var(--border);
             border-radius: 8px;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             font-size: 14px;
             font-weight: 700;
             text-align: center;
@@ -204,7 +218,7 @@
         .editor-stat-calc {
             width: 44px;
             text-align: right;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             font-weight: 700;
             font-size: 14px;
             color: var(--text-muted);
@@ -225,23 +239,15 @@
         }
         .bulk-row {
             display: flex;
-            gap: 16px;
             flex-wrap: wrap;
         }
         .bulk-card {
             flex: 1;
             min-width: 140px;
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 14px;
+            padding: var(--sp-2) var(--sp-4);
             text-align: center;
         }
-        
-        .bulk-card.bulk-card-own {
-            background: linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(212, 175, 55, 0.03));
-            border-color: rgba(212, 175, 55, 0.4);
-        }
+        .bulk-card + .bulk-card { border-left: 1px solid var(--border-light); }
         .bulk-card.bulk-card-own .bulk-match-name {
             color: #c9a227;
         }
@@ -254,7 +260,7 @@
         .bulk-card .bulk-value {
             font-size: 22px;
             font-weight: 800;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             color: var(--text-primary);
             margin-bottom: 8px;
         }

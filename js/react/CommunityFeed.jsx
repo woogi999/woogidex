@@ -19,19 +19,21 @@ function SkeletonCard() {
     return (
         <div className="collection-card community-card skel-card">
             <div className="card-art skel" />
-            <div className="skel skel-text skel-name" />
-            <div className="card-types">
-                <span className="skel skel-pill" />
-                <span className="skel skel-pill" />
-            </div>
-            <div className="community-card-stats">
-                <span className="skel skel-pill" />
-                <span className="skel skel-pill" />
-                <span className="skel skel-pill" />
-            </div>
-            <div className="community-card-author">
-                <span className="skel skel-circle" />
-                <span className="skel skel-text" />
+            <div className="card-body">
+                <div className="skel skel-text skel-name" />
+                <div className="card-types">
+                    <span className="skel skel-pill" />
+                    <span className="skel skel-pill" />
+                </div>
+                <div className="community-card-stats">
+                    <span className="skel skel-pill" />
+                    <span className="skel skel-pill" />
+                    <span className="skel skel-pill" />
+                </div>
+                <div className="community-card-author">
+                    <span className="skel skel-circle" />
+                    <span className="skel skel-text" />
+                </div>
             </div>
         </div>
     );
@@ -57,7 +59,7 @@ function ShieldedArt({ art, alt, className = '' }) {
     return <canvas ref={canvasRef} className={`shielded-art ${className}`} role="img" aria-label={alt || ''} />;
 }
 
-function CardArt({ row, mon, requestArtwork }) {
+function CardArt({ row, mon, requestArtwork, children }) {
     const stored = mon.thumbnail || mon.artwork;
     const [art, setArt] = useState(stored || '');
     const ref = useRef(null);
@@ -90,6 +92,7 @@ function CardArt({ row, mon, requestArtwork }) {
             {art
                 ? <ShieldedArt art={art} alt={`${mon.name || 'Fakémon'} artwork`} />
                 : <img className="no-art-placeholder" src="assets/no_art_placeholder.png" alt="No artwork" draggable="false" />}
+            {children}
         </div>
     );
 }
@@ -134,9 +137,13 @@ function CommunityCard({ row, canDelete, isMine, requestArtwork }) {
                 </button>
             )}
 
-            <CardArt row={row} mon={mon} requestArtwork={requestArtwork} />
-            <div className="card-name">{mon.name}</div>
-            <EvoBadge row={row} />
+            {/* the family badge sits on the artwork's corner, so a card with one
+                is exactly as tall as a card without and the rows stay level */}
+            <CardArt row={row} mon={mon} requestArtwork={requestArtwork}>
+                <EvoBadge row={row} />
+            </CardArt>
+            <div className="card-body">
+            <div className="card-name" title={mon.name}>{mon.name}</div>
 
             <div className="card-types">
                 {mon.type1 && <span className={`type-badge type-${String(mon.type1).toLowerCase()}`}>{mon.type1}</span>}
@@ -166,6 +173,7 @@ function CommunityCard({ row, canDelete, isMine, requestArtwork }) {
             </div>
 
             <Author row={row} />
+            </div>
         </div>
     );
 }

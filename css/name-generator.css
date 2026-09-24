@@ -22,7 +22,7 @@
 }
 .name-roll-popover-head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 2px 4px 6px; font: 700 10px/1 'JetBrains Mono', monospace;
+    padding: 2px 4px 6px; font: 700 10px/1 'Inconsolata', monospace;
     letter-spacing: .08em; color: var(--text-muted);
 }
 .name-roll-reroll {

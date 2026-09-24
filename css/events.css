@@ -18,7 +18,7 @@
 .event-card-description { color:var(--text-secondary); font-size:13px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
 .event-date { color:var(--text-muted); font-size:11px; margin-top:7px; overflow-wrap:anywhere; }
 .contest-list { display:flex; flex-direction:column; gap:12px; min-width:0; }
-.contest-card { display:block; width:100%; min-width:0; border:1px solid var(--border); border-radius:14px; padding:16px; background:var(--bg-panel); position:relative; overflow:visible; }
+.contest-card { display:block; width:100%; min-width:0; border-radius:14px; padding:16px; background:var(--bg-panel); position:relative; overflow:visible; border: 0; }
 .contest-card h4 { margin:0 0 6px; font-size:15px; overflow-wrap:anywhere; }
 .contest-description { color:var(--text-secondary); font-size:12px; line-height:1.5; min-height:0; overflow-wrap:anywhere; }
 .contest-meta { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
@@ -28,76 +28,26 @@
 .contest-phase-results { color:var(--warning); }
 .contest-phase-draft { color:var(--text-muted); }
 .contest-card-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.contest-submit-panel { display:block; width:100%; margin-top:14px; padding:16px; border:1px dashed var(--border); border-radius:12px; background:var(--bg-card); position:relative; clear:both; overflow:visible; }
+.contest-submit-panel { display:block; width:100%; margin-top:14px; padding:16px; border-radius:12px; background:var(--bg-card); position:relative; clear:both; overflow:visible; border: 0; }
 .contest-submit-panel h5 { overflow-wrap:anywhere; }
 .contest-submit-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .contest-submit-grid .full { grid-column:1/-1; }
-.contest-mon-option { display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:10px; padding:9px; background:var(--bg-input); }
+.contest-mon-option { display:flex; align-items:center; gap:10px; border-radius:10px; padding:9px; background:var(--bg-input); border: 0; }
 .contest-mon-option img { width:42px; height:42px; object-fit:contain; border-radius:8px; background:var(--bg-panel); }
 .contest-rating-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; width:100%; }
-.contest-rating-box { min-width:0; border:1px solid var(--border); border-radius:12px; padding:12px; background:var(--bg-panel); }
+.contest-rating-box { min-width:0; border-radius:12px; padding:12px; background:var(--bg-panel); border: 0; }
 .contest-rating-label { font-size:12px; font-weight:700; margin-bottom:7px; }
 .contest-stars { display:flex; flex-wrap:wrap; gap:2px; }
 .contest-star { border:0; background:transparent; color:var(--border); padding:2px; cursor:pointer; flex:0 0 auto; }
 .contest-star.active { color:#f5b83d; }
 .contest-remarks { display:block; width:100%; min-height:100px; margin-top:12px; resize:vertical; }
 .contest-vote-list { display:flex; flex-direction:column; gap:12px; margin-top:12px; min-width:0; }
-.contest-vote-row { display:block; width:100%; min-width:0; border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--bg-panel); overflow:visible; }
+.contest-vote-row { display:block; width:100%; min-width:0; padding:12px; overflow:visible; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
 @media (max-width:700px) { .events-hero,.event-card-head { flex-direction:column; align-items:flex-start; } .events-hero { padding:18px; } .contest-submit-grid,.contest-rating-grid { grid-template-columns:1fr; } .contest-stars { gap:0; } .contest-star { padding:1px; } }
-
-/* ==================== persistent header + icon rail ====================
-   compact always-on-top bar, permanently fixed; .header-retracted still
-   toggles via JS on scroll direction but only affects the box-shadow now.
-   css/sidebar.css has the icon-rail this header sits above. */
-:root { --header-h: 56px; }
-body { padding-top: 0; }
-.header {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    width: 100%; max-width: none;
-    height: var(--header-h);
-    min-height: var(--header-h);
-    max-height: var(--header-h);
-    margin: 0;
-    padding: 4px 14px;
-    box-sizing: border-box;
-    border-radius: 0;
-    border-left: 0; border-right: 0; border-top: 0;
-    border-bottom: var(--nb-border-w) solid var(--nb-ink);
-    background: var(--bg-card);
-    box-shadow: 0 4px 16px rgba(15,23,42,0.08);
-    gap: 12px;
-    overflow: visible;
-    z-index: 12000;
-    transform: none;
-    transition: transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease, background .22s ease;
-    will-change: auto;
-}
-/* never retracts; the scroll-direction class still lands a shadow change */
-.header.header-retracted { transform: none; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
-/* thin two-tone accent edge down the header's left side */
-.header::before {
-    content: "";
-    position: absolute;
-    top: 0; right: auto; bottom: 0; left: 0;
-    width: 4px;
-    background: linear-gradient(180deg, #ff99fd, #b380ff);
-    transform: translateY(-100%);
-    pointer-events: auto;
-}
-.header::after { display: none; }
-.logo img, .logo-button img { height: 36px !important; max-height: 40px; width: auto !important; }
-@media (max-width: 640px) { .logo img, .logo-button img { height: 30px !important; } }
-/* content sits below the fixed bar; !important needed since other breakpoints elsewhere also set this padding */
-#main-content { padding-top: calc(var(--header-h) + var(--sp-4)) !important; }
-@media (max-width: 640px) {
-    .app-container { padding: 0 var(--sp-3) var(--sp-5) !important; }
-    #main-content { padding-top: calc(var(--header-h) + var(--sp-3)) !important; }
-}
 
 /* ==================== event / contest UX ==================== */
 .contest-card { transition: border-color .18s ease, box-shadow .18s ease, background .18s ease; }
-.contest-card:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 8px 22px rgba(0,0,0,.05); }
+.contest-card:hover { outline: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--border)); outline-offset: -1.5px;  box-shadow: 0 8px 22px rgba(0,0,0,.05); }
 .contest-card-actions { margin-top: 14px !important; padding-top: 12px; border-top: 1px solid var(--border-light); }
 .contest-card-actions .contest-phase { margin-left: auto; }
 .contest-submit-panel { animation: contestPanelIn .18s ease-out; }
@@ -143,8 +93,6 @@ body { padding-top: 0; }
 .admin-icon-color-row { display:flex; gap:12px; align-items:flex-start; }
 .admin-icon-color-row .form-group { min-width:0; }
 @media (max-width:700px) {
-    #main-content { padding-top: 96px; }
-    .header { padding:14px 16px !important; }
     .admin-contest-row { flex-direction:column !important; }
     .admin-contest-row > div:last-child { width:100%; }
     .admin-contest-row > div:last-child .btn { flex:1 1 auto; }
@@ -180,7 +128,7 @@ body { padding-top: 0; }
 .contest-results-panel h5 { display:flex; align-items:center; gap:7px; }
 .contest-results-panel h5 i { width:16px; height:16px; color:#f5b942; }
 .contest-results-list { display:flex; flex-direction:column; gap:9px; margin-top:12px; }
-.contest-result-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--bg-panel); min-width:0; }
+.contest-result-row { display:flex; align-items:center; gap:12px; padding:10px 12px; min-width:0; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
 .contest-results-criteria { color:var(--text-muted); font-size:11.5px; margin:2px 0 12px; }
 .contest-result-rank { flex:0 0 30px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:var(--text-muted); }
 .contest-result-rank i { width:20px; height:20px; }
@@ -199,7 +147,7 @@ body { padding-top: 0; }
 @media (max-width:640px) { .contest-result-row { flex-wrap:wrap; } .contest-result-scores { flex-basis:100%; justify-content:space-between; padding-left:56px; } }
 
 /* contest rules block, and a user's own entries during submission */
-.contest-rules { margin-bottom:14px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--bg-panel); }
+.contest-rules { margin-bottom:14px; padding:14px 16px; border-radius:12px; background:var(--bg-panel); border: 0; }
 .contest-rules h5 { display:flex; align-items:center; gap:7px; margin:0 0 6px; }
 .contest-rules h5 i { width:15px; height:15px; color:var(--text-muted); }
 .contest-rules p { margin:0; color:var(--text-secondary); font-size:12.5px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -265,7 +213,7 @@ body { padding-top: 0; }
 .community-update-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:22px; }
 
 /* community update collection picker */
-.community-update-modal{width:min(760px,calc(100vw - 24px));max-height:min(86vh,820px);overflow:hidden}.community-update-modal-body{padding-top:0;display:flex;flex-direction:column;min-height:0}.community-update-kicker{font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.16em;color:var(--text-muted);margin-bottom:5px}.community-update-help{margin:0 0 16px;color:var(--text-secondary);line-height:1.5;font-size:13px}.community-update-controls{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;margin-bottom:14px}.community-update-search-wrap{position:relative;min-width:0}.community-update-search-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-muted);pointer-events:none}.community-update-search-wrap input,.community-update-controls select{width:100%;height:38px;box-sizing:border-box;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);color:var(--text-primary);font:600 12px 'Exo 2',sans-serif}.community-update-search-wrap input{padding:0 12px 0 34px}.community-update-controls select{padding:0 30px 0 10px}.community-update-collection-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;overflow:auto;padding:2px 3px 8px;min-height:180px;max-height:52vh}.community-update-mon-card{appearance:none;text-align:left;padding:0;overflow:hidden;min-width:0;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text-primary);cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.community-update-mon-card:hover{transform:translateY(-2px);border-color:var(--text-secondary);box-shadow:0 7px 18px rgba(0,0,0,.09)}.community-update-mon-card.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow),0 8px 22px rgba(0,0,0,.1)}.community-update-mon-art{aspect-ratio:1;background:var(--bg-panel);display:flex;align-items:center;justify-content:center;overflow:hidden}.community-update-mon-art img{width:100%;height:100%;object-fit:contain}.community-update-mon-info{padding:9px 10px 10px;min-width:0}.community-update-mon-info strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.community-update-mon-info span{display:block;margin-top:3px;color:var(--text-muted);font:600 9px 'JetBrains Mono',monospace}.community-update-empty{grid-column:1/-1;display:grid;place-items:center;min-height:160px;color:var(--text-muted);font-size:12px}.community-update-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding-top:12px;border-top:1px solid var(--border)}.community-update-selected{color:var(--text-secondary);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.community-update-action-buttons{display:flex;gap:8px;flex-shrink:0}
+.community-update-modal{width:min(760px,calc(100vw - 24px));max-height:min(86vh,820px);overflow:hidden}.community-update-modal-body{padding-top:0;display:flex;flex-direction:column;min-height:0}.community-update-kicker{font:700 9px/1 'Inconsolata',monospace;letter-spacing:.16em;color:var(--text-muted);margin-bottom:5px}.community-update-help{margin:0 0 16px;color:var(--text-secondary);line-height:1.5;font-size:13px}.community-update-controls{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;margin-bottom:14px}.community-update-search-wrap{position:relative;min-width:0}.community-update-search-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-muted);pointer-events:none}.community-update-search-wrap input,.community-update-controls select{width:100%;height:38px;box-sizing:border-box;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);color:var(--text-primary);font:600 12px 'Exo 2',sans-serif}.community-update-search-wrap input{padding:0 12px 0 34px}.community-update-controls select{padding:0 30px 0 10px}.community-update-collection-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;overflow:auto;padding:2px 3px 8px;min-height:180px;max-height:52vh}.community-update-mon-card{appearance:none;text-align:left;padding:0;overflow:hidden;min-width:0;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text-primary);cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.community-update-mon-card:hover{transform:translateY(-2px);border-color:var(--text-secondary);box-shadow:0 7px 18px rgba(0,0,0,.09)}.community-update-mon-card.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow),0 8px 22px rgba(0,0,0,.1)}.community-update-mon-art{aspect-ratio:1;background:var(--bg-panel);display:flex;align-items:center;justify-content:center;overflow:hidden}.community-update-mon-art img{width:100%;height:100%;object-fit:contain}.community-update-mon-info{padding:9px 10px 10px;min-width:0}.community-update-mon-info strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.community-update-mon-info span{display:block;margin-top:3px;color:var(--text-muted);font:600 9px 'Inconsolata',monospace}.community-update-empty{grid-column:1/-1;display:grid;place-items:center;min-height:160px;color:var(--text-muted);font-size:12px}.community-update-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding-top:12px;border-top:1px solid var(--border)}.community-update-selected{color:var(--text-secondary);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.community-update-action-buttons{display:flex;gap:8px;flex-shrink:0}
 @media(max-width:600px){.community-update-controls{grid-template-columns:1fr 1fr}.community-update-search-wrap{grid-column:1/-1}.community-update-collection-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.community-update-actions{align-items:stretch;flex-direction:column}.community-update-selected{width:100%}.community-update-action-buttons{width:100%}.community-update-action-buttons .btn{flex:1}}
 
 /* trainer card: flat 2d presentation */
@@ -353,16 +301,10 @@ body { padding-top: 0; }
    ==================== */
 
 /* the live event is visually louder since it's the reason anyone opened this page */
-.event-group {
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 18px;
-    margin-bottom: 16px;
-    background: var(--bg-card);
-}
+.event-group { border-radius: 16px; padding: 18px; margin-bottom: 16px; background: var(--bg-card); border: 0; }
 
 .event-group.is-live {
-    border-color: var(--accent);
+    outline: 1.5px solid var(--accent); outline-offset: -1.5px; 
     box-shadow: 0 0 0 1px var(--accent-glow), 0 10px 26px rgba(0, 0, 0, .07);
 }
 

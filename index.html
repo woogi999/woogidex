@@ -11,13 +11,22 @@
     <base href="/" target="_blank">
     <script>
         (function () {
-            var ROUTES = ['collection', 'editor', 'ability-editor', 'community', 'events', 'battle', 'profile', 'privacy', 'terms', 'settings'];
+            var ROUTES = ['collection', 'editor', 'ability-editor', 'community', 'events', 'battle', 'profile', 'privacy', 'terms', 'settings', 'updates', 'search'];
             var parts = window.location.pathname.split('/');
             var cut = -1;
             for (var i = 0; i < parts.length; i++) {
                 if (ROUTES.indexOf(parts[i]) !== -1) { cut = i; break; }
             }
-            var dir = cut > 0 ? parts.slice(0, cut) : parts.slice(0, -1);
+            // no route segment: either the app root or a path nothing owns (the
+            // 404 page). Taking the parent directory breaks for a deep unknown
+            // path (/a/b would load views/ from /a/), so outside file:// the
+            // install dir is inferred from the host: a GitHub Pages project
+            // site lives under its first segment, everything else at the root
+            var dir;
+            if (cut > 0) dir = parts.slice(0, cut);
+            else if (window.location.protocol === 'file:') dir = parts.slice(0, -1);
+            else if (/\.github\.io$/.test(window.location.hostname) && parts.length > 2) dir = parts.slice(0, 2);
+            else dir = [''];
             document.querySelector('base').setAttribute('href', dir.join('/') + '/');
         })();
     </script>
@@ -49,7 +58,7 @@
             } catch (e) {}
         })();
     </script>
-    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Inconsolata:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/png" href="assets/favicon.png">
     <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
     <!-- artwork is hand-drawn; asks well-behaved crawlers to stay out of it
@@ -80,6 +89,8 @@
     <link rel="stylesheet" href="css/auth.css">
     <link rel="stylesheet" href="css/community.css">
     <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="css/header.css">
+    <link rel="stylesheet" href="css/regions.css">
     <link rel="stylesheet" href="css/staff.css">
     <link rel="stylesheet" href="css/profile.css">
     <link rel="stylesheet" href="css/events.css">
@@ -90,19 +101,42 @@
     <link rel="stylesheet" href="css/updates.css">
     <link rel="stylesheet" href="css/battle.css">
     <link rel="stylesheet" href="css/legal.css">
+    <link rel="stylesheet" href="css/not-found.css">
     <link rel="stylesheet" href="css/protect.css">
 </head>
 <body>
     <div class="app-container">
+        <!-- the app shell: logo and search on the left, the four places you can
+             go in the middle (Facebook-style tabs), your account on the right.
+             Tabs are icon-only; each carries its name in title/aria-label. -->
         <header class="header">
             <div class="header-left">
-                <button class="menu-toggle" type="button" onclick="toggleSidebar()" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false" title="Menu">
-                    <i data-lucide="menu" style="width:22px;height:22px;"></i>
+                <button class="logo logo-button" type="button" onclick="showCollection()" aria-label="Woogidex home" title="Woogidex">
+                    <img src="assets/woogidex_icon.png" alt="Woogidex">
                 </button>
-                <button class="logo logo-button" type="button" onclick="toggleSidebar()" aria-label="Open navigation menu" title="Menu">
-                    <img src="assets/woogidex_icon.png" alt="Woogidex" style="height: 60px; width: auto; object-fit: contain;">
-                </button>
+                <!-- js/features/global-search.js. On phones it folds into the
+                     icon button and opens across the header when tapped. -->
+                <div class="global-search" id="global-search" role="search">
+                    <button class="global-search-toggle" type="button" onclick="openGlobalSearch()" aria-label="Search Woogidex" title="Search">
+                        <i data-lucide="search"></i>
+                    </button>
+                    <div class="global-search-field">
+                        <button class="global-search-back" type="button" onclick="closeGlobalSearch()" aria-label="Close search"><i data-lucide="arrow-left"></i></button>
+                        <i data-lucide="search" class="global-search-icon" aria-hidden="true"></i>
+                        <input id="global-search-input" type="search" placeholder="Search Woogidex" autocomplete="off" spellcheck="false"
+                               role="combobox" aria-expanded="false" aria-controls="global-search-results" aria-autocomplete="list" aria-label="Search Woogidex">
+                        <!-- our own clear button; the browser's built-in one is hidden (css/header.css) -->
+                        <button class="global-search-clear" id="global-search-clear" type="button" aria-label="Clear search" title="Clear" hidden><i data-lucide="x"></i></button>
+                    </div>
+                    <div class="global-search-results" id="global-search-results" role="listbox" aria-label="Search results" hidden></div>
+                </div>
             </div>
+            <nav class="header-nav" aria-label="Main navigation">
+                <button class="header-nav-btn" type="button" data-nav="collection-view" onclick="showCollection()" title="My Collection" aria-label="My Collection"><i data-lucide="library"></i><span class="header-nav-label">Collection</span></button>
+                <button class="header-nav-btn" type="button" data-nav="community-view" onclick="openCommunityHub()" title="Community" aria-label="Community"><i data-lucide="users"></i><span class="header-nav-label">Community</span></button>
+                <button class="header-nav-btn" type="button" data-nav="battle-view" onclick="openBattle()" title="Battle" aria-label="Battle"><i data-lucide="swords"></i><span class="header-nav-label">Battle</span></button>
+                <button class="header-nav-btn" type="button" data-nav="updates-view" onclick="openUpdatesPage()" title="Updates &amp; Credits" aria-label="Updates and Credits"><i data-lucide="newspaper"></i><span class="header-nav-label">Updates</span><span id="updates-badge" class="header-nav-badge" style="display:none;"></span></button>
+            </nav>
             <div class="header-actions">
                 <div id="notifications-wrap" class="notifications-wrap" style="display:none;">
                     <button class="notifications-bell-btn" type="button" onclick="toggleNotificationsPanel(event)" aria-label="Notifications" title="Notifications">
@@ -117,70 +151,69 @@
                         <div id="notifications-list" class="notifications-list"></div>
                     </div>
                 </div>
-                <button class="dark-mode-header-btn" id="dark-mode-btn" type="button"
-                        onclick="toggleDarkMode()"
-                        aria-label="Toggle dark mode"
-                        title="Toggle dark mode">
-                    <i data-lucide="moon" style="width:20px;height:20px;"></i>
-                </button>
                 <button class="header-signin-btn" id="header-signin-btn" type="button" onclick="openAuthModal('signin')" style="display:none;">Sign In</button>
-                <div class="header-profile-wrap" id="header-profile-wrap" style="display:none;">
+                <!-- shown signed in and signed out: it also holds the theme
+                     switch, settings and the policy links. data-auth marks the
+                     rows that only apply to one of the two states. -->
+                <div class="header-profile-wrap is-signed-out" id="header-profile-wrap">
                     <button class="header-profile-btn" id="header-profile-btn" type="button" onclick="toggleHeaderProfilePopover(event)" aria-haspopup="true" aria-expanded="false" aria-label="Account menu" title="Account menu">
-                        <span class="header-profile-avatar"><img id="header-profile-avatar-img" style="display:none;" alt=""><span id="header-profile-avatar-fallback">?</span></span>
+                        <span class="header-profile-avatar"><img id="header-profile-avatar-img" style="display:none;" alt=""><span id="header-profile-avatar-fallback"><i data-lucide="user"></i></span></span>
                     </button>
                     <div class="header-profile-popover" id="header-profile-popover" style="display:none;">
-                        <div class="header-profile-popover-identity">
-                            <span class="header-profile-popover-avatar"><img id="header-profile-popover-avatar-img" style="display:none;" alt=""><span id="header-profile-popover-avatar-fallback">?</span></span>
-                            <span class="header-profile-popover-copy">
-                                <strong id="header-profile-popover-name">Profile</strong>
-                                <small id="header-profile-popover-username"></small>
-                            </span>
+                        <div data-auth="in">
+                            <button type="button" class="header-profile-popover-identity" onclick="showProfileView(); closeHeaderProfilePopover();">
+                                <span class="header-profile-popover-avatar"><img id="header-profile-popover-avatar-img" style="display:none;" alt=""><span id="header-profile-popover-avatar-fallback">?</span></span>
+                                <span class="header-profile-popover-copy">
+                                    <strong id="header-profile-popover-name">Profile</strong>
+                                    <small id="header-profile-popover-username"></small>
+                                </span>
+                            </button>
+                            <div class="header-profile-popover-divider"></div>
                         </div>
-                        <div class="header-profile-popover-divider"></div>
-                        <button type="button" class="header-profile-popover-item" onclick="showProfileView(); closeHeaderProfilePopover();"><i data-lucide="user"></i><span>View Profile</span></button>
+                        <div class="header-profile-popover-mobile-signin">
+                            <button type="button" class="btn btn-primary header-profile-popover-signin" onclick="closeHeaderProfilePopover(); openAuthModal('signin');">Sign In</button>
+                            <div class="header-profile-popover-divider"></div>
+                        </div>
+                        <button type="button" class="header-profile-popover-item" data-auth="in" onclick="showProfileView(); closeHeaderProfilePopover();"><i data-lucide="user"></i><span>View Profile</span></button>
                         <button type="button" class="header-profile-popover-item" onclick="openSettings(); closeHeaderProfilePopover();"><i data-lucide="settings"></i><span>Settings</span></button>
-                        <div class="header-profile-popover-divider"></div>
-                        <button type="button" class="header-profile-popover-item header-profile-popover-danger" id="header-profile-signout-btn" onclick="closeHeaderProfilePopover(); handleSignOutClick();"><i data-lucide="log-out"></i><span>Sign Out</span></button>
+                        <!-- a switch, not a one-shot button, so it reads as a setting
+                             and shows which theme is on; kept in sync by updateDarkModeUI() -->
+                        <label class="header-profile-popover-item header-theme-row" for="header-dark-toggle">
+                            <i data-lucide="moon"></i><span>Dark mode</span>
+                            <input id="header-dark-toggle" class="header-theme-input" type="checkbox" role="switch" onchange="toggleDarkMode()">
+                            <span class="header-theme-switch" aria-hidden="true"></span>
+                        </label>
+                        <div data-auth="in">
+                            <div class="header-profile-popover-divider"></div>
+                            <button type="button" class="header-profile-popover-item header-profile-popover-danger" id="header-profile-signout-btn" onclick="closeHeaderProfilePopover(); handleSignOutClick();"><i data-lucide="log-out"></i><span>Sign Out</span></button>
+                        </div>
+                        <div class="header-profile-popover-legal">
+                            <button type="button" onclick="closeHeaderProfilePopover(); openTermsPage();">Terms</button>
+                            <span aria-hidden="true">&middot;</span>
+                            <button type="button" onclick="closeHeaderProfilePopover(); openPrivacyPage();">Privacy</button>
+                            <span aria-hidden="true">&middot;</span>
+                            <button type="button" onclick="closeHeaderProfilePopover(); openCommunityRulesModal();">Community Rules</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </header>
 
-        <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
-        <!-- aria-hidden/inert are set by setSidebarHidden() in js/core/app.js: the
-             rail is only hidden when it is genuinely off-canvas, which is mobile only. -->
-        <aside class="app-sidebar" id="app-sidebar">
-            <div class="sidebar-header">
-                <button class="sidebar-brand" type="button" onclick="closeSidebar()" aria-label="Close menu">
-                    <img src="assets/woogidex_icon.png" alt="Woogidex" class="sidebar-brand-logo">
-                </button>
-                <button class="sidebar-close" type="button" onclick="closeSidebar()" aria-label="Close navigation menu" title="Close menu">
-                    <i data-lucide="x" style="width:20px;height:20px;"></i>
-                </button>
+        <!-- My Collection's side column. Empty for now; only shown on that
+             page (body[data-page], set by activateTopLevelView() in js/core/app.js). -->
+        <!-- on phones the sidebar is a drawer; this dims the page behind it -->
+        <div class="region-drawer-backdrop" onclick="closeRegionDrawer()"></div>
+        <aside class="app-sidebar" id="app-sidebar" aria-label="Regions">
+            <div class="sidebar-section-head">
+                <span class="sidebar-section-label">Regions</span>
+                <button class="sidebar-section-add" type="button" onclick="createRegion()" title="New region" aria-label="New region"><i data-lucide="plus"></i></button>
             </div>
+            <!-- rows written by renderRegionSidebar() in js/features/regions.js -->
+            <nav class="region-list" id="region-list" aria-label="Regions"></nav>
+            <button class="btn btn-secondary region-new-btn" type="button" onclick="createRegion()"><i data-lucide="map-plus"></i>New region</button>
+            <button class="btn btn-secondary region-drawer-close" type="button" onclick="closeRegionDrawer()">Close</button>
             <div class="sidebar-status">
                 <div class="api-status" id="api-status">Loading data...</div>
-                <div class="save-status unsaved" id="save-status" style="display:none;">Unsaved</div>
-            </div>
-            <nav class="sidebar-nav" aria-label="Main navigation">
-                <button class="sidebar-nav-btn" type="button" onclick="showCollection(); closeSidebar();"><i data-lucide="library"></i><span>My Collection</span></button>
-                <button class="sidebar-nav-btn" type="button" onclick="openCommunityHub(); closeSidebar();"><i data-lucide="users"></i><span>Community</span></button>
-                <button class="sidebar-nav-btn" type="button" id="sidebar-battle-btn" onclick="openBattle(); closeSidebar();"><i data-lucide="swords"></i><span>Battle</span></button>
-                <div class="sidebar-divider"></div>
-                <button class="sidebar-nav-btn" type="button" onclick="openSettings(); closeSidebar();"><i data-lucide="settings"></i><span>Settings</span></button>
-                <button class="sidebar-nav-btn" type="button" onclick="openCreditsModal(); closeSidebar();"><i data-lucide="badge-info"></i><span>Credits</span></button>
-                <button class="sidebar-nav-btn" type="button" onclick="closeSidebar(); window.openUpdatesModal();"><i data-lucide="newspaper"></i><span>Updates</span><span id="updates-badge" class="sidebar-nav-badge" style="display:none;"></span></button>
-                <div class="sidebar-divider"></div>
-                <button class="sidebar-nav-btn sidebar-auth-btn" id="sidebar-auth-btn" type="button" onclick="openAuthModal('signin'); closeSidebar();"><i data-lucide="log-in"></i><span>Sign In</span></button>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="sidebar-footer-links">
-                    <button type="button" class="sidebar-footer-link" onclick="closeSidebar(); openTermsPage();">Terms of Service</button>
-                    <span aria-hidden="true">·</span>
-                    <button type="button" class="sidebar-footer-link" onclick="closeSidebar(); openPrivacyPage();">Privacy Policy</button>
-                    <span aria-hidden="true">·</span>
-                    <button type="button" class="sidebar-footer-link" onclick="openCommunityRulesModal(); closeSidebar();">Community Rules</button>
-                </div>
             </div>
         </aside>
 
@@ -238,8 +271,34 @@
                  public/legal/*.md by js/features/legal.js -->
             <div id="legal-view" style="display:none;" data-view-src="views/legal.html"></div>
 
+            <!-- full search results (/search?q=...) -->
+            <div id="search-view" style="display:none;" data-view-src="views/search.html"></div>
+
+            <!-- updates and credits, one page (/updates, /updates/credits) -->
+            <div id="updates-view" style="display:none;" data-view-src="views/updates.html"></div>
+
             <!-- settings, as its own page rather than a modal -->
             <div id="settings-view" style="display:none;" data-view-src="views/settings.html"></div>
+
+            <!-- 404: any path no route owns (router.NOT_FOUND). Inline rather
+                 than a views/ fragment since it is tiny and must render even
+                 when the fragment fetch is what failed -->
+            <div id="not-found-view" style="display:none;">
+                <section class="not-found-panel" aria-labelledby="not-found-title">
+                    <!-- the page has no header, so the logo is how you know where you are -->
+                    <button class="not-found-logo" type="button" onclick="showCollection()" aria-label="Woogidex home"><img src="assets/woogidex_icon.png" alt="Woogidex"></button>
+                    <div class="not-found-code" aria-hidden="true">
+                        <span>4</span><span class="not-found-ball"><span class="not-found-ball-band"></span><span class="not-found-ball-button"></span></span><span>4</span>
+                    </div>
+                    <p class="not-found-eyebrow">Wild page not found</p>
+                    <h2 class="not-found-title" id="not-found-title">This page fled!</h2>
+                    <p class="not-found-text">Nothing lives at <code id="not-found-path" class="not-found-path"></code>. The link may be mistyped, or whatever was here has moved on.</p>
+                    <div class="not-found-actions">
+                        <button class="btn btn-primary" type="button" onclick="showCollection()"><i data-lucide="layout-grid" style="width:16px;height:16px;"></i> My collection</button>
+                        <button class="btn btn-secondary" type="button" onclick="openCommunityHub()"><i data-lucide="users" style="width:16px;height:16px;"></i> Community Hub</button>
+                    </div>
+                </section>
+            </div>
 
         </div>
     </div>
@@ -293,38 +352,6 @@
                     <div class="profile-field-hint">Shown on your Fakémon, comments, and profile.</div>
                 </div>
                 <button class="btn btn-primary auth-submit-btn" id="account-setup-submit-btn" onclick="submitAccountSetup()">Continue</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="updates-modal" onclick="if(event.target===this) closeUpdatesModal()">
-        <div class="modal policy-modal updates-modal">
-            <div class="modal-header">
-                <div>
-                    <h3>Updates</h3>
-                </div>
-                <button class="modal-close" onclick="closeUpdatesModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
-            </div>
-            <div class="modal-body policy-body" id="updates-modal-body"></div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="credits-modal" onclick="if(event.target===this) closeCreditsModal()">
-        <div class="modal policy-modal credits-modal">
-            <div class="modal-header">
-                <div>
-                    <h3>Credits</h3>
-                </div>
-                <button class="modal-close" onclick="closeCreditsModal()" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
-            </div>
-            <div class="modal-body policy-body">
-                <p><strong>Woogidex</strong></p>
-                <p>Created by <strong><a href="https://github.com/woogi999" target="_blank" rel="noopener noreferrer" class="credits-link">Woogi</a></strong><br>Lead Backend: <strong><a href="https://github.com/gghrvy" target="_blank" rel="noopener noreferrer" class="credits-link">gghrvy</a></strong><br>Placeholder Art &amp; Sprites: <strong>Enderwither02</strong></p>
-                <h4>Attributions</h4>
-                <p>Woogidex is a fan-made, unofficial project. Pokémon and related names, characters, and other intellectual property are owned by their respective rights holders.</p>
-                <h4>Disclaimer</h4>
-                <p>Woogidex is not affiliated with, endorsed by, or sponsored by Nintendo, The Pokémon Company, or Game Freak. This project is made for fan and non-commercial purposes.</p>
-                <p>© 2026 Woogidex · All rights reserved to their respective owners.</p>
             </div>
         </div>
     </div>
@@ -607,11 +634,22 @@
         <div class="modal" style="max-width: 520px;">
             <div class="modal-header">
                 <h3 id="custom-ability-modal-title">Create Custom Ability</h3>
+                <div class="region-assign" data-select="custom-ability-region"><select id="custom-ability-region" class="entity-region-select" hidden aria-hidden="true"><option value="">No region</option></select><button type="button" class="btn btn-secondary btn-sm region-assign-btn" onclick="toggleRegionAssignMenu(this, event)" aria-haspopup="true" aria-expanded="false"><i data-lucide="map"></i><span class="region-assign-label">Add to region</span></button><div class="region-assign-menu" hidden></div></div>
                 <button class="modal-close" onclick="closeModal('custom-ability-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="form-group">
                 <label>Ability Name</label>
                 <input type="text" id="custom-ability-name" placeholder="e.g., Solar Heart">
+            </div>
+            <div class="form-group">
+                <label>Image <span class="label-optional">(optional, for previews)</span></label>
+                <div class="entity-art-field">
+                    <div class="entity-art-preview" id="custom-ability-art-preview"><i data-lucide="image"></i></div>
+                    <div class="entity-art-actions">
+                        <label class="btn btn-secondary btn-sm"><i data-lucide="upload"></i><span>Upload image</span><input type="file" accept="image/*" hidden onchange="handleEntityArtUpload('custom-ability', event)"></label>
+                        <button class="btn btn-secondary btn-sm" type="button" id="custom-ability-art-clear" onclick="clearEntityArt('custom-ability')" hidden>Remove</button>
+                    </div>
+                </div>
             </div>
             <div class="form-group">
                 <label>Description</label>
@@ -645,6 +683,7 @@
         <div class="modal" style="max-width: 520px;">
             <div class="modal-header">
                 <h3 id="custom-item-modal-title">Create Custom Item</h3>
+                <div class="region-assign" data-select="custom-item-region"><select id="custom-item-region" class="entity-region-select" hidden aria-hidden="true"><option value="">No region</option></select><button type="button" class="btn btn-secondary btn-sm region-assign-btn" onclick="toggleRegionAssignMenu(this, event)" aria-haspopup="true" aria-expanded="false"><i data-lucide="map"></i><span class="region-assign-label">Add to region</span></button><div class="region-assign-menu" hidden></div></div>
                 <button class="modal-close" onclick="closeModal('custom-item-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div class="form-group">
@@ -707,6 +746,112 @@
         </div>
     </div>
 
+    <!-- custom types (js/features/custom-types.js); always a right-hand sheet -->
+    <div class="modal-overlay as-sheet" id="custom-type-modal">
+        <div class="modal custom-type-modal">
+            <div class="modal-header">
+                <h3 id="custom-type-modal-title">New custom type</h3>
+                <div class="region-assign" data-select="custom-type-region"><select id="custom-type-region" class="entity-region-select" hidden aria-hidden="true"><option value="">No region</option></select><button type="button" class="btn btn-secondary btn-sm region-assign-btn" onclick="toggleRegionAssignMenu(this, event)" aria-haspopup="true" aria-expanded="false"><i data-lucide="map"></i><span class="region-assign-label">Add to region</span></button><div class="region-assign-menu" hidden></div></div>
+                <button class="modal-close" onclick="closeModal('custom-type-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="custom-type-top">
+                <div class="form-group">
+                    <label for="custom-type-name">Name</label>
+                    <input type="text" id="custom-type-name" maxlength="16" placeholder="e.g., Cosmic" oninput="customTypeNameInput(this.value)">
+                </div>
+                <span class="type-badge custom-type-preview" id="custom-type-preview">Preview</span>
+            </div>
+            <div class="form-group">
+                <label>Colour</label>
+                <div id="custom-type-colors" class="color-options"></div>
+            </div>
+            <div class="form-group">
+                <label>Icon <span class="label-optional">(optional; a white symbol on a transparent background looks best)</span></label>
+                <div class="entity-art-field">
+                    <div class="entity-art-preview type-icon-preview" id="custom-type-art-preview"><i data-lucide="image"></i></div>
+                    <div class="entity-art-actions">
+                        <label class="btn btn-secondary btn-sm"><i data-lucide="upload"></i><span>Upload icon</span><input type="file" accept="image/*" hidden onchange="handleEntityArtUpload('custom-type', event)"></label>
+                        <button class="btn btn-secondary btn-sm" type="button" id="custom-type-art-clear" onclick="clearEntityArt('custom-type')" hidden>Remove</button>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="custom-type-desc">Description <span class="label-optional">(optional)</span></label>
+                <textarea id="custom-type-desc" rows="2" maxlength="200" placeholder="What this type is about"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Matchups</label>
+                <p class="custom-type-help">How much damage moves do: 2 is super effective, ½ not very effective, 0 no effect. Leave the rest at 1.</p>
+                <div id="custom-type-matchups" class="type-matchups"></div>
+            </div>
+            <div class="region-modal-actions custom-type-actions">
+                <button class="btn btn-secondary region-delete-btn" id="custom-type-delete-btn" type="button" onclick="deleteCustomType()"><i data-lucide="trash-2"></i>Delete</button>
+                <span class="region-modal-spacer"></span>
+                <button class="btn btn-secondary" type="button" onclick="closeModal('custom-type-modal')">Cancel</button>
+                <button class="btn btn-primary" type="button" onclick="saveCustomType()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="region-modal">
+        <div class="modal" style="max-width: 460px;">
+            <div class="modal-header">
+                <h3>New region</h3>
+                <button class="modal-close" onclick="closeModal('region-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="form-group">
+                <label for="region-name-input">Name</label>
+                <input type="text" id="region-name-input" maxlength="40" placeholder="e.g., Kanto" onkeydown="if(event.key==='Enter'){event.preventDefault();saveRegionFromModal();}">
+            </div>
+            <div class="form-group">
+                <label for="region-tagline-input">Tagline <span class="label-optional">(optional)</span></label>
+                <input type="text" id="region-tagline-input" maxlength="90" placeholder="One line, like a game's box art">
+            </div>
+            <div class="form-group">
+                <label>Colour</label>
+                <div id="region-color-options" class="color-options"></div>
+            </div>
+            <div class="form-group">
+                <label>Bring over from the main games</label>
+                <p class="custom-type-help">You can pick exact Pokémon, moves and more later, in Region details.</p>
+                <div class="region-pool-choices">
+                    <label class="region-pool-choice"><span>Pokémon</span><select id="region-pool-pokemon"><option value="none" selected>None</option><option value="natdex">National Dex</option></select></label>
+                    <label class="region-pool-choice"><span>Moves</span><select id="region-pool-moves"><option value="none">None</option><option value="natdex" selected>National Dex</option></select></label>
+                    <label class="region-pool-choice"><span>Items</span><select id="region-pool-items"><option value="none">None</option><option value="natdex" selected>National Dex</option></select></label>
+                    <label class="region-pool-choice"><span>Abilities</span><select id="region-pool-abilities"><option value="none">None</option><option value="natdex" selected>National Dex</option></select></label>
+                    <label class="region-pool-choice"><span>Types</span><select id="region-pool-types"><option value="none">None</option><option value="natdex" selected>National Dex</option></select></label>
+                </div>
+            </div>
+            <div class="region-modal-actions">
+                <span class="region-modal-spacer"></span>
+                <button class="btn btn-secondary" type="button" onclick="closeModal('region-modal')">Cancel</button>
+                <button class="btn btn-primary" type="button" onclick="saveRegionFromModal()">Create region</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- picks exact vanilla entries for a region (openRegionPicker in js/features/regions.js) -->
+    <div class="modal-overlay" id="region-picker-modal">
+        <div class="modal region-picker-modal">
+            <div class="modal-header">
+                <h3 id="region-picker-title">Choose</h3>
+                <button class="modal-close" onclick="closeModal('region-picker-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="region-picker-tools">
+                <input type="search" id="region-picker-search" placeholder="Search..." oninput="renderRegionPicker()" aria-label="Search">
+                <button class="btn btn-secondary btn-sm" type="button" onclick="regionPickerSelectShown(true)">Select shown</button>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="regionPickerSelectShown(false)">Clear shown</button>
+            </div>
+            <div class="region-picker-list" id="region-picker-list"></div>
+            <div class="region-modal-actions">
+                <span class="region-picker-count" id="region-picker-count"></span>
+                <span class="region-modal-spacer"></span>
+                <button class="btn btn-secondary" type="button" onclick="closeModal('region-picker-modal')">Cancel</button>
+                <button class="btn btn-primary" type="button" onclick="saveRegionPicker()">Done</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="folder-name-modal">
         <div class="modal" style="max-width: 380px;">
             <div class="modal-header">
@@ -732,6 +877,7 @@
         <div class="modal" style="max-width: 600px;">
             <div class="modal-header">
                 <h3 id="custom-move-modal-title">Create Custom Move</h3>
+                <div class="region-assign" data-select="custom-move-region"><select id="custom-move-region" class="entity-region-select" hidden aria-hidden="true"><option value="">No region</option></select><button type="button" class="btn btn-secondary btn-sm region-assign-btn" onclick="toggleRegionAssignMenu(this, event)" aria-haspopup="true" aria-expanded="false"><i data-lucide="map"></i><span class="region-assign-label">Add to region</span></button><div class="region-assign-menu" hidden></div></div>
                 <button class="modal-close" onclick="closeModal('custom-move-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
             </div>
             <div id="custom-move-form">
@@ -741,13 +887,23 @@
                     <label>Move Name</label>
                     <input type="text" id="custom-move-name" placeholder="e.g., Ember Fang">
                 </div>
+                <div class="form-group">
+                    <label>Image <span class="label-optional">(optional, for previews)</span></label>
+                    <div class="entity-art-field">
+                        <div class="entity-art-preview" id="custom-move-art-preview"><i data-lucide="image"></i></div>
+                        <div class="entity-art-actions">
+                            <label class="btn btn-secondary btn-sm"><i data-lucide="upload"></i><span>Upload image</span><input type="file" accept="image/*" hidden onchange="handleEntityArtUpload('custom-move', event)"></label>
+                            <button class="btn btn-secondary btn-sm" type="button" id="custom-move-art-clear" onclick="clearEntityArt('custom-move')" hidden>Remove</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Type</label>
                         <div class="type-dropdown" id="custom-move-type-dropdown">
                             <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('custom-move-type')">
                                 <span class="type-dropdown-value" id="custom-move-type-value">Select Type</span>
-                                <span class="type-dropdown-arrow">▼</span>
+                                <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                             </button>
                             <div class="type-dropdown-menu" id="custom-move-type-menu"></div>
                         </div>
@@ -758,7 +914,7 @@
                         <div class="cat-dropdown" id="custom-move-category-dropdown">
                             <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('custom-move-category')">
                                 <span class="cat-dropdown-value" id="custom-move-category-value">Status</span>
-                                <span class="type-dropdown-arrow">▼</span>
+                                <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                             </button>
                             <div class="cat-dropdown-menu" id="custom-move-category-menu"></div>
                         </div>
@@ -880,8 +1036,8 @@
                     <option value="default">Default</option>
                 </select>
                 <select id="move-import-export-order" style="width:105px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="exportMovesToText()">
-                    <option value="asc">Ascending ▲</option>
-                    <option value="desc">Descending ▼</option>
+                    <option value="asc">Ascending</option>
+                    <option value="desc">Descending</option>
                 </select>
             </div>
             <textarea id="move-import-export-text" spellcheck="false"
@@ -911,11 +1067,11 @@
                     <option value="default">Default</option>
                 </select>
                 <select id="plain-text-export-order" style="width:105px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;" onchange="refreshPlainTextExport()">
-                    <option value="asc">Ascending ▲</option>
-                    <option value="desc">Descending ▼</option>
+                    <option value="asc">Ascending</option>
+                    <option value="desc">Descending</option>
                 </select>
             </div>
-            <textarea id="plain-text-export-text" spellcheck="false" style="min-height:520px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;"></textarea>
+            <textarea id="plain-text-export-text" spellcheck="false" style="min-height:520px;font-family:'Inconsolata',monospace;font-size:12px;line-height:1.5;"></textarea>
             <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap;">
                 <button class="btn btn-secondary btn-sm" onclick="copyPlainTextExport()">Copy Text</button>
                 <button class="btn btn-primary btn-sm" onclick="downloadPlainTextExport()">Download .txt</button>
@@ -932,18 +1088,18 @@
             </div>
             <div class="move-browser-filters">
                 <input type="text" id="mb-filter-name" placeholder="Search by name..." oninput="filterMoveBrowser()" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:'Exo 2',sans-serif;font-size:13px;">
-                <div class="type-dropdown" id="mb-filter-type-dropdown" style="width:120px;">
+                <div class="type-dropdown" id="mb-filter-type-dropdown" style="width:130px;">
                     <button class="type-dropdown-trigger" type="button" onclick="toggleTypeDropdown('mb-filter-type')">
                         <span class="type-dropdown-value" id="mb-filter-type-value">Any Type</span>
-                        <span class="type-dropdown-arrow">▼</span>
+                        <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                     </button>
                     <div class="type-dropdown-menu" id="mb-filter-type-menu"></div>
                 </div>
                 <input type="hidden" id="mb-filter-type" value="">
-                <div class="cat-dropdown" id="mb-filter-category-dropdown" style="width:120px;">
+                <div class="cat-dropdown" id="mb-filter-category-dropdown" style="width:150px;">
                     <button class="cat-dropdown-trigger" type="button" onclick="toggleCatDropdown('mb-filter-category')">
                         <span class="cat-dropdown-value" id="mb-filter-category-value">Any Category</span>
-                        <span class="type-dropdown-arrow">▼</span>
+                        <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                     </button>
                     <div class="cat-dropdown-menu" id="mb-filter-category-menu"></div>
                 </div>
@@ -964,6 +1120,35 @@
             <div id="mb-filter-flags" class="move-browser-flags"></div>
             <div id="move-browser-count" style="font-size:11px;color:var(--text-muted);margin:8px 0;"></div>
             <div id="move-browser-results" class="move-browser-results"></div>
+        </div>
+    </div>
+
+    <!-- Browse Abilities: every Showdown ability, grouped the way the Showdown
+         client's teambuilder groups them for Balanced Hackmons; filled by
+         filterAbilityBrowser() in js/editor/editor.js -->
+    <div class="modal-overlay" id="ability-browser-modal">
+        <div class="modal" style="max-width: 760px;">
+            <div class="modal-header">
+                <h3>Browse Abilities</h3>
+                <button class="modal-close" onclick="closeModal('ability-browser-modal')" aria-label="Close"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+            </div>
+            <div class="move-browser-filters">
+                <input type="text" id="ab-filter-name" class="ab-filter-input" placeholder="Search names and effects..." oninput="filterAbilityBrowser()">
+                <select id="ab-filter-group" class="ab-filter-select" onchange="filterAbilityBrowser()" aria-label="Group">
+                    <option value="">All groups</option>
+                    <option value="good">Good</option>
+                    <option value="normal">Normal</option>
+                    <option value="situational">Situational</option>
+                    <option value="unviable">Unviable</option>
+                </select>
+                <select id="ab-filter-sort" class="ab-filter-select" onchange="filterAbilityBrowser()" aria-label="Sort">
+                    <option value="default">Sort: Default</option>
+                    <option value="az">Sort: A to Z</option>
+                    <option value="za">Sort: Z to A</option>
+                </select>
+            </div>
+            <div id="ability-browser-count" class="ab-count"></div>
+            <div id="ability-browser-results" class="ability-browser-results"></div>
         </div>
     </div>
 
@@ -1058,7 +1243,7 @@
                     <div class="type-dropdown evo-method-type-dropdown" id="evolution-method-type-dropdown">
                         <button class="type-dropdown-trigger" type="button" id="evolution-method-type-trigger">
                             <span class="type-dropdown-value" id="evolution-method-type-value">By Level</span>
-                            <span class="type-dropdown-arrow">▼</span>
+                            <span class="type-dropdown-arrow"><svg class="ui-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
                         </button>
                         <div class="type-dropdown-menu" id="evolution-method-type-menu">
                             <div class="type-dropdown-option" data-value="level">By Level</div>

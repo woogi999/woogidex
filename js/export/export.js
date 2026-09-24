@@ -16,27 +16,59 @@ let pendingCollectionImportFile = null;
             URL.revokeObjectURL(url);
         }
 
+        // With a region picked in the sidebar, every collection export is just
+        // that region's (js/features/regions.js getExportScope). This is the
+        // one place the exporters ask which lists to use.
+        function exportLists() {
+            const scope = api.getExportScope?.();
+            if (scope) return scope;
+            return {
+                region: null,
+                slug: '',
+                fakemonDB: state.fakemonDB || [],
+                customMoves: state.customMoves || [],
+                customAbilities: state.customAbilities || [],
+                customItems: state.customItems || [],
+                customTypes: api.getCustomTypes?.() || []
+            };
+        }
+
         function exportCollection() {
-            log.info('EXPORT', 'Exporting collection', { fakemons: state.fakemonDB.length });
-            const hasAnything = state.fakemonDB.length || (state.customMoves || []).length || (state.customAbilities || []).length || (state.customItems || []).length;
+            const lists = exportLists();
+            log.info('EXPORT', 'Exporting collection', { fakemons: lists.fakemonDB.length, region: lists.region?.name || null });
+            const hasAnything = lists.fakemonDB.length || lists.customMoves.length || lists.customAbilities.length || lists.customItems.length || lists.customTypes.length || lists.region;
             if (!hasAnything) { api.showToast('Nothing to export!', 'error'); return; }
 
+            // folders ride along so items keep their folder on import; a region
+            // export carries only the folders its entries use, the region itself
+            // and its custom types (both live in the folders list)
+            let folders = state.folders || [];
+            if (lists.region) {
+                const used = new Set([...lists.fakemonDB, ...lists.customMoves, ...lists.customAbilities, ...lists.customItems]
+                    .map(x => x.folderId).filter(Boolean).map(String));
+                // custom types include the region's own versions of main-game types
+                const regionId = String(lists.region.id);
+                folders = folders.filter(f => used.has(String(f.id)) || f === lists.region
+                    || (f.type === 'custom-type' && String(f.regionId || '') === regionId));
+            }
             const bundle = {
                 format: 'woogidex-collection',
                 version: 2,
                 exportedAt: new Date().toISOString(),
-                fakemonDB: state.fakemonDB,
+                ...(lists.region ? { region: lists.region.name } : {}),
+                fakemonDB: lists.fakemonDB,
                 // without these, every item's folderId points at a folder the
                 // importing collection has never heard of, and the grid hides it
                 // everywhere except search results
-                folders: state.folders || [],
-                customMoves: state.customMoves || [],
-                customAbilities: state.customAbilities || [],
-                customItems: state.customItems || []
+                folders,
+                customMoves: lists.customMoves,
+                customAbilities: lists.customAbilities,
+                customItems: lists.customItems
             };
 
-            downloadJsonFile(`fakemon-collection-${new Date().toISOString().split('T')[0]}.json`, bundle);
-            api.showToast('Collection exported with Fakemon, custom moves, and custom abilities!', 'success');
+            const stem = lists.region ? `${lists.slug}-region` : 'fakemon-collection';
+            downloadJsonFile(`${stem}-${new Date().toISOString().split('T')[0]}.json`, bundle);
+            api.showToast(lists.region ? `${lists.region.name} exported. Import the file to bring the whole region back.` : 'Collection exported with Fakemon, custom moves, and custom abilities!', 'success');
         }
 
         function exportCustomLibraryItem(kind, id) {
@@ -163,8 +195,10 @@ let pendingCollectionImportFile = null;
                 // render nowhere but in search results.
                 const folderRemap = mergeImportedFolders(importedFolders, mode, now);
                 const applyFolderRemap = list => list.forEach(item => {
-                    if (!item || !item.folderId) return;
-                    item.folderId = folderRemap.get(String(item.folderId)) || null;
+                    if (!item) return;
+                    if (item.folderId) item.folderId = folderRemap.get(String(item.folderId)) || null;
+                    // regions travel in the folders list too (js/features/regions.js)
+                    if (item.regionId) item.regionId = folderRemap.get(String(item.regionId)) || null;
                 });
                 applyFolderRemap(incoming);
 
@@ -290,6 +324,7 @@ let pendingCollectionImportFile = null;
             if (mode === 'replace') state.folders = [];
             if (!Array.isArray(state.folders)) state.folders = [];
             if (!importedFolders.length) return remap;
+            const added = [];
 
             const key = folder => `${String(folder.type || 'fakemon')}::${String(folder.name || '').trim().toLowerCase()}`;
             const existingByKey = new Map(state.folders.map(f => [key(f), f]));
@@ -305,8 +340,13 @@ let pendingCollectionImportFile = null;
                 const copy = JSON.parse(JSON.stringify(raw));
                 copy.id = `folder_${now}_${index}_${Math.random().toString(36).slice(2, 6)}`;
                 state.folders.push(copy);
+                added.push(copy);
                 existingByKey.set(key(copy), copy);
                 if (previousId) remap.set(previousId, copy.id);
+            });
+            // a custom type points at its region, which only has its new id now
+            added.forEach(copy => {
+                if (copy.regionId) copy.regionId = remap.get(String(copy.regionId)) || null;
             });
             return remap;
         }
@@ -350,8 +390,10 @@ let pendingCollectionImportFile = null;
         // made the exported PNG's size/layout vary with the exporter's own
         // screen/zoom. Cloning it into a fixed-width offscreen wrapper, and
         // telling html2canvas to pretend the window is a fixed desktop size,
-        // makes every export the same regardless of what produced it.
-        const PNG_EXPORT_WIDTH = 860;
+        // makes every export the same regardless of what produced it. The width
+        // is the board's full desktop composition; anything narrower squeezed
+        // the info grid until values clipped (e.g. "6.5 kg" cut to "6 k").
+        const PNG_EXPORT_WIDTH = 1200;
         const PNG_EXPORT_WINDOW = 1440;
 
         async function exportAsPNG() {
@@ -365,6 +407,17 @@ let pendingCollectionImportFile = null;
 
                 const clone = board.cloneNode(true);
                 clone.removeAttribute('id');
+                // cloneNode copies a <canvas> element but not its pixels, and
+                // artwork is drawn on canvases (js/core/art-shield.js), so
+                // without this the export had an empty artwork frame
+                const liveCanvases = board.querySelectorAll('canvas');
+                clone.querySelectorAll('canvas').forEach((copy, i) => {
+                    const src = liveCanvases[i];
+                    if (!src || !src.width || !src.height) return;
+                    copy.width = src.width;
+                    copy.height = src.height;
+                    try { copy.getContext('2d').drawImage(src, 0, 0); } catch (_) { /* tainted or detached; leave blank */ }
+                });
                 clone.style.width = `${PNG_EXPORT_WIDTH}px`;
                 clone.style.maxWidth = 'none';
                 clone.style.minWidth = '0';
@@ -379,6 +432,8 @@ let pendingCollectionImportFile = null;
                 wrap.style.background = bg;
                 wrap.appendChild(clone);
                 document.body.appendChild(wrap);
+                // a font still loading would be measured with its fallback
+                await document.fonts?.ready;
 
                 const canvas = await html2canvas(clone, {
                     backgroundColor: bg,
@@ -820,8 +875,7 @@ let pendingCollectionImportFile = null;
                 state.editingId = currentId;
                 api.exitProfileRoute?.();
                 api.activateTopLevelView?.('editor-view');
-                document.getElementById('save-status').style.display = '';
-                api.switchTab(document.querySelector('.tab'), 'basic');
+                api.switchTab(null, 'basic');
                 api.updatePreview();
 
                 if (currentId) {
@@ -1123,10 +1177,11 @@ let pendingCollectionImportFile = null;
         async function exportCollectionAsPlainTextZip() {
             try {
                 if (typeof JSZip === 'undefined') { api.showToast('ZIP library failed to load. Check your connection and try again.', 'error'); return; }
-                const fakemonList = state.fakemonDB || [];
-                const moves = state.customMoves || [];
-                const abilities = state.customAbilities || [];
-                const items = state.customItems || [];
+                const lists = exportLists();
+                const fakemonList = lists.fakemonDB;
+                const moves = lists.customMoves;
+                const abilities = lists.customAbilities;
+                const items = lists.customItems;
                 if (!fakemonList.length && !moves.length && !abilities.length && !items.length) {
                     api.showToast('Nothing to export!', 'error'); return;
                 }
@@ -1161,12 +1216,13 @@ let pendingCollectionImportFile = null;
                 });
 
                 zip.file('everything.txt', everything.join('\n\n\n'));
+                if (lists.region) zip.file('region.json', api.regionManifest(lists));
 
                 const blob = await zip.generateAsync({ type: 'blob' });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `woogidex-collection-plain-text-${new Date().toISOString().split('T')[0]}.zip`;
+                link.download = `${lists.region ? `${lists.slug}-region` : 'woogidex-collection'}-plain-text-${new Date().toISOString().split('T')[0]}.zip`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -1211,4 +1267,4 @@ let pendingCollectionImportFile = null;
 
         
 
-export { refreshPlainTextExport, exportCollection, addFakemonToCollection, downloadJsonFile, buildFakemonExportBundle, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon, exportCollectionAsPlainTextZip, buildPlainTextForFakemonData };
+export { exportLists, refreshPlainTextExport, exportCollection, addFakemonToCollection, downloadJsonFile, buildFakemonExportBundle, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, closeModal, handleCollectionImportFile, importCollection, handleImport, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, toggleExportMenu, closeExportMenu, toggleCollectionExportMenu, closeCollectionExportMenu, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon, exportCollectionAsPlainTextZip, buildPlainTextForFakemonData };

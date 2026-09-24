@@ -3,11 +3,12 @@
    link order in index.html = cascade order; later files override earlier ones.
    ==================== */
 
-        /* learnset grid: five compact columns, flowing left-to-right then top-to-bottom. */
+        /* learnset grid: as many ~150px columns as the form column holds (it is
+           half the page in the wide builder layout, all of it otherwise) */
         #learnset-list {
             display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 0 var(--sp-4);
             width: 100%;
         }
         #learnset-list > p {
@@ -15,19 +16,7 @@
         }
 
         /* learnset layout improvements */
-        .learnset-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            padding: 12px 14px;
-            background: var(--bg-dark);
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.15s;
-            position: relative;
-        }
+        .learnset-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; position: relative; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
         .learnset-item:hover { background: var(--bg-panel); transform: translateX(4px); }
         .learnset-main {
             flex: 1;
@@ -77,7 +66,7 @@
             padding: 4px 8px;
             border: 1px solid var(--border);
             border-radius: 8px;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             font-size: 12px;
             font-weight: 700;
             background: var(--bg-input);
@@ -98,7 +87,7 @@
         .learnset-item .power-text { 
             font-size: 12px; 
             color: var(--text-muted); 
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inconsolata', monospace;
             font-weight: 600;
         }
         .learnset-item .remove-btn {
@@ -193,18 +182,7 @@
             margin-top: 0;
         }
 
-        @media (max-width: 1150px) {
-            #learnset-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-        }
-        @media (max-width: 850px) {
-            #learnset-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        }
-        @media (max-width: 600px) {
-            #learnset-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-        @media (max-width: 400px) {
-            #learnset-list { grid-template-columns: 1fr; }
-        }
+
 
         /* move flag tidbits */
         .move-flags {

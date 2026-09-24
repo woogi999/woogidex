@@ -4,21 +4,16 @@
 // still reaches for them as bare globals (html2canvas(...), new JSZip(), etc).
 // Must be imported before any module that reads those globals.
 //
-// lucide ships the whole icon set since icon names are picked at runtime from
-// data, so there's no static list to narrow it to.
+// Icons are Heroicons (solid), drawn by js/core/icon-set.js. The global keeps
+// the name `lucide` -- the icon set this replaced -- so the many existing
+// lucide.createIcons() call sites keep working unchanged.
 
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
-import { createIcons, icons } from 'lucide';
+import { createIcons } from './icon-set.js';
 
 window.html2canvas = html2canvas;
 window.JSZip = JSZip;
+window.lucide = { createIcons };
 
-// module build needs the icon set passed in explicitly; wrap so existing
-// lucide.createIcons() call sites keep working unchanged
-window.lucide = {
-    icons,
-    createIcons: (options = {}) => createIcons({ icons, ...options })
-};
-
-export { html2canvas, JSZip, createIcons, icons };
+export { html2canvas, JSZip, createIcons };

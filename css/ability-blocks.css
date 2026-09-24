@@ -84,7 +84,7 @@ html.reduce-motion, html.reduce-motion * {
 .entity-raw-code summary i { width:14px; height:14px; }
 .entity-raw-code textarea {
     width:100%; margin-top:10px; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
-    background:var(--bg-input); color:var(--text-primary); font-family:'JetBrains Mono',monospace;
+    background:var(--bg-input); color:var(--text-primary); font-family:'Inconsolata',monospace;
     font-size:12px; line-height:1.6; resize:vertical;
 }
 .entity-raw-code textarea:focus { outline:none; border-color:var(--accent); }
@@ -104,7 +104,7 @@ html.reduce-motion, html.reduce-motion * {
     margin-top:8px; max-height:180px; overflow-y:auto;
 }
 .entity-raw-code-hooks code {
-    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    font-family:'Inconsolata', monospace; font-size:10.5px;
     padding:2px 6px; border-radius:5px;
     background:var(--bg-input); border:1px solid var(--border);
     color:var(--text-secondary); white-space:nowrap;
@@ -114,7 +114,7 @@ html.reduce-motion, html.reduce-motion * {
 .ab-inline-code {
     display:block; width:100%; min-width:260px; margin-top:6px; padding:8px 10px;
     border:1px solid rgba(0,0,0,.15); border-radius:8px; background:rgba(255,255,255,.95);
-    color:#111; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.55; resize:vertical;
+    color:#111; font-family:'Inconsolata',monospace; font-size:11.5px; line-height:1.55; resize:vertical;
 }
 .ab-inline-code:focus { outline:none; border-color:var(--accent); }
 

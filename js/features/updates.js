@@ -18,7 +18,6 @@
 // Add the new file's name to the top of its "updates" array.
 
 import { log } from '../core/log.js';
-import { queueAutoModal } from '../core/modal-queue.js';
 
 const INDEX_URL = 'updates/index.json';
 const SEEN_KEY = 'woogidex.updates.lastSeen.v1';
@@ -151,11 +150,13 @@ function renderUpdatesBadge(count) {
 }
 
 /**
- * Fills in the sidebar's unread count, opens the modal when there's something new.
+ * Fills in the unread count on the header's Updates tab. (It used to open a
+ * modal on its own; now that updates are a page, the badge is the nudge --
+ * taking someone away from the page they opened would be worse.)
  * A never-recorded last-seen id means first visit, so it's marked caught up
  * silently rather than showing the whole history as unread.
  */
-export async function refreshUpdatesBadge({ autoOpen = false } = {}) {
+export async function refreshUpdatesBadge() {
     let names;
     try { names = await loadUpdatesIndex(); }
     catch (e) { log.error('UPDATES', 'Could not load the update index', e); return 0; }
@@ -167,20 +168,18 @@ export async function refreshUpdatesBadge({ autoOpen = false } = {}) {
     const unread = countUnread(names, lastSeen);
     renderUpdatesBadge(unread);
 
-    // queued -- other boot-time notices take priority over a changelog
-    if (autoOpen && unread > 0) queueAutoModal(openUpdatesModal);
     return unread;
 }
 
-// ==================== the panel ====================
+// ==================== the page ====================
 import { mountIsland } from '../react/island.jsx';
 import { UpdatesPanel } from '../react/UpdatesPanel.jsx';
 
-// React island: openUpdatesModal() just opens the modal and hands the loader
-// to the component, which owns loading/error/empty/list states.
-// #updates-modal-body lives in index.html's shell (not a views/ fragment), so
-// it survives innerHTML replacement and can be mounted on demand.
-const UPDATES_ISLAND = 'updates-modal-body';
+// React island: the page hands the loader to the component, which owns the
+// loading/error/empty/list states. #updates-page-list is in views/updates.html,
+// which views.js mounts at boot, so it exists before anything calls this.
+const UPDATES_ISLAND = 'updates-page-list';
+const TABS = ['updates', 'credits'];
 
 export function renderUpdates() {
     // re-mounting re-runs the load, which is what a caller asking for a re-render wants
@@ -188,7 +187,7 @@ export function renderUpdates() {
     mountIsland(UPDATES_ISLAND, UpdatesPanel, { load: loadIslandUpdates, unreadIds: unreadIdSet() });
 }
 
-// read before the modal marks everything seen, so opening it still shows what was unread
+// read before the page marks everything seen, so opening it still shows what was unread
 function unreadIdSet() {
     const names = indexCache || [];
     const unread = countUnread(names, readLastSeen());
@@ -201,25 +200,45 @@ async function loadIslandUpdates() {
     return UPDATES;
 }
 
-export async function openUpdatesModal() {
-    const modal = document.getElementById('updates-modal');
-    if (!modal) return;
-
-    modal.classList.add('active');
-    document.body.classList.add('modal-open');
-    renderUpdates();
-    markUpdatesRead(); // after renderUpdates() so unread entries still show as new in this view
+function showUpdatesTab(tab) {
+    document.querySelectorAll('[data-updates-tab]').forEach(btn => {
+        const on = btn.dataset.updatesTab === tab;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('[data-updates-panel]').forEach(panel => {
+        panel.hidden = panel.dataset.updatesPanel !== tab;
+    });
 }
 
-export function closeUpdatesModal() {
-    const modal = document.getElementById('updates-modal');
-    if (!modal) return;
-    modal.classList.remove('active');
-    document.body.classList.remove('modal-open');
+/**
+ * Opens the Updates & Credits page.
+ * @param {'updates'|'credits'} [tab]
+ */
+export async function openUpdatesPage(tab = 'updates') {
+    const which = TABS.includes(tab) ? tab : 'updates';
+    // already on the page: just swap the tab, so the header and page don't
+    // replay their entrance animation and the changelog isn't reloaded
+    const current = document.getElementById('updates-view');
+    const alreadyOpen = current?.style.display === 'block';
+    const view = alreadyOpen ? current : window.activateTopLevelView?.('updates-view');
+    if (!view) return;
+    showUpdatesTab(which);
+    window.setRoute?.(which === 'credits' ? 'updates/credits' : 'updates', which === 'credits' ? 'Credits' : 'Updates');
+    if (which === 'updates') {
+        // the list stays mounted between tab swaps; only (re)load it on arrival
+        if (!alreadyOpen || !document.getElementById(UPDATES_ISLAND)?.childElementCount) renderUpdates();
+        markUpdatesRead(); // after renderUpdates() so unread entries still show as new on this visit
+    }
 }
 
+// the old modal entry points, still called from elsewhere; both are the page now
+export const openUpdatesModal = () => openUpdatesPage('updates');
+export const openCreditsPage = () => openUpdatesPage('credits');
+
+window.openUpdatesPage = openUpdatesPage;
 window.openUpdatesModal = openUpdatesModal;
-window.closeUpdatesModal = closeUpdatesModal;
+window.openCreditsModal = openCreditsPage;
 window.renderUpdates = renderUpdates;
 window.loadUpdates = loadUpdates;
 window.refreshUpdatesBadge = refreshUpdatesBadge;

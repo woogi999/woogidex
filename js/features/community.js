@@ -1199,7 +1199,10 @@ function seededPick(rows, count, seedText) {
 }
 
 // ==================== landing rendering ====================
-const LANDING_ROW_SIZE = 4;
+// enough to fill one row on the widest screen; the row shows as many whole
+// cards as fit and clips the rest (css/community.css .community-landing-row),
+// so every width gets a full, even row instead of four cards and a gap
+const LANDING_ROW_SIZE = 12;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function landingCard(row) {
@@ -1208,25 +1211,29 @@ function landingCard(row) {
         `<span class="type-badge type-${escapeHtml(String(t).toLowerCase())}">${escapeHtml(t)}</span>`).join('');
     return `<button type="button" class="community-landing-card" onclick="openMonDetail('${escapeHtml(String(row.id))}')">
         <span class="community-landing-art">${lazyArtHtml(row, `${mon.name || 'Fakémon'} artwork`)}</span>
-        <span class="community-landing-name">${escapeHtml(mon.name || 'Unnamed')}</span>
-        <span class="community-landing-types">${types}</span>
-        <span class="community-landing-stats">
-            <span><i data-lucide="heart" style="width:12px;height:12px;"></i> ${Number(row.like_count || 0)}</span>
-            <span><i data-lucide="message-circle" style="width:12px;height:12px;"></i> ${Number(row.comment_count || 0)}</span>
+        <span class="community-landing-body">
+            <span class="community-landing-name">${escapeHtml(mon.name || 'Unnamed')}</span>
+            <span class="community-landing-author">by ${escapeHtml(row.author_name || 'Unknown')}</span>
+            <span class="community-landing-foot">
+                <span class="community-landing-types">${types}</span>
+                <span class="community-landing-stats">
+                    <span><i data-lucide="heart" style="width:12px;height:12px;"></i> ${Number(row.like_count || 0)}</span>
+                    <span><i data-lucide="message-circle" style="width:12px;height:12px;"></i> ${Number(row.comment_count || 0)}</span>
+                </span>
+            </span>
         </span>
-        <span class="community-landing-author">by ${escapeHtml(row.author_name || 'Unknown')}</span>
     </button>`;
 }
 
 function landingSection(title, subtitle, rows) {
     if (!rows.length) return '';
-    return `<section class="panel community-landing-section">
+    return `<section class="community-landing-section">
         <div class="community-landing-section-head">
             <div>
                 <h3>${escapeHtml(title)}</h3>
                 <p>${escapeHtml(subtitle)}</p>
             </div>
-            <button class="btn btn-secondary btn-sm" type="button" onclick="browseCommunityFakemon()">See all</button>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="browseCommunityFakemon()">See all <i data-lucide="arrow-right"></i></button>
         </div>
         <div class="community-landing-row">${rows.map(landingCard).join('')}</div>
     </section>`;
@@ -1237,7 +1244,7 @@ function landingSection(title, subtitle, rows) {
 function landingContestsSection() {
     const live = api.getLiveContests?.() || [];
     if (!live.length) return '';
-    return `<section class="panel community-landing-section community-contest-section">
+    return `<section class="community-landing-section community-contest-section">
         <div class="community-landing-section-head">
             <div>
                 <h3><span class="event-live-dot"></span> Happening now</h3>
@@ -1263,7 +1270,7 @@ function renderCommunityLanding() {
     const rows = cs.mons || [];
 
     if (cs.loading && !rows.length) {
-        host.innerHTML = '<section class="panel community-landing-section"><div class="community-landing-row">'
+        host.innerHTML = '<section class="community-landing-section"><div class="community-landing-row">'
             + Array.from({ length: LANDING_ROW_SIZE }, () => '<div class="community-landing-card skel-card"><span class="community-landing-art skel"></span><span class="skel skel-text"></span></div>').join('')
             + '</div></section>';
         return;
@@ -1274,15 +1281,15 @@ function renderCommunityLanding() {
         const likes = rows.reduce((sum, r) => sum + Number(r.like_count || 0), 0);
         const comments = rows.reduce((sum, r) => sum + Number(r.comment_count || 0), 0);
         statsHost.innerHTML = [
-            ['Fakemon published', rows.length],
-            ['Creators', creators],
-            ['Likes given', likes],
-            ['Comments', comments]
-        ].map(([label, value]) => `<div class="community-hero-stat"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`).join('');
+            ['Fakémon published', rows.length, 'sparkles'],
+            ['Creators', creators, 'users'],
+            ['Likes given', likes, 'heart'],
+            ['Comments', comments, 'message-circle']
+        ].map(([label, value, icon]) => `<div class="community-hero-stat"><i data-lucide="${icon}"></i><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`).join('');
     }
 
     if (!rows.length) {
-        host.innerHTML = `<section class="panel community-landing-section">
+        host.innerHTML = `<section class="community-landing-section">
             <div class="community-landing-empty">
                 <i data-lucide="sparkles"></i>
                 <p>Nothing has been published yet. Be the first: open a Fakémon in your collection and publish it.</p>
@@ -1625,11 +1632,15 @@ function buildCommunityEvoStripHtml(row) {
     const specialsForStage = stage => specials.filter(m => Math.max(1, m.stage || 1) === stage);
 
     const columns = stages.map(stage => {
+        // a split stage swaps to side-by-side cards (css/preview-evolution.css),
+        // and a big one wraps to two columns, so it doesn't stretch the board
+        const size = bases.filter(m => Math.max(1, m.stage || 1) === stage).length;
+        const splitCls = size >= 2 ? ` split${size > 4 ? ' wrap' : ''}` : '';
         const cards = [
             ...bases.filter(m => Math.max(1, m.stage || 1) === stage).map(m => communityEvoCardHtml(m, activeId, `Stage ${stage}`, false)),
             ...specialsForStage(stage).map(m => communityEvoCardHtml(m, activeId, m.isMega ? 'Mega' : 'Forme', true))
         ].join('');
-        return `<div class="community-evo-column">${cards}</div>`;
+        return `<div class="community-evo-column${splitCls}">${cards}</div>`;
     });
 
     const parts = columns
@@ -1705,11 +1716,15 @@ async function renderCommunityPreviewBoard(mon, row) {
             const slot = target.querySelector('.board-learnset-slot');
             const stripHtml = buildCommunityEvoStripHtml(row);
             if (slot && stripHtml) slot.insertAdjacentHTML('beforeend', stripHtml);
+
+            // who published it, on the board under the species line (under the
+            // name when there is no species). Re-added on every render, since
+            // switching family members rebuilds the board.
+            const anchor = target.querySelector('.board-species') || target.querySelector('.board-name');
+            anchor?.insertAdjacentHTML('afterend', communityAuthorHtml(row));
         }
     }
     api.setPageTitle?.(mon.name ? `${mon.name} (Community)` : 'Community Hub');
-    const titleEl = document.getElementById('community-detail-title');
-    if (titleEl) titleEl.textContent = mon.name || 'Fakemon';
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -1760,6 +1775,14 @@ async function fetchMonDetailRow(publishedId) {
     return row;
 }
 
+function communityAuthorHtml(row) {
+    return `<div class="community-card-author board-author" id="community-detail-author">
+        ${avatarHtml(row.user_id, { name: row.author_name, url: row.author_avatar_url })}
+        <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${escapeHtml(String(row.user_id))}')">Published by ${escapeHtml(row.author_name)}</span>
+        ${renderBadgeRow(row.author_badges, 13)}
+    </div>`;
+}
+
 async function openMonDetail(publishedId, options = {}) {
     const cs = ensureCommunityState();
     let row = cs.mons.find(m => m.id === publishedId);
@@ -1804,11 +1827,6 @@ async function openMonDetail(publishedId, options = {}) {
     api.activateTopLevelView?.('community-detail-view');
     renderCommunityPreviewBoard(mon, row);
 
-    document.getElementById('community-detail-author').innerHTML = `
-        ${avatarHtml(row.user_id, { name: row.author_name, url: row.author_avatar_url })}
-        <span class="community-author-link" onclick="event.stopPropagation(); showUserProfile('${row.user_id}')">Published by ${escapeHtml(row.author_name)}</span>
-        ${renderBadgeRow(row.author_badges, 13)}
-    `;
     renderCommunityDetailStats();
 
     const isMine = state.user && row.user_id === state.user.id;
