@@ -249,7 +249,7 @@
 .ps-fx.is-boost { background:radial-gradient(circle at 50% 100%,rgba(255,208,70,.55),transparent 62%); opacity:1; }
 .ps-fx.is-unboost { background:radial-gradient(circle at 50% 0%,rgba(150,95,205,.5),transparent 62%); opacity:1; }
 
-/* ---- per-type move FX (see js/battle/ui/move-anim.js) ---- */
+/* ---- per-type move FX (see js/battle/ui/move-anim.ts) ---- */
 .ps-mfx { position:absolute; pointer-events:none; z-index:4;
     transform:translate(-50%,-50%); --c1:#d8d8c0; --c2:#f5f5dc; }
 
@@ -334,7 +334,7 @@
     100% { opacity:0; transform:translate(-50%,-90%) scale(.7); }
 }
 
-/* ---- per-move FX shapes (see MOVE_FX in move-anim.js) ---- */
+/* ---- per-move FX shapes (see MOVE_FX in move-anim.ts) ---- */
 
 /* claw rake: a thin bright streak drawn across the target */
 .ps-slash { width:64px; height:5px; border-radius:3px;

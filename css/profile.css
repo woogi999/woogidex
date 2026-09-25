@@ -164,3 +164,6 @@
 .user-hover-card-loading { color:var(--text-muted); font-size:11px; padding:8px 2px; }
 
 
+
+/* a badge with its own uploaded picture (64x64 PNG) instead of a Heroicon */
+.profile-badge-image { object-fit: contain; vertical-align: middle; border-radius: 3px; }

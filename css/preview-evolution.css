@@ -65,7 +65,7 @@
 }
 
 /* ---- branching graph (editor preview) ----
-   Positions come from buildPreviewEvolutionModel() in js/features/evolution.js,
+   Positions come from buildPreviewEvolutionModel() in js/features/evolution.ts,
    which computes them rather than measuring the DOM, so the board export
    renders the same picture. Everything here is absolutely positioned inside
    .preview-evo-graph; the CSS only styles what JS has already placed. */

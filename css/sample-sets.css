@@ -444,3 +444,12 @@
             gap: 5px;
             margin-top: 8px;
         }
+
+/* React sample sets (js/app/components/editor/SampleSets.tsx, js/app/dialogs/sampleSets.tsx) */
+.sample-set-moves-block { margin-top: 8px; }
+.sample-set-moves-label { font-size: 10px; color: var(--text-muted); font-weight: 700; margin-bottom: 4px; }
+.modal.sample-set-add-dialog { max-width: 620px; }
+.sample-set-blank-btn { width: 100%; justify-content: center; margin-bottom: 18px; }
+.sample-set-ideas { border-top: 1px solid var(--border-light); padding-top: 16px; }
+.sample-set-ideas-title { font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--text-secondary); margin-bottom: 8px; }
+.sample-set-ideas-help { font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }

@@ -111,7 +111,7 @@
 
 /* ==================== modal as a right-hand sheet ====================
    The custom move / ability / item editors open this way when you start them
-   from My Collection (openLibraryEditorSheet() in js/features/pokedex.js), to
+   from My Collection (openLibraryEditorSheet() in js/features/pokedex.ts), to
    match the Fakémon editor. Opened from anywhere else they stay centred
    modals: the openers clear .as-sheet first. Under the header, like the
    Fakémon editor sheet (css/editor.css). */
@@ -147,7 +147,7 @@
     .modal-overlay.as-sheet .modal { width: 100vw; border-left: 0; }
 }
 
-/* ==================== confirm dialog (js/core/confirm-dialog.js) ====================
+/* ==================== confirm dialog (js/app/dialogs/confirm.tsx) ====================
    the site's own "Are you sure?", above every other modal and sheet */
 .modal-overlay.confirm-dialog-overlay { z-index: 13000; }
 .confirm-dialog {
@@ -167,3 +167,23 @@
 .confirm-dialog p { font-size: 13.5px; line-height: 1.5; color: var(--text-secondary); }
 .confirm-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: var(--sp-3); }
 .confirm-dialog-actions .btn { justify-content: center; min-height: 40px; }
+
+/* dialogs opened through js/app/dialogs.tsx appear already .active, so they
+   fade in with an animation instead of the class transition above */
+#react-dialogs .modal-overlay.active { animation: dialog-fade .15s ease both; }
+#react-dialogs .modal-overlay.active .modal { animation: dialog-rise .18s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes dialog-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialog-rise { from { transform: translateY(6px) scale(.985); } to { transform: none; } }
+.reduce-motion #react-dialogs .modal-overlay.active, .reduce-motion #react-dialogs .modal-overlay.active .modal { animation: none; }
+
+/* My Collection dialogs (js/app/dialogs/collection.tsx) */
+.modal.folder-name-dialog { max-width: 380px; }
+.modal.region-create-dialog { max-width: 460px; }
+
+/* the custom move / ability / item editors (js/app/dialogs/libraryEditors.tsx) */
+.modal.library-editor { max-width: 520px; }
+.modal.library-editor-move { max-width: 600px; }
+.modal.custom-entity-chooser { max-width: 620px; }
+.library-editor-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.entity-code-blocks-btn, .custom-entity-make { width: 100%; justify-content: center; }
+.custom-entity-make { margin-bottom: 14px; }

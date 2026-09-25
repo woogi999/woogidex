@@ -102,7 +102,7 @@ h1, h2, h3, h4 { color: var(--text-primary); line-height: 1.25; }
    header: fixed, full width (css/header.css). content: one centred column.
    My Collection also gets a sidebar column (css/sidebar.css), which the
    content clears only on that page -- body[data-page] is set by
-   activateTopLevelView() in js/core/app.js. */
+   activateTopLevelView() in js/core/app.ts. */
 .app-container {
     position: relative;
     z-index: 1;
@@ -170,7 +170,7 @@ body[data-page="not-found-view"] #main-content { padding-top: 0; }
     .logo img, .logo-button img { height: 28px; }
 }
 
-/* the theme switch's expanding circle (toggleDarkMode in js/core/app.js):
+/* the theme switch's expanding circle (toggleDarkMode in js/core/app.ts):
    the page snapshots swap with no cross-fade, so only the circle shows */
 ::view-transition-old(root),
 ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }

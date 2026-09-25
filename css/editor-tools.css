@@ -48,7 +48,7 @@
 }
 
 /* move import/export editor */
-#move-import-export-text {
+.move-import-export-text {
     width: 100%;
     min-height: 420px;
     resize: vertical;
@@ -61,7 +61,7 @@
     font-size: 13px;
     line-height: 1.55;
 }
-#move-import-export-text:focus {
+.move-import-export-text:focus {
     outline: none;
     border-color: var(--text-secondary);
     box-shadow: 0 0 0 3px var(--accent-glow);
@@ -288,3 +288,36 @@
     }
 }
 
+
+.quick-preview-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+/* Browse Moves / Browse Abilities (js/app/dialogs/moveBrowser.tsx) */
+.modal.move-browser-modal { max-width: 820px; }
+.modal.ability-browser-modal { max-width: 760px; }
+.move-browser-filters .mb-filter-name { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: 'Exo 2', sans-serif; font-size: 13px; }
+.move-browser-filters .mb-filter-select { width: 130px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: 'Exo 2', sans-serif; font-size: 13px; }
+.move-browser-count { font-size: 11px; color: var(--text-muted); margin: 8px 0; }
+
+/* the editor's smaller dialogs (js/app/dialogs/editorTools.tsx) */
+.modal.move-import-export-dialog { max-width: 700px; }
+.modal.recommend-moves-dialog { max-width: 560px; }
+.modal.generated-learnset-dialog { max-width: 960px; }
+.dialog-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+.dialog-hint.small { font-size: 11px; margin-bottom: 14px; }
+.dialog-empty { font-size: 13px; color: var(--text-muted); }
+.dialog-sort-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.dialog-sort-row label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.dialog-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.recommend-generate { width: 100%; margin-bottom: 6px; justify-content: center; }
+.detail-popup-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; position: sticky; top: 0; background: var(--bg-card); padding-bottom: 4px; }
+.detail-flags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; padding: 12px 0; border-top: 1px solid var(--border-light); border-bottom: 1px solid var(--border-light); }
+
+/* Import Collection / Export as Plain Text (js/app/dialogs/exports.tsx) */
+.modal.collection-import-dialog { max-width: 520px; }
+.modal.plain-text-export-dialog { max-width: 850px; }
+.collection-import-lead { margin-bottom: 16px; color: var(--text-secondary); }
+.collection-import-pick { width: 100%; box-sizing: border-box; text-align: center; }
+.collection-import-status { margin-top: 12px; font-size: 12px; color: var(--text-muted); text-align: center; }
+.collection-import-actions { display: flex; gap: 8px; margin-top: 16px; }
+.collection-import-actions .btn { flex: 1; justify-content: center; }
+.plain-text-export-text { width: 100%; min-height: 520px; font-family: 'Inconsolata', monospace; font-size: 12px; line-height: 1.5; }

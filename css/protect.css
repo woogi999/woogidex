@@ -1,7 +1,7 @@
 /* ==================== content protection ====================
    not real enforcement (devtools/screenshots defeat it trivially) - just closes
    the effortless routes: right-click, drag-to-desktop, print-to-PDF, crawling.
-   paired with js/core/protect.js, which toggles the body class below; nothing
+   paired with js/core/protect.ts, which toggles the body class below; nothing
    here depends on that script having run. */
 
 /* ---- images are not assets to be dragged off the page ---- */
@@ -51,7 +51,7 @@ body.protect-shielded #community-detail-view .card-art img {
 .reduce-motion body.protect-shielded img { transition: none; }
 
 /* ==================== shielded artwork ====================
-   a <canvas> standing in for an <img> (js/core/art-shield.js); reproduces the
+   a <canvas> standing in for an <img> (js/core/art-shield.ts); reproduces the
    same sizing/aspect-ratio behavior object-fit: contain gave the images.
    ==================== */
 .shielded-art {
@@ -75,7 +75,7 @@ body.protect-shielded #community-detail-view .card-art img {
 .community-landing-art .shielded-art,
 .community-upload-art .shielded-art,
 .preview-evo-sprite-wrap .shielded-art,
-#board-artwork-image .shielded-art {
+.board-artwork-image .shielded-art {
     display: block;
 }
 

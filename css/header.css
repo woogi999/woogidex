@@ -168,7 +168,8 @@ input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appe
 .header-profile-wrap:not(.is-signed-out) [data-auth="out"] { display: none !important; }
 .header-profile-wrap.is-signed-out .header-profile-avatar { background: var(--bg-panel); color: var(--text-secondary); }
 .header-profile-avatar svg { width: 18px; height: 18px; }
-#header-profile-avatar-fallback { display: flex; align-items: center; justify-content: center; }
+.header-avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.header-avatar-img-fallback { display: flex; align-items: center; justify-content: center; }
 /* Sign In lives in the header on wider screens; on phones the header button
    is hidden (no room), so the menu carries it instead */
 .header-profile-popover-mobile-signin { display: none; }

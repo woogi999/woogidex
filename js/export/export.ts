@@ -1,0 +1,1197 @@
+import { JSZip, html2canvas } from '../core/vendor.ts';
+import { log } from '../core/log.ts';
+import { state, api } from '../core/app.ts';
+import { sortLearnsetEntries, normalizeMoveCategoryInput, normalizeMoveTypeInput } from '../editor/editor.ts';
+import { form } from '../editor/draft.ts';
+import { openDialog } from '../app/dialogs.tsx';
+
+
+        function downloadJsonFile(filename, data) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // With a region picked in the sidebar, every collection export is just
+        // that region's (js/features/regions.ts getExportScope). This is the
+        // one place the exporters ask which lists to use.
+        function exportLists() {
+            const scope = api.getExportScope?.();
+            if (scope) return scope;
+            return {
+                region: null as any,
+                slug: '',
+                fakemonDB: state.fakemonDB || [],
+                customMoves: state.customMoves || [],
+                customAbilities: state.customAbilities || [],
+                customItems: state.customItems || [],
+                customTypes: api.getCustomTypes?.() || []
+            };
+        }
+
+        function exportCollection() {
+            const lists = exportLists();
+            log.info('EXPORT', 'Exporting collection', { fakemons: lists.fakemonDB.length, region: lists.region?.name || null });
+            const hasAnything = lists.fakemonDB.length || lists.customMoves.length || lists.customAbilities.length || lists.customItems.length || lists.customTypes.length || lists.region;
+            if (!hasAnything) { api.showToast('Nothing to export!', 'error'); return; }
+
+            // folders ride along so items keep their folder on import; a region
+            // export carries only the folders its entries use, the region itself
+            // and its custom types (both live in the folders list)
+            let folders = state.folders || [];
+            if (lists.region) {
+                const used = new Set([...lists.fakemonDB, ...lists.customMoves, ...lists.customAbilities, ...lists.customItems]
+                    .map(x => x.folderId).filter(Boolean).map(String));
+                // custom types include the region's own versions of main-game types
+                const regionId = String(lists.region.id);
+                // ...and the folders made in this region, even empty ones
+                folders = folders.filter(f => used.has(String(f.id)) || f === lists.region
+                    || (f.type !== 'region' && api.entryInRegion?.(f, regionId)));
+            }
+            const bundle = {
+                format: 'woogidex-collection',
+                version: 2,
+                exportedAt: new Date().toISOString(),
+                ...(lists.region ? { region: lists.region.name } : {}),
+                fakemonDB: lists.fakemonDB,
+                // without these, every item's folderId points at a folder the
+                // importing collection has never heard of, and the grid hides it
+                // everywhere except search results
+                folders,
+                customMoves: lists.customMoves,
+                customAbilities: lists.customAbilities,
+                customItems: lists.customItems
+            };
+
+            const stem = lists.region ? `${lists.slug}-region` : 'fakemon-collection';
+            downloadJsonFile(`${stem}-${new Date().toISOString().split('T')[0]}.json`, bundle);
+            api.showToast(lists.region ? `${lists.region.name} exported. Import the file to bring the whole region back.` : 'Collection exported with Fakemon, custom moves, and custom abilities!', 'success');
+        }
+
+        function exportCustomLibraryItem(kind, id) {
+            const list = kind === 'move' ? (state.customMoves || []) : kind === 'ability' ? (state.customAbilities || []) : (state.customItems || []);
+            const item = list.find(x => String(x.id) === String(id));
+            if (!item) { api.showToast('That custom entry could not be found.', 'error'); return; }
+
+            const payload = {
+                format: kind === 'move' ? 'woogidex-custom-move' : kind === 'ability' ? 'woogidex-custom-ability' : 'woogidex-custom-item',
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                item
+            };
+
+            const safeName = String(item.name || kind).replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || kind;
+            downloadJsonFile(`${safeName}-custom-${kind}.json`, payload);
+            api.showToast(`${item.name || 'Custom entry'} exported!`, 'success');
+        }
+
+        // Import Collection: js/app/dialogs/exports.tsx picks the file and the mode
+        function openImportModal() {
+            openDialog('collection-import', {});
+        }
+
+        /**
+         * Imports a collection, Fakemon or custom entry file, adding to the
+         * collection or replacing it.
+         * @returns whether it went in
+         */
+        async function importCollection(file, mode): Promise<boolean> {
+            const done = log.time('IMPORT', `importCollection:${mode}`);
+            log.info('IMPORT', 'Starting collection import', { mode, file: file?.name });
+            if (!file) {
+                api.showToast('Choose an import file first.', 'error');
+                return false;
+            }
+            try {
+                const text = await file.text();
+                log.debug('IMPORT', 'Import file read', { bytes: text.length, type: file.type, name: file.name });
+                let parsed;
+                if (file.name.toLowerCase().endsWith('.json') || file.type.includes('json')) {
+                    parsed = JSON.parse(text);
+                } else {
+                    parsed = parsePlainTextFakemon(text);
+                }
+
+                if (parsed && typeof parsed === 'object' && (parsed.format === 'woogidex-custom-move' || parsed.format === 'woogidex-custom-ability' || parsed.format === 'woogidex-custom-item')) {
+                    const kind = parsed.format === 'woogidex-custom-move' ? 'move' : parsed.format === 'woogidex-custom-ability' ? 'ability' : 'item';
+                    const item = parsed.item;
+                    if (!item || !item.name) throw new Error('Invalid custom entry.');
+                    const list = kind === 'move' ? (state.customMoves || []) : (state.customAbilities || []);
+                    const copy = JSON.parse(JSON.stringify(item));
+                    copy.id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+                    if (kind === 'move') {
+                        copy.source = 'custom';
+                        copy.custom = true;
+                        copy.learnMethod = 'none';
+                        copy.level = null;
+                        if (!Array.isArray(state.customMoves)) state.customMoves = [];
+                        state.customMoves.push(copy);
+                    } else if (kind === 'ability') {
+                        copy.source = 'custom';
+                        copy.custom = true;
+                        if (!Array.isArray(state.customAbilities)) state.customAbilities = [];
+                        state.customAbilities.push(copy);
+                    } else {
+                        copy.source = 'custom';
+                        copy.custom = true;
+                        if (!Array.isArray(state.customItems)) state.customItems = [];
+                        state.customItems.push(copy);
+                    }
+                    await api.saveToStorage();
+                    api.renderCollection();
+                    api.showToast(`Imported custom ${kind} "${copy.name}"!`, 'success');
+                    return true;
+                }
+
+                if (parsed && typeof parsed === 'object' && parsed.format === 'woogidex-custom-type') {
+                    const entry = api.importCustomTypeEntry(parsed.item);
+                    await api.saveToStorage();
+                    api.renderCollection();
+                    api.showToast(`Imported custom type "${entry.name}"!`, 'success');
+                    return true;
+                }
+
+                const isBundle = parsed && typeof parsed === 'object' && parsed.format === 'woogidex-collection';
+                let incomingSource = parsed;
+                let importedMoves = isBundle && Array.isArray(parsed.customMoves) ? parsed.customMoves : [];
+                let importedAbilities = isBundle && Array.isArray(parsed.customAbilities) ? parsed.customAbilities : [];
+                let importedItems = isBundle && Array.isArray(parsed.customItems) ? parsed.customItems : [];
+                let importedFolders = isBundle && Array.isArray(parsed.folders) ? parsed.folders : [];
+
+                if (isBundle && Array.isArray(parsed.fakemonDB)) incomingSource = parsed.fakemonDB;
+                else if (!Array.isArray(incomingSource) && incomingSource && typeof incomingSource === 'object') {
+                    if (Array.isArray(incomingSource.fakemonDB)) incomingSource = incomingSource.fakemonDB;
+                    else if (Array.isArray(incomingSource.collection)) incomingSource = incomingSource.collection;
+                    else if (Array.isArray(incomingSource.data)) incomingSource = incomingSource.data;
+                }
+                let incoming = Array.isArray(incomingSource) ? incomingSource : [incomingSource];
+                incoming = incoming.filter(f => f && typeof f === 'object' && String(f.name || '').trim());
+                if (!incoming.length && !importedMoves.length && !importedAbilities.length && !importedItems.length) throw new Error('No valid Fakemon, custom moves, or custom abilities were found in the file.');
+
+                const now = Date.now();
+                const prepared = prepareIncomingFakemon(incoming, now);
+                incoming = prepared.list;
+
+                // folders come across too, under fresh ids. Anything still pointing
+                // at a folder the file did not carry is moved to the root rather
+                // than left holding an id that matches no folder here - such items
+                // render nowhere but in search results.
+                const folderRemap = mergeImportedFolders(importedFolders, mode, now);
+                const applyFolderRemap = list => list.forEach(item => {
+                    if (!item) return;
+                    if (item.folderId) item.folderId = folderRemap.get(String(item.folderId)) || null;
+                    // regions travel in the folders list too (js/features/regions.ts)
+                    const ids = Array.isArray(item.regionIds) ? item.regionIds : (item.regionId ? [item.regionId] : []);
+                    if (ids.length) api.setEntryRegionIds?.(item, ids.map(id => folderRemap.get(String(id))).filter(Boolean));
+                });
+                applyFolderRemap(incoming);
+
+                if (mode === 'replace') state.fakemonDB = incoming;
+                else state.fakemonDB = [...state.fakemonDB, ...incoming];
+
+                const mergeLibrary = (targetKey, incomingList, kind) => {
+                    if (!incomingList.length) return;
+                    if (mode === 'replace') state[targetKey] = [];
+                    if (!Array.isArray(state[targetKey])) state[targetKey] = [];
+                    const existing = new Set(state[targetKey].map(x => String(x.name || '').trim().toLowerCase()).filter(Boolean));
+                    incomingList.forEach((raw, index) => {
+                        if (!raw || !raw.name) return;
+                        const copy = JSON.parse(JSON.stringify(raw));
+                        if (existing.has(String(copy.name).trim().toLowerCase())) return;
+                        copy.id = `${now}-library-${kind}-${index}-${Math.random().toString(36).slice(2,8)}`;
+                        copy.source = 'custom';
+                        copy.custom = true;
+                        if (kind === 'move') {
+                            copy.learnMethod = 'none';
+                            copy.level = null;
+                        }
+                        applyFolderRemap([copy]);
+                        state[targetKey].push(copy);
+                        existing.add(String(copy.name).trim().toLowerCase());
+                    });
+                };
+
+                mergeLibrary('customMoves', importedMoves, 'move');
+                mergeLibrary('customAbilities', importedAbilities, 'ability');
+                mergeLibrary('customItems', importedItems, 'item');
+
+                await api.migrateLearnsetsToMinimal();
+                // allowEmpty: a "replace" import is the user explicitly choosing to
+                // swap their whole collection, so the empty-collection guard in
+                // saveToStorage() must not block it
+                await api.saveToStorage({ allowEmpty: mode === 'replace' });
+                api.renderCollection();
+                const libraryBits: any[] = [];
+                if (importedMoves.length) libraryBits.push(`${importedMoves.length} custom move${importedMoves.length === 1 ? '' : 's'}`);
+                if (importedAbilities.length) libraryBits.push(`${importedAbilities.length} custom activit${importedAbilities.length === 1 ? 'y' : 'ies'}`);
+                if (importedItems.length) libraryBits.push(`${importedItems.length} custom item${importedItems.length === 1 ? '' : 's'}`);
+                const importedBits = [`${incoming.length} Fakemon${incoming.length === 1 ? '' : 's'}`, ...libraryBits].join(' and ');
+                api.showToast(`${mode === 'replace' ? 'Replaced with' : 'Added'} ${importedBits}!`, 'success');
+                return true;
+            } catch (err: any) {
+                log.error('IMPORT', 'Collection import failed', err);
+                api.showToast(`Import failed: ${err.message || 'invalid file'}`, 'error');
+                return false;
+            } finally {
+                done();
+            }
+        }
+
+        // Normalizes a batch of incoming Fakemon records and gives each a fresh id
+        // so an import can never overwrite something already in the collection.
+        // Evolution-graph references are rewritten onto the new ids in the same
+        // pass, since fresh ids would otherwise orphan them.
+        function prepareIncomingFakemon(list, now = Date.now()) {
+            const idRemap = new Map();
+            const prepared = list.map((f, index) => {
+                const copy = JSON.parse(JSON.stringify(f));
+                if (!Array.isArray(copy.learnset)) copy.learnset = [];
+                if (!Array.isArray(copy.customMoves)) copy.customMoves = [];
+                const customByName = new Map<any, any>(copy.customMoves.filter(Boolean).map(m => [String(m.name || '').toLowerCase(), m]));
+                copy.learnset = copy.learnset.map(m => {
+                    const key = String(m?.name || '').toLowerCase();
+                    return customByName.has(key) ? { ...m, ...customByName.get(key), source: 'custom', custom: true } : m;
+                });
+                copy.customMoves.forEach(m => {
+                    const key = String(m?.name || '').toLowerCase();
+                    if (key && !copy.learnset.some(x => String(x?.name || '').toLowerCase() === key)) copy.learnset.push({ ...m, source: 'custom', custom: true });
+                });
+                if (!Array.isArray(copy.abilities)) copy.abilities = [];
+                if (!Array.isArray(copy.eggGroups)) copy.eggGroups = String(copy.eggGroups || '').split(/\s*\/\s*|\s*,\s*/).filter(Boolean);
+                const previousId = String(copy.id ?? '');
+                copy.id = `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+                if (previousId) idRemap.set(previousId, copy.id);
+                copy.createdAt = now + index;
+                copy.updatedAt = now + index;
+                return copy;
+            });
+            remapImportedEvolutionGraphs(prepared, idRemap);
+            return { list: prepared, idRemap };
+        }
+
+        /**
+         * Adds Fakemon records to the signed-in user's own collection under fresh
+         * ids, leaving everything already there untouched. Used by the Community
+         * Hub's "Add to My Collection", which hands over records that came from
+         * the database rather than from a file.
+         *
+         * @param records raw Fakemon records
+         * @returns the copies that were added (empty on failure)
+         */
+        async function addFakemonToCollection(records: Record<string, any>[]): Promise<Record<string, any>[]> {
+            const usable = (Array.isArray(records) ? records : [records])
+                .filter(f => f && typeof f === 'object' && String(f.name || '').trim());
+            if (!usable.length) return [];
+            const { list } = prepareIncomingFakemon(usable);
+            // these came from somewhere else; their folderId means nothing here
+            list.forEach(f => { f.folderId = null; });
+            state.fakemonDB = [...state.fakemonDB, ...list];
+            await api.migrateLearnsetsToMinimal?.();
+            const saved = await api.saveToStorage();
+            if (saved === false) {
+                log.error('IMPORT', 'Collection refused the save; rolling the added Fakemon back');
+                const added = new Set(list.map(f => String(f.id)));
+                state.fakemonDB = state.fakemonDB.filter(f => !added.has(String(f.id)));
+                return [];
+            }
+            api.renderCollection?.();
+            return list;
+        }
+
+        // Copies the file's folders in under fresh ids and returns oldId -> newId,
+        // so imported items can be re-pointed at them. On "replace" the existing
+        // folders go with the collection they organized; on "add" a folder whose
+        // name and type already exist is reused rather than duplicated.
+        function mergeImportedFolders(importedFolders, mode, now) {
+            const remap = new Map();
+            if (mode === 'replace') state.folders = [];
+            if (!Array.isArray(state.folders)) state.folders = [];
+            if (!importedFolders.length) return remap;
+            const added: any[] = [];
+
+            const key = folder => `${String(folder.type || 'fakemon')}::${String(folder.name || '').trim().toLowerCase()}`;
+            const existingByKey = new Map<any, any>(state.folders.map(f => [key(f), f]));
+
+            importedFolders.forEach((raw, index) => {
+                if (!raw || typeof raw !== 'object' || !String(raw.name || '').trim()) return;
+                const previousId = String(raw.id ?? '');
+                const match = existingByKey.get(key(raw));
+                if (match) {
+                    if (previousId) remap.set(previousId, String(match.id));
+                    return;
+                }
+                const copy = JSON.parse(JSON.stringify(raw));
+                copy.id = `folder_${now}_${index}_${Math.random().toString(36).slice(2, 6)}`;
+                state.folders.push(copy);
+                added.push(copy);
+                existingByKey.set(key(copy), copy);
+                if (previousId) remap.set(previousId, copy.id);
+            });
+            // a custom type points at its region, which only has its new id now
+            added.forEach(copy => {
+                const ids = Array.isArray(copy.regionIds) ? copy.regionIds : (copy.regionId ? [copy.regionId] : []);
+                if (ids.length) api.setEntryRegionIds?.(copy, ids.map(id => remap.get(String(id))).filter(Boolean));
+            });
+            return remap;
+        }
+
+        // rewrites `fakemon:<oldId>` node ids/refIds onto the new import ids;
+        // nodes pointing outside the file are left alone (may still resolve)
+        function remapImportedEvolutionGraphs(list, idRemap) {
+            if (!idRemap.size) return;
+            const nodeIdFor = oldNodeId => {
+                const match = /^fakemon:(.+)$/.exec(String(oldNodeId || ''));
+                if (!match) return oldNodeId;
+                const mapped = idRemap.get(match[1]);
+                return mapped ? `fakemon:${mapped}` : oldNodeId;
+            };
+            for (const f of list) {
+                const graph = f.evolutionGraph;
+                if (!graph || !Array.isArray(graph.nodes)) continue;
+                graph.nodes.forEach(node => {
+                    if (node?.kind === 'fakemon') {
+                        const mapped = idRemap.get(String(node.refId));
+                        if (mapped) { node.refId = mapped; node.id = `fakemon:${mapped}`; }
+                    }
+                });
+                if (Array.isArray(graph.edges)) {
+                    graph.edges.forEach(edge => {
+                        edge.from = nodeIdFor(edge.from);
+                        edge.to = nodeIdFor(edge.to);
+                    });
+                }
+            }
+        }
+
+
+        // the board's CSS is screen-responsive, so screenshotting it in place
+        // made the exported PNG's size/layout vary with the exporter's own
+        // screen/zoom. Cloning it into a fixed-width offscreen wrapper, and
+        // telling html2canvas to pretend the window is a fixed desktop size,
+        // makes every export the same regardless of what produced it. The width
+        // is the board's full desktop composition; anything narrower squeezed
+        // the info grid until values clipped (e.g. "6.5 kg" cut to "6 k").
+        const PNG_EXPORT_WIDTH = 1200;
+        const PNG_EXPORT_WINDOW = 1440;
+
+        async function exportAsPNG() {
+            const board = document.getElementById('pokedex-board-export');
+            if (!board) { api.showToast('Nothing to export!', 'error'); return; }
+            let wrap: any = null;
+            try {
+                api.showToast('Generating PNG...', 'info');
+                const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                const bg = isDark ? '#0f0f12' : '#fafafa';
+
+                const clone = board.cloneNode(true) as HTMLElement;
+                clone.removeAttribute('id');
+                // cloneNode copies a <canvas> element but not its pixels, and
+                // artwork is drawn on canvases (js/core/art-shield.ts), so
+                // without this the export had an empty artwork frame
+                const liveCanvases = board.querySelectorAll('canvas');
+                clone.querySelectorAll('canvas').forEach((copy, i) => {
+                    const src = liveCanvases[i];
+                    if (!src || !src.width || !src.height) return;
+                    copy.width = src.width;
+                    copy.height = src.height;
+                    try { copy.getContext('2d')!.drawImage(src, 0, 0); } catch (_: any) { /* tainted or detached; leave blank */ }
+                });
+                clone.style.width = `${PNG_EXPORT_WIDTH}px`;
+                clone.style.maxWidth = 'none';
+                clone.style.minWidth = '0';
+                clone.style.margin = '0';
+                clone.style.zoom = '1';
+
+                wrap = document.createElement('div');
+                wrap.style.position = 'fixed';
+                wrap.style.top = '0';
+                wrap.style.left = '-99999px';
+                wrap.style.width = `${PNG_EXPORT_WIDTH}px`;
+                wrap.style.background = bg;
+                wrap.appendChild(clone);
+                document.body.appendChild(wrap);
+                // a font still loading would be measured with its fallback
+                await document.fonts?.ready;
+
+                const canvas = await html2canvas(clone, {
+                    backgroundColor: bg,
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    windowWidth: PNG_EXPORT_WINDOW,
+                    windowHeight: PNG_EXPORT_WINDOW
+                });
+                const link = document.createElement('a');
+                const name = form.name || 'fakemon';
+                link.download = `${name}-pokedex.png`;
+                link.href = canvas.toDataURL('image/png');
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+                api.showToast('PNG exported!', 'success');
+            } catch (err: any) { api.showToast('Export failed!', 'error'); }
+            finally { if (wrap) document.body.removeChild(wrap); }
+        }
+
+
+
+        function getCurrentFakemonForExport() {
+            if (typeof api.buildFakemonObject !== 'function') return null;
+            return api.buildFakemonObject();
+        }
+
+        function exportAsJSON() {
+            try {
+                const fakemon = getCurrentFakemonForExport();
+                if (!fakemon) { api.showToast('Please enter a Pokemon name first!', 'error'); return; }
+                const name = fakemon.name || 'fakemon';
+                const bundle = buildFakemonExportBundle(fakemon);
+                downloadJsonFile(`${name}-pokedex.json`, bundle);
+                api.showToast(`JSON exported${describeExportBundle(bundle)}!`, 'success');
+            } catch (err: any) {
+                log.error('EXPORT', 'JSON export failed', err);
+                api.showToast('JSON export failed!', 'error');
+            }
+        }
+
+
+        // exporting a bare Fakemon record used to lose everything it referenced
+        // (custom moves/abilities/items, family members in its evolution graph).
+        // Written in the same `woogidex-collection` shape as the full-collection
+        // export, so importing needs no new code path.
+        const nameKey = value => String(value || '').trim().toLowerCase();
+
+        // everything reachable from this Fakemon's evolution graph, following
+        // each relative's own graph too (a mid-stage may name a mega the start doesn't)
+        function collectFamilyFakemon(root) {
+            const byId = new Map<any, any>((state.fakemonDB || []).map(f => [String(f.id), f]));
+            const out = new Map();
+            const queue = [root];
+            while (queue.length) {
+                const current = queue.shift();
+                if (!current) continue;
+                const key = String(current.id);
+                if (out.has(key)) continue;
+                out.set(key, current);
+                for (const node of current.evolutionGraph?.nodes || []) {
+                    if (node?.kind !== 'fakemon') continue;
+                    const relative = byId.get(String(node.refId));
+                    if (relative && !out.has(String(relative.id))) queue.push(relative);
+                }
+            }
+            return [...out.values()];
+        }
+
+        // matched on customId first, then name, so older/hand-written records still resolve
+        function collectReferencedCustomLibraries(list) {
+            const moves = new Map(), abilities = new Map(), items = new Map();
+            const pick = (bucket, source, { id, name }: { id?: any; name?: any }) => {
+                const found = (source || []).find(x =>
+                    (id && String(x.id) === String(id)) || (name && nameKey(x.name) === nameKey(name)));
+                if (found) bucket.set(String(found.id ?? found.name), found);
+            };
+            for (const f of list) {
+                for (const m of f.learnset || []) {
+                    if (m && (m.source === 'custom' || m.custom === true)) {
+                        pick(moves, state.customMoves, { id: m.customId, name: m.name });
+                    }
+                }
+                for (const a of f.abilities || []) {
+                    if (a && (a.source === 'custom' || a.custom === true || a.customId)) {
+                        pick(abilities, state.customAbilities, { id: a.customId, name: a.name });
+                    }
+                }
+                for (const set of f.sampleSets || []) {
+                    if (set?.item) pick(items, state.customItems, { id: set.itemCustomId, name: set.item });
+                }
+                // mega stones/evolution items live on method nodes, not the record itself
+                for (const node of f.evolutionGraph?.nodes || []) {
+                    if (node?.kind === 'method' && node.methodType === 'item' && node.value) {
+                        pick(items, state.customItems, { name: node.value });
+                    }
+                }
+            }
+            return {
+                customMoves: [...moves.values()],
+                customAbilities: [...abilities.values()],
+                customItems: [...items.values()]
+            };
+        }
+
+        function buildFakemonExportBundle(fakemon) {
+            const family = collectFamilyFakemon(fakemon);
+            const libraries = collectReferencedCustomLibraries(family);
+            return {
+                format: 'woogidex-collection',
+                version: 2,
+                exportedAt: new Date().toISOString(),
+                // stays first so an importer reading only the head still gets the right one
+                primaryName: fakemon.name || '',
+                fakemonDB: family,
+                ...libraries
+            };
+        }
+
+        function describeExportBundle(bundle) {
+            const bits: any[] = [];
+            const relatives = (bundle.fakemonDB || []).length - 1;
+            if (relatives > 0) bits.push(`${relatives} related form${relatives === 1 ? '' : 's'}`);
+            const counts = [
+                [bundle.customMoves, 'custom move'],
+                [bundle.customAbilities, 'custom ability', 'custom abilities'],
+                [bundle.customItems, 'custom item']
+            ];
+            for (const [list, singular, plural] of counts) {
+                const n = (list || []).length;
+                if (n) bits.push(`${n} ${n === 1 ? singular : (plural || singular + 's')}`);
+            }
+            return bits.length ? ` with ${bits.join(', ')}` : '';
+        }
+
+        function getCollectionFakemon(id) {
+            return (state.fakemonDB || []).find(f => String(f.id) === String(id)) || null;
+        }
+
+        async function prepareCollectionFakemonForExport(id, callback) {
+            const fakemon = getCollectionFakemon(id);
+            if (!fakemon) { api.showToast('That Fakemon could not be found.', 'error'); return; }
+            try {
+                await api.autoSave?.(true);
+                state.editingId = fakemon.id;
+                api.loadFakemonIntoEditor(fakemon);
+                // exporters screenshot or read the board, so it must be drawn first
+                api.updatePreviewNow?.();
+                await callback(fakemon);
+            } catch (err: any) {
+                log.error('EXPORT', 'Collection Fakemon export failed', err);
+                api.showToast(`Export failed: ${err.message || 'unknown error'}`, 'error');
+            }
+        }
+
+        function exportCollectionFakemonAsJSON(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            const fakemon = getCollectionFakemon(id);
+            if (!fakemon) { api.showToast('That Fakemon could not be found.', 'error'); return; }
+            const name = fakemon.name || 'fakemon';
+            const bundle = buildFakemonExportBundle(fakemon);
+            downloadJsonFile(`${name}-pokedex.json`, bundle);
+            api.showToast(`JSON exported${describeExportBundle(bundle)}!`, 'success');
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsPNG(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { await exportAsPNG(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsPlainText(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { openPlainTextExportModal(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsShowdown(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { await api.exportShowdownMod(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        async function exportCollectionFakemonAsEssentials(id, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            await prepareCollectionFakemonForExport(id, async () => { await api.exportEssentialsMod(); });
+            api.closeCollectionFakemonExportMenus?.();
+        }
+
+        function openFakemonImport() {
+            const input = document.getElementById('fakemon-import-file');
+            if (input) input.click();
+        }
+
+        function parsePlainTextFakemon(text) {
+            const rawText = String(text || '').replace(/\r/g, '');
+            const lines = rawText.split('\n');
+            const trim = value => String(value ?? '').trim();
+            const result = {
+                name: '', species: '', type1: '', type2: '',
+                stats: { hp:60, atk:60, def:60, spa:60, spd:60, spe:60 },
+                abilities: [] as any[], dexEntry1:'', dexEntry2:'', height:'', weight:'', color:'',
+                eggGroups:[] as any[], genderRatio:'50-50', learnset:[] as any[], customMoves:[] as any[], sampleSets:[] as any[], artwork:null as any
+            };
+
+            const findIndex = (regex, from = 0) => {
+                for (let i = from; i < lines.length; i++) if (regex.test(trim(lines[i]))) return i;
+                return -1;
+            };
+            const valueAfter = regex => {
+                const i = findIndex(regex);
+                if (i < 0) return '';
+                return trim(lines[i]).replace(regex, '').trim();
+            };
+
+            // ---------- header ----------
+            const nameLine = lines.find(line => /^Name:\s*/i.test(trim(line)));
+            if (nameLine) {
+                const raw = trim(nameLine).replace(/^Name:\s*/i, '').trim();
+                const match = raw.match(/^(.*?),\s*the\s+(.*)$/i);
+                result.name = trim(match ? match[1] : raw);
+                result.species = trim(match ? match[2] : '');
+            }
+
+            const typeText = valueAfter(/^Types:\s*/i);
+            const types = typeText.split(/\s*\/\s*/).map(trim);
+            result.type1 = types[0] && types[0] !== '-' ? types[0] : '';
+            result.type2 = types[1] && types[1] !== '-' ? types[1] : '';
+
+            const statsText = valueAfter(/^Stats:\s*/i);
+            const statMatch = statsText.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
+            if (statMatch) ['hp','atk','def','spa','spd','spe'].forEach((key, i) => { result.stats[key] = Number(statMatch[i + 1]); });
+
+            // ---------- abilities ----------
+            const abilitiesIndex = findIndex(/^Abilities:\s*/i);
+            const dexIndex = findIndex(/^Dex:\s*$/i);
+            if (abilitiesIndex >= 0) {
+                const raw = trim(lines[abilitiesIndex]).replace(/^Abilities:\s*/i, '').trim();
+                const abilityGroups = raw.split(/\s*\/\/\s*/).map(trim).filter(Boolean);
+                const normalNames = abilityGroups[0] ? abilityGroups[0].split(/\s*\/\s*/).map(trim).filter(Boolean) : [];
+                const specialNames = abilityGroups.slice(1).flatMap(group => group.split(/\s*\/\s*/).map(trim).filter(Boolean));
+                [...normalNames, ...specialNames].slice(0, 4).forEach(name => {
+                    const custom = /[!*]$/.test(name);
+                    result.abilities.push({
+                        name: custom ? trim(name.slice(0, -1)) : name,
+                        source: custom ? 'custom' : 'sd',
+                        custom,
+                        desc: ''
+                    });
+                });
+
+                // "ability name!: description" (legacy exports used "*" instead of "!")
+                const abilityEnd = dexIndex >= 0 ? dexIndex : lines.length;
+                for (let i = abilitiesIndex + 1; i < abilityEnd; i++) {
+                    const line = trim(lines[i]);
+                    if (!line) continue;
+                    const match = line.match(/^(.+?)[!*]:\s*(.*)$/);
+                    if (!match) continue;
+                    const ability = result.abilities.find(a => a.name.toLowerCase() === trim(match[1]).toLowerCase());
+                    if (ability) {
+                        ability.source = 'custom';
+                        ability.custom = true;
+                        ability.desc = match[2];
+                    }
+                }
+            }
+
+            // ---------- dex / basic details ----------
+            const entry1Index = findIndex(/^Entry 1:\s*/i);
+            const entry2Index = findIndex(/^Entry 2:\s*/i);
+            const heightIndex = findIndex(/^Height:\s*/i);
+            const weightIndex = findIndex(/^Weight:\s*/i);
+            const colorIndex = findIndex(/^Dex Colour:\s*/i);
+            const eggIndex = findIndex(/^Egg Group\(s\):\s*/i);
+            const genderIndex = findIndex(/^Gender Ratio:\s*/i);
+            const learnIndex = findIndex(/^Learnset:\s*$/i);
+            const sampleIndex = findIndex(/^Sample Sets:\s*$/i);
+
+            const readMultilineField = (index, prefixRegex, nextIndexes) => {
+                if (index < 0) return '';
+                const first = trim(lines[index]).replace(prefixRegex, '').trim();
+                const end = nextIndexes.filter(n => n > index).sort((a,b) => a-b)[0] ?? lines.length;
+                const parts = first ? [first] : [];
+                for (let i = index + 1; i < end; i++) {
+                    const line = trim(lines[i]);
+                    if (line) parts.push(line);
+                }
+                return parts.join('\n').trim();
+            };
+
+            result.dexEntry1 = readMultilineField(entry1Index, /^Entry 1:\s*/i, [entry2Index, heightIndex, learnIndex, sampleIndex]);
+            result.dexEntry2 = readMultilineField(entry2Index, /^Entry 2:\s*/i, [heightIndex, learnIndex, sampleIndex]);
+            result.height = valueAfter(/^Height:\s*/i);
+            result.weight = valueAfter(/^Weight:\s*/i);
+            result.color = valueAfter(/^Dex Colour:\s*/i);
+            const egg = valueAfter(/^Egg Group\(s\):\s*/i);
+            result.eggGroups = egg && !/^none$/i.test(egg) ? egg.split(/\s*\/\s*|\s*,\s*/).map(trim).filter(Boolean) : [];
+            result.genderRatio = valueAfter(/^Gender Ratio:\s*/i) || '50-50';
+
+            // ---------- learnset + custom move definitions ----------
+            if (learnIndex >= 0) {
+                const end = sampleIndex >= 0 ? sampleIndex : lines.length;
+                const learnLines = lines.slice(learnIndex + 1, end).map(trim);
+                const seen = new Set();
+                let customSectionStarted = false;
+
+                // normal moves come first, then each custom move's full definition;
+                // once a "!"/"*" marked title appears, everything until the next
+                // marked title is custom data
+                for (const line of learnLines) {
+                    if (!line) continue;
+                    if (/[!*]$/.test(line)) {
+                        customSectionStarted = true;
+                        const name = trim(line.slice(0, -1));
+                        if (name && !seen.has(name.toLowerCase())) {
+                            result.learnset.push({ name, source:'custom', custom:true, learnMethod:'none', level:null as any });
+                            seen.add(name.toLowerCase());
+                        }
+                        continue;
+                    }
+                    if (customSectionStarted) continue;
+                    if (!seen.has(line.toLowerCase())) {
+                        result.learnset.push({ name: line, learnMethod:'none', level:null as any });
+                        seen.add(line.toLowerCase());
+                    }
+                }
+
+                for (let i = 0; i < learnLines.length; i++) {
+                    const title = learnLines[i];
+                    if (!/[!*]$/.test(title)) continue;
+                    const name = trim(title.slice(0, -1));
+                    const categoryType = learnLines[i + 1] || '';
+                    const bpLine = learnLines[i + 2] || '';
+                    const categoryMatch = categoryType.match(/^(.+?)\s*\|\s*(.+)$/);
+                    const bpMatch = bpLine.match(/^(.+?)\s*BP\s*\|\s*(.+?)\s*ACC\s*\|\s*(.+?)\s*PP$/i);
+                    if (!categoryMatch || !bpMatch) continue;
+
+                    let cursor = i + 3;
+                    let flags: Record<string, any> = {};
+                    // flag line is optional; don't consume the description if it has no '|'
+                    if (cursor < learnLines.length && learnLines[cursor] && learnLines[cursor].includes('|') && !learnLines[cursor].includes('BP')) {
+                        learnLines[cursor].split('|').map(trim).filter(Boolean).forEach(flag => {
+                            const key = flag.toLowerCase().replace(/[^a-z0-9]+(.)/g, (_, c) => c.toUpperCase());
+                            if (key) flags[key] = true;
+                        });
+                        cursor++;
+                    }
+                    const desc = learnLines[cursor] || '';
+                    const accuracyText = trim(bpMatch[2]);
+                    const move = {
+                        name,
+                        source:'custom', custom:true, learnMethod:'none', level:null as any,
+                        category:normalizeMoveCategoryInput(categoryMatch[1]), type:normalizeMoveTypeInput(categoryMatch[2]),
+                        basePower: /^-$/.test(trim(bpMatch[1])) ? 0 : (parseInt(bpMatch[1], 10) || 0),
+                        accuracy: /^-$/.test(accuracyText) ? true : (parseFloat(accuracyText.replace('%','')) || 100),
+                        pp: /^-$/.test(trim(bpMatch[3])) ? 0 : (parseInt(bpMatch[3], 10) || 0),
+                        flags,
+                        desc
+                    };
+                    const idx = result.learnset.findIndex(m => m.name.toLowerCase() === name.toLowerCase());
+                    if (idx >= 0) result.learnset[idx] = move;
+                    else result.learnset.push(move);
+                    result.customMoves.push(move);
+                }
+            }
+
+            // ---------- sample sets ----------
+            if (sampleIndex >= 0) {
+                const sampleLines = lines.slice(sampleIndex + 1).map(trim);
+                const ignoredHeaders = new Set(['Ability:', 'Level:', 'Tera Type:', 'EVs:', 'IVs:']);
+                const headerIndexes: any[] = [];
+                sampleLines.forEach((line, i) => {
+                    if (!line || ignoredHeaders.has(line)) return;
+                    if (/^.+:\s*$/.test(line) && !/^Ability:|^Level:|^Tera Type:|^EVs:|^IVs:/i.test(line)) {
+                        headerIndexes.push(i);
+                    }
+                });
+                headerIndexes.forEach((headerIndex, n) => {
+                    const setName = trim(sampleLines[headerIndex].slice(0, -1));
+                    const end = n + 1 < headerIndexes.length ? headerIndexes[n + 1] : sampleLines.length;
+                    const body = sampleLines.slice(headerIndex + 1, end).filter(Boolean);
+                    if (!setName || !body.length) return;
+                    const set = {
+                        name: setName, item:'', ability:'', nature:'Hardy',
+                        evs:{hp:0,atk:0,def:0,spa:0,spd:0,spe:0},
+                        ivs:{hp:31,atk:31,def:31,spa:31,spd:31,spe:31},
+                        moves:[] as any[], teraType:'', level:100
+                    };
+                    const first = body[0] || '';
+                    const at = first.indexOf(' @ ');
+                    if (at >= 0) set.item = trim(first.slice(at + 3));
+                    body.forEach(line => {
+                        if (/^Ability:\s*/i.test(line)) set.ability = trim(line.replace(/^Ability:\s*/i,''));
+                        else if (/^Level:\s*/i.test(line)) set.level = parseInt(line.replace(/^Level:\s*/i,''), 10) || 100;
+                        else if (/^Tera Type:\s*/i.test(line)) set.teraType = trim(line.replace(/^Tera Type:\s*/i,''));
+                        else if (/^EVs:\s*/i.test(line)) parseSpread(line.replace(/^EVs:\s*/i,''), set.evs);
+                        else if (/^IVs:\s*/i.test(line)) parseSpread(line.replace(/^IVs:\s*/i,''), set.ivs);
+                        else if (/^(.+) Nature$/i.test(line)) set.nature = trim(line.replace(/ Nature$/i,''));
+                        else if (/^-\s*/.test(line)) set.moves.push(trim(line.replace(/^-\s*/,'')));
+                    });
+                    result.sampleSets.push(set);
+                });
+            }
+
+            return result;
+        }
+
+        function parseSpread(text, target) {
+            const map = { HP:'hp', Atk:'atk', Def:'def', SpA:'spa', SpD:'spd', Spe:'spe' };
+            text.split('/').forEach(part => { const m = part.trim().match(/^(\d+)\s+(.+)$/); if (m && map[m[2]]) target[map[m[2]]] = Number(m[1]); });
+        }
+
+        async function handleFakemonImport(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                let fakemon;
+                if (file.name.toLowerCase().endsWith('.json') || file.type.includes('json')) {
+                    const parsed = JSON.parse(text);
+                    fakemon = Array.isArray(parsed) ? parsed[0] : parsed;
+                } else {
+                    fakemon = parsePlainTextFakemon(text);
+                }
+                if (!fakemon || typeof fakemon !== 'object' || !fakemon.name) throw new Error('Invalid Fakemon data');
+
+                // editor-only; never use the imported JSON id to select/overwrite a
+                // collection entry - loaded into whichever Fakemon is currently open
+                const currentId = state.editingId || null;
+                const currentExisting = currentId ? state.fakemonDB.find(f => f && f.id === currentId) : null;
+                const imported = JSON.parse(JSON.stringify(fakemon));
+                if (currentId) imported.id = currentId;
+                else delete imported.id;
+                imported.createdAt = currentExisting?.createdAt || Date.now();
+                imported.updatedAt = Date.now();
+
+                api.loadFakemonIntoEditor(imported);
+                state.editingId = currentId;
+                api.exitProfileRoute?.();
+                api.activateTopLevelView?.('editor-view');
+                api.switchTab(null, 'basic');
+                api.updatePreview();
+
+                if (currentId) {
+                    await api.autoSave(true);
+                    api.showToast(`${imported.name} loaded into the current Fakemon!`, 'success');
+                } else {
+                    api.showToast('Imported into the new Fakemon editor. Save it to add it to your collection.', 'success');
+                }
+            } catch (err: any) {
+                log.error('IMPORT', 'Fakemon import failed', err);
+                api.showToast(`Import failed: ${err.message || 'invalid file'}`, 'error');
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        function escapePlainText(value) {
+            return String(value ?? '').replace(/\r?\n/g, '\n');
+        }
+
+        function buildPlainTextExport(sort = 'name', order = 'asc') {
+            const name = form.name.trim() || 'Fakemon';
+            const species = form.species.trim() || 'Pokemon';
+            const type1 = form.type1.trim() || '-';
+            const type2 = form.type2.trim() || '-';
+            const number = form.number.trim() || '';
+            const stats = ['hp','atk','def','spa','spd','spe'].map(k => parseInt(form.stats[k]) || 0);
+            const bst = stats.reduce((sum, n) => sum + n, 0);
+            const height = api.getHeightDisplay ? api.getHeightDisplay() : (form.height.trim() || '');
+            const weight = api.getWeightDisplay ? api.getWeightDisplay() : (form.weight.trim() || '');
+            const color = form.color.trim() || '';
+            const eggs = api.getEggGroupValue ? api.getEggGroupValue() : '';
+            const gender = api.getGenderRatioValue ? api.getGenderRatioValue() : '';
+            const dex1 = form.dexEntry1.trim() || '';
+            const dex2 = form.dexEntry2.trim() || '';
+
+            const abilityEntries = (state.abilities || []).filter(a => a && a.name);
+            const abilitySlots = abilityEntries.map((a, i) => {
+                const role = api.getAbilityRole ? api.getAbilityRole(i) : '';
+                const isCustom = a.source === 'custom' || a.custom === true;
+                return { ...a, role, isCustom };
+            });
+            const normalAbilities = abilitySlots.filter(a => !a.role).map(a => `${a.name}${a.isCustom ? '!' : ''}`);
+            const hiddenAbility = abilitySlots.find(a => a.role === 'Hidden');
+            const eventAbility = abilitySlots.find(a => a.role === 'Event');
+            const abilityParts: any[] = [];
+            if (normalAbilities.length) abilityParts.push(normalAbilities.join(' / '));
+            if (hiddenAbility) abilityParts.push(`// ${hiddenAbility.name}${hiddenAbility.isCustom ? '!' : ''}`);
+            if (eventAbility) abilityParts.push(`// ${eventAbility.name}${eventAbility.isCustom ? '!' : ''}`);
+
+            const lines: any[] = [];
+            lines.push(`Name: ${name}, the ${species}`);
+            lines.push(`Types: ${type1} / ${type2}`);
+            lines.push(`Stats: ${stats.join('/')} (BST ${bst})`);
+            lines.push('');
+            lines.push(`Abilities: ${abilityParts.join(' ')}`);
+            lines.push('');
+
+            abilityEntries.filter(a => a.source === 'custom' || a.custom === true).forEach(a => {
+                lines.push(`${a.name}${a.source === 'custom' || a.custom === true ? '!' : ''}: ${a.desc || a.description || ''}`);
+                lines.push('');
+            });
+
+            lines.push('Dex:');
+            lines.push('');
+            lines.push(`Entry 1: ${escapePlainText(dex1)}`);
+            lines.push('');
+            lines.push(`Entry 2: ${escapePlainText(dex2)}`);
+            lines.push('');
+            lines.push(`Height: ${height}`);
+            lines.push(`Weight: ${weight}`);
+            lines.push(`Dex Colour: ${color}`);
+            lines.push(`Egg Group(s): ${eggs}`);
+            lines.push(`Gender Ratio: ${gender}`);
+            lines.push('');
+            lines.push('Learnset:');
+
+            const learnset = sortLearnsetEntries(state.learnset, sort, order);
+            const vanillaMoves = learnset
+                .filter(m => m && m.name && !(m.source === 'custom' || m.custom === true))
+                .map(m => m.name);
+            vanillaMoves.forEach(m => lines.push(m));
+
+            const customMoves = learnset.filter(m => m && m.name && (m.source === 'custom' || m.custom === true));
+            customMoves.forEach(m => lines.push(`${m.name}!`));
+            if (customMoves.length) lines.push('');
+            customMoves.forEach((m, index) => {
+                lines.push(`${m.name}!`);
+                lines.push(`${m.category || 'Status'} | ${m.type || 'Normal'}`);
+                const acc = (m.accuracy === true || m.accuracy === undefined) ? '-' : (m.accuracy === false ? '-' : `${m.accuracy}%`);
+                lines.push(`${m.basePower || '-'} BP | ${acc} ACC | ${m.pp || '-'} PP`);
+                const flags = api.getFlagLabels ? api.getFlagLabels(m.flags || {}, m.category) : [];
+                if (flags.length) lines.push(flags.join(' | '));
+                lines.push(escapePlainText(m.desc || ''));
+                if (index < customMoves.length - 1) lines.push('');
+            });
+
+            lines.push('');
+            lines.push('Sample Sets:');
+            (state.sampleSets || []).forEach((set, i) => {
+                if (i) lines.push('');
+                lines.push(`${set.name || `Set ${i + 1}`}:`);
+                lines.push(api.generateShowdownExport ? api.generateShowdownExport(name, set) : '');
+            });
+
+            return lines.join('\n').replace(/\n{4,}/g, '\n\n\n');
+        }
+
+        // Export as Plain Text: js/app/dialogs/exports.tsx shows the text
+        function openPlainTextExportModal() {
+            openDialog('plain-text-export', {});
+        }
+
+        async function copyPlainTextExport(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                api.showToast('Plain text copied!', 'success');
+            } catch (err: any) {
+                api.showToast('Copy failed. Select the text and copy it yourself.', 'error');
+            }
+        }
+
+        function downloadPlainTextExport(text) {
+            const name = form.name.trim() || 'fakemon';
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${name}-pokedex.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            api.showToast('Plain text downloaded!', 'success');
+        }
+
+        // buildPlainTextExport() above reads the live editor DOM/state (one
+        // Fakemon at a time); bulk export needs the same layout built straight
+        // from each Fakemon's own data object instead
+        function abilityRoleAt(index, count) {
+            if (count >= 2 && count <= 3 && index === count - 1) return 'Hidden';
+            if (count === 4 && index === 2) return 'Hidden';
+            if (count === 4 && index === 3) return 'Event';
+            return '';
+        }
+
+        function safePlainTextFileName(name, fallback) {
+            const cleaned = String(name || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+            return cleaned || fallback;
+        }
+
+        function dedupePlainTextFileName(name, used) {
+            let candidate = name;
+            let n = 2;
+            while (used.has(candidate.toLowerCase())) { candidate = `${name} (${n})`; n++; }
+            used.add(candidate.toLowerCase());
+            return candidate;
+        }
+
+        function buildPlainTextForFakemonData(fakemon, sort = 'name', order = 'asc') {
+            const name = fakemon.name || 'Fakemon';
+            const species = fakemon.species || 'Pokemon';
+            const type1 = fakemon.type1 || '-';
+            const type2 = fakemon.type2 || '-';
+            const stats = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'].map(k => Number(fakemon.stats?.[k]) || 0);
+            const bst = stats.reduce((sum, n) => sum + n, 0);
+            const height = fakemon.height || '';
+            const weight = fakemon.weight || '';
+            const color = fakemon.color || '';
+            const eggs = Array.isArray(fakemon.eggGroups) ? fakemon.eggGroups.filter(Boolean).join(', ') : String(fakemon.eggGroups || '');
+            const genderRatio = typeof fakemon.genderRatio === 'string' ? fakemon.genderRatio : (fakemon.genderRatio?.value || '50-50');
+            const dex1 = fakemon.dexEntry1 || '';
+            const dex2 = fakemon.dexEntry2 || '';
+
+            const legacyAbilities = Array.isArray(fakemon.abilities) ? fakemon.abilities : [];
+            const legacyCustomAbilities = Array.isArray(fakemon.customAbilities) ? fakemon.customAbilities : [];
+            const abilityEntries = [
+                ...legacyAbilities.map(a => typeof a === 'string' ? { name: a, source: 'sd', desc: '' } : {
+                    name: a.name || '', source: a.source || (a.custom ? 'custom' : 'sd'), desc: a.desc || a.description || ''
+                }),
+                ...legacyCustomAbilities.map(a => ({ name: a.name || '', source: 'custom', desc: a.desc || a.description || '' }))
+            ].filter(a => a.name).slice(0, 4);
+            const abilitySlots = abilityEntries.map((a, i) => ({
+                ...a, role: abilityRoleAt(i, abilityEntries.length), isCustom: a.source === 'custom' || a.custom === true
+            }));
+            const normalAbilities = abilitySlots.filter(a => !a.role).map(a => `${a.name}${a.isCustom ? '!' : ''}`);
+            const hiddenAbility = abilitySlots.find(a => a.role === 'Hidden');
+            const eventAbility = abilitySlots.find(a => a.role === 'Event');
+            const abilityParts: any[] = [];
+            if (normalAbilities.length) abilityParts.push(normalAbilities.join(' / '));
+            if (hiddenAbility) abilityParts.push(`// ${hiddenAbility.name}${hiddenAbility.isCustom ? '!' : ''}`);
+            if (eventAbility) abilityParts.push(`// ${eventAbility.name}${eventAbility.isCustom ? '!' : ''}`);
+
+            const lines: any[] = [];
+            lines.push(`Name: ${name}, the ${species}`);
+            lines.push(`Types: ${type1} / ${type2}`);
+            lines.push(`Stats: ${stats.join('/')} (BST ${bst})`);
+            lines.push('');
+            lines.push(`Abilities: ${abilityParts.join(' ')}`);
+            lines.push('');
+
+            abilitySlots.filter(a => a.isCustom).forEach(a => {
+                lines.push(`${a.name}!: ${a.desc || ''}`);
+                lines.push('');
+            });
+
+            lines.push('Dex:');
+            lines.push('');
+            lines.push(`Entry 1: ${escapePlainText(dex1)}`);
+            lines.push('');
+            lines.push(`Entry 2: ${escapePlainText(dex2)}`);
+            lines.push('');
+            lines.push(`Height: ${height}`);
+            lines.push(`Weight: ${weight}`);
+            lines.push(`Dex Colour: ${color}`);
+            lines.push(`Egg Group(s): ${eggs}`);
+            lines.push(`Gender Ratio: ${genderRatio}`);
+            lines.push('');
+            lines.push('Learnset:');
+
+            const learnset = sortLearnsetEntries(fakemon.learnset || [], sort, order);
+            const vanillaMoves = learnset.filter(m => m && m.name && !(m.source === 'custom' || m.custom === true)).map(m => m.name);
+            vanillaMoves.forEach(m => lines.push(m));
+
+            const customMoves = learnset.filter(m => m && m.name && (m.source === 'custom' || m.custom === true));
+            customMoves.forEach(m => lines.push(`${m.name}!`));
+            if (customMoves.length) lines.push('');
+            customMoves.forEach((m, index) => {
+                lines.push(`${m.name}!`);
+                lines.push(`${m.category || 'Status'} | ${m.type || 'Normal'}`);
+                const acc = (m.accuracy === true || m.accuracy === undefined || m.accuracy === false) ? '-' : `${m.accuracy}%`;
+                lines.push(`${m.basePower || '-'} BP | ${acc} ACC | ${m.pp || '-'} PP`);
+                const flags = api.getFlagLabels ? api.getFlagLabels(m.flags || {}, m.category) : [];
+                if (flags.length) lines.push(flags.join(' | '));
+                lines.push(escapePlainText(m.desc || ''));
+                if (index < customMoves.length - 1) lines.push('');
+            });
+
+            lines.push('');
+            lines.push('Sample Sets:');
+            (fakemon.sampleSets || []).forEach((set, i) => {
+                if (i) lines.push('');
+                lines.push(`${set.name || `Set ${i + 1}`}:`);
+                lines.push(api.generateShowdownExport ? api.generateShowdownExport(name, set) : '');
+            });
+
+            return lines.join('\n').replace(/\n{4,}/g, '\n\n\n');
+        }
+
+        function buildPlainTextForCustomMove(m) {
+            const lines = [`${m.name}!`, `${m.category || 'Status'} | ${m.type || 'Normal'}`];
+            const acc = (m.accuracy === true || m.accuracy === undefined || m.accuracy === false) ? '-' : `${m.accuracy}%`;
+            lines.push(`${m.basePower || '-'} BP | ${acc} ACC | ${m.pp || '-'} PP${m.priority ? ` | Priority ${m.priority}` : ''}`);
+            const flags = api.getFlagLabels ? api.getFlagLabels(m.flags || {}, m.category) : [];
+            if (flags.length) lines.push(flags.join(' | '));
+            lines.push('');
+            lines.push(escapePlainText(m.desc || ''));
+            return lines.join('\n');
+        }
+
+        function buildPlainTextForCustomAbility(a) {
+            return `${a.name}!\n\n${escapePlainText(a.desc || a.description || '')}`;
+        }
+
+        function buildPlainTextForCustomItem(it) {
+            const lines = [`${it.name}!`];
+            if (it.isMegaStone) lines.push('(Mega Stone)');
+            lines.push('');
+            lines.push(escapePlainText(it.desc || it.description || ''));
+            return lines.join('\n');
+        }
+
+        async function exportCollectionAsPlainTextZip() {
+            try {
+                const lists = exportLists();
+                const fakemonList = lists.fakemonDB;
+                const moves = lists.customMoves;
+                const abilities = lists.customAbilities;
+                const items = lists.customItems;
+                if (!fakemonList.length && !moves.length && !abilities.length && !items.length) {
+                    api.showToast('Nothing to export!', 'error'); return;
+                }
+
+                const zip = new JSZip();
+                const everything: any[] = [];
+                const used = { fakemon: new Set(), moves: new Set(), abilities: new Set(), items: new Set() };
+
+                fakemonList.forEach(f => {
+                    const text = buildPlainTextForFakemonData(f);
+                    const fileName = dedupePlainTextFileName(safePlainTextFileName(f.name, 'Unnamed Fakemon'), used.fakemon);
+                    zip.file(`Fakemon/${fileName}.txt`, text);
+                    everything.push(`==================== FAKEMON: ${f.name || 'Unnamed Fakemon'} ====================\n\n${text}`);
+                });
+                moves.forEach(m => {
+                    const text = buildPlainTextForCustomMove(m);
+                    const fileName = dedupePlainTextFileName(safePlainTextFileName(m.name, 'Unnamed Move'), used.moves);
+                    zip.file(`Moves/${fileName}.txt`, text);
+                    everything.push(`==================== MOVE: ${m.name || 'Unnamed Move'} ====================\n\n${text}`);
+                });
+                abilities.forEach(a => {
+                    const text = buildPlainTextForCustomAbility(a);
+                    const fileName = dedupePlainTextFileName(safePlainTextFileName(a.name, 'Unnamed Ability'), used.abilities);
+                    zip.file(`Abilities/${fileName}.txt`, text);
+                    everything.push(`==================== ABILITY: ${a.name || 'Unnamed Ability'} ====================\n\n${text}`);
+                });
+                items.forEach(it => {
+                    const text = buildPlainTextForCustomItem(it);
+                    const fileName = dedupePlainTextFileName(safePlainTextFileName(it.name, 'Unnamed Item'), used.items);
+                    zip.file(`Items/${fileName}.txt`, text);
+                    everything.push(`==================== ITEM: ${it.name || 'Unnamed Item'} ====================\n\n${text}`);
+                });
+
+                zip.file('everything.txt', everything.join('\n\n\n'));
+                if (lists.region) zip.file('region.json', api.regionManifest(lists));
+
+                const blob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${lists.region ? `${lists.slug}-region` : 'woogidex-collection'}-plain-text-${new Date().toISOString().split('T')[0]}.zip`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                api.showToast('Collection exported as plain text!', 'success');
+            } catch (err: any) {
+                log.error('EXPORT', 'Plain text collection export failed', err);
+                api.showToast('Plain text export failed!', 'error');
+            }
+        }
+
+
+        
+
+export { exportLists, exportCollection, addFakemonToCollection, downloadJsonFile, buildFakemonExportBundle, exportCustomLibraryItem, getCollectionFakemon, prepareCollectionFakemonForExport, exportCollectionFakemonAsJSON, exportCollectionFakemonAsPNG, exportCollectionFakemonAsPlainText, exportCollectionFakemonAsShowdown, exportCollectionFakemonAsEssentials, openImportModal, importCollection, exportAsPNG, openPlainTextExportModal, copyPlainTextExport, downloadPlainTextExport, buildPlainTextExport, exportAsJSON, openFakemonImport, handleFakemonImport, parsePlainTextFakemon, exportCollectionAsPlainTextZip, buildPlainTextForFakemonData };

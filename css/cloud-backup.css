@@ -75,7 +75,7 @@
     margin-bottom: 12px;
 }
 
-/* tightened padding so 4 tabs + count pills fit on one row in the narrower modal */
+/* tightened padding so the five tabs + count pills fit on one row */
 .cloud-backup-tabs .tab {
     white-space: nowrap;
     padding: 8px 10px;
@@ -270,6 +270,8 @@
     flex-direction: column;
     /* the two panes below divide this; without it they'd each size to content */
     max-height: min(86vh, 820px);
+    /* wide enough for all five kind tabs on one row */
+    max-width: 600px;
 }
 
 .cloud-backup-modal .modal-header { flex: 0 0 auto; }

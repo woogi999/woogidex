@@ -204,3 +204,13 @@
             white-space: nowrap;
         }
 
+
+/* the breakdown donut under the learnset (js/app/components/editor/lists.tsx) */
+.learnset-chart-wrap { display: flex; gap: 20px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.learnset-chart { display: flex; gap: 16px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.learnset-chart-empty { font-size: 13px; color: var(--text-muted); text-align: center; width: 100%; }
+.learnset-chart-legend { display: flex; flex-direction: column; gap: 4px; }
+.learnset-chart-row { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 1; white-space: nowrap; }
+.learnset-chart-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+.learnset-chart-label { color: var(--text-primary); }
+.learnset-chart-count { font-family: 'Inconsolata', monospace; color: var(--text-muted); font-size: 11px; }

@@ -1,7 +1,7 @@
 /* ==================== pokedex-board ====================
    The Pokédex board: the editor's live preview, the Community Hub's copy of
-   it, and the PNG export (js/export/export.js) are all this one component.
-   Markup: updatePreviewNow() in js/editor/editor-core.js.
+   it, and the PNG export (js/export/export.ts) are all this one component.
+   Markup: updatePreviewNow() in js/editor/editor-core.ts.
 
    It lays itself out by its OWN width via container queries, never the
    window's: a phone shows the narrow layout because the board is narrow, and
@@ -87,13 +87,13 @@
     border-radius: var(--card-r);
     overflow: hidden;
 }
-.board-artwork-left #board-artwork-image {
+.board-artwork-left .board-artwork-image {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     padding: 8%;
     pointer-events: none;
 }
-.board-artwork-left #board-artwork-image img { width: 100%; height: 100%; object-fit: contain; }
+.board-artwork-left .board-artwork-image img { width: 100%; height: 100%; object-fit: contain; }
 .board-artwork-left .placeholder { font-size: 64px; opacity: .3; color: var(--text-muted); }
 /* shiny / cry buttons, revealed on hover */
 .board-artwork-mode {

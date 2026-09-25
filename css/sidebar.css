@@ -1,6 +1,6 @@
 /* ==================== sidebar ====================
    My Collection's side column, fixed under the header. It only exists on that
-   page (body[data-page], set by activateTopLevelView() in js/core/app.js) and
+   page (body[data-page], set by activateTopLevelView() in js/core/app.ts) and
    is empty for now. Navigation lives in the header (css/header.css).
    Width comes from --sidebar-w (css/tokens.css), which the content column
    clears on the same page.
@@ -23,12 +23,9 @@
 }
 body[data-page="collection-view"] .app-sidebar { display: flex; }
 
-/* data-loading status: kept for the scripts that write to it, not shown */
-.sidebar-status { display: none; }
-
 /* ---- narrow screens: the sidebar is a drawer ----
    opened by the Regions button in My Collection's header (toggleRegionDrawer
-   in js/features/regions.js); picking a region closes it again */
+   in js/features/regions.ts); picking a region closes it again */
 .region-drawer-backdrop, .region-drawer-close, .collection-regions-btn { display: none; }
 @media (max-width: 900px) {
     body[data-page="collection-view"] .app-sidebar {
@@ -69,7 +66,7 @@ body[data-page="collection-view"] .app-sidebar { display: flex; }
     .modal-overlay, .modal, .overlay-dark { transition: none !important; }
 }
 
-/* ==================== regions (js/features/regions.js) ==================== */
+/* ==================== regions (js/features/regions.ts) ==================== */
 .sidebar-section-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: var(--sp-1) var(--sp-1) var(--sp-2) var(--sp-3);

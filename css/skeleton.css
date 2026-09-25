@@ -103,8 +103,8 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96
 .community-like-btn:active svg { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
 /* notification bell + panel */
-#notifications-badge { transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
-#notifications-badge:not([style*="display: none"]) { animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.notifications-badge { transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.notifications-badge { animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .notifications-panel { animation: fadeInUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: top right; }
 .notification-item { transition: background 0.15s ease, transform 0.15s ease; }
 .notification-item:hover:not(.skel-card) { transform: translateX(-2px); }
@@ -119,13 +119,13 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96
     .skel { animation: none; background-image: linear-gradient(90deg, var(--bg-panel), var(--border-light)); }
     .collection-card, .community-card, .collection-library-card, .library-card,
     .mon-comment, .notification-item, .skel-card, .notifications-panel,
-    #notifications-badge, .notification-dot, .community-empty, .community-loading,
+    .notifications-badge, .notification-dot, .community-empty, .community-loading,
     .profile-empty, .notifications-empty, .header-profile-popover {
         animation: none !important;
     }
     body { animation: none; }
     .collection-card:hover, .sidebar-nav-btn:hover, .btn-primary:hover, .btn-secondary:hover { transform: none; }
-    #notifications-badge, .notifications-badge { animation: none; }
+    .notifications-badge { animation: none; }
 }
 
 /* "reduce motion" app setting - same intent as the media query above, without needing the OS-level preference */

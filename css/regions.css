@@ -2,7 +2,7 @@
    A region's details page, what it brings over from the main games, the
    picker for choosing exact entries, the Types tab (custom types and the
    type chart) and the custom type editor.
-   js/features/regions.js and js/features/custom-types.js.
+   js/features/regions.ts and js/features/custom-types.ts.
    ==================== */
 
 /* ---- the region's banner above My Collection ---- */

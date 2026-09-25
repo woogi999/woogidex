@@ -187,14 +187,6 @@
         .move-detail-popup .desc-text { font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light); }
         .overlay-dark { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2999; opacity: 0; transition: opacity 0.15s ease; backdrop-filter: none; -webkit-backdrop-filter: none; }
         .overlay-dark.active { opacity: 1; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-        .api-status {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 12px; padding: 4px 10px; border-radius: 20px;
-            background: var(--bg-panel); color: var(--text-muted);
-        }
-        .api-status.connected { background: rgba(45,138,62,0.1); color: var(--success); }
-        .api-status.error { background: rgba(192,57,43,0.1); color: var(--danger); }
-        .api-status.loading { background: rgba(44,90,160,0.1); color: var(--info); }
         .save-status {
             display: inline-flex; align-items: center; gap: 6px;
             font-size: 12px; padding: 4px 12px; border-radius: 20px;
@@ -421,3 +413,21 @@
             /* above the bottom tab bar, which lives in the header's layer */
             #editor-view, .modal-overlay.as-sheet { z-index: 12100; }
         }
+
+/* ---- editor page (js/app/pages/EditorPage.tsx) ---- */
+.editor-row-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.editor-row-heading > span { font: 700 12px 'Exo 2', sans-serif; color: var(--text-secondary); letter-spacing: .4px; }
+.field-hint { display: block; font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
+.label-note { font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: none; letter-spacing: 0; }
+.gender-genderless-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.gender-genderless-row input { width: auto; }
+.gender-genderless-row label { margin: 0; font-weight: 400; cursor: pointer; }
+.gender-slider { width: 100%; accent-color: #3b82f6; }
+.gender-inputs { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.gender-input { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.gender-input.female { justify-content: flex-end; }
+.gender-input input { width: 70px; }
+.gender-input .gender-name { font-weight: 600; }
+.gender-input.male .gender-name { color: #3b82f6; }
+.gender-input.female .gender-name { color: #ec4899; }
+.bulk-loading { font-size: 12px; color: var(--text-muted); }

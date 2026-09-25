@@ -292,3 +292,6 @@
 .collection-library-card .collection-card-export-wrap { position:relative; display:flex; flex:0 0 28px; }
 .collection-library-card .collection-card-export-wrap > button { border:0; border-radius:6px; }
 
+
+/* the tools in a card's head (js/app/components/editor/EvolutionBoard.tsx) */
+.evo-method-tools { display: flex; align-items: center; gap: 4px; }

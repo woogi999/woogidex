@@ -270,3 +270,11 @@ html.always-show-card-actions .collection-card .card-actions { opacity: 1; }
     }
     .collection-grid:not(.collection-list) .collection-card .card-number { right: auto; left: 10px; }
 }
+
+/* the export menu's rows sit inside .card-actions but aren't its square icon buttons */
+.collection-card .card-actions .collection-card-export-menu button {
+    display: block; width: 100%; height: auto; flex: none;
+    padding: 9px 12px; border: 0; border-radius: 7px; box-shadow: none;
+    background: transparent; color: var(--text-primary); text-align: left;
+}
+.collection-card .card-actions .collection-card-export-menu button:hover { background: var(--bg-panel); border-color: transparent; color: var(--text-primary); }
