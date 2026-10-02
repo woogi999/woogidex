@@ -197,6 +197,11 @@ async function withLinkPreview(request, env, url) {
         .on('meta[name="twitter:image"]', set('content', meta.image))
         .transform(page);
     const res = new Response(out.body, out);
+    // the rewrite changes the page's length, so the original's size and tag
+    // would cut the HTML short: the browser would stop before the <script>
+    // at the bottom and the app would never start
+    res.headers.delete('content-length');
+    res.headers.delete('etag');
     // a renamed Fakemon should show its new name soon, but crawlers hammer links
     res.headers.set('cache-control', 'public, max-age=300');
     return res;
