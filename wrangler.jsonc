@@ -2,8 +2,10 @@
   "name": "woogidex",
   "compatibility_date": "2026-08-27",
   "workers_dev": false,
-  // worker/index.js only handles /sb/*, the reverse proxy that puts Supabase
-  // API traffic behind this zone's WAF and rate limiting rules. Every other
+  // worker/index.js handles /sb/*, the reverse proxy that puts Supabase API
+  // traffic behind this zone's WAF and rate limiting rules (Realtime's
+  // WebSocket included), and the pages people share links to, so Discord and
+  // friends show the right title and picture (link previews). Every other
   // path is served straight from the asset store without running a Worker,
   // which is both faster and free -- that is what run_worker_first buys.
   "main": "worker/index.js",
@@ -11,6 +13,10 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application",
     "binding": "ASSETS",
-    "run_worker_first": ["/sb/*"]
+    "run_worker_first": [
+      "/sb/*", "/og-image/*",
+      "/community/*", "/post/*", "/profile/*",
+      "/", "/collection", "/community", "/events", "/battle", "/updates", "/messages", "/privacy", "/terms"
+    ]
   }
 }

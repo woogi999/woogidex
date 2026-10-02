@@ -12,13 +12,16 @@ import { CommentsTab, FilterTab, ModLogTab } from './ModerationTabs.tsx';
 import { FeedbackTab, feedbackOpenCount, refreshOpenCount } from './FeedbackTab.tsx';
 import { BadgesTab, LimitsTab } from './SiteTabs.tsx';
 import { EventsTab } from './EventsTab.tsx';
+import { MessageReportsTab } from './MessageReportsTab.tsx';
 import { Toast } from './ui.tsx';
 
-type TabKey = 'users' | 'comments' | 'filter' | 'history' | 'feedback' | 'badges' | 'events' | 'limits';
+type TabKey = 'users' | 'comments' | 'messages' | 'filter' | 'history' | 'feedback' | 'badges' | 'events' | 'limits';
 
 const TABS: Array<{ key: TabKey; label: string; icon: string; group: 'Moderation' | 'Site'; needs?: string; Page: ComponentType }> = [
     { key: 'users', label: 'Users', icon: 'users', group: 'Moderation', Page: UsersTab },
     { key: 'comments', label: 'Comments', icon: 'message-square', group: 'Moderation', Page: CommentsTab },
+    // reported private messages; reading them needs delete_content, same as the server's check
+    { key: 'messages', label: 'Reported chats', icon: 'flag', group: 'Moderation', needs: 'delete_content', Page: MessageReportsTab },
     // open to every staff member, for the tester; editing the rules needs manage_filter
     { key: 'filter', label: 'Filter', icon: 'filter', group: 'Moderation', Page: FilterTab },
     { key: 'history', label: 'Mod log', icon: 'scroll-text', group: 'Moderation', needs: 'view_log', Page: ModLogTab },

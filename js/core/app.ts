@@ -41,6 +41,9 @@ import * as regions from '../features/regions.ts';
 import * as customTypes from '../features/custom-types.ts';
 import * as entityArt from '../editor/entity-art.ts';
 import * as feedback from '../features/feedback.ts';
+import * as moveInheritance from '../features/move-inheritance.ts';
+import * as social from '../features/social.ts';
+import * as messaging from '../features/messaging.ts';
 import { maybeShowOriginNotice } from './dev-notice.ts';
 import { initArtShield } from './art-shield.ts';
 import { initAvatars } from './avatar.ts';
@@ -205,9 +208,37 @@ function showToast(message, type = 'info') {
 const BASE_TITLE = 'Woogidex';
 function setPageTitle(subtitle) {
     document.title = subtitle ? `${subtitle} · ${BASE_TITLE}` : BASE_TITLE;
+    setMeta('og:title', document.title);
+    setMeta('twitter:title', document.title);
 }
+
+// The share card for whatever is on screen. Link previews on other sites come
+// from worker/index.js (bots don't run this code); this keeps the live page's
+// own tags in step, which the browser's share sheet and some apps read.
+const DEFAULT_SHARE = (() => {
+    const read = (sel: string) => document.querySelector<HTMLMetaElement>(sel)?.content || '';
+    return { description: read('meta[name="description"]'), image: read('meta[property="og:image"]') };
+})();
+function setMeta(key: string, value: string) {
+    const attr = key.startsWith('og:') ? 'property' : 'name';
+    const el = document.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
+    if (el && value) el.content = value;
+}
+function setShareMeta({ title = '', description = '', image = '' }: { title?: string; description?: string; image?: string } = {}) {
+    if (title) setPageTitle(title);
+    const desc = description || DEFAULT_SHARE.description;
+    setMeta('description', desc);
+    setMeta('og:description', desc);
+    setMeta('twitter:description', desc);
+    setMeta('og:image', image || DEFAULT_SHARE.image);
+    setMeta('twitter:image', image || DEFAULT_SHARE.image);
+    setMeta('og:url', window.location.href.split('#')[0]);
+}
+router.onRouteChange(() => setMeta('og:url', window.location.href.split('#')[0]));
+
 function setRoute(path, title) {
     setPageTitle(title);
+    setShareMeta();
     router.navigateRoute(path);
 }
 
@@ -219,6 +250,8 @@ const TOP_LEVEL_VIEW_IDS = [
     'ability-block-editor-view',
     'community-view',
     'community-detail-view',
+    'post-view',
+    'messages-view',
     'battle-view',
     'profile-view',
     'legal-view',
@@ -242,6 +275,9 @@ function activateTopLevelView(viewId, options: Record<string, any> = {}) {
     // drop lobby presence when leaving battle so you don't linger in "online" lists
     const leavingBattle = document.getElementById('battle-view')?.style.display === 'block' && viewId !== 'battle-view';
     if (leavingBattle) api.onBattleViewLeave?.();
+
+    // a community post's borrowed custom types only apply while it's open
+    if (viewId !== 'community-detail-view') api.setVisitingTypes?.([]);
 
     // a library editor panel belongs to My Collection; leaving closes it
     document.querySelectorAll('.modal-overlay.as-sheet.active').forEach(el => el.classList.remove('active'));
@@ -286,9 +322,9 @@ function activateTopLevelView(viewId, options: Record<string, any> = {}) {
 
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleUI, abilityBlocks, nameRoll, fieldRoll, protect, router, recovery, cloudSave, siteNotice, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, feedback, updates, settingsApi, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleUI, abilityBlocks, nameRoll, fieldRoll, protect, router, recovery, cloudSave, siteNotice, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, feedback, moveInheritance, social, messaging, updates, settingsApi, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, takeSettingsTab, isDarkModeEnabled,
-    setRoute, setPageTitle, activateTopLevelView,
+    setRoute, setPageTitle, setShareMeta, activateTopLevelView,
     updateSettingsUI, loadSettings, showToast
 });
 
@@ -410,6 +446,11 @@ async function handleRoute(route) {
         await api.openCommunityHub?.();
         return true;
     }
+    if (name === 'post') {
+        if (!param) return false;
+        return await api.openPost?.(param, { preserveRoute: true }) === true;
+    }
+    if (name === 'messages') return await api.handleMessagesRoute?.(param) === true;
     if (name === 'profile') {
         if (!param) return false;
         api.activateTopLevelView?.('profile-view');

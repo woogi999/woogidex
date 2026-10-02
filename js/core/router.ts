@@ -18,7 +18,7 @@ import { log } from './log.ts';
 // is reported as NOT_FOUND so the app can show its 404 page. 'editor' and
 // 'ability-editor' are only read from old links: the editors have no address.
 const ROUTES = ['collection', 'editor', 'ability-editor', 'community', 'events', 'battle', 'profile',
-    'privacy', 'terms', 'settings', 'updates', 'search'] as const;
+    'privacy', 'terms', 'settings', 'updates', 'search', 'post', 'messages'] as const;
 
 export type RouteName = typeof ROUTES[number] | '' | 'not-found';
 export interface Route { name: RouteName; param: string; }

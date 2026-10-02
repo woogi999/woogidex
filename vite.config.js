@@ -70,16 +70,83 @@ function stripHtmlComments() {
     };
 }
 
+// The custom emojis are plain files in public/emojis (subfolders are picker
+// categories). Their names come from the file names, so adding one is just
+// dropping a file in: this module lists them at build time, and messages only
+// ever store the ":name:" text. The browser fetches each picture once and
+// caches it (public/_headers), which keeps them off our bandwidth bill.
+// Names follow the same rule the files were renamed with: no leading id
+// number, spaces and dashes become underscores, all lowercase.
+const EMOJI_VIRTUAL = 'virtual:emoji-manifest';
+const EMOJI_RESOLVED = '\0' + EMOJI_VIRTUAL;
+const EMOJI_EXT = /\.(png|gif|webp|jpe?g|avif)$/i;
+
+export function emojiName(fileName) {
+    return fileName.replace(EMOJI_EXT, '')
+        .replace(/^[0-9]+[-_ ]+/, '')
+        .replace(/[\s-]+/g, '_')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '');
+}
+
+function scanEmojis(root) {
+    const out = [];
+    const seen = new Set();
+    const walk = (dir, category) => {
+        let entries = [];
+        try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        entries.sort((a, b) => a.name.localeCompare(b.name));
+        for (const entry of entries) {
+            const full = resolve(dir, entry.name);
+            if (entry.isDirectory()) { walk(full, entry.name); continue; }
+            if (!EMOJI_EXT.test(entry.name)) continue;
+            const name = emojiName(entry.name);
+            if (!name || seen.has(name)) continue;     // first file wins a clash
+            seen.add(name);
+            const rel = full.slice(root.length + 1).replace(/\\/g, '/');
+            out.push({ name, src: `emojis/${rel}`, category, animated: /\.gif$/i.test(entry.name) });
+        }
+    };
+    walk(root, 'general');
+    return out;
+}
+
+function emojiManifest() {
+    const root = resolve(import.meta.dirname, 'public/emojis');
+    return {
+        name: 'woogidex-emoji-manifest',
+        resolveId(id) { return id === EMOJI_VIRTUAL ? EMOJI_RESOLVED : null; },
+        load(id) {
+            if (id !== EMOJI_RESOLVED) return null;
+            return `export default ${JSON.stringify(scanEmojis(root))};`;
+        },
+        // a file dropped in while `npm run dev` is running shows up on reload
+        configureServer(server) {
+            server.watcher.add(root);
+            const refresh = file => {
+                if (!resolve(file).startsWith(root)) return;
+                const mod = server.moduleGraph.getModuleById(EMOJI_RESOLVED);
+                if (mod) server.moduleGraph.invalidateModule(mod);
+                server.ws.send({ type: 'full-reload' });
+            };
+            server.watcher.on('add', refresh);
+            server.watcher.on('unlink', refresh);
+        }
+    };
+}
+
 const SB_PROXY = {
     target: 'https://qstbascfeolkyxtrqqwv.supabase.co',
     changeOrigin: true,
+    // Realtime (live chat messages) is a WebSocket
+    ws: true,
     rewrite: path => path.replace(/^\/sb/, '')
 };
 
 export default defineConfig({
     base: './',
     publicDir: 'public',
-    plugins: [react(), fallback404(), stripHtmlComments()],
+    plugins: [react(), emojiManifest(), fallback404(), stripHtmlComments()],
     build: {
         outDir: 'dist',
         assetsDir: 'bundle',

@@ -65,14 +65,110 @@ const VANILLA_COLORS = {
 export const TYPE_ICON_FILES = new Set(['bug', 'dark', 'dragon', 'electric', 'fairy', 'fighting', 'fire', 'flying', 'ghost',
     'grass', 'ground', 'ice', 'normal', 'poison', 'psychic', 'rock', 'steel', 'water']);
 
+// ---- other people's types ----
+// A published Fakemon carries the custom types it uses (fakemon_data.customTypes,
+// see typesForPublishing), because the viewer's collection doesn't have them.
+// Two kinds of borrowing:
+//   looks    colours only, collected from every post seen this session, so
+//            feed cards and pills aren't grey. Never affects matchups.
+//   visiting the open community post's types, in full: its board's weakness
+//            chart needs their matchups. Cleared when the post is left, so
+//            they can't leak into your own editor or analysis.
+// Your own type of the same name always wins.
+const borrowedLooks = new Map<string, any>();
+let visiting: any[] = [];
+
+// Someone else's data ends up inside a <style> tag (writeTypeStyles), so
+// every value that reaches CSS is checked for shape, not just copied: a
+// colour is a hex code, a position or angle is a number, and anything else
+// is dropped. Multipliers are limited to the ones the chart knows.
+const HEX = /^#[0-9a-f]{3,8}$/i;
+const MULTS = new Set([0, 0.25, 0.5, 1, 2, 4]);
+
+function cleanMultipliers(map: any) {
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(map && typeof map === 'object' ? map : {})) {
+        const n = Number(v);
+        if (/^[A-Za-z?][A-Za-z0-9?-]{0,15}$/.test(k) && MULTS.has(n)) out[k] = n;
+    }
+    return out;
+}
+
+function cleanForeignType(t: any) {
+    if (!t || typeof t !== 'object') return null;
+    const name = String(t.name || '');
+    if (!NAME_RE.test(name) || ALL_VANILLA_TYPES.some(v => v.toLowerCase() === name.toLowerCase())) return null;
+    const stops = Array.isArray(t.gradient?.stops)
+        ? t.gradient.stops.filter(s => HEX.test(String(s?.color || ''))).slice(0, MAX_STOPS)
+            .map(s => ({ color: String(s.color), pos: Math.max(0, Math.min(100, Number(s.pos) || 0)) }))
+        : [];
+    const angle = Number(t.gradient?.angle);
+    return {
+        name,
+        color: HEX.test(String(t.color || '')) ? String(t.color) : '#888888',
+        gradient: stops.length >= 2 ? { angle: Number.isFinite(angle) ? angle : 90, stops } : null,
+        desc: String(t.desc || '').slice(0, 500),
+        icon: '',
+        matchups: { offense: cleanMultipliers(t.matchups?.offense), defense: cleanMultipliers(t.matchups?.defense) }
+    };
+}
+
+/** Remembers the colours of custom types seen on posts, so their pills are drawn right. */
+export function registerTypeLooks(list: any[]) {
+    let added = false;
+    for (const raw of Array.isArray(list) ? list : []) {
+        const t = cleanForeignType(raw);
+        if (!t || borrowedLooks.has(t.name.toLowerCase())) continue;
+        borrowedLooks.set(t.name.toLowerCase(), t);
+        added = true;
+    }
+    if (added) writeTypeStyles();
+}
+
+/** The open community post's custom types, matchups and all; [] once it's closed. */
+export function setVisitingTypes(list: any[]) {
+    const next = (Array.isArray(list) ? list : []).map(cleanForeignType).filter(Boolean)
+        .filter(t => !localByName(t!.name));
+    if (!next.length && !visiting.length) return;
+    visiting = next;
+    registerTypeLooks(next);
+    syncCustomTypes(true);
+}
+
+/**
+ * The custom types a Fakemon (and its family) uses, to travel with it when
+ * published: its own typing and every custom-typed move in its learnset.
+ */
+export function typesForPublishing(mons: any[]) {
+    const names = new Set<string>();
+    for (const mon of mons || []) {
+        if (!mon) continue;
+        [mon.type1, mon.type2].forEach(t => t && names.add(String(t).toLowerCase()));
+        (mon.learnset || []).forEach(m => m?.type && names.add(String(m.type).toLowerCase()));
+    }
+    return getCustomTypes()
+        .filter(t => names.has(t.name.toLowerCase()))
+        .map(({ name, color, gradient, desc, icon, matchups }) => ({ name, color, gradient: gradient || null, desc: desc || '', icon: icon || '', matchups: matchups || { offense: {}, defense: {} } }));
+}
+
 // ---- reading ----
 function allEntries() {
     return (state.folders || []).filter(f => f && f.type === CUSTOM_TYPE_KIND);
 }
 
+function localByName(name) {
+    const key = String(name || '').toLowerCase();
+    return allEntries().find(t => !t.vanillaOf && String(t.name).toLowerCase() === key) || null;
+}
+
 /** Types you invented (not a region's version of a main-game type). */
 export function getCustomTypes() {
     return allEntries().filter(t => !t.vanillaOf).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+/** Your types, plus the open community post's (for its matchups only; never in a picker). */
+function knownCustomTypes() {
+    return [...getCustomTypes(), ...visiting];
 }
 
 /** A region's own versions of main-game types. */
@@ -83,7 +179,7 @@ export function getTypeOverrides(regionId) {
 
 export function customByName(name) {
     const key = String(name || '').toLowerCase();
-    return getCustomTypes().find(t => t.name.toLowerCase() === key) || null;
+    return knownCustomTypes().find(t => t.name.toLowerCase() === key) || null;
 }
 
 /** A region's own version of a main-game type, if it has one. */
@@ -93,10 +189,10 @@ export function overrideFor(name, regionId) {
 
 /** Every type a matchup can involve: the 18, then custom ones. */
 export function allMatchupTypes() {
-    return [...VANILLA, ...getCustomTypes().map(t => t.name)];
+    return [...VANILLA, ...knownCustomTypes().map(t => t.name)];
 }
 
-export function isCustomType(name) { return !!customByName(name); }
+export function isCustomType(name) { return !!localByName(name); }
 
 /**
  * A gradient's stops, sorted, or null for a solid colour. Older saves hold a
@@ -157,9 +253,10 @@ export function matchup(att: string, def: string, regionId: string|null = null):
 
 // ---- writing into the shared type data ----
 export function syncCustomTypes(force = false) {
-    const types = getCustomTypes();
+    const types = knownCustomTypes();
+    const own = new Set(getCustomTypes());
     const all = allEntries();
-    const signature = JSON.stringify(all.map(t => [t.name, t.vanillaOf, t.regionId, t.color, t.gradient, t.matchups]));
+    const signature = JSON.stringify([...all, ...visiting].map(t => [t.name, t.vanillaOf, t.regionId, t.color, t.gradient, t.matchups]));
     if (!force && signature === lastSignature) return;
     lastSignature = signature;
 
@@ -186,9 +283,12 @@ export function syncCustomTypes(force = false) {
     injected = types.map(t => t.name);
     for (const t of types) {
         POKEMON_TYPES.push(t.name);
-        // custom ones sit before ??? and Stellar in every picker
-        const at = SELECTABLE_TYPES.indexOf('???');
-        SELECTABLE_TYPES.splice(at === -1 ? SELECTABLE_TYPES.length : at, 0, t.name);
+        // custom ones sit before ??? and Stellar in every picker; a visiting
+        // post's types are for its chart, not for picking
+        if (own.has(t)) {
+            const at = SELECTABLE_TYPES.indexOf('???');
+            SELECTABLE_TYPES.splice(at === -1 ? SELECTABLE_TYPES.length : at, 0, t.name);
+        }
         TYPE_EFFECTIVENESS[t.name] = {};
     }
     for (const [att, row] of Object.entries<any>(rows)) Object.assign(TYPE_EFFECTIVENESS[att] ||= {}, row);
@@ -213,6 +313,8 @@ function writeTypeStyles() {
     }
     const rule = (sel, t) => `${sel} { background: ${typeBackground(t)}; color: #fff; }`;
     tag.textContent = [
+        // borrowed first, so your own type of the same name (written after) wins
+        ...[...borrowedLooks.values()].filter(t => !localByName(t.name)).map(t => rule(`.type-${cssEscape(t.name.toLowerCase())}`, t)),
         ...getCustomTypes().map(t => rule(`.type-${cssEscape(t.name.toLowerCase())}`, t)),
         ...allEntries().filter(t => t.vanillaOf && t.regionId).map(t =>
             rule(`body[data-active-region="${cssEscape(t.regionId)}"] .type-${cssEscape(t.vanillaOf.toLowerCase())}`, t))

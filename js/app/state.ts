@@ -36,6 +36,10 @@ export interface AppState {
     editorLoadedId: Id | null;
     abilities: any[];
     learnset: any[];
+    /** the open Fakemon inherits its prevolutions' moves (js/features/move-inheritance.ts) */
+    inheritPrevoMoves?: boolean;
+    /** a community post's inherited moves, as published */
+    inheritedLearnset?: any[];
     sampleSets: any[];
     artworkData: string | null;
     shinyArtworkData: string | null;

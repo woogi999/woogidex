@@ -18,6 +18,8 @@ import { SettingsPage } from './pages/SettingsPage.tsx';
 import { ProfilePage } from './pages/ProfilePage.tsx';
 import { CommunityPage } from './pages/CommunityPage.tsx';
 import { CommunityDetailPage } from './pages/CommunityDetailPage.tsx';
+import { PostPage } from './pages/PostPage.tsx';
+import { MessagesPage } from './pages/MessagesPage.tsx';
 import { BattlePage } from './pages/BattlePage.tsx';
 import { CollectionPage } from './pages/CollectionPage.tsx';
 import { EditorPage } from './pages/EditorPage.tsx';
@@ -35,6 +37,8 @@ const PAGES: Array<[string, ComponentType]> = [
     ['profile-view', ProfilePage],
     ['community-view', CommunityPage],
     ['community-detail-view', CommunityDetailPage],
+    ['post-view', PostPage],
+    ['messages-view', MessagesPage],
     ['battle-view', BattlePage],
     ['collection-view', CollectionPage],
     ['editor-view', EditorPage],

@@ -276,6 +276,27 @@ function calculateStages(g) {
     return Object.fromEntries(memo);
 }
 
+/**
+ * The Fakemon a Fakemon evolves from, as Fakemon ids: the previous stage on
+ * its board, or for a Mega or forme change the Pokemon it's a form of. Main-game
+ * Pokemon on the board aren't Fakemon, so they're left out.
+ * @param g a saved evolution graph @param refId the Fakemon's id
+ */
+function prevolutionRefIds(g, refId): string[] {
+    if (!g || !Array.isArray(g.nodes) || !Array.isArray(g.edges)) return [];
+    const node = g.nodes.find(n => n.kind === 'fakemon' && String(n.refId) === String(refId));
+    if (!node) return [];
+    let parents: any[];
+    if (isSpecialNode(node)) {
+        const base = getFormeTabBase(g, node);
+        parents = base && base.id !== node.id ? [base] : [];
+    } else {
+        const ids = effectiveEdges(g).filter(e => e.to === node.id).map(e => e.from);
+        parents = g.nodes.filter(n => ids.includes(n.id) && !isSpecialNode(n));
+    }
+    return parents.filter(n => n.kind === 'fakemon' && n.refId).map(n => String(n.refId));
+}
+
 function effectiveEdges(g) {
     return collapseMethodEdges(g).map(e => {
         const toNode=g.nodes.find(n=>n.id===e.to);
@@ -887,7 +908,7 @@ function applyVanillaEvolutionLine(speciesId, { persist = true }: { persist?: an
 }
 
 export { buildSpeciesEvolutionGraph, applyVanillaEvolutionLine };
-export { ensureGraph, calculateStages as calculateEvolutionStages, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, evolutionNodeChoices, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, saveEvolutionMethod, removeEvolutionMethod, evolutionItemSuggestions, evolutionItemIcon,
+export { ensureGraph, calculateStages as calculateEvolutionStages, prevolutionRefIds, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, evolutionNodeChoices, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, saveEvolutionMethod, removeEvolutionMethod, evolutionItemSuggestions, evolutionItemIcon,
     getNodeSize, getNodeInfo, isMethodNode, getMethodLabel, getMethodSummary, addCurrentNode, currentNodeId, connectHandles, finishNodeDrag, removeEvolutionEdge, getDetectedItemLabel,
     getPreviewEvolutionChain, getPreviewFormeVariants, buildPreviewEvolutionModel, previewFormeTabs, editFakemonFromPreview };
 

@@ -8,3 +8,9 @@ interface Window {
     [key: string]: any;
 }
 declare const lucide: Window['lucide'];
+
+// public/emojis, listed at build time (vite.config.js, emojiManifest)
+declare module 'virtual:emoji-manifest' {
+    const emojis: Array<{ name: string; src: string; category: string; animated: boolean }>;
+    export default emojis;
+}

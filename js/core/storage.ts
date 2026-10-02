@@ -518,7 +518,8 @@ function normalizeCollections() {
                 color: form.color,
                 eggGroups: api.getEggGroupValue(),
                 genderRatio: api.getGenderRatioValue(),
-                learnset: state.learnset.map(m => {
+                inheritPrevoMoves: !!state.inheritPrevoMoves,
+                learnset: state.learnset.filter(m => m && !m.inherited).map(m => {
                     if (m && (m.source === 'custom' || m.custom === true)) {
                         return {
                             ...m,
@@ -648,6 +649,8 @@ function normalizeCollections() {
             }
 
             normalizeCollections();
+            // copies of prevolutions' moves, for Fakemon that inherit them
+            api.refreshInheritedMoves?.();
 
             // Emptying the collection is only ever the result of deleting the last
             // Fakemon, and that path says so. Any other write that would drop the

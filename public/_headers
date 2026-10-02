@@ -2,7 +2,7 @@
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Permissions-Policy: geolocation=(), microphone=(self), camera=()
   X-Frame-Options: DENY
 
 # content-hashed bundle filenames change whenever their content does, so it's
@@ -10,3 +10,8 @@
 # never needs to re-validate a file whose name already encodes its content.
 /bundle/*
   Cache-Control: public, max-age=31536000, immutable
+
+# custom emojis: plain pictures whose names never change meaning, so a week of
+# caching means each one is downloaded once per visitor, not once per message
+/emojis/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400

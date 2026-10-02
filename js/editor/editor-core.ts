@@ -29,6 +29,8 @@ function resetEditor() {
             state.abilities = [];
             resetEditingCustomAbilityIndex();
             state.learnset = [];
+            state.inheritedLearnset = [];
+            state.inheritPrevoMoves = false;
             state.sampleSets = [];
             state.artworkData = null;
             state.shinyArtworkData = null;
@@ -82,7 +84,11 @@ function resetEditor() {
             ].filter(a => a.name || a.source === 'custom').slice(0, 4);
             // build the unified learnset. explicitly marked custom moves are never sent
             // through Showdown hydration, even if their name happens to match a vanilla move.
-            state.learnset = (fakemon.learnset || []).map(m => {
+            // inherited copies aren't the Fakemon's own moves: the Moves tab
+            // lists them separately and saving rebuilds them (move-inheritance.ts)
+            state.inheritPrevoMoves = !!fakemon.inheritPrevoMoves;
+            state.inheritedLearnset = (fakemon.learnset || []).filter(m => m && m.inherited);
+            state.learnset = (fakemon.learnset || []).filter(m => m && !m.inherited).map(m => {
                 if (m && (m.source === 'custom' || m.custom === true)) {
                     return {
                         ...m,
@@ -586,7 +592,9 @@ function boardModel() {
         gender = { genderless: !(m > 0) && !(f > 0), male: m, female: f, label: (m > 0 && f > 0) ? `${m}% Male / ${f}% Female` : (m > 0 ? '100% Male' : '100% Female') };
     }
     const allMoves = state.learnset.filter(m => m && m.name);
-    const byCategory = cat => allMoves.filter(m => m.category === cat).map(moveTag);
+    // moves inherited from prevolutions are part of what it knows, so the board lists them too
+    const knownMoves = [...allMoves, ...(api.inheritedMovesForEditor?.() || [])];
+    const byCategory = cat => knownMoves.filter(m => m.category === cat).map(moveTag);
     const customMoves = allMoves.filter(isCustomMove).map(m => {
         const acc = (m.accuracy === true || m.accuracy === undefined || m.accuracy === false) ? '-' : m.accuracy + '%';
         const method = m.learnMethod === 'level' && m.level ? ' · Level ' + m.level : m.learnMethod === 'tm' ? ' · TM' : m.learnMethod === 'egg' ? ' · Egg' : '';

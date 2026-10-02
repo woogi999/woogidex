@@ -10,6 +10,7 @@ import { PokedexBoard } from '../components/board/PokedexBoard.tsx';
 import { CommunityEvoStrip } from '../components/board/CommunityEvoStrip.tsx';
 import { ShieldedArt } from '../components/ShieldedArt.tsx';
 import { Icon } from '../components/Icon.tsx';
+import { EmojiInput } from '../components/EmojiInput.tsx';
 import { useStore } from '../store.ts';
 
 export function CommunityDetailPage() {
@@ -95,7 +96,7 @@ function CommentBox() {
     }
     return (
         <div className="mon-detail-comment-box" style={{ display: 'flex' }}>
-            <textarea placeholder="Say something nice…" maxLength={1000} value={text} onChange={e => setText(e.target.value)} />
+            <EmojiInput placeholder="Say something nice…" maxLength={1000} value={text} onChange={setText} />
             <button className="btn btn-primary" type="button" disabled={busy} onClick={post}>Post</button>
         </div>
     );

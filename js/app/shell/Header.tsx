@@ -26,7 +26,7 @@ export function Header() {
     useStore();
     // a Community post is still "in" the Community section
     const page = document.body.dataset.page || '';
-    const section = page === 'community-detail-view' ? 'community-view' : page;
+    const section = page === 'community-detail-view' || page === 'post-view' ? 'community-view' : page;
     const unreadUpdates = updatesUnreadCount();
     return (
         <>
@@ -46,11 +46,25 @@ export function Header() {
                 ))}
             </nav>
             <div className="header-actions">
+                <MessagesButton active={page === 'messages-view'} />
                 <Notifications />
                 {!state.user && <button className="header-signin-btn" type="button" onClick={() => api.openAuthModal('signin')}>Sign In</button>}
                 <AccountMenu />
             </div>
         </>
+    );
+}
+
+/** Opens your chats; the badge counts unread messages (muted chats don't count). */
+function MessagesButton({ active }: { active: boolean }) {
+    if (!state.user) return null;
+    const unread: number = api.unreadMessageTotal?.() || 0;
+    return (
+        <button className={`notifications-bell-btn header-messages-btn${active ? ' active' : ''}`} type="button" onClick={() => api.openMessages()}
+            aria-label={unread ? `Messages, ${unread} unread` : 'Messages'} title="Messages">
+            <Icon name="chat-bubble-oval-left-ellipsis" size={20} />
+            {unread > 0 && <span className="notifications-badge">{count(unread)}</span>}
+        </button>
     );
 }
 

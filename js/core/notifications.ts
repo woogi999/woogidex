@@ -109,6 +109,8 @@ function notificationText(n) {
     if (n.type === 'mod_banned') return 'suspended your account';
     if (n.type === 'mod_comment_deleted') return 'removed one of your comments';
     if (n.type === 'profile_comment') return 'commented on your profile';
+    if (n.type === 'follow') return 'started following you';
+    if (n.type === 'post_comment') return 'commented on your post';
     if (n.type === 'mon_deleted') return `removed your Fakemon "${n.target_name || 'submission'}" from the Community Hub`;
     if (n.type === 'contest_submission_deleted') return `removed your contest entry "${n.target_name || 'submission'}"`;
     return `commented on ${n.target_name || 'your Fakemon'}`;
@@ -241,6 +243,10 @@ async function openNotification(id) {
         await api.openPublishedMonById?.(n.target_id);
     } else if (n.type === 'profile_comment' && n.target_id) {
         await api.showProfileView?.(n.target_id);
+    } else if (n.type === 'follow' && n.actor_id) {
+        await api.showProfileView?.(n.actor_id);
+    } else if (n.type === 'post_comment' && n.target_id) {
+        await api.openPost?.(n.target_id);
     }
 }
 

@@ -1,4 +1,5 @@
 import { esc } from './html.ts';
+import { emojifyHtml, isEmojiOnly } from './emoji.ts';
 const POKEMON_TYPES = [
             'Normal','Fire','Water','Electric','Grass','Ice',
             'Fighting','Poison','Ground','Flying','Psychic','Bug',
@@ -98,6 +99,8 @@ function renderCommentMarkdown(value) {
     const source = String(value ?? '').replace(/\r\n?/g, '\n').replace(/\u0000/g, '');
     const escape = esc;
     const safeUrl = url => /^(https?:\/\/|mailto:)/i.test(url) ? url : '#';
+    // a message that is nothing but emojis shows them big, like Discord
+    const jumbo = isEmojiOnly(source);
     const inline = text => {
         let out = escape(text);
         const code: any[] = [];
@@ -107,11 +110,16 @@ function renderCommentMarkdown(value) {
             const i=links.push({label, url:safeUrl(url), title})-1;
             return `\u0000L${i}\u0000`;
         });
+        // emojis are set aside before emphasis runs, or the _ in :geto_happy:
+        // would be read as italics
+        const emojis: string[] = [];
+        out = emojifyHtml(out, jumbo).replace(/<img class="emoji[^>]*>/g, img => `\u0000E${emojis.push(img) - 1}\u0000`);
         out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
         out = out.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
         out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
         out = out.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
         out = out.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+        out = out.replace(/\u0000E(\d+)\u0000/g, (_, i) => emojis[Number(i)]);
         out = out.replace(/\u0000C(\d+)\u0000/g, (_, i) => `<code>${code[Number(i)]}</code>`);
         out = out.replace(/\u0000L(\d+)\u0000/g, (_, i) => {
             const l = links[Number(i)];

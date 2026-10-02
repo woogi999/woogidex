@@ -82,7 +82,7 @@ function ensureCommunityState() {
             search: '',
             sortBy: 'activity',
             sortOrder: 'desc',
-            panel: 'landing'   // 'landing' or 'browse' -- see setCommunityPanel()
+            panel: 'feed'      // 'feed', 'browse', 'events' or 'uploads' -- see setCommunityPanel()
         };
     }
     return state.community;
@@ -267,7 +267,7 @@ async function publishSnapshot(mon, rulesChecked = false) {
         author_role: state.user!.role || 'user',
         author_badges: state.user!.badges || [],
         source_fakemon_id: String(display.mon.id),
-        fakemon_data: await withThumbnail(display.mon),
+        fakemon_data: { ...(await withThumbnail(display.mon)), customTypes: postCustomTypes(family) },
         evolution_stage: display.stage || display.mon.evolutionStage || 1,
         family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
         family_full: isFamily ? buildFamilyFullPayload(family) : []
@@ -328,7 +328,7 @@ async function updatePublishedMon(publishedId, selectedSourceId = '') {
         author_avatar_url: state.user.avatarUrl || null,
         author_role: state.user.role || 'user',
         author_badges: state.user.badges || [],
-        fakemon_data: await withThumbnail(mon),
+        fakemon_data: { ...(await withThumbnail(mon)), customTypes: postCustomTypes(family) },
         source_fakemon_id: String(mon.id),
         evolution_stage: selfEntry.stage || mon.evolutionStage || 1,
         family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
@@ -541,7 +541,7 @@ async function fetchCommunityFeed(options: Record<string, any> = {}) {
             // no thumbnail here any more: a thumbnail is an image, and an
             // image in this response is an image in the network panel. Cards
             // ask community_mon_artwork() for a masked one instead.
-            .select('id, user_id, published_at, activity_at, view_count, source_fakemon_id, author_name, author_avatar_url, author_role, author_badges, family_snapshots, evolution_stage, fakemon_data->>name, fakemon_data->>species, fakemon_data->>number, fakemon_data->>type1, fakemon_data->>type2')
+            .select('id, user_id, published_at, activity_at, view_count, source_fakemon_id, author_name, author_avatar_url, author_role, author_badges, family_snapshots, evolution_stage, fakemon_data->>name, fakemon_data->>species, fakemon_data->>number, fakemon_data->>type1, fakemon_data->>type2, customTypes:fakemon_data->customTypes')
             .order('activity_at', { ascending: false })
             .limit(100);
         if (error) throw error;
@@ -567,10 +567,11 @@ async function fetchCommunityFeed(options: Record<string, any> = {}) {
 // columns, but every renderer expects row.fakemon_data.name etc. - rebuild
 // that shape and drop the flat columns so a slim row isn't mistaken for a full one.
 function unflattenSlimMonRow(row) {
-    const { name, species, number, type1, type2, ...rest } = row;
+    const { name, species, number, type1, type2, customTypes, ...rest } = row;
+    api.registerTypeLooks?.(customTypes);
     // every image is deliberately absent from the feed query -- a card asks
     // for a masked one on scroll, and artworkCache is where that lands.
-    return { ...rest, fakemon_data: { name, species, number, type1, type2, artwork: artworkCache.get(row.id) || '' } };
+    return { ...rest, fakemon_data: { name, species, number, type1, type2, customTypes: customTypes || [], artwork: artworkCache.get(row.id) || '' } };
 }
 
 // ==================== community stats ====================
@@ -806,10 +807,12 @@ async function openCommunityHub({ panel = null }: { panel?: any } = {}) {
     // Coming back to a feed we already have: paint it, don't flash a skeleton
     // at someone for a grid that is about to look exactly as they left it.
     const cs = ensureCommunityState();
-    setCommunityPanel(panel || cs.panel || 'landing');
+    setCommunityPanel(panel || cs.panel || 'feed');
     // The events panel loads from its own tables, not the feed, so it is
     // painted here rather than waiting on fetchCommunityFeed() below.
     if (cs.panel === 'events') api.showEventsPanel?.();
+    // the social feed (mons and posts) has its own query and freshness
+    if (cs.panel === 'feed') api.fetchFeed?.(api.currentFeedTab?.() || 'foryou');
     if (feedIsFresh()) { paintCommunityPanels(); return; }
 
     // Mark the feed loading BEFORE the first paint. paintCommunityPanels()
@@ -904,7 +907,7 @@ function renderCommunityGrid() {
 // four panels, one route. active panel is remembered on community state so
 // returning from a detail page doesn't reset to landing.
 const COMMUNITY_PANELS = {
-    landing: { title: 'Community hub' },
+    feed:    { title: 'Community Hub' },
     browse:  { title: 'Browse Fakemon' },
     events:  { title: 'Events and contests' },
     uploads: { title: 'My uploads' }
@@ -932,7 +935,8 @@ function paintCommunityPanels() {
 
 function setCommunityPanel(panel) {
     const cs = ensureCommunityState();
-    cs.panel = COMMUNITY_PANELS[panel] ? panel : 'landing';
+    // 'landing' was the old front page; the feed replaced it
+    cs.panel = COMMUNITY_PANELS[panel] ? panel : 'feed';
     api.setPageTitle?.(COMMUNITY_PANELS[cs.panel].title);
     notify();
 }
@@ -946,12 +950,13 @@ function showCommunityPanel(panel) {
     const cs = ensureCommunityState();
     if (cs.panel === 'events') api.showEventsPanel?.();
     else if (cs.panel === 'uploads') renderCommunityUploads();
+    else if (cs.panel === 'feed') api.fetchFeed?.(api.currentFeedTab?.() || 'foryou');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // Kept as named entry points because the landing markup and the old call
 // sites read better than showCommunityPanel('...') does inline.
-function showCommunityLanding() { showCommunityPanel('landing'); }
+function showCommunityLanding() { showCommunityPanel('feed'); }
 function browseCommunityFakemon() { showCommunityPanel('browse'); }
 
 // ==================== my uploads ====================
@@ -1060,7 +1065,19 @@ function embeddedCustomAbilities(mon) {
 function withAbilityPrograms(mon) {
     if (!mon) return mon;
     const customAbilities = embeddedCustomAbilities(mon);
-    return customAbilities.length ? { ...mon, customAbilities } : mon;
+    // custom types travel the same way: the viewer's collection doesn't have
+    // them, and without them the post's pills were grey and its chart neutral
+    const customTypes = api.typesForPublishing?.([mon]) || [];
+    return {
+        ...mon,
+        ...(customAbilities.length ? { customAbilities } : {}),
+        ...(customTypes.length ? { customTypes } : {})
+    };
+}
+
+/** The custom types a post uses, across every family member, for the feed's slim rows. */
+function postCustomTypes(family) {
+    return api.typesForPublishing?.(family.map(f => f.mon)) || [];
 }
 
 async function makeThumbnail(dataUri) {
@@ -1252,6 +1269,8 @@ async function renderCommunityPreviewBoard(mon, row) {
     // The board is a copy of the editor's, which renders artwork as an <img>
     // and so needs a URL. Decoded here, in memory: this never touches the
     // network, and it is the only place masked artwork is turned back.
+    // the post's own custom types, so its weakness chart and pills are right
+    api.setVisitingTypes?.([...(row?.fakemon_data?.customTypes || []), ...(mon?.customTypes || [])]);
     api.loadFakemonIntoEditor({
         ...mon,
         artwork: await artworkDataUri(mon.artwork),
@@ -1259,7 +1278,10 @@ async function renderCommunityPreviewBoard(mon, row) {
     });
     // the page draws the board from the editor's state (CommunityDetailPage.tsx)
     ensureCommunityState().boardFor = row?.id ?? null;
-    api.setPageTitle?.(mon.name ? `${mon.name} (Community)` : 'Community Hub');
+    api.setShareMeta?.({
+        title: mon.name ? `${mon.name} by ${row?.author_name || 'a creator'}` : 'Community Hub',
+        description: [mon.species && `The ${mon.species}.`, mon.dexEntry1].filter(Boolean).join(' ').slice(0, 200)
+    });
     notify();
 }
 
@@ -1489,4 +1511,5 @@ export {
     showCommunityLanding, browseCommunityFakemon, renderCommunityLanding, featuredThisWeek,
     showCommunityPanel, renderCommunityUploads, openCommunityPublishModal, openCommunityUpdateModalFor,
     exportOpenCommunityMon, addOpenCommunityMonToCollection, communityState, publishLimits, describeCooldown,
+    attachLiveAuthorInfo, ensureCommunityState,
 };

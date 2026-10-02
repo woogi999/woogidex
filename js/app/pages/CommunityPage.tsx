@@ -1,28 +1,37 @@
-// The Community Hub (/community): a landing page of shelves, the browsable
-// listing, events and contests, and your own uploads. Data and actions stay in
-// js/features/community.ts; this draws state.community.
+// The Community Hub (/community): the feed (Fakemon and posts from everyone,
+// ranked "For you", or just the people you follow, or newest first), the
+// browsable grid, events and contests, and your own uploads. Data and actions
+// stay in js/features/community.ts and js/features/social.ts.
 
+import { useEffect, useRef, useState } from 'react';
 import { api, state } from '../../core/app.ts';
-import { CommunityFeed, LandingCard, LazyArt, type FeedRow } from '../components/community.tsx';
+import { CommunityFeed, LazyArt, type FeedRow } from '../components/community.tsx';
 import { EventsPanel } from '../components/EventsPanel.tsx';
 import { Icon } from '../components/Icon.tsx';
+import { Avatar } from '../components/Avatar.tsx';
+import { FeedCard, FeedSkeleton, PostComposer } from '../components/feed.tsx';
 import { getLiveContests } from '../../features/contests.ts';
 import { useStore } from '../store.ts';
+import type { FeedItem } from '../../features/feed-algorithm.ts';
 
-type Panel = 'landing' | 'browse' | 'events' | 'uploads';
+type Panel = 'feed' | 'browse' | 'events' | 'uploads';
+type FeedTab = 'foryou' | 'following' | 'latest';
 
-const TABS: Array<[Panel, string]> = [['landing', 'Hub'], ['browse', 'Browse'], ['events', 'Events'], ['uploads', 'My uploads']];
+const TABS: Array<[Panel, string]> = [['feed', 'Feed'], ['browse', 'Browse Fakémon'], ['events', 'Events'], ['uploads', 'My uploads']];
+const FEED_TABS: Array<[FeedTab, string, string]> = [
+    ['foryou', 'For you', 'sparkles'], ['following', 'Following', 'users'], ['latest', 'Latest', 'clock']
+];
 
 export function CommunityPage() {
     useStore();
     const cs = api.communityState();
-    const panel: Panel = cs.panel || 'landing';
+    const panel: Panel = (['feed', 'browse', 'events', 'uploads'].includes(cs.panel) ? cs.panel : 'feed') as Panel;
     return (
         <>
             <div className="page-header">
                 <div className="page-heading">
                     <h1 className="page-title">Community Hub</h1>
-                    <p className="page-subtitle">Every Fakémon here was designed by someone in this community. Browse, comment, or publish one of your own.</p>
+                    <p className="page-subtitle">Fakémon, posts and chatter from everyone making things here. Follow creators you like to see more of them.</p>
                 </div>
                 <div className="page-actions">
                     <button className="btn btn-primary" type="button" onClick={() => api.openCommunityPublishModal()}><Icon name="upload" /><span>Publish a Fakémon</span></button>
@@ -36,7 +45,7 @@ export function CommunityPage() {
                 ))}
             </div>
 
-            {panel === 'landing' && <Landing rows={cs.mons || []} loading={!!cs.loading} />}
+            {panel === 'feed' && <Feed />}
             {panel === 'browse' && <Browse />}
             {panel === 'events' && <div className="community-panel"><EventsPanel /></div>}
             {panel === 'uploads' && <Uploads />}
@@ -44,111 +53,150 @@ export function CommunityPage() {
     );
 }
 
-// ==================== landing ====================
+// ==================== the feed ====================
 
-// enough to fill one row on the widest screen; the row clips the rest
-const LANDING_ROW_SIZE = 12;
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const CHUNK = 12;
 
-function Landing({ rows, loading }: { rows: FeedRow[]; loading: boolean }) {
-    if (loading && !rows.length) {
-        return (
-            <div className="community-landing">
-                <section className="community-landing-section">
-                    <div className="community-landing-row">
-                        {Array.from({ length: LANDING_ROW_SIZE }, (_, i) => (
-                            <div className="community-landing-card skel-card" key={i}><span className="community-landing-art skel" /><span className="skel skel-text" /></div>
-                        ))}
-                    </div>
-                </section>
-            </div>
-        );
-    }
-    const creators = new Set(rows.map(r => r.user_id)).size;
-    const likes = rows.reduce((sum, r) => sum + Number(r.like_count || 0), 0);
-    const comments = rows.reduce((sum, r) => sum + Number(r.comment_count || 0), 0);
-    const stats: Array<[string, number, string]> = [
-        ['Fakémon published', rows.length, 'sparkles'], ['Creators', creators, 'users'], ['Likes given', likes, 'heart'], ['Comments', comments, 'message-circle']
-    ];
+function Feed() {
+    const tab: FeedTab = api.currentFeedTab();
+    const social = api.socialState();
+    const t = social.feed[tab];
+    const items: FeedItem[] = api.feedItems(tab);
+    const [shown, setShown] = useState(CHUNK);
+    const sentinel = useRef<HTMLDivElement>(null);
 
-    if (!rows.length) {
-        return (
-            <div className="community-landing">
-                <div className="community-hero-stats">{stats.map(s => <HeroStat key={s[0]} stat={s} />)}</div>
-                <section className="community-landing-section">
-                    <div className="community-landing-empty">
-                        <Icon name="sparkles" />
-                        <p>Nothing has been published yet. Be the first: open a Fakémon in your collection and publish it.</p>
-                    </div>
-                </section>
-            </div>
-        );
-    }
+    useEffect(() => { setShown(CHUNK); }, [tab, t.fetchedAt]);
+    useEffect(() => { api.fetchFeed(tab); }, [tab]);
 
-    const since = Date.now() - WEEK_MS;
-    const recent = rows.filter(r => new Date(r.published_at).getTime() >= since);
-    // featured draws from everything, so a quiet week still has a shelf
-    const featured: FeedRow[] = api.featuredThisWeek(rows, LANDING_ROW_SIZE);
-    // trending = engagement; comments weigh double (they cost more to leave)
-    const trendingPool = recent.length >= LANDING_ROW_SIZE ? recent : rows;
-    const score = (r: FeedRow) => Number(r.like_count || 0) + Number(r.comment_count || 0) * 2;
-    const trending = [...trendingPool].sort((a, b) => score(b) - score(a)).slice(0, LANDING_ROW_SIZE);
-    const fresh = [...rows].sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime()).slice(0, LANDING_ROW_SIZE);
+    // more cards as you near the bottom; at the very end, older items
+    useEffect(() => {
+        const el = sentinel.current;
+        if (!el || typeof IntersectionObserver === 'undefined') return;
+        const io = new IntersectionObserver(entries => {
+            if (!entries.some(e => e.isIntersecting)) return;
+            if (shown < items.length) setShown(n => n + CHUNK);
+            else if (tab !== 'foryou' && t.hasMore && !t.loading) api.fetchFeed(tab, { older: true });
+        }, { rootMargin: '600px' });
+        io.observe(el);
+        return () => io.disconnect();
+    }, [shown, items.length, tab, t.hasMore, t.loading]);
 
     return (
-        <div className="community-landing">
-            <div className="community-hero-stats">{stats.map(s => <HeroStat key={s[0]} stat={s} />)}</div>
-            <LiveContests />
-            <Shelf title="Featured this week" subtitle="A rotating pick from the whole hub. Changes every Monday." rows={featured} />
-            <Shelf title="Trending now" subtitle={recent.length >= LANDING_ROW_SIZE ? 'Most liked and talked about in the last seven days.' : 'Most liked and talked about so far.'} rows={trending} />
-            <Shelf title="Freshly published" subtitle="The newest Fakemon in the hub." rows={fresh} />
+        <div className="feed-layout">
+            <div className="feed-main">
+                <PostComposer />
+                <div className="feed-tabs" role="tablist" aria-label="Which feed">
+                    {FEED_TABS.map(([key, label, icon]) => (
+                        <button key={key} type="button" role="tab" aria-selected={tab === key} className={`feed-tab${tab === key ? ' active' : ''}`}
+                            onClick={() => api.setFeedTab(key)}><Icon name={icon} size={16} />{label}</button>
+                    ))}
+                    <button type="button" className="feed-refresh" title="Refresh" aria-label="Refresh the feed" onClick={() => api.fetchFeed(tab, { force: true })}>
+                        <Icon name="arrow-path" size={16} className={t.loading ? 'spin' : ''} />
+                    </button>
+                </div>
+                {t.error && <div className="feed-empty"><Icon name="exclamation-triangle" size={20} /><p>{t.error}</p></div>}
+                {!items.length && t.loading && <FeedSkeleton />}
+                {!items.length && !t.loading && !t.error && <EmptyFeed tab={tab} />}
+                {items.slice(0, shown).map(item => <FeedCard key={`${item.kind}:${item.id}`} item={item} />)}
+                <div ref={sentinel} className="feed-sentinel" />
+                {items.length > 0 && shown >= items.length && (
+                    tab === 'foryou' ? (
+                        <div className="feed-end">
+                            <Icon name="check-circle" size={22} />
+                            <p>You're all caught up!</p>
+                            <button type="button" className="btn btn-secondary btn-sm" disabled={t.loading} onClick={() => api.fetchFeed(tab, { older: true })}>Show older stuff</button>
+                        </div>
+                    ) : !t.hasMore && <div className="feed-end"><p>That's everything.</p></div>
+                )}
+                {t.loading && items.length > 0 && <FeedSkeleton count={1} />}
+            </div>
+            <aside className="feed-rail" aria-label="More from the hub">
+                <LiveContests />
+                <SuggestedCreators items={social.feed.foryou.items.length ? social.feed.foryou.items : items} />
+                <FeaturedMini />
+            </aside>
         </div>
     );
 }
 
-function HeroStat({ stat: [label, value, icon] }: { stat: [string, number, string] }) {
-    return <div className="community-hero-stat"><Icon name={icon} /><strong>{value}</strong><span>{label}</span></div>;
+function EmptyFeed({ tab }: { tab: FeedTab }) {
+    return (
+        <div className="feed-empty">
+            <Icon name={tab === 'following' ? 'users' : 'sparkles'} size={26} />
+            {tab === 'following'
+                ? <p>Nothing from people you follow yet. Find creators you like in <button type="button" className="link-btn" onClick={() => api.setFeedTab('foryou')}>For you</button> and hit Follow.</p>
+                : <p>It's quiet in here. Be the first: publish a Fakémon or write a post!</p>}
+        </div>
+    );
 }
 
-function Shelf({ title, subtitle, rows }: { title: string; subtitle: string; rows: FeedRow[] }) {
-    if (!rows.length) return null;
+/** People who show up in the feed that you don't follow yet. */
+function SuggestedCreators({ items }: { items: FeedItem[] }) {
+    if (!state.user) return null;
+    const score = new Map<string, { item: FeedItem; n: number }>();
+    for (const it of items) {
+        if (it.user_id === state.user.id || api.isFollowing(it.user_id) || api.hasBlocked?.(it.user_id)) continue;
+        const e = score.get(it.user_id) || { item: it, n: 0 };
+        e.n += 1 + Number(it.like_count || 0) * 0.2 + Number(it.comment_count || 0) * 0.5;
+        score.set(it.user_id, e);
+    }
+    const top = [...score.values()].sort((a, b) => b.n - a.n).slice(0, 5);
+    if (!top.length) return null;
     return (
-        <section className="community-landing-section">
-            <div className="community-landing-section-head">
-                <div><h3>{title}</h3><p>{subtitle}</p></div>
-                <button className="btn btn-secondary btn-sm" type="button" onClick={() => api.showCommunityPanel('browse')}>See all <Icon name="arrow-right" /></button>
-            </div>
-            <div className="community-landing-row">{rows.map(row => <LandingCard key={`${title}-${row.id}`} row={row} />)}</div>
+        <section className="feed-rail-card">
+            <h3>Creators to follow</h3>
+            {top.map(({ item }) => (
+                <div className="feed-rail-person" key={item.user_id}>
+                    <button type="button" className="feed-rail-person-main" onClick={() => api.showUserProfile(item.user_id)}>
+                        <Avatar userId={item.user_id} url={item.author_avatar_url} name={item.author_name} className="feed-avatar feed-avatar-sm" />
+                        <span>{item.author_name || 'Someone'}</span>
+                    </button>
+                    <button type="button" className="feed-follow-btn" onClick={() => api.followUser(item.user_id)}>Follow</button>
+                </div>
+            ))}
         </section>
     );
 }
 
-// contests have a deadline, so they sit above the browsing shelves; drawn only while one is live
+/** "Featured this week", now a small grid beside the feed. */
+function FeaturedMini() {
+    const cs = api.communityState();
+    const rows: FeedRow[] = cs.mons || [];
+    if (!rows.length) return null;
+    const featured: FeedRow[] = api.featuredThisWeek(rows, 6);
+    return (
+        <section className="feed-rail-card">
+            <h3>Featured this week</h3>
+            <div className="feed-rail-grid">
+                {featured.map(row => (
+                    <button type="button" key={row.id} className="feed-rail-mon" onClick={() => api.openMonDetail(row.id)} title={row.fakemon_data?.name}>
+                        <LazyArt row={row} className="feed-rail-mon-art" />
+                        <span>{row.fakemon_data?.name || 'Unnamed'}</span>
+                    </button>
+                ))}
+            </div>
+            <button type="button" className="link-btn" onClick={() => api.showCommunityPanel('browse')}>Browse every Fakémon <Icon name="arrow-right" size={12} /></button>
+        </section>
+    );
+}
+
+// contests have a deadline, so they sit at the top of the rail while one is live
 function LiveContests() {
     const live = getLiveContests();
     if (!live.length) return null;
     return (
-        <section className="community-landing-section community-contest-section">
-            <div className="community-landing-section-head">
-                <div>
-                    <h3><span className="event-live-dot" /> Happening now</h3>
-                    <p>{live.length === 1 ? 'A contest is' : `${live.length} contests are`} open. Enter one of your Fakémon, or vote on everyone else's.</p>
-                </div>
-                <button className="btn btn-secondary btn-sm" type="button" onClick={() => api.showCommunityPanel('events')}>All events</button>
-            </div>
-            <div className="community-contest-row">
-                {live.slice(0, 3).map(c => {
-                    const n = (c.submissions || []).length;
-                    return (
-                        <button type="button" className="community-contest-card" key={c.id} onClick={() => api.showCommunityPanel('events')}>
-                            <span className="community-contest-phase">{c.phase === 'voting' ? 'Voting open' : 'Accepting entries'}</span>
-                            <strong>{c.title || 'Contest'}</strong>
-                            <span className="community-contest-event">{c.eventTitle || ''}</span>
-                            <span className="community-contest-count">{n} entr{n === 1 ? 'y' : 'ies'}</span>
-                        </button>
-                    );
-                })}
-            </div>
+        <section className="feed-rail-card community-contest-section">
+            <h3><span className="event-live-dot" /> Happening now</h3>
+            {live.slice(0, 3).map(c => {
+                const n = (c.submissions || []).length;
+                return (
+                    <button type="button" className="community-contest-card" key={c.id} onClick={() => api.showCommunityPanel('events')}>
+                        <span className="community-contest-phase">{c.phase === 'voting' ? 'Voting open' : 'Accepting entries'}</span>
+                        <strong>{c.title || 'Contest'}</strong>
+                        <span className="community-contest-count">{n} entr{n === 1 ? 'y' : 'ies'}</span>
+                    </button>
+                );
+            })}
         </section>
     );
 }

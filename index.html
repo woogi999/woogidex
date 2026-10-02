@@ -11,7 +11,7 @@
     <base href="/" target="_blank">
     <script>
         (function () {
-            var ROUTES = ['collection', 'editor', 'ability-editor', 'community', 'events', 'battle', 'profile', 'privacy', 'terms', 'settings', 'updates', 'search'];
+            var ROUTES = ['collection', 'editor', 'ability-editor', 'community', 'events', 'battle', 'profile', 'privacy', 'terms', 'settings', 'updates', 'search', 'post', 'messages'];
             var parts = window.location.pathname.split('/');
             var cut = -1;
             for (var i = 0; i < parts.length; i++) {
@@ -93,6 +93,9 @@
     <link rel="stylesheet" href="css/regions.css">
     <link rel="stylesheet" href="css/staff.css">
     <link rel="stylesheet" href="css/profile.css">
+    <link rel="stylesheet" href="css/feed.css">
+    <link rel="stylesheet" href="css/messages.css">
+    <link rel="stylesheet" href="css/emoji.css">
     <link rel="stylesheet" href="css/events.css">
     <link rel="stylesheet" href="css/skeleton.css">
     <link rel="stylesheet" href="css/name-generator.css">
@@ -139,6 +142,12 @@
 
             <!-- community Fakemon detail view ("warp" page, mirrors share view) -->
             <div id="community-detail-view" style="display:none;"></div>
+
+            <!-- one feed post and its comments: js/app/pages/PostPage.tsx -->
+            <div id="post-view" style="display:none;"></div>
+
+            <!-- private messages: js/app/pages/MessagesPage.tsx -->
+            <div id="messages-view" style="display:none;"></div>
 
             <!-- policy pages: /privacy and /terms; js/app/pages/LegalPage.tsx -->
             <div id="legal-view" style="display:none;"></div>

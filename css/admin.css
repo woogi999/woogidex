@@ -660,3 +660,18 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
     .admin-search-bar select { flex: 1 1 140px; }
     .admin-toast { left: 16px; right: 16px; bottom: 16px; max-width: none; }
 }
+
+/* reported private messages (js/admin/MessageReportsTab.tsx) */
+.msg-report { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.msg-report-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.msg-report-time { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+.msg-report-status { text-transform: uppercase; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: var(--bg-panel); }
+.msg-report-status.is-open { background: var(--danger); color: #fff; }
+.msg-report-reason { margin: 0; font-style: italic; color: var(--text-secondary); }
+.msg-report-thread { display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--border); padding-left: 10px; }
+.msg-report-line { padding: 6px 8px; border-radius: 8px; }
+.msg-report-line.is-reported { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.msg-report-meta { font-size: 11px; color: var(--text-muted); }
+.msg-report-body { font-size: 14px; overflow-wrap: anywhere; }
+.msg-report-body img.emoji { width: 1.375em; height: 1.375em; vertical-align: -0.35em; }
+.msg-report-actions { display: flex; gap: 8px; justify-content: flex-end; }

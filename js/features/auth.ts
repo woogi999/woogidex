@@ -866,13 +866,13 @@ async function loadPublicProfile(userId) {
 
     let { data: profile, error: profileError } = await withProfileTimeout(
         client.from('profiles')
-            .select('id, username, display_name, avatar_url, role, bio, display_badges, created_at')
+            .select('id, username, display_name, avatar_url, role, bio, display_badges, created_at, banner_url, banner_color, accent_color, pronouns, location, website, dm_privacy')
             .eq('id', userId)
             .maybeSingle(),
         'Profile request'
     );
 
-    if (profileError && /bio|display_badges|column .* does not exist/i.test(profileError.message || '')) {
+    if (profileError && /bio|display_badges|banner|column .* does not exist/i.test(profileError.message || '')) {
         const fallback = await withProfileTimeout(
             client.from('profiles')
                 .select('id, username, display_name, avatar_url, role, created_at')
@@ -897,14 +897,17 @@ async function loadPublicProfile(userId) {
         // takes the hub's lazy on-scroll path and gets a masked one.
         const result = await withProfileTimeout(
             client.from('published_mons')
-                .select('id, user_id, published_at, fakemon_data->>name, fakemon_data->>type1, fakemon_data->>type2')
+                .select('id, user_id, published_at, fakemon_data->>name, fakemon_data->>type1, fakemon_data->>type2, customTypes:fakemon_data->customTypes')
                 .eq('user_id', userId)
                 .order('published_at', { ascending: false })
                 .limit(100),
             'Published Fakemon request'
         );
         if (result.error) console.warn('Could not load published mons:', result.error);
-        else mons = (result.data || []).map(({ name, type1, type2, ...rest }: any) => ({ ...rest, fakemon_data: { name, type1, type2 } }));
+        else mons = (result.data || []).map(({ name, type1, type2, customTypes, ...rest }: any) => {
+            api.registerTypeLooks?.(customTypes);
+            return { ...rest, fakemon_data: { name, type1, type2 } };
+        });
     } catch (e: any) {
         console.warn('Could not load published mons:', e);
     }
@@ -940,9 +943,23 @@ async function loadPublicProfile(userId) {
         }
     }
 
+    // the new profile page: follower numbers and the posts-and-Fakemon timeline
+    let stats: any = null;
+    let timeline: any[] = [];
+    try {
+        [stats, timeline] = await Promise.all([
+            withProfileTimeout(api.fetchSocialStats(userId), 'Profile numbers request'),
+            withProfileTimeout(api.fetchTimeline(userId), 'Profile timeline request')
+        ]);
+    } catch (e: any) {
+        console.warn('Could not load the profile timeline:', e);
+    }
+
     state.profilePageUser = {
         ...profile,
         mons,
+        stats: stats || { followers: 0, following: 0, mons: mons.length, posts: 0 },
+        timeline: timeline || [],
         comments: comments.map(c => ({ ...c, author: authors[c.user_id] || null }))
     };
     profileCache.set(key, { at: Date.now(), value: state.profilePageUser });
@@ -966,7 +983,10 @@ function renderProfilePage() {
     const profile = state.profilePageUser;
     if (!profile) return;
     state.profilePageStatus = 'ready';
-    if (!state.profilePageEditing) api.setPageTitle?.(`${profile.display_name || profile.username || 'Profile'}'s Profile`);
+    if (!state.profilePageEditing) api.setShareMeta?.({
+        title: `${profile.display_name || profile.username || 'Profile'} (@${profile.username || ''})`,
+        description: profile.bio || `${profile.display_name || profile.username}'s Fakemon on Woogidex.`
+    });
     notify();
 }
 
@@ -1203,21 +1223,70 @@ async function saveDisplayedBadges(keys) {
  * Saves your display name, bio and (optionally) a new avatar. Throws on failure.
  * @returns false when the content filter refused it
  */
-async function saveProfileDetails({ displayName = '', bio = '', file = null }: { displayName?: any; bio?: any; file?: any } = {}): Promise<boolean> {
+async function saveProfileDetails({ displayName = '', bio = '', file = null, look = null }: { displayName?: any; bio?: any; file?: any; look?: ProfileLook | null } = {}): Promise<boolean> {
     // a display name and a bio are as public as a comment, so they go through the same filter
-    if (!(await api.guardContent?.(`${displayName} ${bio}`, 'profile') ?? true)) return false;
+    const extraText = look ? `${look.pronouns || ''} ${look.location || ''} ${look.website || ''}` : '';
+    if (!(await api.guardContent?.(`${displayName} ${bio} ${extraText}`, 'profile') ?? true)) return false;
     if (file) await uploadAvatar(file);
     await updateDisplayName(displayName);
     const client = await getClient();
     const me = state.user!;
     invalidateProfile(me.id);
-    const { error } = await client.from('profiles').upsert({ id: me.id, bio }, { onConflict: 'id' });
-    if (error) throw error;
+    const fields: Record<string, any> = { id: me.id, bio };
+    if (look) Object.assign(fields, await profileLookFields(look));
+    const { error } = await client.from('profiles').upsert(fields, { onConflict: 'id' });
+    if (error) throw new Error(/website/.test(error.message) ? 'That website link doesn’t look right.' : error.message);
     state.profilePageEditing = false;
     await loadPublicProfile(me.id);
     api.showToast?.('Profile updated', 'success');
     renderProfilePage();
     return true;
+}
+
+export interface ProfileLook {
+    pronouns?: string; location?: string; website?: string;
+    bannerColor?: string; accentColor?: string; dmPrivacy?: string;
+    bannerFile?: File | null; removeBanner?: boolean;
+}
+
+const BANNER_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Why a banner image can't be used, or '' when it can. */
+function bannerFileProblem(file) {
+    if (!file) return '';
+    if (!file.type.startsWith('image/')) return 'Please choose an image file.';
+    if (file.size > BANNER_MAX_BYTES) return `Image is ${(file.size / 1024 / 1024).toFixed(1)}MB - max is 2MB.`;
+    return '';
+}
+
+// the profile page's extras, as the profiles row stores them
+async function profileLookFields(look: ProfileLook) {
+    let website = String(look.website || '').trim();
+    if (website && !/^https?:\/\//i.test(website)) website = `https://${website}`;
+    const out: Record<string, any> = {
+        pronouns: String(look.pronouns || '').trim().slice(0, 30),
+        location: String(look.location || '').trim().slice(0, 40),
+        website: website.slice(0, 200),
+        banner_color: look.bannerColor || '',
+        accent_color: /^#[0-9a-f]{6}$/i.test(look.accentColor || '') ? look.accentColor : '',
+        dm_privacy: ['everyone', 'following', 'nobody'].includes(look.dmPrivacy || '') ? look.dmPrivacy : 'everyone'
+    };
+    if (look.removeBanner) out.banner_url = '';
+    if (look.bannerFile) {
+        const problem = bannerFileProblem(look.bannerFile);
+        if (problem) throw new Error(problem);
+        const client = await getClient();
+        const ext = (look.bannerFile.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+        // a new name each time, so the old picture isn't served from a cache
+        const path = `${state.user!.id}/banner-${Date.now()}.${ext}`;
+        const { error } = await client.storage.from(AVATAR_BUCKET).upload(path, look.bannerFile, { upsert: false, cacheControl: '86400' });
+        if (error) throw new Error('Banner upload failed: ' + error.message);
+        out.banner_url = client.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl;
+        const old = state.profilePageUser?.banner_url || '';
+        const oldPath = old.split(`/${AVATAR_BUCKET}/`)[1];
+        if (oldPath && oldPath.startsWith(`${state.user!.id}/banner-`)) client.storage.from(AVATAR_BUCKET).remove([oldPath]).catch?.(() => {});
+    }
+    return out;
 }
 
 /** Changes your username. Throws with the reason on failure. */
@@ -1252,6 +1321,9 @@ function updateAuthUI() {
     const avatarImg = document.getElementById('auth-avatar-img') as HTMLImageElement | null;
     const avatarFallback = document.getElementById('auth-avatar-fallback');
     api.refreshNotifications?.();
+    // who you follow, and your chats' keys and unread count, belong to whoever is signed in
+    api.onSocialAuthChange?.();
+    api.onMessagingAuthChange?.();
     // re-read whenever the signed-in user changes (including sign-out, which
     // must clear it), since the cloud-backup badge depends on it.
     api.refreshCloudManifest?.();
@@ -1351,7 +1423,7 @@ export {
     openChangePasswordModal, closeChangePasswordModal, submitChangePasswordForm,
     requireAccount, invalidateProfile,
     showProfileView, showUserProfile, handleProfileRoute, exitProfileRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, renderProfilePage, renderProfileLoading, submitProfileComment, deleteProfileComment,
-    saveProfileDetails, saveUsername, saveEmail, removeAccountEmail, saveDisplayedBadges, avatarFileProblem, usernameChangesRemainingText,
+    saveProfileDetails, saveUsername, saveEmail, removeAccountEmail, saveDisplayedBadges, avatarFileProblem, bannerFileProblem, usernameChangesRemainingText,
     handleSignOutClick, updateAuthUI, promptUsernameIfMissing, submitAccountSetup, closeAccountSetupModal,
     toggleHeaderProfilePopover, closeHeaderProfilePopover,
     fetchBadges, currentRole, isStaff, isAdminOrDev, canDeleteAnyContent,
