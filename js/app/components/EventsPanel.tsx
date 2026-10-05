@@ -4,7 +4,7 @@
 // its live preview. Data and actions are js/features/events.ts; the database
 // enforces who may do what.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, state } from '../../core/app.ts';
 import { routeUrl } from '../../core/router.ts';
 import { confirmDialog } from '../../core/confirm-dialog.ts';
@@ -19,13 +19,16 @@ import {
     readEventTemplates, saveEventTemplate, deleteEventTemplate, removeEntryAsTeam, findPeople,
     takingEntries, updateBallot, updateEntry, updateHelper, votingOpen, writeEventDraft, readEntryDraft, writeEntryDraft, clearEntryDraft,
     myTimeZone, timeZones, zonedParts, zonedToUtc,
-    LIB_KINDS, MON_PARTS, describeMonRules, libLabel, libraryForEntry, libraryFromFile, monRuleProblems, myLibrary,
-    type LibKind, type MonRules,
+    LIB_KINDS, MON_PARTS, describeMonRules, libLabel, libraryForEntry, libraryFromFile, memberRuleProblems, monRuleProblems, monRuleSentence, myLibrary,
+    LINE_MAX, fakemonLineForEntry, lineLabel, lineOf, newSourceId, packLineForEntry,
+    type LibKind, type LineMember, type MonRules,
     type DashTab, type Detail, type Entry, type EventRow, type Field, type FieldType, type Helper, type Person, type Phase,
     createEventCode, deleteEventCode, randomCode, redeemEventCode, voteDisplay,
     canSeeEntries, entriesPublic, VARIABLES, variablesFor, fillVariables, setFollowing, postAnnouncement, deleteAnnouncement,
     requestEntryEdit, publishResults, createSheetLink, deleteSheetLink, sheetUrl, sheetFormula,
     type Announcement, type HelperPerms, type TeamPick,
+    TIE_RULES, placeLabel, loadFullEntry, fullAnswers, sampleVariables, sendFeedback, votesFor, compileFeedback, exportVotesCsv,
+    templateContents, eventTemplatesStatus, pendingTemplate, type EventTemplate, type RankRow, type TieRule,
     type Criterion, type EventCode, type EventTab, type Remarks, type Stage, type Voting, type WinnerRules
 } from '../../features/events.ts';
 import { Avatar } from './Avatar.tsx';
@@ -33,6 +36,7 @@ import { EmojiInput, RichText } from './EmojiInput.tsx';
 import { Icon } from './Icon.tsx';
 import { Modal } from './Modal.tsx';
 import { PokedexBoard } from './board/PokedexBoard.tsx';
+import { EvoStrip } from './board/CommunityEvoStrip.tsx';
 import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
 import { cropThen } from '../dialogs/cropImage.tsx';
 import { useStore } from '../store.ts';
@@ -53,7 +57,6 @@ const personName = (p?: Person) => p ? (p.display_name || p.username || 'Someone
 /** Who sent an entry: nobody we can name for a guest's (public events) or for a guest reader. */
 const authorOf = (d: Detail, en: Entry) => en.user_id ? d.people[en.user_id] : undefined;
 const authorName = (d: Detail, en: Entry) => !en.user_id ? 'Guest' : d.people[en.user_id] ? personName(d.people[en.user_id]) : 'A member';
-const placeLabel = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function PhasePill({ ev }: { ev: EventRow }) {
@@ -85,6 +88,9 @@ function EventsList() {
                 </div>
                 <div className="ev-head-actions">
                     <button className="btn btn-secondary" type="button" onClick={loadEventsList} aria-label="Refresh events"><Icon name="arrow-path" size={15} className={events.status === 'loading' ? 'spin' : ''} /></button>
+                    {canCreateEvents() && <button className="btn btn-secondary" type="button"
+                        onClick={() => openDialog('event-templates', { onLoad: (values: any, name: string) => { pendingTemplate.values = { values, name }; showEventView({ kind: 'new' }); } })}>
+                        <Icon name="folder-open" />From a template</button>}
                     {canCreateEvents() && <button className="btn btn-primary" type="button" onClick={() => showEventView({ kind: 'new' })}><Icon name="plus" />Create event</button>}
                 </div>
             </header>
@@ -155,10 +161,11 @@ function ListSkeleton() {
     );
 }
 
-function Cover({ ev, className }: { ev: Pick<EventRow, 'cover_image'>; className: string }) {
+function Cover({ ev, className }: { ev: Pick<EventRow, 'cover_image' | 'cover_thumb'>; className: string }) {
+    const src = ev.cover_thumb || ev.cover_image;
     return (
         <div className={`${className} ev-cover`} aria-hidden="true">
-            {ev.cover_image ? <img src={ev.cover_image} alt="" draggable={false} /> : <Icon name="trophy" size={28} />}
+            {src ? <img src={src} alt="" draggable={false} /> : <Icon name="trophy" size={28} />}
         </div>
     );
 }
@@ -366,12 +373,33 @@ function EventPage({ id, tab }: { id: string; tab: EventTab }) {
 
 const emptyDetail = (ev: EventRow): Detail => ({
     id: ev.id, status: 'ready', error: '', event: ev, entries: [], privateAnswers: {}, myVotes: {}, votes: [], ballots: [], limits: [],
-    results: null, helpers: [], people: {}, resultsPost: null, share: null, codes: [], announcements: [], following: false, editRequests: {}, sheet: null
+    results: null, helpers: [], people: {}, resultsPost: null, share: null, codes: [], announcements: [], following: false, editRequests: {}, sheet: null,
+    full: {}, feedback: {}
 });
+
+/** Previews set this: variables fill with made-up values instead of the event's real (often still empty) ones. */
+const SampleVars = createContext(false);
 
 /** An event's own text (about, results post, announcements) with its {{variables}} filled in. */
 function EventText({ ev, d, text, className = 'ev-rich' }: { ev: EventRow; d: Detail; text: string; className?: string }) {
-    return <RichText text={fillVariables(text, variablesFor(ev, d))} className={className} />;
+    const sample = useContext(SampleVars);
+    return <RichText text={fillVariables(text, sample ? sampleVariables(ev) : variablesFor(ev, d))} className={className} />;
+}
+
+/** "Fill variables with sample data": a switch for previews. */
+function SampleSwitch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+    return (
+        <label className="ev-check ev-sample-switch" title="Variables like {{winner1}} show made-up winners, counts and dates, so you can see how it will read">
+            <input type="checkbox" checked={on} onChange={e => onChange(e.target.checked)} />Fill variables with sample data
+        </label>
+    );
+}
+
+/** Opens an entry in full (its pictures, the whole Fakémon) the first time it's shown; until then, what's loaded. */
+function useFullEntry(d: Detail, en: Entry | null | undefined) {
+    const loaded = !!en && (!!d.full[en.id] || d.event?.id === 'preview' || en.id === 'sample');
+    useEffect(() => { if (en && !loaded) loadFullEntry(en); }, [en?.id, loaded]);
+    return { answers: en ? fullAnswers(d, en) : {}, loading: !!en && !loaded };
 }
 
 /**
@@ -513,10 +541,10 @@ function AboutTab({ ev, d, preview, mine, perms, onTab }: { ev: EventRow; d: Det
                     {more.map(([key, label, icon]) => <button key={key} type="button" className="ev-link" onClick={() => onTab(key)}><Icon name={icon} size={14} />{label}</button>)}
                 </div>
             )}
-            {d.announcements.length > 0 && <Announcements ev={ev} d={d} />}
             {ev.description
                 ? <section className="ev-block"><h3>About</h3><EventText ev={ev} d={d} text={ev.description} /></section>
                 : <p className="ev-hint">The organizers haven't written a description.</p>}
+            {d.announcements.length > 0 && <Announcements ev={ev} d={d} />}
         </>
     );
 }
@@ -564,6 +592,8 @@ function EnterTab({ ev, d, preview, mine, allowance }: { ev: EventRow; d: Detail
     // yours change while entries are open, or after, when the team asked you to (update_event_entry)
     const canEdit = (en: Entry) => takingEntries(ev) || (!!d.editRequests[en.id] && stage !== 'ended');
     const asked = mine.filter(en => d.editRequests[en.id]);
+    const edit = async (en: Entry) => { if (await loadFullEntry(en)) setEditing(en); };
+    const sentFeedback = mine.filter(en => d.feedback[en.id]);
     if (editing && canEdit(editing)) return <EntryForm key={editing.id} ev={ev} d={d} left={0} preview={false} editing={editing} onDone={() => setEditing(null)} />;
     return (
         <>
@@ -571,16 +601,23 @@ function EnterTab({ ev, d, preview, mine, allowance }: { ev: EventRow; d: Detail
                 <div className="ev-notice is-ask ev-edit-asked" key={en.id} role="status">
                     <Icon name="pencil-square" size={15} />
                     <span><strong>The organizers asked you to change "{entryTitle(ev, en, d.people)}".</strong> {d.editRequests[en.id].reason}</span>
-                    {stage !== 'ended' && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing(en)}>Edit entry</button>}
+                    {stage !== 'ended' && <button type="button" className="btn btn-primary btn-sm" onClick={() => edit(en)}>Edit entry</button>}
                 </div>
             ))}
             {mine.length > 0 && (
                 <section className="ev-block">
                     <h3>Your {mine.length === 1 ? 'entry' : 'entries'}</h3>
                     {takingEntries(ev) && <p className="ev-hint">You can change or withdraw {mine.length === 1 ? 'it' : 'them'} until entries close.</p>}
-                    <div className="ev-gallery">{mine.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own onEdit={canEdit(en) ? () => setEditing(en) : undefined} />)}</div>
+                    <div className="ev-gallery">{mine.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own onEdit={canEdit(en) ? () => edit(en) : undefined} />)}</div>
                 </section>
             )}
+            {sentFeedback.map(en => (
+                <section className="ev-block ev-feedback" key={`fb-${en.id}`}>
+                    <div className="ev-block-head"><h3><Icon name="chat-bubble-left-right" size={16} />Feedback on {entryTitle(ev, en, d.people)}</h3>
+                        <span className="ev-hint ev-inline-hint">From the organizers · {relTime(d.feedback[en.id].at)}</span></div>
+                    <RichText text={d.feedback[en.id].text} className="ev-rich" />
+                </section>
+            ))}
             {canEnter && <EntryForm ev={ev} d={d} left={allowance - mine.length} preview={preview} />}
             {!preview && takingEntries(ev) && !canEnter && <p className="ev-notice"><Icon name="check-circle" size={15} />You've used all {plural(allowance, 'entry', 'entries')}. Withdraw one to enter something else.</p>}
             {!preview && !takingEntries(ev) && (
@@ -664,22 +701,24 @@ function ResultsView({ ev, d, perms }: { ev: EventRow; d: Detail; perms: ReturnT
             </>
         );
     }
-    const winners = d.results ? computeWinners(ev, ranked(ev, d.entries, d.results)) : new Set<string>();
+    const rows = ranked(ev, d.entries, d.results);
+    const won = d.results || ev.voting === 'none' ? computeWinners(ev, rows) : new Set<string>();
+    const places = new Map(rows.filter(r => won.has(r.entry.id)).map(r => [r.entry.id, r.place || 0]));
     return (
         <>
             {d.resultsPost && <section className="ev-block ev-results-post"><h3>Results</h3><EventText ev={ev} d={d} text={d.resultsPost} /></section>}
-            {d.results && <Podium ev={ev} d={d} />}
-            {visible && d.entries.length > 0 && <Gallery ev={ev} d={d} entries={ranked(ev, d.entries, d.results).map(r => r.entry)} title="All entries" winners={winners} />}
+            {(d.results || ev.voting === 'none') && <Podium ev={ev} d={d} />}
+            {visible && d.entries.length > 0 && <Gallery ev={ev} d={d} entries={rows.map(r => r.entry)} title="All entries" winners={places} />}
             {visible && !d.entries.length && <p className="ev-hint">This event had no entries.</p>}
         </>
     );
 }
 
-function Gallery({ ev, d, entries, title, winners }: { ev: EventRow; d: Detail; entries: Entry[]; title: string; winners?: Set<string> }) {
+function Gallery({ ev, d, entries, title, winners }: { ev: EventRow; d: Detail; entries: Entry[]; title: string; winners?: Map<string, number> }) {
     return (
         <section className="ev-block">
             <div className="ev-block-head"><h3>{title}</h3><VoteBudget ev={ev} d={d} /></div>
-            <div className="ev-gallery">{entries.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own={!!state.user && en.user_id === state.user.id} winner={winners?.has(en.id)} />)}</div>
+            <div className="ev-gallery">{entries.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own={!!state.user && en.user_id === state.user.id} place={winners?.get(en.id)} />)}</div>
         </section>
     );
 }
@@ -732,7 +771,8 @@ function BallotCall({ ev, d }: { ev: EventRow; d: Detail }) {
     );
 }
 
-function EntryCard({ ev, d, entry: en, own = false, winner = false, onEdit }: { ev: EventRow; d: Detail; entry: Entry; own?: boolean; winner?: boolean; onEdit?: () => void }) {
+function EntryCard({ ev, d, entry: en, own = false, place, onEdit }: { ev: EventRow; d: Detail; entry: Entry; own?: boolean; place?: number; onEdit?: () => void }) {
+    const winner = place !== undefined;
     const perms = permsFor(ev, d.helpers);
     const img = entryImage(ev, en);
     const author = authorOf(d, en);
@@ -745,7 +785,7 @@ function EntryCard({ ev, d, entry: en, own = false, winner = false, onEdit }: { 
         <div className={`ev-entry${winner ? ' is-winner' : ''}${myVote && ev.voting === 'community' ? ' is-voted' : ''}`}>
             <button type="button" className="ev-entry-art" onClick={() => setOpen(true)} aria-label={`Open ${entryTitle(ev, en, d.people)}`}>
                 {img ? <img src={img} alt="" draggable={false} loading="lazy" /> : <Icon name="document-text" size={26} />}
-                {(en.placement || winner) && <span className="ev-place">{en.placement ? placeLabel(en.placement) : 'Winner'}</span>}
+                {winner && <span className="ev-place">{place ? placeLabel(place) : 'Winner'}</span>}
             </button>
             <div className="ev-entry-body">
                 <strong>{entryTitle(ev, en, d.people)}</strong>
@@ -777,22 +817,23 @@ function EntryCard({ ev, d, entry: en, own = false, winner = false, onEdit }: { 
 function Podium({ ev, d }: { ev: EventRow; d: Detail }) {
     const rows = ranked(ev, d.entries, d.results);
     const winners = computeWinners(ev, rows);
-    const top = rows.filter(r => winners.has(r.entry.id)).slice(0, 3);
+    // the top three places; entries tied for one of them stand on it together
+    const top = rows.filter(r => winners.has(r.entry.id) && (r.place || 99) <= 3).slice(0, 6);
     if (!top.length) return null;
     return (
         <section className="ev-block">
             <h3>Winners</h3>
             <ol className="ev-podium">
-                {top.map(({ entry: en, result }, i) => (
-                    <li key={en.id} className={`ev-podium-${i + 1}`}>
+                {top.map(({ entry: en, result, place }) => (
+                    <li key={en.id} className={`ev-podium-${place}`}>
                         <span className="ev-podium-art">{entryImage(ev, en) ? <img src={entryImage(ev, en)} alt="" /> : <Icon name="trophy" size={28} />}</span>
-                        <span className="ev-place">{placeLabel(en.placement || i + 1)}</span>
+                        <span className="ev-place">{placeLabel(place || 1)}</span>
                         <strong>{entryTitle(ev, en, d.people)}</strong>
                         <span>{authorName(d, en)}{result ? ` · ${ev.voting === 'community' ? plural(Number(result.votes), 'vote') : `${Number(result.points_percent).toFixed(1)}%`}` : ''}</span>
                     </li>
                 ))}
             </ol>
-            {winners.size > 3 && <p className="ev-hint ev-podium-more">{winners.size - 3} more {winners.size - 3 === 1 ? 'entry wins' : 'entries win'} too, marked below.</p>}
+            {winners.size > top.length && <p className="ev-hint ev-podium-more">{winners.size - top.length} more {winners.size - top.length === 1 ? 'entry wins' : 'entries win'} too, marked below.</p>}
         </section>
     );
 }
@@ -801,16 +842,22 @@ function Podium({ ev, d }: { ev: EventRow; d: Detail }) {
 
 function Answer({ field: f, value }: { field: Field; value: any }) {
     if (value == null || value === '' || value === false) return <span className="ev-muted">No answer</span>;
+    // a picture left out of a list (event_entries_light): open the response to see it
+    if (value === '[image]') return <span className="ev-muted"><Icon name="photo" size={13} /> Picture (open the response to see it)</span>;
     if (f.type === 'image') return <img className="ev-answer-img" src={value} alt={f.label} />;
     if (f.type === 'fakemon') {
         const stats = value.stats && typeof value.stats === 'object' ? Object.values(value.stats as Record<string, unknown>).reduce((n: number, x) => n + (Number(x) || 0), 0) : 0;
+        const line = lineOf(value);
         return (
             <span className="ev-answer-mon">
                 {value.artwork && <img src={value.artwork} alt="" />}
                 <span>
                     <strong>{value.name}</strong>
                     {[value.type1, value.type2].filter(Boolean).join(' / ')}{stats ? ` · BST ${stats}` : ''}
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-board', { mon: value })}><Icon name="book-open" size={14} />Full Pokédex page</button>
+                    {line.length > 1 && <span className="ev-line-names" aria-label="Evolution line">
+                        {line.map((m, i) => <span key={m.sourceId}>{i > 0 && <Icon name={m.isMega || m.isFormeChange ? 'sparkles' : 'arrow-right'} size={11} />}{m.mon?.name || '?'}</span>)}
+                    </span>}
+                    {Array.isArray(value.learnset) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-board', { mon: value })}><Icon name="book-open" size={14} />Full Pokédex page{line.length > 1 ? 's' : ''}</button>}
                 </span>
             </span>
         );
@@ -826,15 +873,16 @@ function Answer({ field: f, value }: { field: Field; value: any }) {
 
 function EntryAnswers({ ev, d, entry: en }: { ev: EventRow; d: Detail; entry: Entry }) {
     const priv = d.privateAnswers[en.id] || {};
+    const { answers, loading } = useFullEntry(d, en);
     return (
-        <dl className="ev-answers">
+        <dl className={`ev-answers${loading ? ' is-loading' : ''}`} aria-busy={loading}>
             {ev.form.map(f => {
                 const isPrivate = isPrivateField(f);
                 if (f.type === 'section' || (isPrivate && !(f.id in priv))) return null;
                 return (
                     <div key={f.id}>
                         <dt>{f.label}{isPrivate && <span className="ev-private"><Icon name="lock-closed" size={11} />Private</span>}</dt>
-                        <dd><Answer field={f} value={isPrivate ? priv[f.id] : en.answers[f.id]} /></dd>
+                        <dd><Answer field={f} value={isPrivate ? priv[f.id] : answers[f.id]} /></dd>
                     </div>
                 );
             })}
@@ -851,17 +899,25 @@ function EntryDialog({ ev, d, entry: en, close }: { ev: EventRow; d: Detail; ent
     );
 }
 
-/** A Fakémon answer drawn as its full Pokédex page, so it can be judged competitively. */
-function FakemonBoardDialog({ close, mon }: DialogProps<{ mon: any }>) {
+/**
+ * A Fakémon answer drawn as its full Pokédex page, so it can be judged
+ * competitively. A whole line gets the Community Hub's evolution strip to
+ * switch between them.
+ */
+function FakemonBoardDialog({ close, mon, start }: DialogProps<{ mon: any; start?: string }>) {
     useStore();
+    const line = useMemo(() => lineOf(mon), [mon]);
+    const [active, setActive] = useState(() => start && line.some(m => m.sourceId === start) ? start : line.find(m => m.face)?.sourceId || line[0]?.sourceId || '');
+    const shown = line.find(m => m.sourceId === active)?.mon || mon;
     const [ready, setReady] = useState(false);
     useEffect(() => {
-        Promise.resolve(api.fetchShowdownData?.()).finally(() => { previewEventFakemon(mon); setReady(true); });
-    }, [mon]);
+        Promise.resolve(api.fetchShowdownData?.()).finally(() => { previewEventFakemon(shown); setReady(true); });
+    }, [shown]);
     return (
-        <Modal onClose={close} title={mon?.name || 'Fakémon'} className="quick-preview-modal">
+        <Modal onClose={close} title={shown?.name || 'Fakémon'} className="quick-preview-modal">
             <div className="preview-modal-board-wrap">
-                {ready ? <PokedexBoard id="pokedex-board-event" model={api.boardModel()} onToggleShiny={() => api.togglePreviewArtworkMode()} />
+                {ready ? <PokedexBoard id="pokedex-board-event" model={api.boardModel()} onToggleShiny={() => api.togglePreviewArtworkMode()}
+                    evolution={line.length > 1 ? <EvoStrip members={line} activeId={active} onPick={setActive} /> : undefined} />
                     : <span className="skel" style={{ display: 'block', height: 480, borderRadius: 'var(--panel-r)' }} />}
             </div>
         </Modal>
@@ -1097,7 +1153,8 @@ function Turnstile({ onToken, resetKey }: { onToken: (t: string) => void; resetK
  * changed in place while entries are open.
  */
 function EntryForm({ ev, d, left, preview, editing, onDone }: { ev: EventRow; d: Detail; left: number; preview: boolean; editing?: Entry; onDone?: () => void }) {
-    const original = useMemo(() => editing ? { ...editing.answers, ...(d.privateAnswers[editing.id] || {}) } : {}, [editing?.id]);
+    // your entry as it is, pictures and all (EnterTab loads it in full before it opens this)
+    const original = useMemo(() => editing ? { ...fullAnswers(d, editing), ...(d.privateAnswers[editing.id] || {}) } : {}, [editing?.id]);
     const [draft] = useState(() => preview ? null : readEntryDraft(ev.id, editing?.id));
     const [answers, setAnswers] = useState<Record<string, any>>(() => draft || original);
     const [restored, setRestored] = useState(!!draft);
@@ -1145,7 +1202,7 @@ function EntryForm({ ev, d, left, preview, editing, onDone }: { ev: EventRow; d:
         if (m) return `"${m.label}" is required.`;
         for (const f of fields) {
             const broken = f.type === 'fakemon' && answered(answers[f.id]) ? monRuleProblems(answers[f.id], f.rules) : [];
-            if (broken.length) return `Your Fakémon ${broken.join(', ')} ("${f.label}").`;
+            if (broken.length) return `"${f.label}": ${monRuleSentence(broken)}`;
         }
         return '';
     };
@@ -1256,14 +1313,17 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
     );
     const ruleList = f.type === 'fakemon' ? describeMonRules(f.rules) : [];
     const broken = f.type === 'fakemon' && value ? monRuleProblems(value, f.rules) : [];
+    const line = f.type === 'fakemon' ? lineOf(value) : [];
     async function run(task: () => Promise<void>) {
         setBusy(true);
         try { await task(); } catch (e: any) { api.showToast?.(e?.message || 'That file could not be used.', 'error'); } finally { setBusy(false); }
     }
     const pickImage = (file?: File | null) => file && run(async () => onChange(await shrinkImage(file, 1800, MAX_IMAGE_CHARS)));
-    // from your collection it goes straight in; from a file it's checked over first
-    const pickMon = (mon: any) => run(async () => onChange(await fakemonForEntry(mon)));
+    // from your collection it goes straight in with its evolution line; from a file it's checked over first
+    // (an event that takes one Fakémon only gets just the one)
+    const pickMon = (mon: any) => run(async () => onChange(f.rules?.maxLine === 1 ? await fakemonForEntry(mon) : await fakemonLineForEntry(mon)));
     const checkMon = (mon: any) => run(async () => openDialog('event-fakemon-details', { mon: await fakemonForEntry(mon), imported: true, rules: f.rules, onSave: onChange }));
+    const makeMon = () => openDialog('event-fakemon-details', { mon: {}, rules: f.rules, onSave: onChange });
     const kinds = kindsOf(f);
     const nouns = kinds.map(k => libLabel(k).toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' or $1');
     const pickLib = (x: any) => run(async () => onChange(await libraryForEntry(x)));
@@ -1275,8 +1335,14 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
     });
     const uploadMon = (file?: File | null) => file && run(async () => {
         const mons = await fakemonFromFile(file);
+        // a collection export carries the line too: connected ones in the file come along
+        const take = (mon: any) => run(async () => {
+            const v = f.rules?.maxLine === 1 ? null : await fakemonLineForEntry(mon, mons);
+            if (v && lineOf(v).length > 1) onChange(v);
+            else checkMon(mon);
+        });
         if (mons.length === 1) checkMon(mons[0]);
-        else openDialog('event-fakemon-picker', { mons, onPick: checkMon });
+        else openDialog('event-fakemon-picker', { mons, onPick: take });
     });
     let input: ReactNode;
     switch (f.type) {
@@ -1317,23 +1383,33 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
             break;
         case 'fakemon': {
             const gaps = value ? monGaps(value) : [];
+            const face = line.find(m => m.face) || line[0];
+            const setLine = (members: LineMember[]) => run(async () => onChange(members.length ? await packLineForEntry(members) : null));
+            const editMon = (m: LineMember) => openDialog('event-fakemon-details', {
+                mon: m.mon, rules: f.rules, face: m.sourceId === face?.sourceId,
+                onSave: (mon: any) => setLine(line.map(x => x.sourceId === m.sourceId ? { ...x, mon } : x))
+            });
             input = (
-                <div className="ev-upload ev-mon-pick">
-                    {value?.artwork ? <img src={value.artwork} alt="" /> : <Icon name="sparkles" size={26} />}
-                    <span>
-                        {value && <strong>{value.name || 'Unnamed Fakémon'}{value.type1 && <small> · {[value.type1, value.type2].filter(Boolean).join(' / ')}</small>}</strong>}
-                        {broken.length > 0 && <small className="ev-mon-gaps is-problem"><Icon name="shield-exclamation" size={12} />For this event it {broken.join(', ')}</small>}
-                        {gaps.length > 0 && <small className="ev-mon-gaps"><Icon name="exclamation-circle" size={12} />No {gaps.join(', ')} yet</small>}
-                        {busy ? <span className="ev-hint ev-inline-hint">Preparing…</span> : value ? <span className="ev-mon-actions">
-                            <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-details', { mon: value, rules: f.rules, onSave: onChange })}><Icon name="pencil" size={14} />Edit details</button>
-                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-board', { mon: value })}><Icon name="book-open" size={14} />Preview</button>
-                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(null)}>Remove</button>
-                        </span> : <span className="ev-mon-actions">
-                            <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-picker', { onPick: pickMon })}><Icon name="squares-2x2" size={14} />From my collection</button>
-                            <label className="btn btn-secondary btn-sm" htmlFor={`${id}-file`}><Icon name="arrow-up-tray" size={14} />Import a file</label>
-                        </span>}
-                    </span>
-                    <input id={`${id}-file`} className="ev-sr" type="file" accept=".json,.txt,application/json,text/plain" onChange={e => { uploadMon(e.target.files?.[0]); e.target.value = ''; }} />
+                <div className="ev-mon-answer">
+                    <div className="ev-upload ev-mon-pick">
+                        {value?.artwork ? <img src={value.artwork} alt="" /> : <Icon name="sparkles" size={26} />}
+                        <span>
+                            {value && <strong>{value.name || 'Unnamed Fakémon'}{value.type1 && <small> · {[value.type1, value.type2].filter(Boolean).join(' / ')}</small>}</strong>}
+                            {broken.length > 0 && <small className="ev-mon-gaps is-problem"><Icon name="shield-exclamation" size={12} />{monRuleSentence(broken)}</small>}
+                            {gaps.length > 0 && <small className="ev-mon-gaps"><Icon name="exclamation-circle" size={12} />No {gaps.join(', ')} yet</small>}
+                            {busy ? <span className="ev-hint ev-inline-hint">Preparing…</span> : value ? <span className="ev-mon-actions">
+                                <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => face && editMon(face)}><Icon name="pencil" size={14} />Edit details</button>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-board', { mon: value })}><Icon name="book-open" size={14} />Preview</button>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(null)}>{line.length > 1 ? 'Remove all' : 'Remove'}</button>
+                            </span> : <span className="ev-mon-actions">
+                                <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-picker', { onPick: pickMon })}><Icon name="squares-2x2" size={14} />From my collection</button>
+                                <label className="btn btn-secondary btn-sm" htmlFor={`${id}-file`}><Icon name="arrow-up-tray" size={14} />Import a file</label>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={makeMon}><Icon name="plus" size={14} />Make one here</button>
+                            </span>}
+                        </span>
+                        <input id={`${id}-file`} className="ev-sr" type="file" accept=".json,.txt,application/json,text/plain" onChange={e => { uploadMon(e.target.files?.[0]); e.target.value = ''; }} />
+                    </div>
+                    {value && (f.rules?.maxLine !== 1 || line.length > 1) && <MonLineEditor line={line} rules={f.rules} busy={busy} onChange={setLine} onEdit={editMon} />}
                 </div>
             );
             break;
@@ -1395,7 +1471,7 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
         <div className="ev-field">{label}{input}{help}
             {ruleList.length > 0 && <ul className="ev-mon-rules" aria-label="Rules">{ruleList.map(r => <li key={r}><Icon name="shield-check" size={12} />{r}</li>)}</ul>}
             {f.type === 'library' && <small className="ev-field-help">Takes a {nouns}. Pick one you've made, import a Woogidex export (.json), or make one right here.</small>}
-            {f.type === 'fakemon' && <small className="ev-field-help">Import a Woogidex export (.json) or a text export (.txt); you'll be asked for anything it's missing. The whole Fakémon goes in with your entry, and it doesn't count toward your Community uploads or cloud storage.</small>}
+            {f.type === 'fakemon' && <small className="ev-field-help">Pick one from your collection and its evolution line comes with it. No Woogidex collection? Import a Woogidex export (.json or .txt), or make one right here; you'll be asked for anything it's missing. Your entry holds its own copy, so it doesn't count toward your Community uploads or cloud storage.</small>}
         </div>
     );
 }
@@ -1424,6 +1500,162 @@ function FakemonPickerDialog({ close, onPick, mons }: DialogProps<{ onPick: (v: 
 }
 registerDialog('event-fakemon-picker', FakemonPickerDialog);
 
+// ---- a Fakémon answer's evolution line ----
+// Picked from a collection, the line comes along by itself; anyone else (a
+// file, or one made here) adds the rest and says how they connect.
+
+/** Who a member comes after, in words: "evolves from Sproutle (Level 16)". */
+function lineLink(line: LineMember[], m: LineMember): string {
+    const parent = m.from ? line.find(x => x.sourceId === m.from)?.mon?.name || '?' : '';
+    const how = m.method ? ` (${m.method})` : '';
+    if (!parent) return m.stage === 1 && line.length > 1 ? 'First stage' : '';
+    return m.isMega ? `Mega Evolution of ${parent}${how}` : m.isFormeChange ? `A form of ${parent}${how}` : `Evolves from ${parent}${how}`;
+}
+
+/** Take one out; whatever came after it now comes after what it came from. */
+function withoutMember(line: LineMember[], m: LineMember): LineMember[] {
+    return line.filter(x => x.sourceId !== m.sourceId).map(x => x.from === m.sourceId ? { ...x, from: m.from ?? null } : x);
+}
+
+function MonLineEditor({ line, rules, busy, onChange, onEdit }: {
+    line: LineMember[]; rules?: MonRules; busy: boolean; onChange: (l: LineMember[]) => void; onEdit: (m: LineMember) => void;
+}) {
+    const cap = Math.min(LINE_MAX, rules?.maxLine || LINE_MAX);
+    const full = line.length >= cap;
+    const add = () => openDialog('event-line-member', { line, rules, onSave: onChange });
+    return (
+        <div className="ev-line">
+            <div className="ev-line-head">
+                <span className="ev-q-sub">Evolution line{line.length > 1 && <span className="ev-budget">{line.length}{rules?.maxLine ? ` / ${rules.maxLine}` : ''}</span>}</span>
+                {!full && <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={add}><Icon name="plus" size={14} />Add an evolution or form</button>}
+            </div>
+            {line.length > 1 ? (
+                <ol className="ev-line-list">
+                    {line.map(m => (
+                        <li key={m.sourceId} className={m.face ? 'is-face' : ''}>
+                            <span className="ev-line-art">{m.mon?.artwork ? <img src={m.mon.artwork} alt="" /> : <Icon name="sparkles" size={18} />}</span>
+                            <span className="ev-line-who">
+                                <strong>{m.mon?.name || 'Unnamed'} <span className="ev-line-stage">{lineLabel(m)}</span></strong>
+                                <small>{[lineLink(line, m), m.face && 'Shown on cards'].filter(Boolean).join(' · ')}</small>
+                            </span>
+                            <span className="ev-mon-actions">
+                                <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => openDialog('event-line-member', { line, rules, member: m, onSave: onChange })}><Icon name="link" size={14} />Connect</button>
+                                <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => onEdit(m)}><Icon name="pencil" size={14} />Edit</button>
+                                <button type="button" className="btn btn-secondary btn-sm" disabled={busy} aria-label={`Take ${m.mon?.name || 'this one'} out of the line`} onClick={() => onChange(withoutMember(line, m))}><Icon name="x-mark" size={14} /></button>
+                            </span>
+                        </li>
+                    ))}
+                </ol>
+            ) : <p className="ev-hint">Does it evolve, or have a Mega or another form? Add them here and they're entered and judged together.</p>}
+            {full && rules?.maxLine && <p className="ev-hint">This event takes up to {rules.maxLine} Fakémon in a line.</p>}
+        </div>
+    );
+}
+
+/** Add a Fakémon to the line (from your collection, a file, or made here), or change how one connects. */
+function LineMemberDialog({ close, line, rules, member, onSave }: DialogProps<{ line: LineMember[]; rules?: MonRules; member?: LineMember; onSave: (l: LineMember[]) => void }>) {
+    const [mon, setMon] = useState<any>(member?.mon || null);
+    const [busy, setBusy] = useState(false);
+    const face = line.find(m => m.face) || line[line.length - 1];
+    // what comes after this one can't be what it comes from
+    const after = useMemo(() => {
+        const out = new Set<string>(member ? [member.sourceId] : []);
+        for (let grew = true; grew;) {
+            grew = false;
+            for (const x of line) if (x.from && out.has(x.from) && !out.has(x.sourceId)) { out.add(x.sourceId); grew = true; }
+        }
+        return out;
+    }, [line, member]);
+    const others = line.filter(x => !after.has(x.sourceId));
+    const initial = member
+        ? (!member.from ? 'first' : `${member.isMega ? 'mega' : member.isFormeChange ? 'form' : 'from'}:${member.from}`)
+        : `from:${face?.sourceId}`;
+    const [link, setLink] = useState(initial);
+    const [method, setMethod] = useState(member?.method || '');
+    const [kind, target] = link.split(':');
+    const name = (x: LineMember) => x.mon?.name || 'Unnamed';
+
+    async function run(task: () => Promise<void>) {
+        setBusy(true);
+        try { await task(); } catch (e: any) { api.showToast?.(e?.message || 'That could not be used.', 'error'); } finally { setBusy(false); }
+    }
+    const fromFile = (file?: File | null) => file && run(async () => {
+        const mons = await fakemonFromFile(file);
+        const check = (x: any) => run(async () => openDialog('event-fakemon-details', { mon: await fakemonForEntry(x), imported: true, rules, face: false, onSave: setMon }));
+        if (mons.length === 1) check(mons[0]);
+        else openDialog('event-fakemon-picker', { mons, onPick: check });
+    });
+
+    function save() {
+        if (!mon) { api.showToast?.('Choose the Fakémon first.', 'warning'); return; }
+        const id = member?.sourceId || newSourceId();
+        const how = method.trim().slice(0, 120);
+        let next = line.map(x => ({ ...x }));
+        const me: LineMember = {
+            sourceId: id, stage: 1, mon, isMega: kind === 'mega', isFormeChange: kind === 'form',
+            from: kind === 'first' ? null : kind === 'into' ? (next.find(x => x.sourceId === target)?.from ?? null) : target,
+            method: kind === 'into' || kind === 'first' ? '' : how
+        };
+        // slotted in before one: that one now evolves from this, the way described
+        if (kind === 'into') next = next.map(x => x.sourceId === target ? { ...x, from: id, isMega: false, isFormeChange: false, method: how } : x);
+        next = member ? next.map(x => x.sourceId === id ? me : x) : [...next, me];
+        onSave(next);
+        close();
+    }
+
+    return (
+        <Modal onClose={close} className="ev-line-modal" title={member ? `Connect ${name(member)}` : 'Add to the evolution line'} dismissible={!busy}>
+            {!member && (
+                <div className="ev-field">
+                    <span className="ev-field-label">The Fakémon</span>
+                    {mon ? (
+                        <div className="ev-upload ev-mon-pick">
+                            {mon.artwork ? <img src={mon.artwork} alt="" /> : <Icon name="sparkles" size={26} />}
+                            <span>
+                                <strong>{mon.name || 'Unnamed Fakémon'}{mon.type1 && <small> · {[mon.type1, mon.type2].filter(Boolean).join(' / ')}</small>}</strong>
+                                <span className="ev-mon-actions">
+                                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-details', { mon, rules, face: false, onSave: setMon })}><Icon name="pencil" size={14} />Edit details</button>
+                                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setMon(null)}>Choose another</button>
+                                </span>
+                            </span>
+                        </div>
+                    ) : busy ? <span className="ev-hint">Preparing…</span> : (
+                        <span className="ev-mon-actions">
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-picker', { onPick: (x: any) => run(async () => setMon(await fakemonForEntry(x))) })}><Icon name="squares-2x2" size={14} />From my collection</button>
+                            <label className="btn btn-secondary btn-sm" htmlFor="ev-line-file"><Icon name="arrow-up-tray" size={14} />Import a file</label>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-details', { mon: {}, rules, face: false, onSave: setMon })}><Icon name="plus" size={14} />Make one here</button>
+                        </span>
+                    )}
+                    <input id="ev-line-file" className="ev-sr" type="file" accept=".json,.txt,application/json,text/plain" onChange={e => { fromFile(e.target.files?.[0]); e.target.value = ''; }} />
+                </div>
+            )}
+            <div className="ev-field">
+                <label className="ev-field-label" htmlFor="ev-line-link">How it connects</label>
+                <select id="ev-line-link" value={link} onChange={e => setLink(e.target.value)}>
+                    {member && <option value="first">It's the first stage</option>}
+                    {others.map(x => <option key={`from:${x.sourceId}`} value={`from:${x.sourceId}`}>Evolves from {name(x)}</option>)}
+                    {!member && others.map(x => <option key={`into:${x.sourceId}`} value={`into:${x.sourceId}`}>Evolves into {name(x)}</option>)}
+                    {others.filter(x => !x.isMega && !x.isFormeChange).map(x => <option key={`mega:${x.sourceId}`} value={`mega:${x.sourceId}`}>Mega Evolution of {name(x)}</option>)}
+                    {others.filter(x => !x.isMega && !x.isFormeChange).map(x => <option key={`form:${x.sourceId}`} value={`form:${x.sourceId}`}>Another form of {name(x)}</option>)}
+                </select>
+            </div>
+            {kind !== 'first' && (
+                <div className="ev-field">
+                    <label className="ev-field-label" htmlFor="ev-line-how">How it happens <span className="ev-optional">(optional)</span></label>
+                    <input id="ev-line-how" maxLength={120} value={method} onChange={e => setMethod(e.target.value)}
+                        placeholder={kind === 'mega' ? 'Holding its Mega Stone' : kind === 'form' ? 'In the rain, holding an item…' : 'Level 16, a Fire Stone, high friendship…'} />
+                </div>
+            )}
+            {rules?.noForms && (kind === 'mega' || kind === 'form') && <p className="ev-notice is-problem"><Icon name="shield-exclamation" size={15} /><span>This event doesn't allow Megas or other forms.</span></p>}
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+                <button type="button" className="btn btn-primary" disabled={busy || !mon} onClick={save}>{member ? 'Save' : 'Add to the line'}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-line-member', LineMemberDialog);
+
 // ---- a Fakémon answer's details ----
 // An imported file (a text export especially) can leave things out; this asks
 // for them, and lets an entrant fix anything before it goes in.
@@ -1438,13 +1670,21 @@ const monGaps = (m: any): string[] => [
     !String(m?.dexEntry1 || '').trim() && 'Pokédex entry'
 ].filter(Boolean) as string[];
 
-function FakemonDetailsDialog({ close, mon, imported = false, rules, onSave }: DialogProps<{ mon: any; imported?: boolean; rules?: MonRules; onSave: (m: any) => void }>) {
+/** A typed ability's source: a main-game one if Showdown knows the name, else custom. */
+const abilitySource = (name: string) => state.sdAbilities?.[name.toLowerCase().replace(/[^a-z0-9]/g, '')]
+    ? { source: 'sd', custom: false } : { source: 'custom', custom: true };
+
+function FakemonDetailsDialog({ close, mon, imported = false, rules, face = true, onSave }: DialogProps<{ mon: any; imported?: boolean; rules?: MonRules; face?: boolean; onSave: (m: any) => void }>) {
+    // made right here, from nothing (no collection, no file)
+    const [fresh] = useState(() => !imported && !String(mon?.name || '').trim() && !mon?.type1);
     const [m, setM] = useState<any>(() => ({
         ...mon,
         stats: Object.fromEntries(MON_STATS.map(([k]) => [k, Number(mon?.stats?.[k]) || 60])),
         abilities: [0, 1, 2].map(i => mon?.abilities?.[i] || { name: '', source: 'custom', custom: true, desc: '' })
     }));
     const [busy, setBusy] = useState(false);
+    // the main-game abilities, so a typed "Overgrow" isn't counted as a custom one
+    useEffect(() => { Promise.resolve(api.fetchShowdownData?.()).catch(() => {}); }, []);
     const set = (patch: any) => setM((x: any) => ({ ...x, ...patch }));
     const gaps = monGaps(m);
     const bst = MON_STATS.reduce((n, [k]) => n + (Number(m.stats[k]) || 0), 0);
@@ -1468,12 +1708,12 @@ function FakemonDetailsDialog({ close, mon, imported = false, rules, onSave }: D
     }
 
     return (
-        <Modal onClose={close} className="modal-wide ev-mon-modal" title={imported ? 'Check your Fakémon' : 'Edit your Fakémon'} dismissible={!busy}>
+        <Modal onClose={close} className="modal-wide ev-mon-modal" title={imported ? 'Check your Fakémon' : fresh ? 'Make a Fakémon' : 'Edit your Fakémon'} dismissible={!busy}>
             {imported && (gaps.length
                 ? <p className="ev-notice"><Icon name="exclamation-circle" size={15} /><span>The file didn't include its <strong>{gaps.join(', ')}</strong>. Fill in what you can; only the name and type are needed.</span></p>
                 : <p className="ev-notice is-done"><Icon name="check-circle" size={15} />Everything came through. Look it over, then use it.</p>)}
-            {monRuleProblems(m, rules).length > 0 && (
-                <p className="ev-notice is-problem"><Icon name="shield-exclamation" size={15} /><span>For this event, your Fakémon {monRuleProblems(m, rules).join(', ')}.</span></p>
+            {memberRuleProblems(cleaned(), rules, face).length > 0 && (
+                <p className="ev-notice is-problem"><Icon name="shield-exclamation" size={15} /><span>{monRuleSentence(memberRuleProblems(cleaned(), rules, face))}</span></p>
             )}
             <div className="ev-mon-edit">
                 <div className={`ev-mon-art${missingClass('artwork')}`}>
@@ -1512,7 +1752,7 @@ function FakemonDetailsDialog({ close, mon, imported = false, rules, onSave }: D
                 <div className="ev-mon-abilities">
                     {m.abilities.map((a: any, i: number) => (
                         <input key={i} maxLength={40} value={a.name} aria-label={`Ability ${i + 1}`} placeholder={i === 2 ? 'Hidden ability' : `Ability ${i + 1}`}
-                            onChange={e => set({ abilities: m.abilities.map((x: any, j: number) => j === i ? { ...x, name: e.target.value } : x) })} />
+                            onChange={e => set({ abilities: m.abilities.map((x: any, j: number) => j === i ? { ...x, name: e.target.value, ...abilitySource(e.target.value) } : x) })} />
                     ))}
                 </div>
             </div>
@@ -1524,7 +1764,9 @@ function FakemonDetailsDialog({ close, mon, imported = false, rules, onSave }: D
                 <div className="ev-field"><label className="ev-field-label" htmlFor="ev-mon-w">Weight</label>
                     <input id="ev-mon-w" maxLength={20} value={m.weight || ''} onChange={e => set({ weight: e.target.value })} placeholder="6.9 kg" /></div>
             </div>
-            <p className="ev-hint">Moves, sets and everything else come along from the file as they are. To change those, edit it in Woogidex and import it again.</p>
+            <p className="ev-hint">{fresh
+                ? 'That covers what judges look at first. For moves, sample sets and the rest, make it in the Woogidex editor and import it.'
+                : 'Moves, sets and everything else come along as they are. To change those, edit it in Woogidex and import it again.'}</p>
             <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => openDialog('event-fakemon-board', { mon: cleaned() })}><Icon name="book-open" size={15} />Preview</button>
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Preparing…' : 'Use this Fakémon'}</button>
@@ -1680,9 +1922,18 @@ function MonRulesEditor({ rules = {}, onChange }: { rules?: MonRules; onChange: 
     const update = (patch: Partial<MonRules>) => {
         const next: MonRules = { ...rules, ...patch };
         // nothing set: no rules object at all
-        const empty = !next.require?.length && !next.types?.length && !next.noCustomTypes && !next.noCustomAbilities && !next.noCustomMoves && !next.minBst && !next.maxBst;
+        // unset keys dropped (event_rules_ok refuses keys it doesn't know, and null is noise)
+        for (const k of Object.keys(next) as Array<keyof MonRules>) if (next[k] == null || next[k] === false) delete next[k];
+        if (next.maxLine === 1) { delete next.minLine; delete next.noForms; }
+        if (next.minLine && next.maxLine && next.minLine > next.maxLine) next.minLine = next.maxLine;
+        const empty = !next.require?.length && !next.types?.length && Object.keys(next).every(k => k === 'require' || k === 'types');
         onChange(empty ? undefined : next);
     };
+    // a custom-content limit as one select: any, none (the old noCustom flag), or up to n
+    const limitValue = (no: boolean | undefined, max: number | null | undefined) => no ? 'none' : max != null ? String(max) : 'any';
+    const limitPatch = (noKey: 'noCustomAbilities' | 'noCustomMoves', maxKey: 'maxCustomAbilities' | 'maxCustomMoves', v: string): Partial<MonRules> =>
+        v === 'none' ? { [noKey]: true, [maxKey]: undefined } : { [noKey]: undefined, [maxKey]: v === 'any' ? undefined : Number(v) };
+    const upTo = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
     const toggle = <T,>(list: T[] | undefined, x: T) => list?.includes(x) ? list.filter(y => y !== x) : [...(list || []), x];
     const count = describeMonRules(rules).length;
     return (
@@ -1696,12 +1947,49 @@ function MonRulesEditor({ rules = {}, onChange }: { rules?: MonRules; onChange: 
                             return <button key={p} type="button" className={`ev-chip${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => update({ require: toggle(rules.require, p) })}>{words.replace(/^an? /, '')}</button>;
                         })}
                     </div></div>
-                <div className="ev-q-rule-row"><span className="ev-q-sub">Not allowed</span>
-                    <div className="ev-q-flags">
-                        <label><input type="checkbox" checked={!!rules.noCustomTypes} onChange={e => update({ noCustomTypes: e.target.checked || undefined })} />Custom types</label>
-                        <label><input type="checkbox" checked={!!rules.noCustomAbilities} onChange={e => update({ noCustomAbilities: e.target.checked || undefined })} />Custom abilities</label>
-                        <label><input type="checkbox" checked={!!rules.noCustomMoves} onChange={e => update({ noCustomMoves: e.target.checked || undefined })} />Custom moves</label>
-                    </div></div>
+                <div className="ev-q-rule-row"><span className="ev-q-sub">Evolution line</span>
+                    <div className="ev-criterion-row">
+                        <label className="ev-inline-select">Fakémon in the line
+                            <select value={rules.maxLine ?? ''} onChange={e => update({ maxLine: e.target.value === '' ? undefined : Number(e.target.value) })}>
+                                <option value="">Any number</option>
+                                <option value="1">Just one: no evolutions or forms</option>
+                                {upTo(LINE_MAX).slice(1).map(n => <option key={n} value={n}>Up to {n}</option>)}
+                            </select></label>
+                        {rules.maxLine !== 1 && <label className="ev-inline-select">At least
+                            <select value={rules.minLine ?? ''} onChange={e => update({ minLine: e.target.value === '' ? undefined : Number(e.target.value) })}>
+                                <option value="">No minimum</option>
+                                {upTo(rules.maxLine || LINE_MAX).slice(1).map(n => <option key={n} value={n}>{n}</option>)}
+                            </select></label>}
+                    </div>
+                    {rules.maxLine !== 1 && <div className="ev-q-flags">
+                        <label><input type="checkbox" checked={!!rules.noForms} onChange={e => update({ noForms: e.target.checked || undefined })} />No Megas or other forms</label>
+                    </div>}
+                    {rules.maxLine !== 1 && <small className="ev-field-help">Megas and forms count toward the number. Type and BST rules apply to the final evolution; everything else applies to each Fakémon.</small>}
+                </div>
+                <div className="ev-q-rule-row"><span className="ev-q-sub">Custom content <span className="ev-optional">{rules.maxLine === 1 ? '' : '(counted once across the line)'}</span></span>
+                    <div className="ev-criterion-row">
+                        <label className="ev-inline-select">Custom types
+                            <select value={rules.noCustomTypes ? 'none' : 'any'} onChange={e => update({ noCustomTypes: e.target.value === 'none' || undefined })}>
+                                <option value="any">Allowed</option><option value="none">Not allowed</option>
+                            </select></label>
+                        <label className="ev-inline-select">Custom abilities
+                            <select value={limitValue(rules.noCustomAbilities, rules.maxCustomAbilities)} onChange={e => update(limitPatch('noCustomAbilities', 'maxCustomAbilities', e.target.value))}>
+                                <option value="any">Any number</option><option value="none">None</option>
+                                {upTo(4).map(n => <option key={n} value={n}>Up to {n}</option>)}
+                            </select></label>
+                        <label className="ev-inline-select">Custom moves
+                            <select value={limitValue(rules.noCustomMoves, rules.maxCustomMoves)} onChange={e => update(limitPatch('noCustomMoves', 'maxCustomMoves', e.target.value))}>
+                                <option value="any">Any number</option><option value="none">None</option>
+                                {upTo(10).map(n => <option key={n} value={n}>Up to {n}</option>)}
+                            </select></label>
+                        <label className="ev-inline-select">All together
+                            <select value={rules.maxCustomTotal ?? ''} onChange={e => update({ maxCustomTotal: e.target.value === '' ? undefined : Number(e.target.value) })}>
+                                <option value="">No limit</option>
+                                {upTo(10).map(n => <option key={n} value={n}>Up to {n}</option>)}
+                            </select></label>
+                    </div>
+                    <small className="ev-field-help">For example: up to 1 custom ability and 1 custom move, or up to 2 custom things of any kind in all.</small>
+                </div>
                 <div className="ev-q-rule-row"><span className="ev-q-sub">Base stat total</span>
                     <div className="ev-criterion-row">
                         <label className="ev-inline-select">At least <input type="number" className="ev-num" min={1} max={1530} value={rules.minBst ?? ''} onChange={e => update({ minBst: e.target.value === '' ? undefined : Math.min(1530, Math.max(1, Number(e.target.value) || 1)) })} /></label>
@@ -1842,8 +2130,8 @@ function ShareRow({ label, hint, url }: { label: string; hint: string; url: stri
 // everyone's answer. Individual: one response at a time, with what the team
 // can do about it. Plus a live Google Sheets link and the CSV.
 
-type ResponsesView = 'summary' | 'question' | 'individual';
-const RESPONSE_VIEWS: Array<[ResponsesView, string, string]> = [['summary', 'Summary', 'chart-pie'], ['question', 'Question', 'queue-list'], ['individual', 'Individual', 'document-text']];
+type ResponsesView = 'summary' | 'question' | 'individual' | 'votes';
+const RESPONSE_VIEWS: Array<[ResponsesView, string, string]> = [['summary', 'Summary', 'chart-pie'], ['question', 'Question', 'queue-list'], ['individual', 'Individual', 'document-text'], ['votes', 'Voter feedback', 'chat-bubble-left-right']];
 
 /** One entry's answer to one question, from the public or the private side. */
 const answerOf = (d: Detail, en: Entry, f: Field) => isPrivateField(f) ? d.privateAnswers[en.id]?.[f.id] : en.answers[f.id];
@@ -1855,6 +2143,8 @@ function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
     const [at, setAt] = useState(0);
     const [qid, setQid] = useState(questions[0]?.id || '');
     const open = (entryId: string) => { setAt(Math.max(0, d.entries.findIndex(e => e.id === entryId))); setView('individual'); };
+    // what voters wrote: for events that vote, to the team that sees results
+    const views = RESPONSE_VIEWS.filter(([k]) => k !== 'votes' || (ev.voting !== 'none' && perms.results));
     return (
         <>
             <section className="ev-block ev-responses">
@@ -1863,7 +2153,7 @@ function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
                     <button className="btn btn-secondary btn-sm" type="button" onClick={exportEntriesCsv} disabled={!d.entries.length}><Icon name="arrow-down-tray" size={14} />Download CSV</button>
                 </div>
                 <div className="ev-segmented ev-responses-tabs" role="tablist" aria-label="How to look at the responses">
-                    {RESPONSE_VIEWS.map(([key, label, icon]) => (
+                    {views.map(([key, label, icon]) => (
                         <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? 'active' : ''} onClick={() => setView(key)}><Icon name={icon} size={14} />{label}</button>
                     ))}
                 </div>
@@ -1876,6 +2166,7 @@ function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
                 )}
                 {d.entries.length > 0 && view === 'question' && <QuestionResponses d={d} questions={questions} qid={qid} onQid={setQid} onOpen={open} />}
                 {d.entries.length > 0 && view === 'individual' && <IndividualResponse ev={ev} d={d} perms={perms} at={Math.min(at, d.entries.length - 1)} onAt={setAt} />}
+                {d.entries.length > 0 && view === 'votes' && <VoterFeedback ev={ev} d={d} perms={perms} at={Math.min(at, d.entries.length - 1)} onAt={setAt} />}
             </section>
             <SheetLink ev={ev} d={d} />
             {perms.edit && <ExtraEntries ev={ev} d={d} />}
@@ -2022,12 +2313,87 @@ function IndividualResponse({ ev, d, perms, at, onAt }: { ev: EventRow; d: Detai
                 )}
                 <EntryAnswers ev={ev} d={d} entry={en} />
                 <div className="ev-form-actions">
-                    {perms.edit && <PlacementPicker entry={en} />}
+                    {perms.edit && canPlace(ev) && <PlacementPicker entry={en} />}
                     {perms.entries && en.user_id && effectivePhase(ev) !== 'ended' && (
                         <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-request-edit', { entry: en, title: entryTitle(ev, en, d.people), who: authorName(d, en), current: asked?.reason || '' })}>
                             <Icon name="pencil-square" size={14} />{asked ? 'Change the request' : 'Ask for changes'}</button>
                     )}
                     {perms.entries && <button type="button" className="btn btn-danger-ghost btn-sm" onClick={() => openDialog('event-remove-entry', { entry: en, title: entryTitle(ev, en, d.people), who: authorName(d, en) })}><Icon name="trash-2" size={14} />Remove entry</button>}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/** Placements by hand: only on events that don't vote (the votes are the result), and only until they end. */
+const canPlace = (ev: EventRow) => ev.voting === 'none' && effectivePhase(ev) !== 'ended';
+
+/**
+ * What voters wrote about each entry (the voter questions and remarks), one
+ * entry at a time, compiled into feedback the team can edit and send to the
+ * entry's creator (send_event_feedback), or copy.
+ */
+function VoterFeedback({ ev, d, perms, at, onAt }: { ev: EventRow; d: Detail; perms: ReturnType<typeof permsFor>; at: number; onAt: (i: number) => void }) {
+    const en = d.entries[at];
+    const [names, setNames] = useState(false);
+    const [drafts, setDrafts] = useState<Record<string, string>>({});
+    const [busy, setBusy] = useState(false);
+    if (!en) return null;
+    const rows = votesFor(ev, d, en);
+    const sent = d.feedback[en.id];
+    const text = drafts[en.id] ?? sent?.text ?? compileFeedback(ev, d, en, { names });
+    const setText = (t: string) => setDrafts(x => ({ ...x, [en.id]: t }));
+    const withWords = d.entries.filter(x => compileFeedback(ev, d, x)).length;
+    async function send() { setBusy(true); await sendFeedback(en, text); setBusy(false); }
+    return (
+        <div className="ev-individual ev-voter-feedback">
+            <p className="ev-hint">What voters wrote about each entry, from your voter questions and their remarks. It starts compiled; edit it, then send it to the entry's creator (they get a notification, and read it with their entry) or copy it. {plural(withWords, 'entry has', 'entries have')} written feedback so far.
+                {' '}<button type="button" className="ev-link" onClick={exportVotesCsv} disabled={!d.votes.length}><Icon name="arrow-down-tray" size={13} />Download every vote (CSV)</button></p>
+            <div className="ev-pager">
+                <button type="button" className="ev-icon-btn" disabled={at === 0} onClick={() => onAt(at - 1)} aria-label="Previous entry"><Icon name="chevron-left" size={16} /></button>
+                <select value={en.id} onChange={e => onAt(d.entries.findIndex(x => x.id === e.target.value))} aria-label="Entry">
+                    {d.entries.map((x, i) => <option key={x.id} value={x.id}>{i + 1}. {entryTitle(ev, x, d.people)}{d.feedback[x.id] ? ' (sent)' : ''}</option>)}
+                </select>
+                <span className="ev-pager-count">{at + 1} of {d.entries.length}</span>
+                <button type="button" className="ev-icon-btn" disabled={at === d.entries.length - 1} onClick={() => onAt(at + 1)} aria-label="Next entry"><Icon name="chevron-right" size={16} /></button>
+            </div>
+            <div className="ev-individual-card">
+                <header className="ev-individual-head">
+                    <span className="ev-table-thumb">{entryImage(ev, en) ? <img src={entryImage(ev, en)} alt="" /> : <Icon name="document-text" size={18} />}</span>
+                    <span className="ev-table-main">
+                        <strong>{entryTitle(ev, en, d.people)}</strong>
+                        <small>{en.user_id ? `@${authorOf(d, en)?.username || 'unknown'}` : 'Guest'} · {plural(rows.length, 'vote')}</small>
+                    </span>
+                    {sent && <span className="ev-chip-flag is-done"><Icon name="check" size={12} />Sent {relTime(sent.at)}</span>}
+                </header>
+                {rows.length ? (
+                    <ol className="ev-vote-list">
+                        {rows.map((r, i) => (
+                            <li key={r.vote.voter_id}>
+                                <strong>{names && r.who?.username ? `@${r.who.username}` : `Voter ${i + 1}`}</strong>
+                                <span className="ev-hint ev-inline-hint">{criteriaOf(ev).map(c => `${c.name} ${r.vote.scores?.[c.name] ?? '-'}/${c.max}`).join(' · ')}</span>
+                                {r.answers.map(a => <p key={a.q.id}><span className="ev-muted">{a.q.label}:</span> {a.value}</p>)}
+                                {r.remarks && <p className="ev-vote-remarks">{r.remarks}</p>}
+                                {!r.answers.length && !r.remarks && <p className="ev-muted">Scores only.</p>}
+                            </li>
+                        ))}
+                    </ol>
+                ) : <p className="ev-hint">No votes on this entry yet.</p>}
+                <div className="ev-field">
+                    <div className="ev-block-head ev-feedback-head">
+                        <span className="ev-field-label">Feedback for its creator</span>
+                        <span className="ev-head-actions">
+                            <label className="ev-check"><input type="checkbox" checked={names} onChange={e => { setNames(e.target.checked); setDrafts(x => { const { [en.id]: _, ...rest } = x; return rest; }); }} />Show voters' names</label>
+                            <button type="button" className="ev-link" onClick={() => setText(compileFeedback(ev, d, en, { names }))}><Icon name="arrow-path" size={13} />Compile again</button>
+                        </span>
+                    </div>
+                    <EmojiInput value={text} onChange={setText} rows={8} maxLength={8000} className="ev-about-input" ariaLabel="Feedback for the entry's creator" toolbar mentions={false}
+                        placeholder="Nothing written by voters yet. Write your own notes for the creator here." />
+                </div>
+                <div className="ev-form-actions">
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={!text.trim()} onClick={() => copyLink(text, 'Feedback')}><Icon name="clipboard" size={14} />Copy</button>
+                    {perms.entries && en.user_id && <button type="button" className="btn btn-primary btn-sm" disabled={busy || !text.trim()} onClick={send}><Icon name="paper-airplane" size={14} />{sent ? 'Send again (replaces it)' : 'Send to the creator'}</button>}
+                    {!en.user_id && <span className="ev-hint ev-inline-hint">A guest's entry: copy it and send it yourself.</span>}
                 </div>
             </div>
         </div>
@@ -2107,6 +2473,7 @@ function AnnouncementsTab({ ev, d }: { ev: EventRow; d: Detail }) {
     });
     const [mode, setMode] = useState<'write' | 'preview'>('write');
     const [busy, setBusy] = useState(false);
+    const [sample, setSample] = useState(false);
     useEffect(() => {
         try { draft.title || draft.body ? localStorage.setItem(announceKey(ev.id), JSON.stringify(draft)) : localStorage.removeItem(announceKey(ev.id)); } catch { /* full or private mode */ }
     }, [draft]);
@@ -2138,7 +2505,8 @@ function AnnouncementsTab({ ev, d }: { ev: EventRow; d: Detail }) {
                     </>
                 ) : (
                     <div className="ev-preview-box">
-                        <ol className="ev-announce-list"><AnnouncementItem ev={ev} d={d} a={{ id: 'preview', event_id: ev.id, author_id: state.user?.id || null, title: draft.title || 'Untitled', body: draft.body, created_at: new Date().toISOString() }} /></ol>
+                        <SampleSwitch on={sample} onChange={setSample} />
+                        <SampleVars.Provider value={sample}><ol className="ev-announce-list"><AnnouncementItem ev={ev} d={d} a={{ id: 'preview', event_id: ev.id, author_id: state.user?.id || null, title: draft.title || 'Untitled', body: draft.body, created_at: new Date().toISOString() }} /></ol></SampleVars.Provider>
                     </div>
                 )}
                 <div className="ev-form-actions">
@@ -2342,25 +2710,26 @@ function ResultsTab({ ev, d }: { ev: EventRow; d: Detail }) {
                     <button className="btn btn-secondary btn-sm" type="button" onClick={() => loadEvent(ev.id)}><Icon name="arrow-path" size={14} />Refresh</button>
                 </div>
                 <p className="ev-hint">
-                    {ev.voting === 'none' ? 'This event has no voting: pick winners with a placement.'
-                        : `Winners: ${describeWinnerRules(ev.winner_criteria)}, plus anyone you give a placement. ${plural(totalVoters, 'voter')} so far. `}
+                    {ev.voting === 'none' ? (canPlace(ev) ? 'This event has no voting: pick winners with a placement. Placements lock when the event ends.' : 'This event had no voting; these are the placements it ended with.')
+                        : `Winners: ${describeWinnerRules(ev.winner_criteria)}. Ties: ${(TIE_RULES.find(t => t[0] === (ev.tie_rule || 'share'))?.[1] || '').toLowerCase()}${ev.tie_rule === 'criterion' && ev.tie_criterion ? ` (${ev.tie_criterion})` : ''}. ${plural(totalVoters, 'voter')} so far. `}
                     {ev.voting !== 'none' && (ev.live_results ? 'Live results are on, so entrants see these while voting runs.' : 'Only the team sees these until the event ends.')}
                 </p>
+                {ev.voting !== 'none' && <p className="ev-notice"><Icon name="lock-closed" size={15} /><span>The standings come straight from the votes. Nobody can change them, the organizers and site staff included, and once voting starts the scoring and winner rules are locked too.</span></p>}
                 {!rows.length && <p className="ev-hint">No entries yet.</p>}
                 <ol className="ev-standings">
-                    {rows.map(({ entry: en, result }, i) => {
+                    {rows.map(({ entry: en, result, place }) => {
                         const value = community ? Number(result?.votes || 0) : Number(result?.points_percent || 0);
                         const won = winners.has(en.id);
                         return (
                             <li key={en.id} className={won ? 'is-winner' : ''}>
-                                <span className="ev-rank">{en.placement ? placeLabel(en.placement) : won ? <Icon name="trophy" size={16} /> : `#${i + 1}`}</span>
+                                <span className="ev-rank">{place ? placeLabel(place) : '-'}{won && <Icon name="trophy" size={13} />}</span>
                                 <span className="ev-standing-main">
                                     <strong>{entryTitle(ev, en, d.people)}{won && <span className="ev-winner-chip">{effectivePhase(ev) === 'ended' ? 'Winner' : 'Winning'}</span>}</strong>
                                     <span className="ev-bar" aria-hidden="true"><span style={{ width: `${(value / max) * 100}%` }} /></span>
                                     {!community && result && <small className="ev-criteria-avgs">{criteriaOf(ev).map(c => `${c.name} ${result.criteria_avg?.[c.name] ?? '-'}/${c.max}`).join(' · ')}</small>}
                                 </span>
                                 <span className="ev-standing-num">{community ? plural(value, 'vote') : `${value.toFixed(1)}% · ${plural(Number(result?.votes || 0), 'vote')}`}</span>
-                                {perms.edit && <PlacementPicker entry={en} />}
+                                {perms.edit && canPlace(ev) && <PlacementPicker entry={en} />}
                             </li>
                         );
                     })}
@@ -2386,7 +2755,9 @@ function ResultsPostEditor({ ev, d }: { ev: EventRow; d: Detail }) {
     const stage = effectivePhase(ev);
     const dirty = text.trim() !== (d.resultsPost || '');
     const waiting = !!ev.hold_results && !ev.results_released_at;
-    const filled = fillVariables(text, variablesFor(ev, d));
+    const [sample, setSample] = useState(false);
+    const filled = fillVariables(text, sample ? sampleVariables(ev) : variablesFor(ev, d));
+    const realFilled = fillVariables(text, variablesFor(ev, d));
     useLeaveGuard(dirty, 'Your results post isn\'t saved yet.');
     async function save() { setBusy(true); await saveResultsPost(ev.id, text); setBusy(false); }
     async function publish() { setBusy(true); await publishResults(ev.id, text); setBusy(false); }
@@ -2405,13 +2776,13 @@ function ResultsPostEditor({ ev, d }: { ev: EventRow; d: Detail }) {
             {mode === 'write'
                 ? <EmojiInput value={text} onChange={setText} rows={10} maxLength={10000} className="ev-about-input" ariaLabel="Results post" toolbar variables={VARIABLES}
                     placeholder={'## The results are in!\n🥇 {{winner1}}\n🥈 {{winner2}}\n🥉 {{winner3}}\n\nThanks to all {{entrants}} of you who entered :woogi:'} />
-                : <div className="ev-preview-box">{text.trim() ? <RichText text={filled} className="ev-rich" /> : <p className="ev-hint">Nothing written yet.</p>}</div>}
+                : <div className="ev-preview-box"><SampleSwitch on={sample} onChange={setSample} />{text.trim() ? <RichText text={filled} className="ev-rich" /> : <p className="ev-hint">Nothing written yet.</p>}</div>}
             <small className="ev-field-help">Variables like {'{{winner1}}'} fill in with the winners, counts and dates when people read it. The preview shows them as they stand now.</small>
             <div className="ev-form-actions">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setText(t => (t.trim() ? `${t.trim()}\n\n` : '') + standingsMarkdown(ev, d))} disabled={!d.results}>
                     <Icon name="trophy" size={14} />Insert the standings</button>
                 {d.share && !waiting && <button type="button" className="btn btn-secondary btn-sm" disabled={!text.trim()}
-                    onClick={() => openDialog('quote-repost', { item: d.share, text: filled.trim().slice(0, 4000) })}><Icon name="megaphone" size={14} />Post it to the feed</button>}
+                    onClick={() => openDialog('quote-repost', { item: d.share, text: realFilled.trim().slice(0, 4000) })}><Icon name="megaphone" size={14} />Post it to the feed</button>}
                 <button type="button" className={`btn btn-${waiting ? 'secondary' : 'primary'} btn-sm`} disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : waiting ? 'Save draft' : 'Save results post'}</button>
                 {waiting && <button type="button" className="btn btn-primary btn-sm" disabled={busy || !text.trim()} onClick={publish}><Icon name="trophy" size={14} />Publish results</button>}
             </div>
@@ -2839,7 +3210,8 @@ function FormBuilder({ form, onChange, types, prefix = 'q', personal = true }: {
 }
 
 type EditorValues = {
-    title: string; tagline: string; description: string; category: string; cover_image: string | null;
+    title: string; tagline: string; description: string; category: string; cover_image: string | null; cover_thumb: string | null;
+    tie_rule: TieRule; tie_criterion: string;
     submissions_open_at: string; submissions_close_at: string; voting_open_at: string; voting_close_at: string; results_at: string;
     form: Field[]; votingOn: boolean; mode: VotingMode; votes_per_user: number; max_entries_per_user: number;
     live_results: boolean; show_entries: boolean; public_access: boolean; slug: string; vote_form: Field[]; allow_self_vote: boolean;
@@ -2854,7 +3226,8 @@ function valuesFrom(event: EventRow | null): EditorValues {
     const wc: WinnerRules = event?.winner_criteria || { top_n: 3 };
     return {
         title: event?.title || '', tagline: event?.tagline || '', description: event?.description || '', category: event?.category || '',
-        cover_image: event?.cover_image || null,
+        cover_image: event?.cover_image || null, cover_thumb: event?.cover_thumb || null,
+        tie_rule: event?.tie_rule || 'share', tie_criterion: event?.tie_criterion || '',
         submissions_open_at: event?.submissions_open_at || '', submissions_close_at: event?.submissions_close_at || '',
         voting_open_at: event?.voting_open_at || '', voting_close_at: event?.voting_close_at || '', results_at: event?.results_at || '',
         form: event?.form || PRESETS[0][2], votingOn: (event?.voting || PRESETS[0][3]) !== 'none',
@@ -2881,7 +3254,9 @@ function rowFrom(f: EditorValues): Partial<EventRow> {
     const votingOn = f.votingOn;
     return {
         title: f.title.trim(), tagline: f.tagline.trim(), description: f.description.trim(), category: f.category.trim(),
-        cover_image: f.cover_image,
+        cover_image: f.cover_image, cover_thumb: f.cover_image ? f.cover_thumb : null,
+        tie_rule: f.tie_rule === 'criterion' && !f.tie_criterion.trim() ? 'share' : f.tie_rule,
+        tie_criterion: f.tie_rule === 'criterion' ? f.tie_criterion.trim() || null : null,
         submissions_open_at: iso(f.submissions_open_at), submissions_close_at: iso(f.submissions_close_at),
         voting_open_at: votingOn ? iso(f.voting_open_at) : null, voting_close_at: votingOn ? iso(f.voting_close_at) : null,
         results_at: iso(f.results_at), public_access: f.public_access, voter_remarks: f.voter_remarks,
@@ -2899,24 +3274,74 @@ function rowFrom(f: EditorValues): Partial<EventRow> {
 /** Name a template; one by the same name is replaced. */
 function TemplateSaveDialog({ close, name, values }: DialogProps<{ name: string; values: any }>) {
     const [value, setValue] = useState(name);
+    const [busy, setBusy] = useState(false);
     const taken = readEventTemplates().some(t => t.name.toLowerCase() === value.trim().toLowerCase());
-    const save = (e: React.FormEvent) => { e.preventDefault(); if (value.trim() && saveEventTemplate(value.trim(), values)) close(); };
+    const save = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!value.trim() || busy) return;
+        setBusy(true);
+        if (await saveEventTemplate(value.trim(), values)) close();
+        setBusy(false);
+    };
     return (
         <Modal onClose={close} title="Save as template" className="ev-template-modal">
             <form onSubmit={save}>
-                <p className="ev-hint">Keeps the form, voting, rules, about text and the team list, but not the dates or link. Start a new event from it with "Start from". Saved on this device.</p>
+                <p className="ev-hint">Keeps the form, voting, rules, about text and the team list, but not the dates or link. It's saved to your account, so it's there on every device: load it with "Templates" when you make an event.</p>
                 <div className="ev-field"><label className="ev-field-label" htmlFor="ev-template-name">Template name</label>
                     <input id="ev-template-name" maxLength={60} value={value} onChange={e => setValue(e.target.value)} placeholder="Monthly PoA contest" autoFocus />
                     {taken && <small className="ev-field-help">You have a template with this name. Saving replaces it.</small>}</div>
                 <div className="modal-actions">
                     <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
-                    <button type="submit" className="btn btn-primary" disabled={!value.trim()}>{taken ? 'Replace template' : 'Save template'}</button>
+                    <button type="submit" className="btn btn-primary" disabled={!value.trim() || busy}>{busy ? 'Saving…' : taken ? 'Replace template' : 'Save template'}</button>
                 </div>
             </form>
         </Modal>
     );
 }
 registerDialog('event-template-save', TemplateSaveDialog);
+
+/** Your templates (and the built-in starting points): load one, or delete it. */
+function TemplatesDialog({ close, onLoad }: DialogProps<{ onLoad: (values: any, name: string) => void }>) {
+    useStore();
+    const list = readEventTemplates();
+    const status = eventTemplatesStatus();
+    const [busy, setBusy] = useState('');
+    async function load(t: EventTemplate) {
+        setBusy(t.id);
+        const values = await templateContents(t);
+        setBusy('');
+        if (values) { onLoad(values, t.name); close(); }
+    }
+    return (
+        <Modal onClose={close} title="Templates" className="ev-template-modal">
+            <p className="ev-hint">Loading one fills in its setup: the form, voting, rules, about text and team. Dates and the link stay yours to set.</p>
+            <h4 className="ev-template-group">Yours</h4>
+            {status === 'loading' && !list.length ? <p className="ev-hint">Loading…</p>
+                : !list.length ? <p className="ev-hint">None yet. Set up an event the way you like it, then "Save as template" at the top of the editor.</p>
+                : (
+                    <ul className="ev-template-list">
+                        {list.map(t => (
+                            <li key={t.id}>
+                                <span className="ev-team-name"><strong>{t.name}</strong><small>Saved {relTime(new Date(t.savedAt).toISOString())}</small></span>
+                                <button type="button" className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => load(t)}>{busy === t.id ? 'Loading…' : 'Load'}</button>
+                                <button type="button" className="ev-icon-btn" aria-label={`Delete ${t.name}`} onClick={() => deleteEventTemplate(t)}><Icon name="trash-2" size={15} /></button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            <h4 className="ev-template-group">Built in</h4>
+            <ul className="ev-template-list">
+                {PRESETS.map(([name, category, form, voting]) => (
+                    <li key={name}>
+                        <span className="ev-team-name"><strong>{name}</strong><small>{form.length} questions · {voting === 'none' ? 'no voting' : VOTING_OPTIONS.find(v => v[0] === voting)?.[1] || voting}</small></span>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { onLoad({ form, votingOn: voting !== 'none', mode: voting === 'none' ? undefined : voting, category }, name); close(); }}>Load</button>
+                    </li>
+                ))}
+            </ul>
+        </Modal>
+    );
+}
+registerDialog('event-templates', TemplatesDialog);
 
 function EventEditor({ event }: { event: EventRow | null }) {
     const eventId = event?.id || null;
@@ -2937,17 +3362,29 @@ function EventEditor({ event }: { event: EventRow | null }) {
     const moveCriterion = (i: number, by: number) => { const c = [...f.criteria]; const [x] = c.splice(i, 1); c.splice(i + by, 0, x); set({ criteria: c }); };
     const [previewTab, setPreviewTab] = useState<EventTab>('about');
     const [tz, setTz] = useState(savedTimeZone);
-    const templates = readEventTemplates();
-    const [startFrom, setStartFrom] = useState('');
-    const mine = startFrom.startsWith('mine:') ? templates.find(t => `mine:${t.id}` === startFrom) : undefined;
-    function applyTemplate(key: string) {
-        setStartFrom(key);
-        const p = PRESETS.find(x => `preset:${x[0]}` === key);
-        if (p) { set({ form: p[2], votingOn: p[3] !== 'none', mode: p[3] === 'none' ? f.mode : p[3] as VotingMode, category: f.category || p[1] }); return; }
-        const t = templates.find(x => `mine:${x.id}` === key);
-        // its whole setup; the name only if you haven't typed one
-        if (t) setF(v => ({ ...v, ...t.values, title: v.title.trim() ? v.title : t.values.title || '', criteria: criteriaOf({ criteria: t.values.criteria || v.criteria }), team: t.values.team || v.team }));
+    /**
+     * A template's setup goes in; the name only if you haven't typed one. On an
+     * event that exists, what makes it that event (name, link, dates, cover)
+     * stays, and so does its team (the Team tab manages that).
+     */
+    function applyTemplate(values: any, name = 'the template') {
+        setF(v => {
+            const next: EditorValues = { ...v, ...values, mode: values.mode || v.mode, criteria: criteriaOf({ criteria: values.criteria || v.criteria }), team: values.team || v.team };
+            if (!event) return { ...next, title: v.title.trim() ? v.title : values.title || '', category: values.category || v.category };
+            return { ...next, title: v.title, tagline: v.tagline, slug: v.slug, cover_image: v.cover_image, cover_thumb: v.cover_thumb, team: v.team,
+                submissions_open_at: v.submissions_open_at, submissions_close_at: v.submissions_close_at, voting_open_at: v.voting_open_at, voting_close_at: v.voting_close_at, results_at: v.results_at };
+        });
+        api.showToast?.(`Loaded ${name}. Look it over, then save.`, 'success');
     }
+    // "New from template" on the list page
+    useEffect(() => {
+        if (event || !pendingTemplate.values) return;
+        applyTemplate(pendingTemplate.values.values, pendingTemplate.values.name);
+        pendingTemplate.values = null;
+    }, []);
+    // voting has started: how entries are scored and who wins can't change (events_guard)
+    const locked = !!event && event.voting !== 'none' && ['voting', 'tallying', 'ended'].includes(effectivePhase(event));
+    const [sampleVars, setSampleVars] = useState(true);
     const [sample, setSample] = useState<{ scores: Record<string, number>; remarks: string; answers: Record<string, any> }>({ scores: {}, remarks: '', answers: {} });
 
     // autosave: what you've typed stays on this device until it's saved, like a post draft
@@ -2976,7 +3413,8 @@ function EventEditor({ event }: { event: EventRow | null }) {
     function pickCover(file?: File | null) {
         if (!file) return;
         cropThen(file, 3.2, async cropped => {
-            try { set({ cover_image: await shrinkImage(cropped, 1600, 580_000) }); }
+            // the small one is what the events list, tickets and the feed download
+            try { set({ cover_image: await shrinkImage(cropped, 1600, 580_000), cover_thumb: await shrinkImage(cropped, 640, 70_000) }); }
             catch (e: any) { api.showToast?.(e?.message || 'That image could not be used.', 'error'); }
         });
     }
@@ -2985,6 +3423,12 @@ function EventEditor({ event }: { event: EventRow | null }) {
         if (f.title.trim().length < 3) { api.showToast?.('Give the event a name (at least 3 characters).', 'warning'); setMode('edit'); return; }
         if (f.slug.trim() && !SLUG_PATTERN.test(f.slug.trim())) { api.showToast?.('The link can use lowercase letters, numbers and dashes, 3 to 48 of them.', 'warning'); setMode('edit'); return; }
         setBusy(true);
+        // events made before small covers existed get one on their next save
+        if (f.cover_image && !f.cover_thumb) {
+            const thumb = await shrinkImage(f.cover_image, 640, 70_000).catch(() => null);
+            f.cover_thumb = thumb;
+            set({ cover_thumb: thumb });
+        }
         // pristine first: creating navigates to the dashboard, and the autosave must not resurrect the draft
         const before = pristine.current;
         pristine.current = JSON.stringify(f);
@@ -3019,6 +3463,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
                     <p>{event ? 'Changes go live when you save them.' : 'It starts as a draft only you can see. When it\'s ready, go live from its dashboard, with entries closed or open.'}</p>
                 </div>
                 <div className="ev-editor-tools">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-templates', { onLoad: applyTemplate })}><Icon name="folder-open" size={14} />Templates</button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-template-save', { name: f.title.trim(), values: f })}><Icon name="bookmark" size={14} />Save as template</button>
                 <div className="ev-segmented" role="tablist" aria-label="Editor mode">
                     <button type="button" role="tab" aria-selected={mode === 'edit'} className={mode === 'edit' ? 'active' : ''} onClick={() => setMode('edit')}><Icon name="pencil" size={14} />Edit</button>
@@ -3037,8 +3482,11 @@ function EventEditor({ event }: { event: EventRow | null }) {
 
             {mode === 'preview' ? (
                 <div className="ev-preview-frame">
-                    <p className="ev-preview-label"><Icon name="eye" size={14} />Preview: what entrants will see, with the entry form. Nothing here is saved or sent.</p>
-                    <EventView ev={previewRow} d={emptyDetail(previewRow)} preview tab={previewTab} onTab={setPreviewTab} />
+                    <div className="ev-preview-label"><Icon name="eye" size={14} /><span>Preview: what entrants will see, with the entry form. Nothing here is saved or sent.</span>
+                        <SampleSwitch on={sampleVars} onChange={setSampleVars} /></div>
+                    <SampleVars.Provider value={sampleVars}>
+                        <EventView ev={previewRow} d={emptyDetail(previewRow)} preview tab={previewTab} onTab={setPreviewTab} />
+                    </SampleVars.Provider>
                     {scored && (
                         <section className="ev-block ev-preview-voting">
                             <h3>What voters fill in</h3>
@@ -3071,7 +3519,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
                             <div className="ev-cover ev-cover-preview">{f.cover_image ? <img src={f.cover_image} alt="" /> : <Icon name="photo" size={26} />}</div>
                             <span>
                                 <label className="btn btn-secondary btn-sm" htmlFor="ev-cover">{f.cover_image ? 'Replace' : 'Upload'}</label>
-                                {f.cover_image && <button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ cover_image: null })}>Remove</button>}
+                                {f.cover_image && <button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ cover_image: null, cover_thumb: null })}>Remove</button>}
                             </span>
                             <input id="ev-cover" className="ev-sr" type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { pickCover(e.target.files?.[0]); e.target.value = ''; }} />
                         </div>
@@ -3085,27 +3533,17 @@ function EventEditor({ event }: { event: EventRow | null }) {
                     </div>
                 </section>
 
+                {!event ? (
+                    <section className="ev-block">
+                        <h3>Team</h3>
+                        <TeamPicker team={f.team} onChange={team => set({ team })} />
+                    </section>
+                ) : null}
+
                 <section className="ev-block">
                     <div className="ev-block-head">
                         <h3>What entrants send in</h3>
-                        {!event && (
-                            <span className="ev-start-from">
-                                <label className="ev-inline-select">Start from
-                                    <select value={startFrom} onChange={e => applyTemplate(e.target.value)}>
-                                        <option value="" disabled>Template…</option>
-                                        {templates.length > 0 && (
-                                            <optgroup label="Your templates">
-                                                {templates.map(t => <option key={t.id} value={`mine:${t.id}`}>{t.name}</option>)}
-                                            </optgroup>
-                                        )}
-                                        <optgroup label="Built in">
-                                            {PRESETS.map(([name]) => <option key={name} value={`preset:${name}`}>{name}</option>)}
-                                        </optgroup>
-                                    </select>
-                                </label>
-                                {mine && <button type="button" className="ev-link" onClick={() => { deleteEventTemplate(mine.id); setStartFrom(''); }}>Delete this template</button>}
-                            </span>
-                        )}
+                        <button type="button" className="ev-link" onClick={() => openDialog('event-templates', { onLoad: applyTemplate })}><Icon name="folder-open" size={13} />Start from a template</button>
                     </div>
                     <p className="ev-hint">Email answers are always private and Discord ones are private unless you untick it. Both fill in by themselves for people who have them on their account. A Fakémon question takes the whole Fakémon, from the entrant's collection or a file they upload.</p>
                     <FormBuilder form={f.form} onChange={form => set({ form })} types={FIELD_TYPES.map(t => t[0])} />
@@ -3155,17 +3593,12 @@ function EventEditor({ event }: { event: EventRow | null }) {
                             : 'Only your team sees the entries, and nobody else sees how many there are, before or after the event.'} />
                 </section>
 
-                {!event && (
-                    <section className="ev-block">
-                        <h3>Team</h3>
-                        <TeamPicker team={f.team} onChange={team => set({ team })} />
-                    </section>
-                )}
-
                 <section className="ev-block">
                     <h3>Voting</h3>
+                    {locked && <p className="ev-notice"><Icon name="lock-closed" size={15} /><span>Voting has started, so how entries are scored and who wins are locked for everyone, you included. That keeps the results fair.</span></p>}
+                    <fieldset className="ev-lockable" disabled={locked}>
                     <Toggle checked={f.votingOn} onChange={v => set({ votingOn: v })} label="This event has voting"
-                        desc="Off for sign-ups and anything that doesn't pick winners by vote. You can still give placements by hand." />
+                        desc="Off for sign-ups and anything that doesn't pick winners by vote. Then you pick winners with placements, until the event ends." />
                     {f.votingOn && (
                         <div className="ev-field">
                             <span className="ev-field-label">How people vote</span>
@@ -3220,6 +3653,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
                             </div>
                         </div>
                     )}
+                    </fieldset>
                     {f.votingOn && (() => {
                         const shown = f.form.filter(q => q.type !== 'section' && !isPrivateField(q));
                         const fields = f.vote_display.fields;
@@ -3251,6 +3685,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
                             <FormBuilder form={f.vote_form} onChange={vote_form => set({ vote_form })} types={VOTE_FIELD_TYPES} prefix="v" personal={false} />
                         </div>
                     )}
+                    <fieldset className="ev-lockable" disabled={locked}>
                     {f.votingOn && (
                         <div className="ev-field">
                             <span className="ev-field-label">Who wins</span>
@@ -3259,14 +3694,36 @@ function EventEditor({ event }: { event: EventRow | null }) {
                                 {winnerRule('toppct', 'The top', '% of entries', 100)}
                                 {winnerRule('minscore', 'Any entry with at least', '% of the possible points', 100)}
                             </div>
-                            <small className="ev-field-help">An entry wins if it meets any ticked rule, and anything you give a placement wins too. Nothing ticked means the top 3. Possible points are every voter's maximum for that entry{scored ? ` (voters × ${f.criteria.reduce((n, c) => n + c.max, 0)})` : ' (one vote from each voter)'}.</small>
+                            <small className="ev-field-help">An entry wins if it meets any ticked rule. Nothing ticked means the top 3. Possible points are every voter's maximum for that entry{scored ? ` (voters × ${f.criteria.reduce((n, c) => n + c.max, 0)})` : ' (one vote from each voter)'}. The standings come from the votes alone: nobody can place entries by hand.</small>
                         </div>
                     )}
+                    {f.votingOn && (
+                        <div className="ev-field">
+                            <span className="ev-field-label">When entries tie</span>
+                            <div className="ev-criterion-row">
+                                <select value={f.tie_rule} onChange={e => set({ tie_rule: e.target.value as TieRule })} aria-label="When entries tie">
+                                    {TIE_RULES.filter(([r]) => scored || r === 'share' || r === 'earliest').map(([r, label]) => <option key={r} value={r}>{label}</option>)}
+                                </select>
+                                {f.tie_rule === 'criterion' && scored && (
+                                    <select value={f.tie_criterion} onChange={e => set({ tie_criterion: e.target.value })} aria-label="Which criterion settles a tie">
+                                        <option value="" disabled>Which criterion?</option>
+                                        {f.criteria.filter(c => c.name.trim()).map(c => <option key={c.name} value={c.name.trim()}>{c.name}</option>)}
+                                    </select>
+                                )}
+                            </div>
+                            <small className="ev-field-help">{
+                                f.tie_rule === 'share' ? 'Entries with the same score share the place, so there can be two 2nd places (and then no 3rd). A tie for the last winning place lets both win.'
+                                : f.tie_rule === 'criterion' ? 'Entries with the same score are ordered by their average on that criterion. If that ties too, they share the place.'
+                                : f.tie_rule === 'votes' ? 'Entries with the same score are ordered by how many people voted for them. If that ties too, they share the place.'
+                                : 'Entries with the same score are ordered by when they were sent in, earliest first.'}</small>
+                        </div>
+                    )}
+                    {f.votingOn && <Toggle checked={f.allow_self_vote} onChange={v => set({ allow_self_vote: v })} label="Let people vote on their own entries" desc="Off by default: everyone votes on everyone else's. On: their own entries are on their ballot too." />}
+                    </fieldset>
                     {f.votingOn && <Toggle checked={f.live_results} onChange={v => set({ live_results: v })} label="Live results" desc="Let everyone watch the standings while voting runs. Off: they're revealed when the results come out." />}
                     {!f.entries_private && <Toggle checked={f.show_entries} onChange={v => set({ show_entries: v })} label="Show entries while they come in" desc="Off: entries stay hidden until entries close." />}
                     <Toggle checked={f.hold_results} onChange={v => set({ hold_results: v })} label="Wait for the results post"
                         desc="The results stay hidden until you publish your results post from the dashboard's Results tab, even if the dates have passed." />
-                    {f.votingOn && <Toggle checked={f.allow_self_vote} onChange={v => set({ allow_self_vote: v })} label="Let people vote on their own entries" desc="Off by default: everyone votes on everyone else's. On: their own entries are on their ballot too." />}
                 </section>
             </>}
 

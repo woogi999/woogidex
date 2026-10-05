@@ -27,8 +27,24 @@ export type MonPart = 'artwork' | 'shiny' | 'abilities' | 'dex' | 'moves' | 'set
 /** A Fakémon question's rules (event_fakemon_problem in the database enforces the same). */
 export interface MonRules {
     require?: MonPart[]; noCustomTypes?: boolean; noCustomAbilities?: boolean; noCustomMoves?: boolean;
-    /** must have at least one of these types */
+    /** the final evolution must have at least one of these types */
     types?: string[]; minBst?: number | null; maxBst?: number | null;
+    /** how many Fakémon the entered line may hold, Megas and forms included (1: no evolutions) */
+    minLine?: number | null; maxLine?: number | null;
+    /** no Megas or other forms in the line */
+    noForms?: boolean;
+    /** custom moves, abilities, and all custom things (types too), counted once each across the line */
+    maxCustomMoves?: number | null; maxCustomAbilities?: number | null; maxCustomTotal?: number | null;
+}
+/**
+ * One Fakémon of an entered evolution line, kept on the answer as `family`.
+ * The face (the last stage, which cards show) is the answer itself, so its
+ * member carries `face` and no `mon`. `from`: the Fakémon it evolves from, or
+ * for a Mega or form the one it's a form of.
+ */
+export interface LineMember {
+    sourceId: string; stage: number; isMega?: boolean; isFormeChange?: boolean;
+    from?: string | null; method?: string; face?: boolean; mon?: any;
 }
 export type Voting = 'none' | 'community' | 'judges' | 'ballot';
 /** Where an event is right now; the dates move it along (see effectivePhase). */
@@ -49,6 +65,10 @@ export interface Field {
 export interface EventRow {
     id: string; owner_id: string; title: string; tagline: string; description: string; category: string;
     accent: string; cover_image: string | null; phase: Phase;
+    /** the cover, small: lists, tickets and the feed use this one */
+    cover_thumb?: string | null;
+    /** what happens when entries score the same (see ranked()) */
+    tie_rule?: TieRule; tie_criterion?: string | null;
     submissions_open_at: string | null; submissions_close_at: string | null;
     voting_open_at: string | null; voting_close_at: string | null; results_at: string | null;
     criteria: Criterion[]; voter_remarks: Remarks; winner_criteria: WinnerRules;
@@ -70,7 +90,19 @@ export interface EventRow {
 }
 export interface EventCode { id: string; event_id: string; code: string; max_entries: number; max_uses: number | null; uses: number; created_at: string; }
 /** user_id is null for a guest's entry (public events) */
-export interface Entry { id: string; event_id: string; user_id: string | null; answers: Record<string, any>; placement: number | null; created_at: string; }
+/**
+ * answers: as loaded for lists, pictures left out ("[image]"); open the entry
+ * for everything (loadFullEntry). thumb: its picture, small.
+ */
+export interface Entry { id: string; event_id: string; user_id: string | null; answers: Record<string, any>; placement: number | null; created_at: string; thumb?: string | null; }
+/** When entries score the same: share the place, or settle it by a criterion, the number of votes, or who entered first. */
+export type TieRule = 'share' | 'criterion' | 'votes' | 'earliest';
+export const TIE_RULES: Array<[TieRule, string]> = [
+    ['share', 'They share the place (two 2nd places, say)'],
+    ['criterion', 'The higher score on one criterion wins'],
+    ['votes', 'The one more people voted for wins'],
+    ['earliest', 'The one entered first wins']
+];
 export interface Helper {
     event_id: string; user_id: string; can_edit: boolean; can_entries: boolean; can_judge: boolean; can_results: boolean;
     /** may add people to the team, with no more than they hold */
@@ -108,6 +140,10 @@ export interface Detail {
     editRequests: Record<string, EditRequest>;
     /** the Google Sheets link's token (the Entries team) */
     sheet: { token: string; include_private: boolean } | null;
+    /** entries opened in full (answers with their pictures), by entry id */
+    full: Record<string, Record<string, any>>;
+    /** feedback the team sent the entrant, by entry id (yours, or every one with Entries access) */
+    feedback: Record<string, { text: string; at: string }>;
 }
 
 /** An event's page has tabs: what it is, entering it, voting, and the results. */
@@ -186,6 +222,49 @@ export const events: {
 const client = () => api.getClient();
 /** Everything of an entry but who sent it (event_entry_authors hands that out). */
 const ENTRY_COLUMNS = 'id,event_id,answers,placement,created_at';
+
+/**
+ * Every entry of an event with its pictures left out: event_entries_light,
+ * which counts the download against the site's egress budget and stops when
+ * it's spent. Until that migration is in, the table itself.
+ */
+async function lightEntries(c: any, eventId: string): Promise<{ data: any[] | null; error: any }> {
+    const r = await c.rpc('event_entries_light', { p_event: eventId });
+    if (!r.error) return { data: r.data || [], error: null };
+    if (r.error.code !== 'PGRST202' && r.error.code !== '42883') return { data: null, error: r.error };
+    return c.from('event_entries').select(ENTRY_COLUMNS).eq('event_id', eventId).order('created_at', { ascending: true });
+}
+
+/** One entry in full (its pictures, the whole Fakémon), loaded once when it's opened. */
+export async function loadFullEntry(en: Entry): Promise<Record<string, any> | null> {
+    const d = detailFor(en.event_id);
+    if (d?.full[en.id]) return d.full[en.id];
+    try {
+        const c = await client();
+        const r = await c.rpc('event_entry_full', { p_entry: en.id });
+        let answers: Record<string, any> | null = r.data?.answers ?? null;
+        if (r.error) {
+            if (r.error.code !== 'PGRST202' && r.error.code !== '42883') throw r.error;
+            const t = await c.from('event_entries').select('answers').eq('id', en.id).maybeSingle();
+            answers = t.data?.answers ?? null;
+        }
+        if (answers && d) { d.full[en.id] = answers; notify(); }
+        return answers;
+    } catch (e) { fail(e); return null; }
+}
+
+/** The entry as far as it's loaded: in full once opened, otherwise without its pictures. */
+export const fullAnswers = (d: Detail, en: Entry) => d.full[en.id] || en.answers;
+
+/** A small picture of an entry (its first image or Fakémon artwork), for galleries; '' if it has none. */
+export async function entryThumb(form: Field[], answers: Record<string, any>): Promise<string> {
+    for (const f of form) {
+        const v = answers[f.id];
+        const src = f.type === 'image' && typeof v === 'string' ? v : (f.type === 'fakemon' || f.type === 'library') && typeof v?.artwork === 'string' ? v.artwork : '';
+        if (src.startsWith('data:image/')) return shrinkImage(src, 360, 60_000).catch(() => '');
+    }
+    return '';
+}
 const me = () => state.user?.id || '';
 const sitePerms = () => (state.user?.permissions || {}) as Record<string, boolean>;
 
@@ -314,26 +393,51 @@ export function entryTitle(ev: EventRow, en: Entry, people: Record<string, Perso
     return p ? `Entry by ${p.display_name || p.username}` : 'Entry';
 }
 
-/** The entry's picture: its first image answer or Fakémon artwork. */
-export function entryImage(ev: EventRow, en: Entry): string {
+/** The entry's picture: its small thumb, else its first image answer or Fakémon artwork (once loaded in full). */
+export function entryImage(ev: EventRow, en: Entry, full?: Record<string, any>): string {
+    if (!full && en.thumb) return en.thumb;
+    const answers = full || en.answers;
     for (const f of ev.form) {
-        const v = en.answers[f.id];
+        const v = answers[f.id];
         if (f.type === 'image' && typeof v === 'string' && v.startsWith('data:image/')) return v;
         if ((f.type === 'fakemon' || f.type === 'library') && typeof v?.artwork === 'string' && v.artwork.startsWith('data:image/')) return v.artwork;
     }
-    return '';
+    return en.thumb || '';
 }
 
-/** Results joined to entries, best first. Organizer placements outrank the tally. */
-export function ranked(ev: EventRow, entries: Entry[], results: Result[] | null) {
+export interface RankRow { entry: Entry; result: Result | null; /** 1 for first; shared when tied (tie_rule 'share'); null when unplaced */ place: number | null; }
+
+/**
+ * Entries best first, each with its place. On an event that votes, the votes
+ * alone decide (placements can't be set there; the database refuses), and a
+ * tie goes by the event's tie rule. Without voting, the organizer's
+ * placements are the result.
+ */
+export function ranked(ev: EventRow, entries: Entry[], results: Result[] | null): RankRow[] {
     const byId = new Map((results || []).map(r => [r.entry_id, r]));
-    const rows = entries.map(en => ({ entry: en, result: byId.get(en.id) || null }));
-    const score = (r: Result | null) => ev.voting === 'community' ? Number(r?.votes || 0) : Number(r?.points_percent || 0);
-    return rows.sort((a, b) =>
-        (a.entry.placement ?? 999) - (b.entry.placement ?? 999)
-        || score(b.result) - score(a.result)
-        || Number(b.result?.votes || 0) - Number(a.result?.votes || 0)
-        || a.entry.created_at.localeCompare(b.entry.created_at));
+    const rows: RankRow[] = entries.map(en => ({ entry: en, result: byId.get(en.id) || null, place: null }));
+    const first = (a: RankRow, b: RankRow) => a.entry.created_at.localeCompare(b.entry.created_at);
+    if (ev.voting === 'none') {
+        rows.sort((a, b) => (a.entry.placement ?? 999) - (b.entry.placement ?? 999) || first(a, b));
+        rows.forEach(r => { r.place = r.entry.placement ?? null; });
+        return rows;
+    }
+    const score = (r: RankRow) => ev.voting === 'community' ? Number(r.result?.votes || 0) : Number(r.result?.points_percent || 0);
+    const votes = (r: RankRow) => Number(r.result?.votes || 0);
+    const crit = (r: RankRow) => Number(r.result?.criteria_avg?.[ev.tie_criterion || ''] ?? 0);
+    const tieBreak = (a: RankRow, b: RankRow) =>
+        ev.tie_rule === 'criterion' ? crit(b) - crit(a)
+        : ev.tie_rule === 'votes' ? votes(b) - votes(a)
+        : ev.tie_rule === 'earliest' ? first(a, b)
+        : 0;
+    rows.sort((a, b) => score(b) - score(a) || tieBreak(a, b) || first(a, b));
+    // a place is shared only while the score and the tie-break are both equal;
+    // an entry nobody has voted on yet has no place
+    rows.forEach((r, i) => {
+        const prev = rows[i - 1];
+        r.place = !votes(r) ? null : i > 0 && score(prev) === score(r) && tieBreak(prev, r) === 0 ? prev.place : i + 1;
+    });
+    return rows;
 }
 
 export function describeWinnerRules(wc: WinnerRules = {}): string {
@@ -345,21 +449,32 @@ export function describeWinnerRules(wc: WinnerRules = {}): string {
 }
 
 /**
- * Who wins: organizer placements always, plus every entry that meets any of
- * the winner rules (top N, top %, at least X% of the possible points), the
- * same rules the old Fakémon contests had. Takes ranked() rows, best first.
+ * Who wins. Without voting: whoever the organizers placed. With voting: every
+ * entry that meets any of the winner rules (top N places, top %, at least X%
+ * of the possible points). Places come from ranked(), so a tie for the last
+ * winning place lets both in when the event shares tied places.
  */
-export function computeWinners(ev: EventRow, rows: ReturnType<typeof ranked>): Set<string> {
-    const winners = new Set(rows.filter(r => r.entry.placement).map(r => r.entry.id));
+export function computeWinners(ev: EventRow, rows: RankRow[]): Set<string> {
+    if (ev.voting === 'none') return new Set(rows.filter(r => r.entry.placement).map(r => r.entry.id));
+    const winners = new Set<string>();
     const scored = rows.filter(r => r.result && Number(r.result.votes) > 0);
-    if (ev.voting === 'none' || !scored.length) return winners;
+    if (!scored.length) return winners;
     const wc = ev.winner_criteria || {};
     const topN = !wc.top_n && !wc.top_percent && !wc.min_score_percent ? 3 : wc.top_n || 0;
-    if (topN) scored.slice(0, topN).forEach(r => winners.add(r.entry.id));
-    if (wc.top_percent) scored.slice(0, Math.max(1, Math.ceil(scored.length * wc.top_percent / 100))).forEach(r => winners.add(r.entry.id));
+    if (topN) scored.forEach(r => { if ((r.place ?? 999) <= topN) winners.add(r.entry.id); });
+    if (wc.top_percent) {
+        const k = Math.max(1, Math.ceil(scored.length * wc.top_percent / 100));
+        scored.forEach(r => { if ((r.place ?? 999) <= k) winners.add(r.entry.id); });
+    }
     if (wc.min_score_percent) scored.forEach(r => { if (Number(r.result!.points_percent) >= wc.min_score_percent!) winners.add(r.entry.id); });
     return winners;
 }
+
+/** "1st", "2nd", "3rd", "4th"... */
+export const placeLabel = (n: number) => {
+    const t = n % 100;
+    return `${n}${t >= 11 && t <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
+};
 
 // ---- loading ----
 
@@ -371,14 +486,20 @@ async function fetchPeople(ids: string[]): Promise<Record<string, Person>> {
 }
 
 /** Every event this user can see (public ones, plus their own drafts), and their helper roles. */
+/** What the events list needs: everything but the full cover image and the forms (an event page loads those). */
+const LIST_COLUMNS = 'id,owner_id,title,tagline,category,accent,cover_thumb,phase,submissions_open_at,submissions_close_at,voting_open_at,voting_close_at,'
+    + 'results_at,voting,slug,public_access,show_entries,entries_private,hold_results,results_released_at,live_results,max_entries_per_user,votes_per_user,created_at,updated_at';
+
 export async function fetchEvents(): Promise<EventRow[]> {
     const c = await client();
+    const listed = (q: any) => q.order('created_at', { ascending: false }).limit(100);
     const [{ data, error }, helping] = await Promise.all([
-        c.from('events').select('*').order('created_at', { ascending: false }).limit(100),
+        // the small cover; a site that hasn't had the migration yet falls back to the whole row
+        listed(c.from('events').select(LIST_COLUMNS)).then((r: any) => r.error ? listed(c.from('events').select('*')) : r),
         me() ? c.from('event_helpers').select('*').eq('user_id', me()) : Promise.resolve({ data: [] })
     ]);
     if (error) throw error;
-    events.list = data || [];
+    events.list = (data || []).map((e: any) => ({ form: [], vote_form: [], criteria: [], winner_criteria: {}, vote_display: { fields: null, author: true }, description: '', ...e, cover_image: e.cover_image ?? null }));
     events.helping = (helping as any).data || [];
     notify();
     return events.list;
@@ -407,7 +528,8 @@ export async function loadEvent(key: string) {
         privateAnswers: keep?.privateAnswers || {}, myVotes: keep?.myVotes || {}, votes: keep?.votes || [], ballots: keep?.ballots || [],
         limits: keep?.limits || [], results: keep?.results || null, helpers: keep?.helpers || [], people: keep?.people || {},
         resultsPost: keep?.resultsPost ?? null, share: keep?.share || null, codes: keep?.codes || [],
-        announcements: keep?.announcements || [], following: keep?.following || false, editRequests: keep?.editRequests || {}, sheet: keep?.sheet || null
+        announcements: keep?.announcements || [], following: keep?.following || false, editRequests: keep?.editRequests || {}, sheet: keep?.sheet || null,
+        full: keep?.full || {}, feedback: keep?.feedback || {}
     };
     notify();
     const d = events.detail;
@@ -422,11 +544,12 @@ export async function loadEvent(key: string) {
         // votes, ballots, private answers: your own, or everyone's where the team may see them (RLS decides)
         const [entries, authors, helpers, votes, priv, results, ballots, limits, post, share, codes, news, follow, sheet] = await Promise.all([
             // who sent each one comes from event_entry_authors: hidden where the event hides it (blind voting)
-            c.from('event_entries').select(ENTRY_COLUMNS).eq('event_id', id).order('created_at', { ascending: true }),
+            lightEntries(c, id),
             me() ? c.rpc('event_entry_authors', { p_event: id }) : none,
             me() ? c.from('event_helpers').select('*').eq('event_id', id) : none,
             me() ? c.from('event_votes').select('entry_id,voter_id,score,scores,answers,remarks,created_at').eq('event_id', id) : none,
-            me() ? c.from('event_entry_private').select('entry_id,answers,edit_request,edit_requested_at').eq('event_id', id) : none,
+            me() ? c.from('event_entry_private').select('entry_id,answers,edit_request,edit_requested_at,feedback,feedback_at').eq('event_id', id)
+                .then((r: any) => r.error ? c.from('event_entry_private').select('entry_id,answers,edit_request,edit_requested_at').eq('event_id', id) : r) : none,
             // refused (not an error worth showing) until results are public or you're on the team
             c.rpc('get_event_results', { p_event: id }).then((r: any) => r.error ? null : r.data),
             me() ? c.from('event_ballots').select('voter_id,submitted_at').eq('event_id', id) : none,
@@ -449,6 +572,7 @@ export async function loadEvent(key: string) {
         d.votes = (votes as any).data || [];
         d.myVotes = Object.fromEntries(d.votes.filter(v => v.voter_id === me()).map(v => [v.entry_id, v]));
         d.privateAnswers = Object.fromEntries(((priv as any).data || []).map((p: any) => [p.entry_id, p.answers]));
+        d.feedback = Object.fromEntries(((priv as any).data || []).filter((p: any) => p.feedback).map((p: any) => [p.entry_id, { text: p.feedback, at: p.feedback_at }]));
         d.editRequests = Object.fromEntries(((priv as any).data || []).filter((p: any) => p.edit_requested_at).map((p: any) => [p.entry_id, { reason: p.edit_request || '', at: p.edit_requested_at }]));
         d.announcements = (news as any).data || [];
         d.following = !!(follow as any).data;
@@ -819,6 +943,9 @@ export async function submitEntry(eventId: string, answers: Record<string, any>,
     if (!state.user && !ev?.public_access) { api.requireAccount?.('Sign in to enter.'); return false; }
     try {
         const c = await client();
+        // the gallery's small picture rides along; the database checks it and keeps it apart from the answers
+        const thumb = ev ? await entryThumb(ev.form, answers) : '';
+        if (thumb) answers = { ...answers, _thumb: thumb };
         if (state.user) {
             const { error } = await c.rpc('submit_event_entry', { p_event: eventId, p_answers: answers });
             if (error) throw error;
@@ -837,8 +964,12 @@ export async function submitEntry(eventId: string, answers: Record<string, any>,
 /** Changes your own entry while entries are open (update_event_entry checks it's yours). */
 export async function updateEntry(en: Entry, answers: Record<string, any>): Promise<boolean> {
     try {
-        const { error } = await (await client()).rpc('update_event_entry', { p_entry: en.id, p_answers: answers });
+        const ev = detailFor(en.event_id)?.event;
+        const thumb = ev ? await entryThumb(ev.form, answers) : '';
+        const { error } = await (await client()).rpc('update_event_entry', { p_entry: en.id, p_answers: thumb ? { ...answers, _thumb: thumb } : answers });
         if (error) throw error;
+        const d = detailFor(en.event_id);
+        if (d) delete d.full[en.id];
         toast('Your entry was updated.', 'success');
         await loadEvent(en.event_id);
         return true;
@@ -946,6 +1077,64 @@ export async function requestEntryEdit(en: Entry, reason: string): Promise<boole
     } catch (e) { fail(e); return false; }
 }
 
+// ---- voter feedback, for the entry's creator ----
+
+/** Sends the team's compiled feedback to the entrant (send_event_feedback); sending again replaces it. */
+export async function sendFeedback(en: Entry, text: string): Promise<boolean> {
+    try {
+        const { error } = await (await client()).rpc('send_event_feedback', { p_entry: en.id, p_text: text.trim() });
+        if (error) throw error;
+        const d = detailFor(en.event_id);
+        if (d) { d.feedback[en.id] = { text: text.trim(), at: new Date().toISOString() }; notify(); }
+        toast('Feedback sent. They\'ve been notified.', 'success');
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+/** What voters wrote about one entry: each voter's answers to the voter questions, and their remarks. */
+export function votesFor(ev: EventRow, d: Detail, en: Entry) {
+    const questions = (ev.vote_form || []).filter(q => q.type !== 'section');
+    return d.votes.filter(v => v.entry_id === en.id).map(v => ({
+        vote: v,
+        who: d.people[v.voter_id],
+        answers: questions.filter(q => answered(v.answers?.[q.id])).map(q => ({ q, value: Array.isArray(v.answers![q.id]) ? v.answers![q.id].join(', ') : String(v.answers![q.id]) })),
+        remarks: (v.remarks || '').trim()
+    }));
+}
+
+/** A starting point for the feedback: every written answer and remark, one voter after another. */
+export function compileFeedback(ev: EventRow, d: Detail, en: Entry, { names = false, onlyWritten = true } = {}): string {
+    const rows = votesFor(ev, d, en);
+    const parts = rows.map((r, i) => {
+        const lines = [
+            ...r.answers.filter(a => !onlyWritten || a.q.type === 'long' || a.q.type === 'short').map(a => `**${a.q.label}:** ${a.value}`),
+            ...(r.remarks ? [r.remarks] : [])
+        ];
+        if (!lines.length) return '';
+        const who = names && r.who?.username ? `@${r.who.username}` : `Voter ${i + 1}`;
+        return `### ${who}\n${lines.join('\n\n')}`;
+    }).filter(Boolean);
+    return parts.length ? [`## Feedback on ${entryTitle(ev, en, d.people)}`, '', ...parts.flatMap(p => [p, ''])].join('\n').trim() : '';
+}
+
+/** Every vote as a spreadsheet: who, which entry, each score, each answer, the remarks. */
+export function exportVotesCsv() {
+    const d = events.detail;
+    if (!d?.event) return;
+    const ev = d.event;
+    const criteria = criteriaOf(ev);
+    const questions = (ev.vote_form || []).filter(q => q.type !== 'section');
+    const header = ['Voter', 'Entry', 'Entrant', 'Total', ...criteria.map(c => `${c.name} (of ${c.max})`), ...questions.map(q => q.label), 'Remarks', 'When'];
+    const rows = d.votes.map(v => {
+        const en = d.entries.find(e => e.id === v.entry_id);
+        const voter = d.people[v.voter_id];
+        const entrant = en?.user_id ? d.people[en.user_id] : null;
+        return [voter ? `@${voter.username}` : v.voter_id, en ? entryTitle(ev, en, d.people) : 'Removed entry', entrant ? `@${entrant.username}` : en?.user_id ? 'Member' : 'Guest',
+            v.score, ...criteria.map(c => v.scores?.[c.name] ?? ''), ...questions.map(q => v.answers?.[q.id]), v.remarks || '', v.created_at];
+    });
+    download(new Blob([[header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv' }), `${fileSlug(ev.title)}-votes.csv`);
+}
+
 // ---- the Google Sheets link ----
 
 /** The address Google Sheets reads (=IMPORTDATA), served as CSV by worker/index.js. */
@@ -993,24 +1182,44 @@ export function variablesFor(ev: EventRow, d: Detail | null): Record<string, str
     // winners only from real results or placements the viewer may see
     const winners = rows.length && (d!.results || rows.some(r => r.entry.placement)) ? computeWinners(ev, rows) : new Set<string>();
     const won = rows.filter(r => winners.has(r.entry.id));
-    const name = (i: number) => {
-        const r = won[i];
-        if (!r) return tba;
+    const one = (r: RankRow) => {
         const p = d!.people[r.entry.user_id || ''];
         return `**${entryTitle(ev, r.entry, d!.people)}**${p?.username ? ` by @${p.username}` : ''}`;
+    };
+    // {{winner2}}: whoever is in 2nd place, two of them if they tied
+    const name = (i: number) => {
+        const at = won.filter(r => r.place === i + 1);
+        return at.length ? at.map(one).join(' and ') : tba;
     };
     const date = (v: string | null) => v ? fmtDate(v) : tba;
     const organizer = d?.people[ev.owner_id];
     return {
         event: ev.title || 'this event', organizer: organizer?.username ? `@${organizer.username}` : tba,
         winner1: name(0), winner2: name(1), winner3: name(2),
-        winners: won.length ? won.map((_, i) => `${['🥇', '🥈', '🥉'][i] || `${i + 1}.`} ${name(i)}`).join('\n') : tba,
+        winners: won.length ? won.map(r => `${['🥇', '🥈', '🥉'][(r.place || 99) - 1] || `${placeLabel(r.place || 0)}:`} ${one(r)}`).join('\n') : tba,
         entries: seen ? String(d!.entries.length) : tba,
         entrants: seen ? String(new Set(d!.entries.map(e => e.user_id || e.id)).size) : tba,
         voters: d?.results?.length ? String(d.results[0].total_voters) : tba,
         entries_open: date(ev.submissions_open_at), entries_close: date(ev.submissions_close_at),
         voting_open: date(ev.voting_open_at), voting_close: date(ev.voting_close_at), results_date: date(ev.results_at),
         link: shareLink(ev)
+    };
+}
+
+/** Made-up values for every variable, so a preview reads like the real thing. */
+export function sampleVariables(ev: EventRow): Record<string, string> {
+    const soon = (days: number) => fmtDate(new Date(Date.now() + days * 86_400_000).toISOString());
+    return {
+        event: ev.title || 'Your event', organizer: state.user?.username ? `@${state.user.username}` : '@organizer',
+        winner1: '**Blazelyn** by @mira', winner2: '**Mossbit** by @kai', winner3: '**Voltusk** by @juniper and **Frostail** by @sol',
+        winners: '🥇 **Blazelyn** by @mira\n🥈 **Mossbit** by @kai\n🥉 **Voltusk** by @juniper and **Frostail** by @sol',
+        entries: '24', entrants: '19', voters: '41',
+        entries_open: ev.submissions_open_at ? fmtDate(ev.submissions_open_at) : soon(1),
+        entries_close: ev.submissions_close_at ? fmtDate(ev.submissions_close_at) : soon(8),
+        voting_open: ev.voting_open_at ? fmtDate(ev.voting_open_at) : soon(8),
+        voting_close: ev.voting_close_at ? fmtDate(ev.voting_close_at) : soon(12),
+        results_date: ev.results_at ? fmtDate(ev.results_at) : soon(13),
+        link: shareLink(ev.id === 'preview' ? { id: 'your-event', slug: ev.slug } : ev)
     };
 }
 
@@ -1023,12 +1232,12 @@ export function fillVariables(text: string, vars: Record<string, string>): strin
 export function standingsMarkdown(ev: EventRow, d: Detail): string {
     const rows = ranked(ev, d.entries, d.results);
     const winners = computeWinners(ev, rows);
-    const medal = (i: number) => ['🥇', '🥈', '🥉'][i] || `${i + 1}.`;
-    const lines = rows.filter(r => winners.has(r.entry.id)).map((r, i) => {
+    const medal = (place: number) => ['🥇', '🥈', '🥉'][place - 1] || `${placeLabel(place)}:`;
+    const lines = rows.filter(r => winners.has(r.entry.id)).map(r => {
         const p = d.people[r.entry.user_id || ''];
         const by = p ? ` by @${p.username}` : '';
         const score = r.result ? (ev.voting === 'community' ? ` (${r.result.votes} votes)` : ` (${Number(r.result.points_percent).toFixed(1)}%)`) : '';
-        return `${medal(i)} **${entryTitle(ev, r.entry, d.people)}**${by}${score}`;
+        return `${medal(r.place || 1)} **${entryTitle(ev, r.entry, d.people)}**${by}${score}`;
     });
     return [`## Winners of ${ev.title}`, '', ...(lines.length ? lines : ['_No winners yet._']), '', 'Thanks to everyone who took part!'].join('\n');
 }
@@ -1181,11 +1390,12 @@ const ART_MAX = 1_400_000;
  * collection bookkeeping dropped. It is stored in the entry only: not a
  * community upload, not a cloud save, so neither limit counts it.
  */
-export async function fakemonForEntry(mon: any): Promise<any> {
+export async function fakemonForEntry(mon: any, maxArt = ART_MAX): Promise<any> {
     const copy = JSON.parse(JSON.stringify(mon));
-    for (const k of ['id', 'createdAt', 'updatedAt', 'regionIds', 'folderId', 'pinned', 'pendingVanilla']) delete copy[k];
+    // the board it was drawn on points at the rest of the collection; the line goes in as `family` instead
+    for (const k of ['id', 'createdAt', 'updatedAt', 'regionIds', 'folderId', 'pinned', 'pendingVanilla', 'family', 'evolutionGraph', 'sourceId']) delete copy[k];
     for (const k of ['artwork', 'shinyArtwork']) {
-        if (typeof copy[k] === 'string' && copy[k].startsWith('data:image/')) copy[k] = await shrinkImage(copy[k], 1200, ART_MAX).catch(() => '');
+        if (typeof copy[k] === 'string' && copy[k].startsWith('data:image/')) copy[k] = await shrinkImage(copy[k], 1200, maxArt).catch(() => '');
         else delete copy[k];
         if (!copy[k]) delete copy[k];
     }
@@ -1193,6 +1403,133 @@ export async function fakemonForEntry(mon: any): Promise<any> {
     if (JSON.stringify(copy).length > 2_400_000) throw new Error('That Fakémon is too large to enter. Try one with smaller artwork.');
     return copy;
 }
+
+// ---- evolution lines ----
+// A Fakémon answer can carry its whole line, the way a Community upload does:
+// picked from the collection, its evolutions, Megas and forms come along; from
+// a file or made here, they're added and connected on the form.
+
+/** At most this many Fakémon in one answer (clean_event_fakemon allows the same). */
+export const LINE_MAX = 10;
+/** What a whole line may weigh; the server takes 5MB. */
+const LINE_CHARS = 4_600_000;
+export const newSourceId = () => 'n' + Math.random().toString(36).slice(2, 10);
+
+/** Every Fakémon in a Fakémon answer, each with its `mon`, in stage order. */
+export function lineOf(value: any): LineMember[] {
+    if (!value || typeof value !== 'object') return [];
+    const { family, ...face } = value;
+    if (!Array.isArray(family) || family.length < 2) return [{ sourceId: 'main', stage: 1, face: true, mon: face }];
+    return family.filter((m: any) => m && (m.face || m.mon)).map((m: any) => ({ ...m, mon: m.face ? face : m.mon }));
+}
+
+/** Stages worked out from the links: a Mega or form shares the stage of the one it's a form of. */
+function staged(members: LineMember[]): LineMember[] {
+    const byId = new Map(members.map(m => [m.sourceId, m]));
+    const memo = new Map<string, number>();
+    const stageOf = (m: LineMember, seen: Set<string>): number => {
+        if (memo.has(m.sourceId)) return memo.get(m.sourceId)!;
+        const parent = m.from && !seen.has(m.from) ? byId.get(m.from) : undefined;
+        const s = parent ? stageOf(parent, new Set([...seen, m.sourceId])) + (m.isMega || m.isFormeChange ? 0 : 1) : 1;
+        memo.set(m.sourceId, Math.min(20, s));
+        return memo.get(m.sourceId)!;
+    };
+    return members
+        .map(m => ({ ...m, from: m.from && byId.has(m.from) && m.from !== m.sourceId ? m.from : null, stage: stageOf(m, new Set([m.sourceId])) }))
+        .sort((a, b) => a.stage - b.stage || Number(!!(a.isMega || a.isFormeChange)) - Number(!!(b.isMega || b.isFormeChange)));
+}
+
+/** The member cards and lists show: the last stage (Megas and forms don't count as later). */
+function faceOf(members: LineMember[]): LineMember {
+    const bases = members.filter(m => !m.isMega && !m.isFormeChange);
+    const pool = bases.length ? bases : members;
+    return pool.reduce((best, m) => (m.stage > best.stage ? m : best), pool[0]);
+}
+
+/** A line back into an answer: the face's Fakémon, with the rest as `family`. */
+export function packLine(members: LineMember[]): any {
+    if (!members.length) return null;
+    const list = staged(members);
+    if (list.length === 1) return { ...list[0].mon };
+    const face = faceOf(list);
+    return {
+        ...face.mon,
+        family: list.map(({ mon, face: _f, ...meta }) => {
+            const clean = { ...meta, method: String(meta.method || '').trim().slice(0, 120) || undefined, isMega: meta.isMega || undefined, isFormeChange: meta.isFormeChange || undefined };
+            return meta.sourceId === face.sourceId ? { ...clean, face: true } : { ...clean, mon };
+        })
+    };
+}
+
+/**
+ * packLine, made to fit: when the line's pictures are too heavy together
+ * they're shrunk to share the room, and only the face keeps its cry.
+ */
+export async function packLineForEntry(members: LineMember[]): Promise<any> {
+    if (members.length > LINE_MAX) throw new Error(`An entry can hold at most ${LINE_MAX} Fakémon.`);
+    let value = packLine(members);
+    if (members.length < 2 || JSON.stringify(value).length <= LINE_CHARS) return value;
+    const face = faceOf(staged(members));
+    const images = members.reduce((n, m) => n + (m.mon?.artwork ? 1 : 0) + (m.mon?.shinyArtwork ? 1 : 0), 0);
+    const budget = Math.max(120_000, Math.floor((LINE_CHARS - 400_000) / Math.max(1, images)));
+    const fitted = await Promise.all(members.map(async m => {
+        const mon = { ...m.mon };
+        if (m.sourceId !== face.sourceId) delete mon.cry;
+        for (const k of ['artwork', 'shinyArtwork']) {
+            if (typeof mon[k] === 'string' && mon[k].length > budget) mon[k] = await shrinkImage(mon[k], 1000, budget).catch(() => '');
+            if (!mon[k]) delete mon[k];
+        }
+        return { ...m, mon };
+    }));
+    value = packLine(fitted);
+    if (JSON.stringify(value).length > LINE_CHARS) throw new Error('That line is too large to enter. Try smaller artwork, or fewer Fakémon.');
+    return value;
+}
+
+/**
+ * A Fakémon from your collection with everything its evolution board connects
+ * it to (the Community upload's rule): each one's stage, what it evolves from,
+ * and how ("Level 16"). `pool`: where the others are looked up (a whole
+ * collection export works too).
+ */
+export async function fakemonLineForEntry(mon: any, pool: any[] = state.fakemonDB || []): Promise<any> {
+    const g = mon?.evolutionGraph;
+    const nodes: any[] = Array.isArray(g?.nodes) && Array.isArray(g?.edges) ? g.nodes.filter((n: any) => n.kind === 'fakemon' && n.refId) : [];
+    const find = (id: any) => String(id) === String(mon.id) ? mon : pool.find((x: any) => x?.id != null && String(x.id) === String(id));
+    const picked: Array<{ node: any; mon: any }> = [];
+    for (const node of nodes) {
+        const f = find(node.refId);
+        // a main-game Pokémon on the board, or a Fakémon no longer in the collection
+        if (!f || picked.some(p => String(p.mon.id) === String(f.id))) continue;
+        picked.push({ node, mon: f });
+    }
+    if (!picked.some(p => String(p.mon.id) === String(mon.id))) picked.push({ node: null, mon });
+    if (picked.length < 2) return fakemonForEntry(mon);
+    if (picked.length > LINE_MAX) throw new Error(`That evolution line has ${picked.length} Fakémon; an entry can hold at most ${LINE_MAX}.`);
+
+    // collection ids, made safe to store (clean_event_fakemon takes [A-Za-z0-9_.:-], up to 64)
+    const safe = new Map(picked.map(p => [String(p.mon.id), String(p.mon.id).replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 64) || newSourceId()]));
+    const methods: Map<string, any> = api.getEdgeMethodMap?.(g) || new Map();
+    const nodeOf = (refId: string) => g.nodes.find((n: any) => n.kind === 'fakemon' && String(n.refId) === refId);
+    const members: LineMember[] = [];
+    for (const p of picked) {
+        const id = String(p.mon.id);
+        const from = ((api.prevolutionRefIds?.(g, id) || []) as string[]).find(x => safe.has(x)) || null;
+        let method = '';
+        const a = from && nodeOf(from), b = p.node || nodeOf(id);
+        const methodNode = a && b ? (methods.get(`${a.id}->${b.id}`) ?? methods.get(`${b.id}->${a.id}`)) : null;
+        if (methodNode) method = api.getMethodSummary?.(methodNode) || '';
+        members.push({
+            sourceId: safe.get(id)!, stage: 1, from: from ? safe.get(from)! : null, method,
+            isMega: !!(p.node?.isMega ?? p.mon.isMega), isFormeChange: !!(p.node?.isFormeChange ?? p.mon.isFormeChange),
+            mon: await fakemonForEntry(p.mon)
+        });
+    }
+    return packLineForEntry(members);
+}
+
+/** How a line member is labelled: "Stage 2", "Mega", "Form". */
+export const lineLabel = (m: LineMember) => m.isMega ? 'Mega' : m.isFormeChange ? 'Form' : `Stage ${m.stage}`;
 
 /** The Fakémon in a Woogidex export (one Fakémon, a list, or a whole collection backup) or a plain-text export. */
 export async function fakemonFromFile(file: File): Promise<any[]> {
@@ -1231,9 +1568,8 @@ const isCustomType = (t?: string) => !!t && !ALL_VANILLA_TYPES.includes(t);
 const isCustom = (x: any) => x?.custom === true || x?.source === 'custom';
 export const monBst = (m: any) => ['hp', 'atk', 'def', 'spa', 'spd', 'spe'].reduce((n, k) => n + (Number(m?.stats?.[k]) || 0), 0);
 
-/** What a Fakémon breaks of a question's rules, in words ([] when it's fine). */
-export function monRuleProblems(m: any, r?: MonRules): string[] {
-    if (!m || !r) return [];
+/** One Fakémon against the rules. Type and BST rules are the final evolution's (`face`) alone. */
+function oneMonProblems(m: any, r: MonRules, face: boolean): string[] {
     const out: string[] = [];
     const has: Record<MonPart, boolean> = {
         artwork: !!m.artwork, shiny: !!m.shinyArtwork, abilities: (m.abilities || []).some((a: any) => String(a?.name || '').trim()),
@@ -1243,6 +1579,7 @@ export function monRuleProblems(m: any, r?: MonRules): string[] {
     if (r.noCustomTypes && (isCustomType(m.type1) || isCustomType(m.type2))) out.push("can't have a custom type");
     if (r.noCustomAbilities && (m.abilities || []).some(isCustom)) out.push("can't have a custom ability");
     if (r.noCustomMoves && ((m.learnset || []).some(isCustom) || (m.customMoves || []).length)) out.push("can't have custom moves");
+    if (!face) return out;
     if (r.types?.length && !r.types.includes(m.type1) && !r.types.includes(m.type2)) out.push(`must be ${r.types.join(' or ')} type`);
     const bst = monBst(m);
     if (r.minBst && bst < r.minBst) out.push(`needs a BST of at least ${r.minBst}`);
@@ -1250,19 +1587,81 @@ export function monRuleProblems(m: any, r?: MonRules): string[] {
     return out;
 }
 
+const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+const lowName = (x: any) => String(x?.name || '').trim().toLowerCase();
+
+/** The custom moves, abilities and types across a line, each counted once. */
+export function lineCustoms(members: LineMember[]): { moves: number; abilities: number; types: number } {
+    const moves = new Set<string>(), abilities = new Set<string>(), types = new Set<string>();
+    for (const { mon: m } of members) {
+        (m?.learnset || []).filter(isCustom).forEach((x: any) => moves.add(lowName(x)));
+        (m?.customMoves || []).forEach((x: any) => moves.add(lowName(x)));
+        (m?.abilities || []).filter(isCustom).forEach((x: any) => abilities.add(lowName(x)));
+        [m?.type1, m?.type2].filter(isCustomType).forEach((t: string) => types.add(t.toLowerCase()));
+    }
+    for (const s of [moves, abilities, types]) s.delete('');
+    return { moves: moves.size, abilities: abilities.size, types: types.size };
+}
+
+/**
+ * What a Fakémon answer (one Fakémon, or a line) breaks of a question's
+ * rules, as clauses ready to follow "For this event, " ([] when it's fine).
+ * event_fakemon_problem in the database checks the same.
+ */
+export function monRuleProblems(v: any, r?: MonRules): string[] {
+    if (!v || !r) return [];
+    const members = lineOf(v);
+    const many = members.length > 1;
+    const faceId = many ? faceOf(staged(members)).sourceId : members[0]?.sourceId;
+    const out: string[] = [];
+    for (const m of members) {
+        const who = many ? (String(m.mon?.name || '').trim() || 'one of your Fakémon') : 'your Fakémon';
+        for (const p of oneMonProblems(m.mon || {}, r, m.sourceId === faceId)) out.push(`${who} ${p}`);
+    }
+    const n = members.length;
+    if (r.maxLine && n > r.maxLine) out.push(r.maxLine === 1 ? "evolutions and forms aren't allowed, so enter just the one Fakémon" : `the line has ${n} Fakémon, but at most ${r.maxLine} are allowed`);
+    if (r.minLine && n < r.minLine) out.push(`the entry needs an evolution line of at least ${r.minLine} Fakémon`);
+    if (r.noForms && members.some(m => m.isMega || m.isFormeChange)) out.push("Megas and other forms aren't allowed");
+    const c = lineCustoms(members);
+    const has = many ? 'the line has' : 'your Fakémon has';
+    if (r.maxCustomMoves != null && c.moves > r.maxCustomMoves) out.push(`${has} ${plural(c.moves, 'custom move')}, but at most ${r.maxCustomMoves} ${r.maxCustomMoves === 1 ? 'is' : 'are'} allowed`);
+    if (r.maxCustomAbilities != null && c.abilities > r.maxCustomAbilities) out.push(`${has} ${plural(c.abilities, 'custom ability', 'custom abilities')}, but at most ${r.maxCustomAbilities} ${r.maxCustomAbilities === 1 ? 'is' : 'are'} allowed`);
+    const total = c.moves + c.abilities + c.types;
+    if (r.maxCustomTotal != null && total > r.maxCustomTotal) out.push(`${has} ${total} custom moves, abilities and types together, but at most ${r.maxCustomTotal} ${r.maxCustomTotal === 1 ? 'is' : 'are'} allowed`);
+    return out;
+}
+
+/** One Fakémon's own problems (no line rules), each a clause about "your Fakémon". */
+export const memberRuleProblems = (m: any, r: MonRules | undefined, face = true) =>
+    m && r ? oneMonProblems(m, r, face).map(p => `your Fakémon ${p}`) : [];
+
+/** monRuleProblems as one sentence. */
+export const monRuleSentence = (problems: string[]) => problems.length ? `For this event, ${problems.join('; ')}.` : '';
+
 /** The rules in words, for entrants. */
 export function describeMonRules(r?: MonRules): string[] {
     if (!r) return [];
     const out: string[] = [];
+    const lines = r.maxLine !== 1;
     const parts = MON_PARTS.filter(([p]) => r.require?.includes(p)).map(([, w]) => w);
-    if (parts.length) out.push(`Must have ${parts.join(', ')}`);
-    if (r.types?.length) out.push(`Must be ${r.types.join(' or ')} type`);
-    if (r.minBst && r.maxBst) out.push(`BST between ${r.minBst} and ${r.maxBst}`);
-    else if (r.minBst) out.push(`BST of at least ${r.minBst}`);
-    else if (r.maxBst) out.push(`BST of at most ${r.maxBst}`);
+    if (parts.length) out.push(`${lines ? 'Each Fakémon must have' : 'Must have'} ${parts.join(', ')}`);
+    const last = lines ? ' (the final evolution)' : '';
+    if (r.types?.length) out.push(`Must be ${r.types.join(' or ')} type${last}`);
+    if (r.minBst && r.maxBst) out.push(`BST between ${r.minBst} and ${r.maxBst}${last}`);
+    else if (r.minBst) out.push(`BST of at least ${r.minBst}${last}`);
+    else if (r.maxBst) out.push(`BST of at most ${r.maxBst}${last}`);
+    if (r.maxLine === 1) out.push('One Fakémon only: no evolutions or forms');
+    else if (r.minLine && r.maxLine) out.push(r.minLine === r.maxLine ? `An evolution line of exactly ${r.maxLine} Fakémon` : `An evolution line of ${r.minLine} to ${r.maxLine} Fakémon`);
+    else if (r.maxLine) out.push(`Up to ${r.maxLine} Fakémon in the line, Megas and forms included`);
+    else if (r.minLine) out.push(`An evolution line of at least ${r.minLine} Fakémon`);
+    if (r.noForms && r.maxLine !== 1) out.push('No Megas or other forms');
+    const across = lines ? ' across the line' : '';
     if (r.noCustomTypes) out.push('No custom types');
     if (r.noCustomAbilities) out.push('No custom abilities');
+    else if (r.maxCustomAbilities != null) out.push(`Up to ${plural(r.maxCustomAbilities, 'custom ability', 'custom abilities')}${across}`);
     if (r.noCustomMoves) out.push('No custom moves');
+    else if (r.maxCustomMoves != null) out.push(`Up to ${plural(r.maxCustomMoves, 'custom move')}${across}`);
+    if (r.maxCustomTotal != null) out.push(`Up to ${r.maxCustomTotal} custom moves, abilities and types combined${across}`);
     return out;
 }
 
@@ -1308,33 +1707,115 @@ export async function libraryFromFile(file: File, kinds: LibKind[]): Promise<any
 }
 
 // ---- your event templates ----
-// An event's setup (form, voting, rules, about) without its dates or link, to
-// start new events from. Per account, on this device, like the drafts below.
-// ponytail: device-only; a table keyed by owner if they should follow you between devices.
+// An event's setup (form, voting, rules, about, team) without its dates or
+// link, to start new events from. Saved to your account (event_templates), so
+// they follow you between devices; the list loads names only, a template's
+// contents load when you use it. Templates from before that, kept on one
+// device, move to the account the first time the list loads there.
 
-export interface EventTemplate { id: string; name: string; savedAt: number; values: any; }
-const templatesKey = () => `woogidex.eventTemplates.${me()}`;
-
-export function readEventTemplates(): EventTemplate[] {
-    try { const list = JSON.parse(localStorage.getItem(templatesKey()) || '[]'); return Array.isArray(list) ? list : []; } catch { return []; }
-}
-function writeEventTemplates(list: EventTemplate[]): boolean {
-    try { localStorage.setItem(templatesKey(), JSON.stringify(list)); return true; } catch { return false; }
-}
-/** Saves (or, by the same name, replaces) a template. A cover too big for storage is left out. */
-export function saveEventTemplate(name: string, values: any): boolean {
+export interface EventTemplate { id: string; name: string; savedAt: number; values?: any; }
+const templateState: { userId: string | null; status: 'idle' | 'loading' | 'ready' | 'error'; list: EventTemplate[]; local: boolean } = { userId: null, status: 'idle', list: [], local: false };
+const oldTemplatesKey = () => `woogidex.eventTemplates.${me()}`;
+const readLocalTemplates = (): EventTemplate[] => {
+    try { const list = JSON.parse(localStorage.getItem(oldTemplatesKey()) || '[]'); return Array.isArray(list) ? list : []; } catch { return []; }
+};
+/** What a template keeps: the setup, not the dates or the link. */
+const templateValues = (values: any) => {
     const { submissions_open_at, submissions_close_at, voting_open_at, voting_close_at, results_at, slug, ...setup } = values;
-    const others = readEventTemplates().filter(t => t.name.toLowerCase() !== name.toLowerCase());
-    const entry = (v: any): EventTemplate => ({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, savedAt: Date.now(), values: v });
-    const ok = writeEventTemplates([entry(setup), ...others]) || writeEventTemplates([entry({ ...setup, cover_image: null }), ...others]);
-    if (ok) notify();
-    toast(ok ? `Saved "${name}" as a template.` : 'Couldn\'t save the template: this device\'s storage is full.', ok ? 'success' : 'error');
-    return ok;
+    return setup;
+};
+
+/** Your templates (names only), loading them the first time they're asked for. */
+export function readEventTemplates(): EventTemplate[] {
+    if (me() && templateState.userId !== me()) { templateState.userId = me(); templateState.status = 'idle'; templateState.list = []; }
+    if (me() && templateState.status === 'idle') loadEventTemplates();
+    return templateState.list;
 }
-export function deleteEventTemplate(id: string) {
-    writeEventTemplates(readEventTemplates().filter(t => t.id !== id));
+export const eventTemplatesStatus = () => templateState.status;
+
+export async function loadEventTemplates() {
+    if (!me()) return;
+    templateState.status = 'loading';
+    notify();
+    try {
+        const c = await client();
+        // one device's templates from before move to the account, once
+        const local = readLocalTemplates();
+        if (local.length) {
+            const { error } = await c.from('event_templates').upsert(local.map(t => ({ name: t.name.slice(0, 60), values: templateValues(t.values || {}) })), { onConflict: 'owner_id,name' });
+            if (!error) { try { localStorage.removeItem(oldTemplatesKey()); } catch { /* private mode */ } }
+        }
+        const { data, error } = await c.from('event_templates').select('id,name,updated_at').order('updated_at', { ascending: false });
+        if (error) throw error;
+        templateState.list = (data || []).map((t: any) => ({ id: t.id, name: t.name, savedAt: Date.parse(t.updated_at) }));
+        templateState.local = false;
+        templateState.status = 'ready';
+    } catch {
+        // the table isn't there yet (or the network failed): this device's own list
+        templateState.list = readLocalTemplates();
+        templateState.local = true;
+        templateState.status = 'ready';
+    }
     notify();
 }
+
+/** A template's contents, to apply. */
+export async function templateContents(t: EventTemplate): Promise<any | null> {
+    if (t.values) return t.values;
+    try {
+        const { data, error } = await (await client()).from('event_templates').select('values').eq('id', t.id).single();
+        if (error) throw error;
+        return data.values;
+    } catch (e) { fail(e); return null; }
+}
+
+/** Saves (or, by the same name, replaces) a template. */
+export async function saveEventTemplate(name: string, values: any): Promise<boolean> {
+    const setup = templateValues(values);
+    try {
+        if (templateState.local) throw new Error('local');
+        const c = await client();
+        const { error } = await c.from('event_templates').upsert({ name, values: setup }, { onConflict: 'owner_id,name' });
+        if (error) {
+            // too big with its cover: keep it without one
+            if (/values_check|check constraint/i.test(error.message) && setup.cover_image) {
+                const again = await c.from('event_templates').upsert({ name, values: { ...setup, cover_image: null, cover_thumb: null } }, { onConflict: 'owner_id,name' });
+                if (again.error) throw again.error;
+            } else throw error;
+        }
+        toast(`Saved "${name}" as a template. It's on your account, on every device.`, 'success');
+        await loadEventTemplates();
+        return true;
+    } catch (e: any) {
+        if (e?.message !== 'local') { fail(e); return false; }
+        const others = readLocalTemplates().filter(t => t.name.toLowerCase() !== name.toLowerCase());
+        const entry = (v: any): EventTemplate => ({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, savedAt: Date.now(), values: v });
+        const write = (list: EventTemplate[]) => { try { localStorage.setItem(oldTemplatesKey(), JSON.stringify(list)); return true; } catch { return false; } };
+        const ok = write([entry(setup), ...others]) || write([entry({ ...setup, cover_image: null }), ...others]);
+        toast(ok ? `Saved "${name}" as a template on this device.` : 'Couldn\'t save the template: this device\'s storage is full.', ok ? 'success' : 'error');
+        templateState.list = readLocalTemplates();
+        notify();
+        return ok;
+    }
+}
+
+export async function deleteEventTemplate(t: EventTemplate) {
+    if (!await confirmDialog({ title: `Delete "${t.name}"?`, message: 'The template goes for good. Events made from it are untouched.', confirmLabel: 'Delete template', danger: true })) return;
+    if (templateState.local) {
+        try { localStorage.setItem(oldTemplatesKey(), JSON.stringify(readLocalTemplates().filter(x => x.id !== t.id))); } catch { /* private mode */ }
+        templateState.list = readLocalTemplates();
+        notify();
+        return;
+    }
+    try {
+        const { error } = await (await client()).from('event_templates').delete().eq('id', t.id);
+        if (error) throw error;
+        await loadEventTemplates();
+    } catch (e) { fail(e); }
+}
+
+/** A template picked from the list page, for the new-event editor to start from. */
+export const pendingTemplate: { values: { values: any; name: string } | null } = { values: null };
 
 // ---- unsaved event drafts ----
 // The editor writes what you've typed here as you go, like a post draft, so
@@ -1368,17 +1849,22 @@ function download(blob: Blob, name: string) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+/** One spreadsheet cell: pictures as [image], a Fakémon (or its whole line) by name, and never a formula. */
+function csvCell(v: any): string {
+    const s = v == null ? '' : Array.isArray(v) ? v.join(', ')
+        : typeof v === 'object' ? (Array.isArray(v.family) && v.family.length > 1 ? lineOf(v).map(m => m.mon?.name || '?').join(' → ') : (v.name || ''))
+        : String(v);
+    const text = s.startsWith('data:') ? '[image]' : s;
+    // =, +, -, @ would run as a formula when the sheet is opened
+    return `"${(/^[=+\-@]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`;
+}
+
 /** Every entry with every answer (private ones too, when you may see them) as a CSV download. */
 export function exportEntriesCsv() {
     const d = events.detail;
     if (!d?.event) return;
     const ev = d.event;
-    const cell = (v: any) => {
-        const s = v == null ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? (v.name || '') : String(v);
-        const text = s.startsWith('data:') ? '[image]' : s;
-        // =, +, -, @ would run as a formula when the sheet is opened
-        return `"${(/^[=+\-@]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`;
-    };
+    const cell = csvCell;
     const questions = ev.form.filter(f => f.type !== 'section');
     const header = ['Entry', 'Entrant', 'Submitted', ...questions.map(f => f.label), 'Votes', 'Points %', 'Placement'];
     const results = new Map((d.results || []).map(r => [r.entry_id, r]));

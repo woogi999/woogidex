@@ -902,3 +902,60 @@ img.ev-lib-art { background: var(--bg-panel); }
     .ev-question-answers li { grid-template-columns: 1fr; gap: var(--sp-2); }
     .ev-notice.is-ask { flex-wrap: wrap; }
 }
+
+/* ==================== round three ==================== */
+
+/* sections stacked in the dashboard and the focus pages (enter, vote, results)
+   sit in plain blocks, not a flex gap: space them the same 20px as the event page */
+:where(.ev-dash, .ev-focus) > :where(.ev-block, .ev-dash-grid, .ev-notice, .ev-form) + :where(.ev-block, .ev-dash-grid, .ev-form) { margin-top: var(--sp-5); }
+
+/* previews: the sample-data switch */
+.ev-preview-label { flex-wrap: wrap; }
+.ev-preview-label > span { flex: 1 1 auto; }
+.ev-sample-switch { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0 0 var(--sp-3); }
+.ev-preview-label .ev-sample-switch { margin: 0; }
+
+/* the scoring settings, locked once voting starts */
+.ev-lockable { border: 0; padding: 0; margin: 0; min-width: 0; display: contents; }
+.ev-lockable:disabled .ev-field, .ev-lockable:disabled .ev-toggle { opacity: .6; }
+
+/* an entry opening in full */
+.ev-answers.is-loading { opacity: .75; }
+
+/* voter feedback */
+.ev-vote-list { list-style: none; margin: 0 0 var(--sp-5); padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.ev-vote-list li { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-3) var(--sp-4); border-radius: var(--card-r); background: var(--bg-card); min-width: 0; }
+.ev-vote-list li > strong { font-size: 13px; }
+.ev-vote-list p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.ev-vote-remarks { color: var(--text-secondary) !important; font-style: italic; }
+.ev-feedback-head { margin-bottom: var(--sp-2); }
+.ev-chip-flag.is-done { background: color-mix(in srgb, var(--success) 13%, var(--bg-card)); color: var(--success); }
+.ev-feedback .ev-block-head h3 { display: inline-flex; align-items: center; gap: 8px; }
+.ev-feedback .ev-block-head h3 svg { color: var(--ev-ink); }
+
+/* templates */
+.ev-template-group { font-size: 12px; font-weight: 700; color: var(--text-muted); margin: var(--sp-4) 0 var(--sp-2); }
+.ev-template-list { list-style: none; margin: 0; padding: 0; }
+.ev-template-list li { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) 0; border-bottom: 1px solid var(--border-light); }
+.ev-template-list li:last-child { border-bottom: 0; }
+.ev-template-list .ev-team-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+
+/* ---- a Fakémon answer's evolution line ---- */
+.ev-mon-answer { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.ev-line { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-radius: var(--card-r); background: var(--bg-panel); }
+.ev-line-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.ev-line-head .ev-q-sub { display: inline-flex; align-items: center; gap: 6px; }
+.ev-line .ev-hint { margin: 0; }
+.ev-line-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.ev-line-list li { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2); border-radius: 8px; background: var(--bg-card); min-width: 0; flex-wrap: wrap; }
+.ev-line-list li.is-face { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.ev-line-art { width: 48px; height: 48px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 6px; background: var(--bg-panel); color: var(--text-muted); overflow: hidden; }
+.ev-line-art img { width: 100%; height: 100%; object-fit: contain; }
+.ev-line-who { flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ev-line-who strong { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.ev-line-who small { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.ev-line-stage { padding: 1px 7px; border-radius: 999px; background: var(--bg-panel); color: var(--text-secondary); font-size: 11px; font-weight: 800; }
+.ev-line-names { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
+.ev-line-names > span { display: inline-flex; align-items: center; gap: 4px; }
+.ev-line-names svg { color: var(--text-muted); }
+.ev-line-modal .ev-field + .ev-field { margin-top: var(--sp-4); }

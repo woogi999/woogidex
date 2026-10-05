@@ -116,6 +116,7 @@ function notificationText(n) {
     if (n.type === 'contest_submission_deleted') return `removed your contest entry "${n.target_name || 'submission'}"`;
     if (n.type === 'event_entry_removed') return `removed your entry from ${n.target_name || 'an event'}${n.preview ? '. Reason:' : ''}`;
     if (n.type === 'event_edit_request') return `asked you to edit your entry in ${n.target_name || 'an event'}. Reason:`;
+    if (n.type === 'event_feedback') return `sent you feedback on your entry in ${n.target_name || 'an event'}:`;
     if (n.type === 'event_announcement') return `posted an announcement in ${n.target_name || 'an event'}:`;
     if (n.type === 'mention') return `mentioned you in ${n.target_name || 'a post'}`;
     return `commented on ${n.target_name || 'your Fakemon'}`;
@@ -254,7 +255,7 @@ async function openNotification(id) {
         await api.openPost?.(n.target_id);
     } else if ((n.type === 'event_entry_removed' || n.type === 'event_announcement') && n.target_id) {
         await api.openEvents?.(String(n.target_id).replace(/^event:/, ''));
-    } else if (n.type === 'event_edit_request' && n.target_id) {
+    } else if ((n.type === 'event_edit_request' || n.type === 'event_feedback') && n.target_id) {
         await api.openEvents?.(`${String(n.target_id).replace(/^event:/, '')}/enter`);
     } else if (n.type === 'mention' && n.target_id) {
         // "post:<id>", "mon:<id>" or "profile:<id>": where you were mentioned

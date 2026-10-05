@@ -909,7 +909,7 @@ function applyVanillaEvolutionLine(speciesId, { persist = true }: { persist?: an
 
 export { buildSpeciesEvolutionGraph, applyVanillaEvolutionLine };
 export { ensureGraph, calculateStages as calculateEvolutionStages, prevolutionRefIds, onFakemonSaved, renderEvolutionBoard, openEvolutionNodeChooser, evolutionNodeChoices, addEvolutionNode, removeEvolutionNode, initializeEvolutionGraph, toggleEvolutionMode, persistEvolutionGraph, shareSpecialPropertiesWithChild, openEvolutionMethodEditor, saveEvolutionMethod, removeEvolutionMethod, evolutionItemSuggestions, evolutionItemIcon,
-    getNodeSize, getNodeInfo, isMethodNode, getMethodLabel, getMethodSummary, addCurrentNode, currentNodeId, connectHandles, finishNodeDrag, removeEvolutionEdge, getDetectedItemLabel,
+    getNodeSize, getNodeInfo, isMethodNode, getMethodLabel, getMethodSummary, getEdgeMethodMap, addCurrentNode, currentNodeId, connectHandles, finishNodeDrag, removeEvolutionEdge, getDetectedItemLabel,
     getPreviewEvolutionChain, getPreviewFormeVariants, buildPreviewEvolutionModel, previewFormeTabs, editFakemonFromPreview };
 
 // re-layout when crossing the mobile breakpoint, since node size/spacing depend on window width.

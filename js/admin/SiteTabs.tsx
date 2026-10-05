@@ -330,6 +330,81 @@ export function LimitsTab() {
                     <div className="admin-modal-actions"><button type="submit" className="btn btn-primary"><Icon name="save" /> Save limits</button></div>
                 </form>
             )}
+            <EgressPanel />
         </>
+    );
+}
+
+// ==================== event downloads (egress) ====================
+// What event pages have downloaded from the database, day by day, and the
+// daily caps that stop it (egress_take() in supabase/migrations/
+// 20261014000000_events_fair_results_egress_templates.sql). A refused read
+// means a cap was hit: people saw "getting a lot of traffic" until the next day.
+
+const mb = (bytes: number) => `${(bytes / 1048576).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
+const EGRESS_KINDS: Record<string, string> = { event_entries_list: 'Entry lists (no pictures)', event_entry: 'Entries opened in full' };
+
+function EgressPanel() {
+    const [usage, setUsage] = useState<any[] | null>(null);
+    const [budgets, setBudgets] = useState<Array<{ kind: string; daily_bytes: number; hourly_calls_per_person: number; note: string }>>([]);
+    const [edit, setEdit] = useState<Record<string, { mb: string; calls: string }>>({});
+    async function load() {
+        const client = await getClient();
+        const [u, b] = await Promise.all([client.rpc('admin_egress_usage', { p_days: 14 }), client.rpc('admin_egress_budgets')]);
+        if (u.error || b.error) { setUsage([]); return; }
+        setUsage(u.data || []);
+        setBudgets(b.data || []);
+        setEdit(Object.fromEntries((b.data || []).map((x: any) => [x.kind, { mb: String(Math.round(Number(x.daily_bytes) / 1048576)), calls: String(x.hourly_calls_per_person) }])));
+    }
+    useEffect(() => { load(); }, []);
+    async function save(kind: string) {
+        const e = edit[kind];
+        const bytes = Math.round(parseFloat(e.mb) * 1048576), calls = parseInt(e.calls, 10);
+        if (!(bytes > 0) || !(calls > 0)) return showToast('Both caps need to be above zero.', 'error');
+        const client = await getClient();
+        const { error } = await client.rpc('admin_set_egress_budget', { p_kind: kind, p_daily_bytes: bytes, p_hourly_calls: calls });
+        if (error) return showToast('Could not save: ' + error.message, 'error');
+        showToast('Cap saved', 'success');
+        await load();
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    return (
+        <fieldset className="admin-limits-group">
+            <legend><Icon name="gauge" /> Event downloads</legend>
+            <p className="admin-section-sub" style={{ margin: 0 }}>How much event pages have read from the database each day (Supabase counts this as egress), and the caps that stop it. Lists leave pictures out; an entry is downloaded in full only when someone opens it. When a cap is hit, event pages ask people to try again later until the next day (UTC).</p>
+            {usage === null ? <div className="admin-empty">Loading…</div> : !budgets.length ? <div className="admin-empty">Not set up yet: apply the events migration from 2026-10-14.</div> : (
+                <>
+                    {budgets.map(b => {
+                        const used = Number(usage.find(u => u.day === today && u.kind === b.kind)?.bytes || 0);
+                        return (
+                            <div className="admin-modal-row" key={b.kind}>
+                                <div className="form-group">
+                                    <label>{EGRESS_KINDS[b.kind] || b.kind} <span>(today {mb(used)} of {mb(Number(b.daily_bytes))})</span></label>
+                                    <input type="number" min={1} step={1} value={edit[b.kind]?.mb ?? ''} onChange={e => setEdit(x => ({ ...x, [b.kind]: { ...x[b.kind], mb: e.target.value } }))} aria-label={`${b.kind} daily cap in MB`} />
+                                </div>
+                                <div className="form-group">
+                                    <label>Per person <span>(reads an hour)</span></label>
+                                    <input type="number" min={1} step={1} value={edit[b.kind]?.calls ?? ''} onChange={e => setEdit(x => ({ ...x, [b.kind]: { ...x[b.kind], calls: e.target.value } }))} aria-label={`${b.kind} reads per person per hour`} />
+                                </div>
+                                <div className="form-group" style={{ alignSelf: 'flex-end' }}><button type="button" className="btn btn-secondary" onClick={() => save(b.kind)}>Save cap</button></div>
+                            </div>
+                        );
+                    })}
+                    <div className="admin-ip-scroll">
+                        <table className="admin-ip-table">
+                            <thead><tr><th>day (UTC)</th><th>what</th><th>reads</th><th>downloaded</th><th>refused</th></tr></thead>
+                            <tbody>
+                                {usage.length ? usage.map(u => (
+                                    <tr key={`${u.day}-${u.kind}`}>
+                                        <td>{u.day}</td><td>{EGRESS_KINDS[u.kind] || u.kind}</td><td>{Number(u.calls).toLocaleString()}</td>
+                                        <td>{mb(Number(u.bytes))}</td><td>{Number(u.refused) ? <strong style={{ color: 'var(--danger)' }}>{Number(u.refused).toLocaleString()}</strong> : 0}</td>
+                                    </tr>
+                                )) : <tr><td colSpan={5}>Nothing yet.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            )}
+        </fieldset>
     );
 }

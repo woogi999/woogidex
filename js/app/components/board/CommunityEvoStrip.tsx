@@ -17,12 +17,12 @@ function Arrow() {
     );
 }
 
-function Card({ entry, activeId, label, compact }: { entry: any; activeId: string; label: string; compact: boolean }) {
+function Card({ entry, activeId, label, compact, onPick }: { entry: any; activeId: string; label: string; compact: boolean; onPick: (id: string) => void }) {
     const mon = entry.mon || {};
     const current = entry.sourceId === activeId;
     const props = {
         type: 'button' as const, disabled: current, title: current ? 'Currently viewing' : `View ${mon.name || 'this stage'}`,
-        onClick: current ? undefined : () => api.switchCommunityPreviewMon(entry.sourceId)
+        onClick: current ? undefined : () => onPick(entry.sourceId)
     };
     if (compact) {
         return (
@@ -49,6 +49,11 @@ function Card({ entry, activeId, label, compact }: { entry: any; activeId: strin
 
 export function CommunityEvoStrip({ row, activeId }: { row: any; activeId: string }) {
     const members: any[] = Array.isArray(row?.family_full) ? row.family_full : [];
+    return <EvoStrip members={members} activeId={activeId} onPick={id => api.switchCommunityPreviewMon(id)} />;
+}
+
+/** The same strip for any family ({ sourceId, mon, stage, isMega, isFormeChange }[]), e.g. an event entry's line. */
+export function EvoStrip({ members, activeId, onPick }: { members: any[]; activeId: string; onPick: (sourceId: string) => void }) {
     if (members.length < 2) return null;
     const stageOf = (m: any) => Math.max(1, m.stage || 1);
     const bases = members.filter(m => !m.isMega && !m.isFormeChange);
@@ -65,9 +70,9 @@ export function CommunityEvoStrip({ row, activeId }: { row: any; activeId: strin
                     return (
                         <div key={stage} style={{ display: 'contents' }}>
                             <div className={`community-evo-column${split}`}>
-                                {here.map(m => <Card key={m.sourceId} entry={m} activeId={activeId} label={`Stage ${stage}`} compact={false} />)}
+                                {here.map(m => <Card key={m.sourceId} entry={m} activeId={activeId} label={`Stage ${stage}`} compact={false} onPick={onPick} />)}
                                 {/* a Mega/forme sits beside the stage it transforms from */}
-                                {specials.filter(m => stageOf(m) === stage).map(m => <Card key={m.sourceId} entry={m} activeId={activeId} label={m.isMega ? 'Mega' : 'Forme'} compact />)}
+                                {specials.filter(m => stageOf(m) === stage).map(m => <Card key={m.sourceId} entry={m} activeId={activeId} label={m.isMega ? 'Mega' : 'Forme'} compact onPick={onPick} />)}
                             </div>
                             {i < stages.length - 1 && <Arrow />}
                         </div>
