@@ -123,14 +123,14 @@ function notificationText(n) {
  */
 function notificationsView(): {
     signedIn: boolean; open: boolean; unread: number; loading: boolean;
-    items: Array<{ id: string; read: boolean; actorName: string; actorAvatar: string; text: string; preview: string; time: string }>;
+    items: Array<{ id: string; read: boolean; actorName: string; actorId: string; actorAvatar: string; text: string; preview: string; time: string }>;
 } {
     const ns = ensureNotificationState();
     return {
         signedIn: !!state.user, open: !!ns.open, unread: ns.unreadCount || 0,
         loading: !!ns.loading && !ns.items.length,
         items: ns.items.map(n => ({
-            id: String(n.id), read: !!n.read, actorName: n.actor_name || 'Someone', actorAvatar: n.actor_avatar_url || '',
+            id: String(n.id), read: !!n.read, actorName: n.actor_name || 'Someone', actorId: n.actor_id || '', actorAvatar: n.actor_avatar_url || '',
             text: notificationText(n), preview: n.preview || '', time: timeAgo(n.created_at)
         }))
     };

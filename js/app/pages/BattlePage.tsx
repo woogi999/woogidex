@@ -14,6 +14,7 @@ import {
 } from '../../battle/ui/battle-ui.ts';
 import { BattleControls } from '../components/battle/Controls.tsx';
 import { TeamsPane, TeamsSkeleton } from '../components/battle/Teams.tsx';
+import { Avatar } from '../components/Avatar.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Modal } from '../components/Modal.tsx';
 import { ShieldedArt } from '../components/ShieldedArt.tsx';
@@ -92,7 +93,7 @@ function PlayerRow({ p }: { p: any }) {
     const sent = ui.challenges.find((c: any) => c.to_id === p.user_id && c.status === 'pending' && c.from_id === state.user?.id);
     return (
         <div className="battle-player-row">
-            <span className="battle-player-avatar">{p.avatar_url ? <img src={p.avatar_url} alt="" /> : name.charAt(0).toUpperCase()}</span>
+            <span className="battle-player-avatar"><Avatar userId={p.user_id} url={p.avatar_url} name={name} className="profile-avatar-img" /></span>
             <span className="battle-player-name"><strong>{name}</strong><small>@{p.username || 'unknown'}</small></span>
             <span className={`battle-player-status battle-status-${p.status}`}>{p.status}</span>
             {sent

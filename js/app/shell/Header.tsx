@@ -97,9 +97,7 @@ function Notifications() {
                                 ? <div className="notifications-empty">You're all caught up - no notifications yet.</div>
                                 : v.items.map(n => (
                                     <button key={n.id} className={`notification-item${n.read ? '' : ' unread'}`} type="button" onClick={() => api.openNotification(n.id)}>
-                                        {n.actorAvatar
-                                            ? <img className="notification-avatar" src={n.actorAvatar} alt="" />
-                                            : <span className="notification-avatar notification-avatar-fallback">{n.actorName.charAt(0).toUpperCase()}</span>}
+                                        <Avatar userId={n.actorId} url={n.actorAvatar} name={n.actorName} className="notification-avatar" />
                                         <span className="notification-body">
                                             <span className="notification-text"><strong>{n.actorName}</strong> {n.text}</span>
                                             {n.preview && <span className="notification-preview">“{n.preview}”</span>}

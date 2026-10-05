@@ -18,6 +18,7 @@ import { WallComposer, WallPostCard } from '../components/comments.tsx';
 import { getThread, loadThread } from '../../features/comments.ts';
 import { BadgePicker, ProfileMons } from '../components/profile.tsx';
 import { LazyArt } from '../components/community.tsx';
+import { ShieldedArt } from '../components/ShieldedArt.tsx';
 import { useStore } from '../store.ts';
 import { Modal } from '../components/Modal.tsx';
 import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
@@ -151,7 +152,7 @@ function PublicProfile({ profile, isOwn }: { profile: any; isOwn: boolean }) {
     return (
         <div className="profile2" style={accent ? ({ '--profile-accent': accent } as any) : undefined}>
             <div className={`profile2-cover${profile.banner_url ? ' has-image' : ''}`} style={{ background: cover || undefined }}>
-                {profile.banner_url && <img src={profile.banner_url} alt="" draggable={false} />}
+                {profile.banner_url && <ShieldedArt src={profile.banner_url} className="avatar-art" />}
             </div>
             <div className="profile2-head">
                 <div className="profile2-avatar-wrap">
@@ -496,7 +497,7 @@ function EditProfile({ profile }: { profile: any }) {
             </div>
 
             <div className={`profile2-cover${bannerPreview ? ' has-image' : ''}`} style={{ background: coverBg }}>
-                {bannerPreview && <img src={bannerPreview} alt="" draggable={false} />}
+                {bannerPreview && <ShieldedArt src={bannerPreview} className="avatar-art" />}
                 <div className="profile2-cover-edit">
                     <label className="btn btn-secondary btn-sm"><Icon name="camera" size={14} /> {bannerPreview ? 'Change cover photo' : 'Add cover photo'}
                         <input type="file" accept="image/*" style={{ display: 'none' }} onChange={chooseBanner} />

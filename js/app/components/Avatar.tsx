@@ -1,6 +1,8 @@
-// One avatar, painted from masked bytes when the person has them and falling
-// back to their public bucket URL when they don't (see js/core/avatar.ts for
-// why avatars stopped being a plain <img src>). With neither, their initial.
+// One avatar, painted onto a canvas (js/core/art-shield.ts) from masked bytes
+// when the person has them, or from their picture URL when they don't (Google
+// and Discord pictures, uploads from before masking) -- either way never a
+// plain <img src> to right-click and save. A plain <img> only if painting
+// fails; with no picture at all, their initial.
 //
 // The canvas sits inside a box carrying the caller's class, so the class's
 // size is the avatar's size. A bare canvas is as big as its image (up to
@@ -22,6 +24,9 @@ export function Avatar({ userId, url = '', name = '', className = 'community-min
     const [broken, setBroken] = useState('');     // the source that failed to draw or load
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const masked = cached && cached !== broken ? cached : '';
+    // the URL is painted too, but only once the masked lookup has answered,
+    // so a face with masked bytes never downloads its bucket copy as well
+    const source = masked || (cached !== undefined && url && url !== broken ? url : '');
 
     useEffect(() => {
         if (!userId || cached !== undefined) return;
@@ -31,10 +36,11 @@ export function Avatar({ userId, url = '', name = '', className = 'community-min
     }, [userId, cached]);
 
     useEffect(() => {
-        if (canvasRef.current && masked) paintShieldedCanvas(canvasRef.current, masked).then(ok => { if (!ok) setBroken(masked); }, () => setBroken(masked));
-    }, [masked]);
+        if (canvasRef.current && source) paintShieldedCanvas(canvasRef.current, source).then(ok => { if (!ok) setBroken(source); }, () => setBroken(source));
+    }, [source]);
 
-    if (masked) return <span className={`${className} avatar-frame`}><canvas ref={canvasRef} className="shielded-art avatar-art" role="img" aria-label="" /></span>;
-    if (url && url !== broken) return <img className={className} src={url} alt="" onError={() => setBroken(url)} />;
+    if (source) return <span className={`${className} avatar-frame`}><canvas ref={canvasRef} className="shielded-art avatar-art" role="img" aria-label="" /></span>;
+    // painting failed (the host refused a cross-origin read): show it unshielded rather than not at all
+    if (url && broken === url) return <img className={className} src={url} alt="" />;
     return <span className={`${className} ${className}-fallback`}>{String(name || '?').charAt(0).toUpperCase()}</span>;
 }
