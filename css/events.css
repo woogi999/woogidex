@@ -699,6 +699,13 @@ img.ev-lib-art { background: var(--bg-panel); }
 .ev-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
 .ev-cal-day.is-on { background: var(--accent); color: #fff; font-weight: 700; }
 .ev-cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ev-cal-day:disabled { color: var(--text-muted); opacity: .4; cursor: not-allowed; background: none; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-muted) 50%, transparent); }
+/* where the step before starts: a dot under the day, and the legend says what it is */
+.ev-cal-day.is-start { position: relative; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.ev-cal-day.is-start::after { content: ''; position: absolute; left: 50%; bottom: 4px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: currentColor; }
+.ev-cal-day.is-start.is-on { background: var(--accent); color: #fff; }
+.ev-cal-legend { display: flex; align-items: center; gap: 8px; margin: var(--sp-2) 0 0; font-size: 12px; color: var(--text-secondary); }
+.ev-cal-start-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent-soft); box-shadow: inset 0 0 0 4.5px var(--accent-soft), inset 0 0 0 10px var(--accent); flex: 0 0 auto; }
 .ev-date-row .ev-field { margin-bottom: var(--sp-3); }
 .ev-date-modal select { width: 100%; }
 

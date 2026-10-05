@@ -333,7 +333,7 @@ function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: De
                     </div>
                 )}
             </header>
-            {ev.phase === 'draft' && !preview && <p className="ev-notice"><Icon name="eye-slash" size={15} />This is a draft. Only you and your team can see it until it opens.</p>}
+            {ev.phase === 'draft' && !preview && <p className="ev-notice"><Icon name="eye-slash" size={15} />This is a draft. Only you and your team can see it until you announce or open it.</p>}
 
             <div className="ev-page-grid">
                 <div className="ev-page-main">
@@ -364,7 +364,7 @@ function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: De
 function AboutTab({ ev, d, preview, mine, perms, onTab }: { ev: EventRow; d: Detail; preview: boolean; mine: Entry[]; perms: ReturnType<typeof permsFor>; onTab: (t: EventTab) => void }) {
     const stage = effectivePhase(ev);
     const next: [EventTab, string, string, string] | null =
-        stage === 'upcoming' ? ['enter', 'Entries open soon', `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).`, 'See the form']
+        stage === 'upcoming' ? ['enter', 'Entries open soon', ev.submissions_open_at ? `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).` : 'Entries aren\'t open yet. Have a look at the form in the meantime.', 'See the form']
         : stage === 'open' || preview ? ['enter', 'Taking entries', ev.submissions_close_at ? `Entries close ${fmtDate(ev.submissions_close_at)} (${relTime(ev.submissions_close_at)}).` : 'Send yours in while entries are open.', mine.length ? 'Your entries' : 'Enter now']
         : stage === 'voting' ? ['vote', 'Voting is open', ev.voting_close_at ? `Voting closes ${fmtDate(ev.voting_close_at)} (${relTime(ev.voting_close_at)}).` : 'Have your say on the entries.', 'Vote now']
         : stage === 'tallying' ? ['results', 'Results soon', `Results come out ${fmtDate(ev.results_at)} (${relTime(ev.results_at)}).`, 'See the entries']
@@ -449,7 +449,7 @@ function EnterTab({ ev, d, preview, mine, allowance }: { ev: EventRow; d: Detail
             {canEnter && <EntryForm ev={ev} d={d} left={allowance - mine.length} preview={preview} />}
             {!preview && takingEntries(ev) && !canEnter && <p className="ev-notice"><Icon name="check-circle" size={15} />You've used all {plural(allowance, 'entry', 'entries')}. Withdraw one to enter something else.</p>}
             {!preview && !takingEntries(ev) && (
-                <p className="ev-notice"><Icon name="clock" size={15} />{stage === 'upcoming' ? `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).` : stage === 'draft' ? 'Entries open when the organizer publishes this event.' : 'Entries are closed.'}</p>
+                <p className="ev-notice"><Icon name="clock" size={15} />{stage === 'upcoming' ? (ev.submissions_open_at ? `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).` : 'Entries aren\'t open yet. Check back soon.') : stage === 'draft' ? 'Entries open when the organizer publishes this event.' : 'Entries are closed.'}</p>
             )}
             {!preview && state.user && ['upcoming', 'open'].includes(stage) && <CodeBox ev={ev} />}
             {!preview && !state.user && !ev.public_access && takingEntries(ev) && (
@@ -1639,12 +1639,12 @@ function Overview({ ev, d }: { ev: EventRow; d: Detail }) {
     const voters = ev.voting === 'ballot' ? d.ballots.length : new Set(d.votes.map(v => v.voter_id)).size;
     const scheduled = !!ev.submissions_open_at && !isPast(ev.submissions_open_at);
     const next: [Phase, string] | null =
-        stage === 'draft' ? ['open', scheduled ? 'Publish (entries open on schedule)' : 'Open for entries']
-        : stage === 'upcoming' || stage === 'open' ? (ev.voting === 'none' ? ['ended', 'Close and end the event'] : ['voting', 'Close entries, start voting'])
+        stage === 'draft' ? (scheduled ? ['announced', 'Publish (entries open on schedule)'] : ['open', 'Open for entries now'])
+        : stage === 'upcoming' ? ['open', 'Open entries now']
+        : stage === 'open' ? (ev.voting === 'none' ? ['ended', 'Close and end the event'] : ['voting', 'Close entries, start voting'])
         : stage === 'closed' ? (ev.voting === 'none' ? ['ended', 'End event and publish results'] : ['voting', 'Start voting now'])
         : stage === 'voting' ? ['ended', 'End event and publish results'] : null;
-    // publishing a scheduled draft keeps its dates; any other move happens now
-    const go = ([p]: [Phase, string]) => stage === 'draft' && scheduled ? saveEvent(ev.id, { phase: 'open' }, 'Published. Entries open on schedule.') : setPhase(ev, p);
+    const go = ([p]: [Phase, string]) => setPhase(ev, p);
     return (
         <div className="ev-dash-grid">
             <section className="ev-block">
@@ -1653,6 +1653,8 @@ function Overview({ ev, d }: { ev: EventRow; d: Detail }) {
                 {perms.edit && (
                     <div className="ev-phase-controls">
                         {next && <button className="btn btn-primary" type="button" onClick={() => go(next)}>{next[1]}</button>}
+                        {/* show it off before entries open: listed and shareable, the form visible but closed */}
+                        {stage === 'draft' && !scheduled && <button className="btn btn-secondary" type="button" onClick={() => setPhase(ev, 'announced')}><Icon name="megaphone" size={15} />Announce it, open entries later</button>}
                         <label className="ev-inline-select">Set phase
                             <select value={ev.phase} onChange={e => setPhase(ev, e.target.value as Phase)}>
                                 {PHASES.filter(([p]) => p !== 'voting' || ev.voting !== 'none').map(([p, label]) => <option key={p} value={p}>{label}</option>)}
@@ -2078,9 +2080,10 @@ const zoneLabel = (timeZone: string, at = Date.now()) =>
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const pad = (n: number) => String(n).padStart(2, '0');
 
-function DatePickerDialog({ close, title, value, timeZone, min, onPick }: DialogProps<{ title: string; value: string; timeZone: string; min?: string; onPick: (iso: string, timeZone: string) => void }>) {
+function DatePickerDialog({ close, title, value, timeZone, min, minLabel = 'Starts', onPick }: DialogProps<{ title: string; value: string; timeZone: string; min?: string; minLabel?: string; onPick: (iso: string, timeZone: string) => void }>) {
     const [zone, setZone] = useState(timeZone);
-    const start = zonedParts(value ? Date.parse(value) : Date.now() + 86_400_000, zone);
+    // with nothing picked yet, open on the month the step before it starts
+    const start = zonedParts(value ? Date.parse(value) : min ? Date.parse(min) : Date.now() + 86_400_000, zone);
     const [day, setDay] = useState<{ y: number; mo: number; d: number } | null>(value ? { y: start.y, mo: start.mo, d: start.d } : null);
     const [time, setTime] = useState(value ? `${pad(start.h)}:${pad(start.mi)}` : '12:00');
     const [month, setMonth] = useState({ y: start.y, mo: start.mo });
@@ -2090,6 +2093,15 @@ function DatePickerDialog({ close, title, value, timeZone, min, onPick }: Dialog
     const shift = (by: number) => setMonth(m => { const t = new Date(Date.UTC(m.y, m.mo + by, 1)); return { y: t.getUTCFullYear(), mo: t.getUTCMonth() }; });
     const picked = day && /^\d{2}:\d{2}$/.test(time) ? zonedToUtc(day.y, day.mo, day.d, Number(time.slice(0, 2)), Number(time.slice(3)), zone) : null;
     const tooEarly = picked && min ? picked.getTime() < Date.parse(min) : false;
+    // the start, in this zone: its day is marked, the days before it can't be picked
+    const from = min ? zonedParts(Date.parse(min), zone) : null;
+    const dayNum = (y: number, mo: number, d: number) => y * 10_000 + mo * 100 + d;
+    const fromNum = from ? dayNum(from.y, from.mo, from.d) : 0;
+    function pickDay(d: number) {
+        setDay({ y: month.y, mo: month.mo, d });
+        // on the start's own day, a time before it moves up to it
+        if (from && dayNum(month.y, month.mo, d) === fromNum && time < `${pad(from.h)}:${pad(from.mi)}`) setTime(`${pad(from.h)}:${pad(from.mi)}`);
+    }
     // switching zones keeps the moment and shows it in the new zone's clock
     function changeZone(z: string) {
         if (picked) {
@@ -2110,7 +2122,7 @@ function DatePickerDialog({ close, title, value, timeZone, min, onPick }: Dialog
         <Modal onClose={close} title={title} className="ev-date-modal">
             <div className="ev-cal">
                 <div className="ev-cal-head">
-                    <button type="button" className="ev-icon-btn" onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chevron-left" size={16} /></button>
+                    <button type="button" className="ev-icon-btn" disabled={!!from && month.y * 100 + month.mo <= from.y * 100 + from.mo} onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chevron-left" size={16} /></button>
                     <strong>{new Date(Date.UTC(month.y, month.mo, 1)).toLocaleDateString([], { month: 'long', year: 'numeric', timeZone: 'UTC' })}</strong>
                     <button type="button" className="ev-icon-btn" onClick={() => shift(1)} aria-label="Next month"><Icon name="chevron-right" size={16} /></button>
                 </div>
@@ -2121,13 +2133,18 @@ function DatePickerDialog({ close, title, value, timeZone, min, onPick }: Dialog
                         const d = i + 1;
                         const on = day?.y === month.y && day.mo === month.mo && day.d === d;
                         const isToday = today.y === month.y && today.mo === month.mo && today.d === d;
+                        const n = dayNum(month.y, month.mo, d);
+                        const isStart = !!from && n === fromNum;
+                        const label = new Date(Date.UTC(month.y, month.mo, d)).toLocaleDateString([], { dateStyle: 'full', timeZone: 'UTC' });
                         return (
-                            <button key={d} type="button" className={`ev-cal-day${on ? ' is-on' : ''}${isToday ? ' is-today' : ''}`} aria-pressed={on}
-                                aria-label={new Date(Date.UTC(month.y, month.mo, d)).toLocaleDateString([], { dateStyle: 'full', timeZone: 'UTC' })}
-                                onClick={() => setDay({ y: month.y, mo: month.mo, d })}>{d}</button>
+                            <button key={d} type="button" className={`ev-cal-day${on ? ' is-on' : ''}${isToday ? ' is-today' : ''}${isStart ? ' is-start' : ''}`} aria-pressed={on}
+                                disabled={!!from && n < fromNum} title={isStart ? `${minLabel}: ${fmtDate(min, zone)}` : undefined}
+                                aria-label={isStart ? `${label}, ${minLabel.toLowerCase()}` : label}
+                                onClick={() => pickDay(d)}>{d}</button>
                         );
                     })}
                 </div>
+                {from && <p className="ev-cal-legend"><span className="ev-cal-start-dot" aria-hidden="true" />{minLabel}: {fmtDate(min, zone)}</p>}
             </div>
             <div className="ev-two ev-date-row">
                 <div className="ev-field"><label className="ev-field-label" htmlFor="ev-date-time">Time</label>
@@ -2138,11 +2155,11 @@ function DatePickerDialog({ close, title, value, timeZone, min, onPick }: Dialog
                     </select></div>
             </div>
             <p className={tooEarly ? 'ev-error' : 'ev-hint'}>
-                {!picked ? 'Pick a day.' : tooEarly ? `That's before ${fmtDate(min)}, the step before it.` : <>Everyone sees this in their own time zone. For you: <strong>{fmtDate(picked.toISOString())}</strong>.</>}
+                {!picked ? 'Pick a day.' : tooEarly ? `Pick a time after ${minLabel.toLowerCase()} (${fmtDate(min, zone)}).` : <>Everyone sees this in their own time zone. For you: <strong>{fmtDate(picked.toISOString())}</strong>.</>}
             </p>
             <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
-                <button type="button" className="btn btn-primary" disabled={!picked} onClick={use}>Set date</button>
+                <button type="button" className="btn btn-primary" disabled={!picked || tooEarly} onClick={use}>Set date</button>
             </div>
         </Modal>
     );
@@ -2150,10 +2167,10 @@ function DatePickerDialog({ close, title, value, timeZone, min, onPick }: Dialog
 registerDialog('event-date-picker', DatePickerDialog);
 
 /** A schedule date: a button that opens the picker, shown in the organizer's chosen zone. */
-function DateField({ id, label, value, onChange, timeZone, onTimeZone, min, children }: {
-    id: string; label: string; value: string; onChange: (iso: string) => void; timeZone: string; onTimeZone: (z: string) => void; min?: string; children?: ReactNode;
+function DateField({ id, label, value, onChange, timeZone, onTimeZone, min, minLabel, children }: {
+    id: string; label: string; value: string; onChange: (iso: string) => void; timeZone: string; onTimeZone: (z: string) => void; min?: string; minLabel?: string; children?: ReactNode;
 }) {
-    const open = () => openDialog('event-date-picker', { title: label, value, timeZone, min, onPick: (iso: string, z: string) => { onChange(iso); onTimeZone(z); } });
+    const open = () => openDialog('event-date-picker', { title: label, value, timeZone, min: min || undefined, minLabel, onPick: (iso: string, z: string) => { onChange(iso); onTimeZone(z); } });
     return (
         <div className="ev-field">
             <label className="ev-field-label" htmlFor={id}>{label}</label>
@@ -2387,7 +2404,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
             <header className="ev-list-head">
                 <div>
                     {!event && <h2>New event</h2>}
-                    <p>{event ? 'Changes go live when you save them.' : 'It starts as a draft only you can see. Open it from its dashboard when it\'s ready.'}</p>
+                    <p>{event ? 'Changes go live when you save them.' : 'It starts as a draft only you can see. From its dashboard you can announce it early (entries stay closed) or open it for entries.'}</p>
                 </div>
                 <div className="ev-segmented" role="tablist" aria-label="Editor mode">
                     <button type="button" role="tab" aria-selected={mode === 'edit'} className={mode === 'edit' ? 'active' : ''} onClick={() => setMode('edit')}><Icon name="pencil" size={14} />Edit</button>
@@ -2474,19 +2491,19 @@ function EventEditor({ event }: { event: EventRow | null }) {
                     <p className="ev-tz-note"><Icon name="globe-alt" size={13} />Shown in {tz.replace(/_/g, ' ')} ({zoneLabel(tz)}). Change it in any date's picker; everyone else sees the times in their own zone.</p>
                     <div className="ev-two">
                         <DateField id="ev-sopen" label="Entries open" value={f.submissions_open_at} onChange={v => set({ submissions_open_at: v })} timeZone={tz} onTimeZone={setTz} />
-                        <DateField id="ev-sclose" label="Entries close" value={f.submissions_close_at} onChange={v => set({ submissions_close_at: v })} timeZone={tz} onTimeZone={setTz} min={f.submissions_open_at} />
+                        <DateField id="ev-sclose" label="Entries close" value={f.submissions_close_at} onChange={v => set({ submissions_close_at: v })} timeZone={tz} onTimeZone={setTz} min={f.submissions_open_at} minLabel="Entries open" />
                     </div>
                     {f.votingOn && (
                         <div className="ev-two">
-                            <DateField id="ev-vopen" label="Voting opens" value={f.voting_open_at} onChange={v => set({ voting_open_at: v })} timeZone={tz} onTimeZone={setTz} min={f.submissions_close_at}>
+                            <DateField id="ev-vopen" label="Voting opens" value={f.voting_open_at} onChange={v => set({ voting_open_at: v })} timeZone={tz} onTimeZone={setTz} min={f.submissions_close_at} minLabel="Entries close">
                                 <button type="button" className="ev-link" disabled={!f.submissions_close_at} title={f.submissions_close_at ? undefined : 'Set when entries close first'}
                                     onClick={() => set({ voting_open_at: f.submissions_close_at })}><Icon name="arrow-turn-down-right" size={13} />Start right when entries close</button>
                             </DateField>
-                            <DateField id="ev-vclose" label="Voting closes" value={f.voting_close_at} onChange={v => set({ voting_close_at: v })} timeZone={tz} onTimeZone={setTz} min={f.voting_open_at || f.submissions_close_at} />
+                            <DateField id="ev-vclose" label="Voting closes" value={f.voting_close_at} onChange={v => set({ voting_close_at: v })} timeZone={tz} onTimeZone={setTz} min={f.voting_open_at || f.submissions_close_at} minLabel={f.voting_open_at ? 'Voting opens' : 'Entries close'} />
                         </div>
                     )}
                     <div className="ev-field-half">
-                        <DateField id="ev-results" label="Results come out" value={f.results_at} onChange={v => set({ results_at: v })} timeZone={tz} onTimeZone={setTz} min={f.votingOn ? f.voting_close_at : f.submissions_close_at}>
+                        <DateField id="ev-results" label="Results come out" value={f.results_at} onChange={v => set({ results_at: v })} timeZone={tz} onTimeZone={setTz} min={f.votingOn ? f.voting_close_at : f.submissions_close_at} minLabel={f.votingOn ? 'Voting closes' : 'Entries close'}>
                         {(() => {
                             const after = f.votingOn ? f.voting_close_at : f.submissions_close_at;
                             return (

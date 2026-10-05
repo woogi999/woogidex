@@ -16,7 +16,8 @@ import { myIdentities } from './oauth.ts';
 import { notify } from '../app/store.ts';
 import { ALL_VANILLA_TYPES } from './custom-types.ts';
 
-export type Phase = 'draft' | 'open' | 'voting' | 'ended';
+/** 'announced': visible to everyone, entries not open yet (they open on the date, or by hand). */
+export type Phase = 'draft' | 'announced' | 'open' | 'voting' | 'ended';
 export type FieldType = 'short' | 'long' | 'url' | 'email' | 'discord' | 'choice' | 'dropdown' | 'checkboxes' | 'number' | 'date' | 'scale'
     | 'image' | 'fakemon' | 'library' | 'agree' | 'section';
 /** What a 'library' question takes: one of the entrant's moves, abilities, items or types. */
@@ -138,7 +139,7 @@ export const isPrivateField = (f: Field) => f.type === 'email' || (f.private ?? 
 export const CATEGORIES = ['PoA contest', 'Fakémon contest', 'Art contest', 'Poster competition', 'Mascot contest', 'Writing contest', 'Tournament', 'Sign-ups', 'Community event'];
 export const DEFAULT_CRITERIA: Criterion[] = [{ name: 'Competitive', max: 10 }, { name: 'Design', max: 10 }];
 
-export const PHASES: Array<[Phase, string]> = [['draft', 'Draft'], ['open', 'Taking entries'], ['voting', 'Voting'], ['ended', 'Ended']];
+export const PHASES: Array<[Phase, string]> = [['draft', 'Draft'], ['announced', 'Announced'], ['open', 'Taking entries'], ['voting', 'Voting'], ['ended', 'Ended']];
 export const STAGE_LABEL: Record<Stage, string> = { draft: 'Draft', upcoming: 'Opens soon', open: 'Taking entries', closed: 'Entries closed', voting: 'Voting', tallying: 'Results soon', ended: 'Ended' };
 
 /** The voting form's criteria, whatever shape they were saved in. */
@@ -198,6 +199,7 @@ export function effectivePhase(e: EventRow): Stage {
     const vOpen = at(e.voting_open_at), vClose = at(e.voting_close_at), sOpen = at(e.submissions_open_at), sClose = at(e.submissions_close_at);
     const results = at(e.results_at);
     if (e.phase === 'draft' || e.phase === 'ended') return e.phase;
+    if (e.phase === 'announced' && (sOpen === null || now < sOpen)) return 'upcoming';
     if (e.voting !== 'none' && vClose !== null && now > vClose) return results !== null && now < results ? 'tallying' : 'ended';
     if (e.voting !== 'none' && (e.phase === 'voting' || (vOpen !== null && now >= vOpen))) return vOpen !== null && now < vOpen ? 'closed' : 'voting';
     if (sOpen !== null && now < sOpen) return 'upcoming';
@@ -532,9 +534,11 @@ export async function saveEvent(id: string, patch: Partial<EventRow>, message = 
 
 /** Moves an event by hand, now. Dates that would contradict it are cleared, or they'd move it straight back. */
 export function setPhase(ev: EventRow, phase: Phase) {
-    const msg: Record<Phase, string> = { draft: 'Back to draft.', open: 'Entries are open.', voting: 'Voting is open.', ended: 'Event ended. Results are public.' };
+    const msg: Record<Phase, string> = { draft: 'Back to draft.', announced: ev.submissions_open_at && !isPast(ev.submissions_open_at) ? 'Announced. Entries open on schedule.' : 'Announced. Open entries when you\'re ready.', open: 'Entries are open.', voting: 'Voting is open.', ended: 'Event ended. Results are public.' };
     const patch: Partial<EventRow> = { phase };
     const future = (v: string | null) => !!v && !isPast(v);
+    // announced: a start date that's already gone would open entries straight away
+    if (phase === 'announced' && isPast(ev.submissions_open_at)) patch.submissions_open_at = null;
     if (phase === 'open') {
         if (future(ev.submissions_open_at)) patch.submissions_open_at = null;
         if (isPast(ev.submissions_close_at)) patch.submissions_close_at = null;
