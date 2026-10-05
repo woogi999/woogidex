@@ -12,6 +12,7 @@ import { state, api } from '../core/app.ts';
 import { log } from '../core/log.ts';
 import { notify } from '../app/store.ts';
 import { publicName } from '../core/html.ts';
+import { createPoll, commentPollParent, pollProblem, type PollDraft } from './polls.ts';
 
 export type CommentKind = 'mon' | 'post' | 'profile';
 
@@ -98,14 +99,16 @@ function tooLong(text: string) {
  * their notification; `targetName` names the thing in that notification.
  * @returns whether it was posted
  */
-export async function addComment(kind: CommentKind, parentId: string, body: string, owner?: { id: string; targetName?: string }): Promise<boolean> {
+export async function addComment(kind: CommentKind, parentId: string, body: string, owner?: { id: string; targetName?: string }, poll: PollDraft | null = null): Promise<boolean> {
     if (!api.requireAccount?.('Sign in to comment.')) return false;
     const text = String(body || '').trim();
     if (!text || tooLong(text)) return false;
+    const pollIssue = poll ? pollProblem(poll) : '';
+    if (pollIssue) { api.showToast?.(pollIssue, 'warning'); return false; }
 
     // posts already have their own path (counts, notifications, ranking)
     if (kind === 'post') {
-        const ok = await api.commentOnPost(parentId, text);
+        const ok = await api.commentOnPost(parentId, text, poll);
         if (ok) await loadThread(kind, parentId);
         return ok;
     }
@@ -120,10 +123,19 @@ export async function addComment(kind: CommentKind, parentId: string, body: stri
         author_badges: me.badges || []
     });
     const client = await api.getClient();
-    const { error } = await client.from(TABLE[kind]).insert(row);
+    const { data: made, error } = await client.from(TABLE[kind]).insert(row).select('id').single();
     if (error) {
         api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Comment failed.', 'error');
         return false;
+    }
+    // a comment whose poll didn't attach comes back down, so the box keeps it all for another try
+    if (poll) {
+        try { await createPoll(commentPollParent(kind), made.id, poll); }
+        catch (e: any) {
+            await client.from(TABLE[kind]).delete().eq('id', made.id);
+            api.showToast?.(`Your poll couldn't be added: ${e?.message || e}`, 'error');
+            return false;
+        }
     }
     await loadThread(kind, parentId);
     if (owner && owner.id !== me.id) {

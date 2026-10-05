@@ -228,12 +228,9 @@ export async function peopleResults(query: string, limit: number): Promise<Searc
     if (!pattern || !state.user) return [];
     const client = await api.getClient?.();
     if (!client) return [];
-    const { data, error } = await client
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .or(`username.ilike.${pattern},display_name.ilike.${pattern}`)
-        .not('username', 'is', null)
-        .limit(limit * 2);
+    // search_profiles leaves out people who've hidden themselves from search
+    // (unless their exact username is typed) and anyone blocked either way
+    const { data, error } = await client.rpc('search_profiles', { p_query: query.replace(/^@/, '').trim(), p_limit: Math.min(20, limit * 2), p_for: 'search' });
     if (error) throw error;
     const q = query.replace(/^@/, '');
     return top((data || []).filter((p: any) => !api.hasBlocked?.(p.id)).map((p: any) => {

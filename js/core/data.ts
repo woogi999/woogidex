@@ -1,5 +1,6 @@
 import { esc } from './html.ts';
 import { emojifyHtml, isEmojiOnly } from './emoji.ts';
+import { routeUrl } from './router.ts';
 const POKEMON_TYPES = [
             'Normal','Fire','Water','Electric','Grass','Ice',
             'Fighting','Poison','Ground','Flying','Psychic','Bug',
@@ -110,6 +111,9 @@ function renderCommentMarkdown(value) {
             const i=links.push({label, url:safeUrl(url), title})-1;
             return `\u0000L${i}\u0000`;
         });
+        // @mentions are set aside too: the _ in @mega_fan isn't italics
+        const mentions: string[] = [];
+        out = out.replace(/(^|[^A-Za-z0-9_@/])@([A-Za-z0-9_]{3,20})(?![A-Za-z0-9_])/g, (_, pre, name) => `${pre}\u0000M${mentions.push(name) - 1}\u0000`);
         // emojis are set aside before emphasis runs, or the _ in :geto_happy:
         // would be read as italics
         const emojis: string[] = [];
@@ -123,6 +127,11 @@ function renderCommentMarkdown(value) {
         out = out.replace(/\|\|([^|\n]+)\|\|/g, '<span class="rt-spoiler" tabindex="0">$1</span>');
         out = out.replace(/\u0000E(\d+)\u0000/g, (_, i) => emojis[Number(i)]);
         out = out.replace(/\u0000C(\d+)\u0000/g, (_, i) => `<code>${code[Number(i)]}</code>`);
+        // a profile link the page opens in place (RichText); names are [A-Za-z0-9_] only
+        out = out.replace(/\u0000M(\d+)\u0000/g, (_, i) => {
+            const name = mentions[Number(i)];
+            return `<a class="rt-mention" href="${escape(routeUrl(`profile/${name}`))}" data-mention="${name}">@${name}</a>`;
+        });
         out = out.replace(/\u0000L(\d+)\u0000/g, (_, i) => {
             const l = links[Number(i)];
             const title = l.title ? ` title="${escape(l.title)}"` : '';

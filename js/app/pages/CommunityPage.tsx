@@ -125,12 +125,14 @@ function EmptyFeed({ tab }: { tab: FeedTab }) {
     );
 }
 
-/** People who show up in the feed that you don't follow yet. */
+/** People who show up in the feed that you don't follow yet, minus anyone who'd rather not be suggested. */
 function SuggestedCreators({ items }: { items: FeedItem[] }) {
-    if (!state.user) return null;
+    const ids = [...new Set(items.map(it => it.user_id))].sort();
+    const hidden = useUndiscoverable(ids);
+    if (!state.user || !hidden) return null;
     const score = new Map<string, { item: FeedItem; n: number }>();
     for (const it of items) {
-        if (it.user_id === state.user.id || api.isFollowing(it.user_id) || api.hasBlocked?.(it.user_id)) continue;
+        if (it.user_id === state.user.id || api.isFollowing(it.user_id) || api.hasBlocked?.(it.user_id) || hidden.has(it.user_id)) continue;
         const e = score.get(it.user_id) || { item: it, n: 0 };
         e.n += 1 + Number(it.like_count || 0) * 0.2 + Number(it.comment_count || 0) * 0.5;
         score.set(it.user_id, e);
@@ -151,6 +153,26 @@ function SuggestedCreators({ items }: { items: FeedItem[] }) {
             ))}
         </section>
     );
+}
+
+/** Which of these people turned off "Show me in search and suggestions"; null until known. */
+function useUndiscoverable(ids: string[]): Set<string> | null {
+    const [hidden, setHidden] = useState<Set<string> | null>(null);
+    const key = ids.join(',');
+    useEffect(() => {
+        if (!ids.length) { setHidden(new Set()); return; }
+        let live = true;
+        (async () => {
+            try {
+                const client = await api.getClient();
+                const { data, error } = await client.rpc('undiscoverable', { p_ids: ids });
+                if (error) throw error;
+                if (live) setHidden(new Set((data || []).map((r: any) => typeof r === 'string' ? r : r.undiscoverable)));
+            } catch { if (live) setHidden(new Set()); }
+        })();
+        return () => { live = false; };
+    }, [key]);
+    return hidden;
 }
 
 /** "Featured this week", now a small grid beside the feed. */

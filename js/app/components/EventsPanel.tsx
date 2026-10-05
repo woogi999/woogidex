@@ -16,12 +16,16 @@ import {
     fakemonForEntry, fakemonFromFile, fmtDate, hasSubmittedBallot, isLive, isPast, loadEvent, loadEventsList, permsFor,
     previewEventFakemon, ranked, readEventDraft, relTime, removeEntry, removeEntryLimit, removeHelper, saveEvent, scoresComplete,
     setEntryLimit, setPhase, setPlacement, shareLink, showEventView, shrinkImage, startBallot, submitBallot, submitEntry,
+    readEventTemplates, saveEventTemplate, deleteEventTemplate, removeEntryAsTeam, findPeople,
     takingEntries, updateBallot, updateEntry, updateHelper, votingOpen, writeEventDraft, readEntryDraft, writeEntryDraft, clearEntryDraft,
     myTimeZone, timeZones, zonedParts, zonedToUtc,
     LIB_KINDS, MON_PARTS, describeMonRules, libLabel, libraryForEntry, libraryFromFile, monRuleProblems, myLibrary,
     type LibKind, type MonRules,
     type DashTab, type Detail, type Entry, type EventRow, type Field, type FieldType, type Helper, type Person, type Phase,
     createEventCode, deleteEventCode, randomCode, redeemEventCode, voteDisplay,
+    canSeeEntries, entriesPublic, VARIABLES, variablesFor, fillVariables, setFollowing, postAnnouncement, deleteAnnouncement,
+    requestEntryEdit, publishResults, createSheetLink, deleteSheetLink, sheetUrl, sheetFormula,
+    type Announcement, type HelperPerms, type TeamPick,
     type Criterion, type EventCode, type EventTab, type Remarks, type Stage, type Voting, type WinnerRules
 } from '../../features/events.ts';
 import { Avatar } from './Avatar.tsx';
@@ -255,6 +259,105 @@ function Timeline({ ev }: { ev: EventRow }) {
     );
 }
 
+// ---- the calendar ----
+// A month at a time, in the reader's own time zone: the days entries are open,
+// the days voting runs, and the day the results come out.
+
+type CalStage = 'entries' | 'voting' | 'results';
+const dayKey = (t: number) => { const x = new Date(t); return x.getFullYear() * 10_000 + x.getMonth() * 100 + x.getDate(); };
+
+function EventCalendar({ ev }: { ev: EventRow }) {
+    const at = (v: string | null | undefined) => v ? new Date(v).getTime() : null;
+    const resultsAt = at(ev.results_at) ?? (ev.voting !== 'none' ? at(ev.voting_close_at) : null);
+    const ranges: Array<[CalStage, number | null, number | null]> = [
+        // entries without an opening date are open from the moment it went live
+        ['entries', at(ev.submissions_open_at) ?? (at(ev.submissions_close_at) ? at(ev.created_at) : null), at(ev.submissions_close_at)],
+        ['voting', ev.voting !== 'none' ? (at(ev.voting_open_at) ?? at(ev.submissions_close_at)) : null, ev.voting !== 'none' ? at(ev.voting_close_at) : null]
+    ];
+    const keyDates = [...ranges.flatMap(([, a, b]) => [a, b]), resultsAt].filter((t): t is number => t !== null);
+    // open on the month of what's next, or the last thing that happened
+    const upcoming = keyDates.filter(t => t >= Date.now()).sort((a, b) => a - b)[0] ?? keyDates.sort((a, b) => b - a)[0] ?? Date.now();
+    const [month, setMonth] = useState(() => { const x = new Date(upcoming); return { y: x.getFullYear(), m: x.getMonth() }; });
+    if (!keyDates.length) return null;
+    const stagesOn = (y: number, m: number, day: number): CalStage[] => {
+        const k = y * 10_000 + m * 100 + day;
+        const out: CalStage[] = [];
+        for (const [stage, a, b] of ranges) {
+            if (a === null && b === null) continue;
+            const from = dayKey(a ?? b!), to = dayKey(b ?? a!);
+            if (k >= from && k <= to) out.push(stage);
+        }
+        if (resultsAt !== null && k === dayKey(resultsAt)) out.push('results');
+        return out;
+    };
+    const first = new Date(month.y, month.m, 1).getDay();
+    const days = new Date(month.y, month.m + 1, 0).getDate();
+    const today = dayKey(Date.now());
+    const shift = (by: number) => setMonth(({ y, m }) => { const x = new Date(y, m + by, 1); return { y: x.getFullYear(), m: x.getMonth() }; });
+    const used = new Set(ranges.filter(([, a, b]) => a !== null || b !== null).map(([st]) => st));
+    if (resultsAt !== null) used.add('results');
+    const LABEL: Record<CalStage, string> = { entries: 'Entries open', voting: 'Voting', results: 'Results' };
+    return (
+        <div className="ev-mini-cal" aria-label="Event calendar">
+            <div className="ev-mini-cal-head">
+                <button type="button" className="ev-icon-btn" onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chevron-left" size={15} /></button>
+                <strong>{new Date(month.y, month.m, 1).toLocaleDateString([], { month: 'long', year: 'numeric' })}</strong>
+                <button type="button" className="ev-icon-btn" onClick={() => shift(1)} aria-label="Next month"><Icon name="chevron-right" size={15} /></button>
+            </div>
+            <div className="ev-mini-cal-grid">
+                {WEEKDAYS.map(w => <span key={w} className="ev-mini-cal-wd" aria-hidden="true">{w}</span>)}
+                {Array.from({ length: first }, (_, i) => <span key={`b${i}`} />)}
+                {Array.from({ length: days }, (_, i) => {
+                    const day = i + 1;
+                    const on = stagesOn(month.y, month.m, day);
+                    const isToday = month.y * 10_000 + month.m * 100 + day === today;
+                    const label = `${new Date(month.y, month.m, day).toLocaleDateString([], { dateStyle: 'long' })}${on.length ? `: ${on.map(st => LABEL[st]).join(', ')}` : ''}`;
+                    return (
+                        <span key={day} title={label} aria-label={label}
+                            className={`ev-mini-cal-day${on.map(st => ` is-${st}`).join('')}${isToday ? ' is-today' : ''}`}>{day}</span>
+                    );
+                })}
+            </div>
+            <ul className="ev-mini-cal-legend">
+                {(['entries', 'voting', 'results'] as CalStage[]).filter(st => used.has(st)).map(st => (
+                    <li key={st}><span className={`ev-mini-cal-swatch is-${st}`} aria-hidden="true" />{LABEL[st]}</li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+// ---- announcements, on the event's page ----
+
+function Announcements({ ev, d }: { ev: EventRow; d: Detail }) {
+    const [all, setAll] = useState(false);
+    const list = all ? d.announcements : d.announcements.slice(0, 2);
+    return (
+        <section className="ev-block ev-announcements" aria-label="Announcements">
+            <div className="ev-block-head"><h3><Icon name="megaphone" size={16} />Announcements</h3>
+                {!d.following && state.user && ev.phase !== 'draft' && <button type="button" className="ev-link" onClick={() => setFollowing(ev.id, true)}><Icon name="bell" size={13} />Follow to get these</button>}</div>
+            <ol className="ev-announce-list">
+                {list.map(a => <AnnouncementItem key={a.id} ev={ev} d={d} a={a} />)}
+            </ol>
+            {d.announcements.length > 2 && <button type="button" className="ev-link" onClick={() => setAll(v => !v)}>{all ? 'Show fewer' : `Show all ${d.announcements.length}`}</button>}
+        </section>
+    );
+}
+
+function AnnouncementItem({ ev, d, a, manage = false }: { ev: EventRow; d: Detail; a: Announcement; manage?: boolean }) {
+    const who = a.author_id ? d.people[a.author_id] : undefined;
+    return (
+        <li className="ev-announce">
+            <div className="ev-announce-head">
+                <strong>{a.title}</strong>
+                <span className="ev-hint ev-inline-hint">{who ? `${personName(who)} · ` : ''}<time dateTime={a.created_at} title={fmtDate(a.created_at)}>{relTime(a.created_at)}</time></span>
+                {manage && <button type="button" className="ev-icon-btn" aria-label={`Delete "${a.title}"`} onClick={() => deleteAnnouncement(a)}><Icon name="trash-2" size={14} /></button>}
+            </div>
+            {a.body && <EventText ev={ev} d={d} text={a.body} />}
+        </li>
+    );
+}
+
 function EventPage({ id, tab }: { id: string; tab: EventTab }) {
     const d = useDetail(id);
     if (!d?.event) return <><BackLink to={{ kind: 'list' }}>All events</BackLink><DetailState d={d} /></>;
@@ -263,8 +366,13 @@ function EventPage({ id, tab }: { id: string; tab: EventTab }) {
 
 const emptyDetail = (ev: EventRow): Detail => ({
     id: ev.id, status: 'ready', error: '', event: ev, entries: [], privateAnswers: {}, myVotes: {}, votes: [], ballots: [], limits: [],
-    results: null, helpers: [], people: {}, resultsPost: null, share: null, codes: []
+    results: null, helpers: [], people: {}, resultsPost: null, share: null, codes: [], announcements: [], following: false, editRequests: {}, sheet: null
 });
+
+/** An event's own text (about, results post, announcements) with its {{variables}} filled in. */
+function EventText({ ev, d, text, className = 'ev-rich' }: { ev: EventRow; d: Detail; text: string; className?: string }) {
+    return <RichText text={fillVariables(text, variablesFor(ev, d))} className={className} />;
+}
 
 /**
  * The event as entrants see it. Its page is the About: what it is and the one
@@ -328,12 +436,24 @@ function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: De
                 </div>
                 {!preview && (
                     <div className="ev-head-actions">
+                        {state.user && ev.phase !== 'draft' && (
+                            <button className={`btn btn-secondary ev-follow${d.following ? ' is-on' : ''}`} type="button" aria-pressed={d.following}
+                                title={d.following ? 'You get its announcements. Click to stop.' : 'Get its announcements on the bell (and by email, if you turned that on)'}
+                                onClick={() => setFollowing(ev.id, !d.following)}>
+                                <Icon name={d.following ? 'bell-alert' : 'bell'} size={15} />{d.following ? 'Following' : 'Follow'}
+                            </button>
+                        )}
                         <ShareMenu ev={ev} d={d} />
                         {perms.view && <button className="btn btn-secondary" type="button" onClick={() => showEventView({ kind: 'dashboard', id: ev.slug || ev.id })}><Icon name="chart-bar" size={15} />Dashboard</button>}
                     </div>
                 )}
             </header>
-            {ev.phase === 'draft' && !preview && <p className="ev-notice"><Icon name="eye-slash" size={15} />This is a draft. Only you and your team can see it until you announce or open it.</p>}
+            {ev.phase === 'draft' && !preview && (
+                <p className="ev-notice"><Icon name="eye-slash" size={15} />
+                    <span>This is a draft. Only you and your team can see it until it goes live.</span>
+                    {perms.edit && <button type="button" className="ev-link" onClick={() => setPhase(ev, 'announced')}>Go live (entries closed)</button>}
+                </p>
+            )}
 
             <div className="ev-page-grid">
                 <div className="ev-page-main">
@@ -341,8 +461,10 @@ function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: De
                 </div>
                 <aside className="ev-facts" aria-label="Event details">
                     <Timeline ev={ev} />
+                    <EventCalendar ev={ev} />
                     <dl>
-                        <div><dt>Entries</dt><dd>{d.entries.length}</dd></div>
+                        {/* private entries: not even how many */}
+                        {(preview ? entriesPublic(ev) : canSeeEntries(ev, perms)) && <div><dt>Entries</dt><dd>{d.entries.length}</dd></div>}
                         {!guest && <div><dt>Per person</dt><dd>{plural(allowance, 'entry', 'entries')}{allowance !== ev.max_entries_per_user && ' (just for you)'}</dd></div>}
                         <div><dt>Voting</dt><dd>{
                             ev.voting === 'community' ? `Community vote, ${plural(ev.votes_per_user, 'vote')} each`
@@ -350,7 +472,9 @@ function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: De
                             : ev.voting === 'ballot' ? `Everyone rates every entry on ${criteriaOf(ev).map(c => c.name).join(', ')}`
                             : 'No voting'}</dd></div>
                         {ev.voting !== 'none' && <div><dt>Who wins</dt><dd>{describeWinnerRules(ev.winner_criteria)}</dd></div>}
-                        <div><dt>Results</dt><dd>{ev.live_results && ev.voting !== 'none' ? 'Live while voting' : ev.results_at ? `Out ${fmtDate(ev.results_at)}` : 'Shown when it ends'}</dd></div>
+                        <div><dt>Results</dt><dd>{ev.live_results && ev.voting !== 'none' ? 'Live while voting'
+                            : ev.hold_results ? (ev.results_released_at ? 'Out' : 'When the organizers post them')
+                            : ev.results_at ? `Out ${fmtDate(ev.results_at)}` : 'Shown when it ends'}</dd></div>
                     </dl>
                     <p className="ev-tz-note"><Icon name="globe-alt" size={13} />Times are in your time zone.</p>
                 </aside>
@@ -367,12 +491,12 @@ function AboutTab({ ev, d, preview, mine, perms, onTab }: { ev: EventRow; d: Det
         stage === 'upcoming' ? ['enter', 'Entries open soon', ev.submissions_open_at ? `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).` : 'Entries aren\'t open yet. Have a look at the form in the meantime.', 'See the form']
         : stage === 'open' || preview ? ['enter', 'Taking entries', ev.submissions_close_at ? `Entries close ${fmtDate(ev.submissions_close_at)} (${relTime(ev.submissions_close_at)}).` : 'Send yours in while entries are open.', mine.length ? 'Your entries' : 'Enter now']
         : stage === 'voting' ? ['vote', 'Voting is open', ev.voting_close_at ? `Voting closes ${fmtDate(ev.voting_close_at)} (${relTime(ev.voting_close_at)}).` : 'Have your say on the entries.', 'Vote now']
-        : stage === 'tallying' ? ['results', 'Results soon', `Results come out ${fmtDate(ev.results_at)} (${relTime(ev.results_at)}).`, 'See the entries']
+        : stage === 'tallying' ? ['results', 'Results soon', ev.results_at && !isPast(ev.results_at) ? `Results come out ${fmtDate(ev.results_at)} (${relTime(ev.results_at)}).` : 'The organizers are getting the results ready.', 'See the entries']
         : stage === 'ended' ? ['results', 'The results are in', 'See who won and every entry.', 'See the results']
         : stage === 'closed' ? [ev.voting === 'none' ? 'results' : 'vote', 'Entries are closed', ev.voting_open_at && !isPast(ev.voting_open_at) ? `Voting opens ${fmtDate(ev.voting_open_at)} (${relTime(ev.voting_open_at)}).` : 'Nothing more to send in.', 'See the entries']
         : null;
     // the other pages, when there's something on them
-    const entriesVisible = ev.show_entries || ['closed', 'voting', 'tallying', 'ended'].includes(stage) || perms.entries || perms.judge || perms.results;
+    const entriesVisible = canSeeEntries(ev, perms);
     const more: Array<[EventTab, string, string]> = [];
     if (mine.length && next?.[0] !== 'enter') more.push(['enter', `Your ${mine.length === 1 ? 'entry' : 'entries'}`, 'paper-airplane']);
     if (!preview && entriesVisible && d.entries.length && next?.[0] !== 'results') more.push(['results', 'See the entries', 'squares-2x2']);
@@ -389,8 +513,9 @@ function AboutTab({ ev, d, preview, mine, perms, onTab }: { ev: EventRow; d: Det
                     {more.map(([key, label, icon]) => <button key={key} type="button" className="ev-link" onClick={() => onTab(key)}><Icon name={icon} size={14} />{label}</button>)}
                 </div>
             )}
+            {d.announcements.length > 0 && <Announcements ev={ev} d={d} />}
             {ev.description
-                ? <section className="ev-block"><h3>About</h3><RichText text={ev.description} className="ev-rich" /></section>
+                ? <section className="ev-block"><h3>About</h3><EventText ev={ev} d={d} text={ev.description} /></section>
                 : <p className="ev-hint">The organizers haven't written a description.</p>}
         </>
     );
@@ -436,14 +561,24 @@ function EnterTab({ ev, d, preview, mine, allowance }: { ev: EventRow; d: Detail
     const stage = effectivePhase(ev);
     const [editing, setEditing] = useState<Entry | null>(null);
     const canEnter = preview || (takingEntries(ev) && (state.user ? mine.length < allowance : ev.public_access));
-    if (editing && takingEntries(ev)) return <EntryForm key={editing.id} ev={ev} d={d} left={0} preview={false} editing={editing} onDone={() => setEditing(null)} />;
+    // yours change while entries are open, or after, when the team asked you to (update_event_entry)
+    const canEdit = (en: Entry) => takingEntries(ev) || (!!d.editRequests[en.id] && stage !== 'ended');
+    const asked = mine.filter(en => d.editRequests[en.id]);
+    if (editing && canEdit(editing)) return <EntryForm key={editing.id} ev={ev} d={d} left={0} preview={false} editing={editing} onDone={() => setEditing(null)} />;
     return (
         <>
+            {asked.map(en => (
+                <div className="ev-notice is-ask ev-edit-asked" key={en.id} role="status">
+                    <Icon name="pencil-square" size={15} />
+                    <span><strong>The organizers asked you to change "{entryTitle(ev, en, d.people)}".</strong> {d.editRequests[en.id].reason}</span>
+                    {stage !== 'ended' && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing(en)}>Edit entry</button>}
+                </div>
+            ))}
             {mine.length > 0 && (
                 <section className="ev-block">
                     <h3>Your {mine.length === 1 ? 'entry' : 'entries'}</h3>
                     {takingEntries(ev) && <p className="ev-hint">You can change or withdraw {mine.length === 1 ? 'it' : 'them'} until entries close.</p>}
-                    <div className="ev-gallery">{mine.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own onEdit={takingEntries(ev) ? () => setEditing(en) : undefined} />)}</div>
+                    <div className="ev-gallery">{mine.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own onEdit={canEdit(en) ? () => setEditing(en) : undefined} />)}</div>
                 </section>
             )}
             {canEnter && <EntryForm ev={ev} d={d} left={allowance - mine.length} preview={preview} />}
@@ -487,7 +622,8 @@ function CodeBox({ ev }: { ev: EventRow }) {
 function VoteTab({ ev, d, preview }: { ev: EventRow; d: Detail; preview: boolean }) {
     const stage = effectivePhase(ev);
     const perms = permsFor(ev, d.helpers);
-    const others = d.entries.filter(e => !state.user || e.user_id !== state.user.id);
+    // what you may vote on: everyone else's, and your own too when the organizer allows it
+    const others = d.entries.filter(e => !state.user || ev.allow_self_vote || e.user_id !== state.user.id);
     if (preview) return <p className="ev-notice"><Icon name="eye" size={15} />Voting shows here once it opens. The preview of the voting form is below.</p>;
     if (!votingOpen(ev)) {
         return (
@@ -496,7 +632,7 @@ function VoteTab({ ev, d, preview }: { ev: EventRow; d: Detail; preview: boolean
                     stage === 'closed' && ev.voting_open_at && !isPast(ev.voting_open_at) ? `Voting opens ${fmtDate(ev.voting_open_at)} (${relTime(ev.voting_open_at)}).`
                     : ['tallying', 'ended'].includes(stage) ? 'Voting is over.'
                     : 'Voting opens after entries close.'}</p>
-                {others.length > 0 && (ev.show_entries || ['closed', 'tallying', 'ended'].includes(stage) || perms.entries || perms.judge || perms.results) && <Gallery ev={ev} d={d} entries={others} title="Entries" />}
+                {others.length > 0 && canSeeEntries(ev, perms) && <Gallery ev={ev} d={d} entries={others} title="Entries" />}
             </>
         );
     }
@@ -516,11 +652,14 @@ function VoteTab({ ev, d, preview }: { ev: EventRow; d: Detail; preview: boolean
 function ResultsView({ ev, d, perms }: { ev: EventRow; d: Detail; perms: ReturnType<typeof permsFor> }) {
     const stage = effectivePhase(ev);
     const others = d.entries.filter(e => !state.user || e.user_id !== state.user.id);
-    const visible = ev.show_entries || ['closed', 'voting', 'tallying', 'ended'].includes(stage) || perms.entries || perms.judge || perms.results;
+    const visible = canSeeEntries(ev, perms);
     if (stage !== 'ended') {
+        const when = ev.results_at && !isPast(ev.results_at) ? `Results come out ${fmtDate(ev.results_at)} (${relTime(ev.results_at)}).`
+            : ev.hold_results ? 'Results come out once the organizers post them.'
+            : 'Results come out when the event ends.';
         return (
             <>
-                <p className="ev-notice"><Icon name="clock" size={15} />{stage === 'tallying' || ev.results_at ? `Results come out ${fmtDate(ev.results_at)}${ev.results_at ? ` (${relTime(ev.results_at)})` : ''}.` : 'Results come out when the event ends.'}</p>
+                <p className="ev-notice"><Icon name="clock" size={15} />{when}</p>
                 {visible && others.length > 0 && <Gallery ev={ev} d={d} entries={others} title="Entries so far" />}
             </>
         );
@@ -528,10 +667,10 @@ function ResultsView({ ev, d, perms }: { ev: EventRow; d: Detail; perms: ReturnT
     const winners = d.results ? computeWinners(ev, ranked(ev, d.entries, d.results)) : new Set<string>();
     return (
         <>
-            {d.resultsPost && <section className="ev-block ev-results-post"><h3>Results</h3><RichText text={d.resultsPost} className="ev-rich" /></section>}
+            {d.resultsPost && <section className="ev-block ev-results-post"><h3>Results</h3><EventText ev={ev} d={d} text={d.resultsPost} /></section>}
             {d.results && <Podium ev={ev} d={d} />}
-            {d.entries.length > 0 && <Gallery ev={ev} d={d} entries={ranked(ev, d.entries, d.results).map(r => r.entry)} title="All entries" winners={winners} />}
-            {!d.entries.length && <p className="ev-hint">This event had no entries.</p>}
+            {visible && d.entries.length > 0 && <Gallery ev={ev} d={d} entries={ranked(ev, d.entries, d.results).map(r => r.entry)} title="All entries" winners={winners} />}
+            {visible && !d.entries.length && <p className="ev-hint">This event had no entries.</p>}
         </>
     );
 }
@@ -599,7 +738,7 @@ function EntryCard({ ev, d, entry: en, own = false, winner = false, onEdit }: { 
     const author = authorOf(d, en);
     const result = d.results?.find(r => r.entry_id === en.id);
     const myVote = d.myVotes[en.id];
-    const voting = votingOpen(ev) && !own && !!state.user;
+    const voting = votingOpen(ev) && (!own || !!ev.allow_self_vote) && !!state.user;
     const outOfVotes = ev.voting === 'community' && !myVote && Object.keys(d.myVotes).length >= ev.votes_per_user;
     const [open, setOpen] = useState(false);
     return (
@@ -612,6 +751,7 @@ function EntryCard({ ev, d, entry: en, own = false, winner = false, onEdit }: { 
                 <strong>{entryTitle(ev, en, d.people)}</strong>
                 {(own || !votingOpen(ev) || voteDisplay(ev).author) && <span className="ev-entry-by"><Avatar userId={en.user_id} url={author?.avatar_url} name={authorName(d, en)} className="ev-avatar ev-avatar-xs" />{authorName(d, en)}</span>}
                 {result && <span className="ev-entry-score">{ev.voting === 'community' ? plural(Number(result.votes), 'vote') : `${Number(result.points_percent).toFixed(1)}% · ${plural(Number(result.votes), 'vote')}`}</span>}
+                {d.editRequests[en.id] && (own || perms.entries) && <span className="ev-chip-flag" title={d.editRequests[en.id].reason}><Icon name="pencil-square" size={12} />Edit requested</span>}
             </div>
             <div className="ev-entry-actions">
                 {voting && ev.voting === 'community' && (
@@ -1583,7 +1723,8 @@ function MonRulesEditor({ rules = {}, onChange }: { rules?: MonRules; onChange: 
 
 const TABS: Array<[DashTab, string, string, keyof ReturnType<typeof permsFor>]> = [
     ['overview', 'Overview', 'squares-2x2', 'view'],
-    ['entries', 'Entries', 'inbox-stack', 'entries'],
+    ['entries', 'Responses', 'inbox-stack', 'entries'],
+    ['announcements', 'Announcements', 'megaphone', 'edit'],
     ['results', 'Results', 'chart-bar', 'results'],
     ['team', 'Team', 'users', 'view'],
     ['settings', 'Settings', 'cog-6-tooth', 'edit']
@@ -1625,6 +1766,7 @@ function Dashboard({ id, tab }: { id: string; tab: DashTab }) {
             </nav>
             {current === 'overview' && <Overview ev={ev} d={d} />}
             {current === 'entries' && <EntriesTab ev={ev} d={d} />}
+            {current === 'announcements' && <AnnouncementsTab ev={ev} d={d} />}
             {current === 'results' && <ResultsTab ev={ev} d={d} />}
             {current === 'team' && <TeamTab ev={ev} d={d} />}
             {current === 'settings' && <EventEditor event={ev} />}
@@ -1639,11 +1781,13 @@ function Overview({ ev, d }: { ev: EventRow; d: Detail }) {
     const voters = ev.voting === 'ballot' ? d.ballots.length : new Set(d.votes.map(v => v.voter_id)).size;
     const scheduled = !!ev.submissions_open_at && !isPast(ev.submissions_open_at);
     const next: [Phase, string] | null =
-        stage === 'draft' ? (scheduled ? ['announced', 'Publish (entries open on schedule)'] : ['open', 'Open for entries now'])
+        stage === 'draft' ? ['announced', scheduled ? 'Go live (entries open on schedule)' : 'Go live (entries closed)']
         : stage === 'upcoming' ? ['open', 'Open entries now']
         : stage === 'open' ? (ev.voting === 'none' ? ['ended', 'Close and end the event'] : ['voting', 'Close entries, start voting'])
         : stage === 'closed' ? (ev.voting === 'none' ? ['ended', 'End event and publish results'] : ['voting', 'Start voting now'])
         : stage === 'voting' ? ['ended', 'End event and publish results'] : null;
+    // an event that waits for its results post only ends for real when that's published
+    if (next?.[0] === 'ended' && ev.hold_results && !ev.results_released_at) next[1] = stage === 'voting' ? 'Close voting (results wait for your post)' : 'End the event (results wait for your post)';
     const go = ([p]: [Phase, string]) => setPhase(ev, p);
     return (
         <div className="ev-dash-grid">
@@ -1653,8 +1797,9 @@ function Overview({ ev, d }: { ev: EventRow; d: Detail }) {
                 {perms.edit && (
                     <div className="ev-phase-controls">
                         {next && <button className="btn btn-primary" type="button" onClick={() => go(next)}>{next[1]}</button>}
-                        {/* show it off before entries open: listed and shareable, the form visible but closed */}
-                        {stage === 'draft' && !scheduled && <button className="btn btn-secondary" type="button" onClick={() => setPhase(ev, 'announced')}><Icon name="megaphone" size={15} />Announce it, open entries later</button>}
+                        {/* live without entries: listed and shareable, the form visible but closed */}
+                        {stage === 'draft' && <button className="btn btn-secondary" type="button" onClick={() => setPhase(ev, 'open')}>Go live and open entries now</button>}
+                        {stage === 'open' && <button className="btn btn-secondary" type="button" onClick={() => setPhase(ev, 'announced')}>Stop entries, stay live</button>}
                         <label className="ev-inline-select">Set phase
                             <select value={ev.phase} onChange={e => setPhase(ev, e.target.value as Phase)}>
                                 {PHASES.filter(([p]) => p !== 'voting' || ev.voting !== 'none').map(([p, label]) => <option key={p} value={p}>{label}</option>)}
@@ -1662,8 +1807,8 @@ function Overview({ ev, d }: { ev: EventRow; d: Detail }) {
                         </label>
                     </div>
                 )}
-                <p className="ev-hint">Dates move the event along by themselves. Setting a phase by hand happens now, and clears dates that would undo it.</p>
-                <p className="ev-hint">You and your team can enter and vote too, from the <button type="button" className="ev-link" onClick={() => showEventView({ kind: 'event', id: ev.id })}>event page</button>. Nobody can vote on their own entry.</p>
+                <p className="ev-hint">"Go live" puts the event on the Events page and makes its link work, with entries closed until their open date (or until you open them). Dates move the event along by themselves; setting a phase by hand happens now and clears dates that would undo it.</p>
+                <p className="ev-hint">You and your team can enter and vote too, from the <button type="button" className="ev-link" onClick={() => showEventView({ kind: 'event', id: ev.id })}>event page</button>. {ev.allow_self_vote ? 'This event lets people vote on their own entries.' : 'Nobody can vote on their own entry.'}</p>
                 <dl className="ev-stats">
                     <div><dt>Entries</dt><dd>{d.entries.length}</dd></div>
                     <div><dt>Entrants</dt><dd>{entrants}</dd></div>
@@ -1692,64 +1837,411 @@ function ShareRow({ label, hint, url }: { label: string; hint: string; url: stri
     );
 }
 
+// ---- responses, Google Forms style ----
+// Summary: every question with its answers added up. Question: one question,
+// everyone's answer. Individual: one response at a time, with what the team
+// can do about it. Plus a live Google Sheets link and the CSV.
+
+type ResponsesView = 'summary' | 'question' | 'individual';
+const RESPONSE_VIEWS: Array<[ResponsesView, string, string]> = [['summary', 'Summary', 'chart-pie'], ['question', 'Question', 'queue-list'], ['individual', 'Individual', 'document-text']];
+
+/** One entry's answer to one question, from the public or the private side. */
+const answerOf = (d: Detail, en: Entry, f: Field) => isPrivateField(f) ? d.privateAnswers[en.id]?.[f.id] : en.answers[f.id];
+
 function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
     const perms = permsFor(ev, d.helpers);
-    const [open, setOpen] = useState<string | null>(null);
-    const [q, setQ] = useState('');
-    const query = q.trim().toLowerCase();
-    const list = d.entries.filter(en => !query || entryTitle(ev, en, d.people).toLowerCase().includes(query) || (authorOf(d, en)?.username || '').toLowerCase().includes(query));
+    const questions = ev.form.filter(f => f.type !== 'section');
+    const [view, setView] = useState<ResponsesView>('summary');
+    const [at, setAt] = useState(0);
+    const [qid, setQid] = useState(questions[0]?.id || '');
+    const open = (entryId: string) => { setAt(Math.max(0, d.entries.findIndex(e => e.id === entryId))); setView('individual'); };
     return (
         <>
-            <section className="ev-block">
+            <section className="ev-block ev-responses">
                 <div className="ev-block-head">
-                    <h3>{plural(d.entries.length, 'entry', 'entries')}</h3>
-                    <div className="ev-head-actions">
-                        <input type="search" placeholder="Search entries" value={q} onChange={e => setQ(e.target.value)} aria-label="Search entries" />
-                        <button className="btn btn-secondary btn-sm" type="button" onClick={exportEntriesCsv} disabled={!d.entries.length}><Icon name="arrow-down-tray" size={14} />Export CSV</button>
-                    </div>
+                    <h3>{plural(d.entries.length, 'response')}</h3>
+                    <button className="btn btn-secondary btn-sm" type="button" onClick={exportEntriesCsv} disabled={!d.entries.length}><Icon name="arrow-down-tray" size={14} />Download CSV</button>
                 </div>
-                {!d.entries.length && <p className="ev-hint">{ev.phase === 'draft' ? 'Open the event to start taking entries.' : 'Nothing yet. Share the entry link to get people in.'}</p>}
-                <ul className="ev-table">
-                    {list.map(en => {
-                        const p = authorOf(d, en);
-                        const expanded = open === en.id;
-                        return (
-                            <li key={en.id} className={expanded ? 'is-open' : ''}>
-                                <button type="button" className="ev-table-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : en.id)}>
-                                    <span className="ev-table-thumb">{entryImage(ev, en) ? <img src={entryImage(ev, en)} alt="" /> : <Icon name="document-text" size={18} />}</span>
-                                    <span className="ev-table-main"><strong>{entryTitle(ev, en, d.people)}</strong><small>{en.user_id ? `@${p?.username || 'unknown'}` : 'Guest'} · {fmtDate(en.created_at)}</small></span>
-                                    {en.placement && <span className="ev-place">{placeLabel(en.placement)}</span>}
-                                    <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} />
-                                </button>
-                                {expanded && (
-                                    <div className="ev-table-detail">
-                                        <EntryAnswers ev={ev} d={d} entry={en} />
-                                        <div className="ev-form-actions">
-                                            {perms.edit && <PlacementPicker entry={en} />}
-                                            {perms.entries && <button type="button" className="btn btn-danger-ghost btn-sm" onClick={() => removeEntry(en, false)}><Icon name="trash-2" size={14} />Remove entry</button>}
-                                        </div>
-                                    </div>
-                                )}
-                            </li>
-                        );
-                    })}
-                </ul>
+                <div className="ev-segmented ev-responses-tabs" role="tablist" aria-label="How to look at the responses">
+                    {RESPONSE_VIEWS.map(([key, label, icon]) => (
+                        <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? 'active' : ''} onClick={() => setView(key)}><Icon name={icon} size={14} />{label}</button>
+                    ))}
+                </div>
+                {!d.entries.length && <p className="ev-hint">{ev.phase === 'draft' ? 'Responses show up here once the event is live and taking entries.' : 'No responses yet. Share the entry link to get people in.'}</p>}
+                {d.entries.length > 0 && view === 'summary' && (
+                    <div className="ev-summary">
+                        {questions.map(f => <QuestionSummary key={f.id} d={d} f={f} onOpen={open} />)}
+                        {!questions.length && <p className="ev-hint">The form has no questions, so each response is a sign-up.</p>}
+                    </div>
+                )}
+                {d.entries.length > 0 && view === 'question' && <QuestionResponses d={d} questions={questions} qid={qid} onQid={setQid} onOpen={open} />}
+                {d.entries.length > 0 && view === 'individual' && <IndividualResponse ev={ev} d={d} perms={perms} at={Math.min(at, d.entries.length - 1)} onAt={setAt} />}
             </section>
+            <SheetLink ev={ev} d={d} />
             {perms.edit && <ExtraEntries ev={ev} d={d} />}
             {perms.edit && <EntryCodes ev={ev} d={d} />}
         </>
     );
 }
 
+/** One question's answers, added up the way its type calls for. */
+function QuestionSummary({ d, f, onOpen }: { d: Detail; f: Field; onOpen: (entryId: string) => void }) {
+    const [all, setAll] = useState(false);
+    const got = d.entries.map(en => ({ en, v: answerOf(d, en, f) })).filter(x => answered(x.v));
+    const counted = (options: string[], pick: (v: any) => string[]) => {
+        const n = new Map<string, number>(options.map(o => [o, 0]));
+        for (const { v } of got) for (const o of pick(v)) n.set(o, (n.get(o) || 0) + 1);
+        return [...n.entries()];
+    };
+    let body: ReactNode;
+    if (f.type === 'choice' || f.type === 'dropdown' || f.type === 'checkboxes' || f.type === 'scale') {
+        const options = f.type === 'scale' ? Array.from({ length: f.max || 5 }, (_, i) => String(i + 1)) : f.options || [];
+        const rows = counted(options, v => Array.isArray(v) ? v.map(String) : [String(v)]);
+        const top = Math.max(1, ...rows.map(([, n]) => n));
+        body = (
+            <ul className="ev-sum-bars">
+                {rows.map(([o, n]) => (
+                    <li key={o}>
+                        <span className="ev-sum-label">{o}</span>
+                        <span className="ev-sum-track" aria-hidden="true"><span style={{ transform: `scaleX(${n / top})` }} /></span>
+                        <span className="ev-sum-num">{n} <small>({got.length ? Math.round((n / got.length) * 100) : 0}%)</small></span>
+                    </li>
+                ))}
+            </ul>
+        );
+    } else if (f.type === 'agree') {
+        body = <p className="ev-sum-big">{got.length} <small>of {d.entries.length} agreed</small></p>;
+    } else if (f.type === 'number') {
+        const nums = got.map(x => Number(x.v)).filter(n => Number.isFinite(n));
+        const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+        body = nums.length ? (
+            <dl className="ev-sum-stats">
+                <div><dt>Average</dt><dd>{avg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</dd></div>
+                <div><dt>Lowest</dt><dd>{Math.min(...nums).toLocaleString()}</dd></div>
+                <div><dt>Highest</dt><dd>{Math.max(...nums).toLocaleString()}</dd></div>
+            </dl>
+        ) : null;
+    } else if (f.type === 'image' || f.type === 'fakemon' || (f.type === 'library' && got.some(x => x.v?.artwork))) {
+        const shown = all ? got : got.slice(0, 12);
+        body = (
+            <div className="ev-sum-thumbs">
+                {shown.map(({ en, v }) => {
+                    const src = typeof v === 'string' ? v : v?.artwork;
+                    const name = typeof v === 'object' ? v?.name : '';
+                    return (
+                        <button key={en.id} type="button" className="ev-sum-thumb" onClick={() => onOpen(en.id)} title={name || 'Open this response'}>
+                            <span className="ev-sum-thumb-art">{src ? <img src={src} alt="" loading="lazy" /> : <Icon name="sparkles" size={18} />}</span>
+                            {name && <span className="ev-sum-thumb-name">{name}</span>}
+                        </button>
+                    );
+                })}
+            </div>
+        );
+    } else {
+        const shown = all ? got : got.slice(0, 6);
+        body = (
+            <ul className="ev-sum-list">
+                {shown.map(({ en, v }) => (
+                    <li key={en.id}><button type="button" onClick={() => onOpen(en.id)}>{typeof v === 'object' ? v?.name || 'Answer' : f.type === 'date' ? new Date(`${v}T00:00`).toLocaleDateString([], { dateStyle: 'medium' }) : String(v)}</button></li>
+                ))}
+            </ul>
+        );
+    }
+    const more = (f.type === 'image' || f.type === 'fakemon' || f.type === 'library') ? got.length > 12 : got.length > 6;
+    const listed = !['choice', 'dropdown', 'checkboxes', 'scale', 'agree', 'number'].includes(f.type);
+    return (
+        <article className="ev-sum-card">
+            <header>
+                <strong>{f.label}</strong>
+                {isPrivateField(f) && <span className="ev-private"><Icon name="lock-closed" size={11} />Private</span>}
+                <small>{plural(got.length, 'response')}</small>
+            </header>
+            {got.length ? body : <p className="ev-hint">Nobody answered this yet.</p>}
+            {listed && more && <button type="button" className="ev-link" onClick={() => setAll(v => !v)}>{all ? 'Show fewer' : `Show all ${got.length}`}</button>}
+        </article>
+    );
+}
+
+/** Pick a question, see everyone's answer to it. */
+function QuestionResponses({ d, questions, qid, onQid, onOpen }: { d: Detail; questions: Field[]; qid: string; onQid: (id: string) => void; onOpen: (entryId: string) => void }) {
+    const f = questions.find(q => q.id === qid) || questions[0];
+    if (!f) return <p className="ev-hint">The form has no questions.</p>;
+    const i = questions.indexOf(f);
+    return (
+        <div className="ev-question-view">
+            <div className="ev-pager">
+                <button type="button" className="ev-icon-btn" disabled={i === 0} onClick={() => onQid(questions[i - 1].id)} aria-label="Previous question"><Icon name="chevron-left" size={16} /></button>
+                <select value={f.id} onChange={e => onQid(e.target.value)} aria-label="Question">
+                    {questions.map(q => <option key={q.id} value={q.id}>{q.label}</option>)}
+                </select>
+                <button type="button" className="ev-icon-btn" disabled={i === questions.length - 1} onClick={() => onQid(questions[i + 1].id)} aria-label="Next question"><Icon name="chevron-right" size={16} /></button>
+            </div>
+            <ul className="ev-question-answers">
+                {d.entries.map(en => (
+                    <li key={en.id}>
+                        <button type="button" className="ev-question-who" onClick={() => onOpen(en.id)} title="Open this response">
+                            <Avatar userId={en.user_id} url={authorOf(d, en)?.avatar_url} name={authorName(d, en)} className="ev-avatar ev-avatar-xs" />
+                            <span>{en.user_id ? `@${authorOf(d, en)?.username || 'member'}` : 'Guest'}</span>
+                        </button>
+                        <div className="ev-question-answer"><Answer field={f} value={answerOf(d, en, f)} /></div>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+/** One response at a time, with placement, asking for changes and removing. */
+function IndividualResponse({ ev, d, perms, at, onAt }: { ev: EventRow; d: Detail; perms: ReturnType<typeof permsFor>; at: number; onAt: (i: number) => void }) {
+    const en = d.entries[at];
+    if (!en) return null;
+    const asked = d.editRequests[en.id];
+    const p = authorOf(d, en);
+    return (
+        <div className="ev-individual">
+            <div className="ev-pager">
+                <button type="button" className="ev-icon-btn" disabled={at === 0} onClick={() => onAt(at - 1)} aria-label="Previous response"><Icon name="chevron-left" size={16} /></button>
+                <select value={en.id} onChange={e => onAt(d.entries.findIndex(x => x.id === e.target.value))} aria-label="Response">
+                    {d.entries.map((x, i) => <option key={x.id} value={x.id}>{i + 1}. {entryTitle(ev, x, d.people)}</option>)}
+                </select>
+                <span className="ev-pager-count">{at + 1} of {d.entries.length}</span>
+                <button type="button" className="ev-icon-btn" disabled={at === d.entries.length - 1} onClick={() => onAt(at + 1)} aria-label="Next response"><Icon name="chevron-right" size={16} /></button>
+            </div>
+            <div className="ev-individual-card">
+                <header className="ev-individual-head">
+                    <span className="ev-table-thumb">{entryImage(ev, en) ? <img src={entryImage(ev, en)} alt="" /> : <Icon name="document-text" size={18} />}</span>
+                    <span className="ev-table-main">
+                        <strong>{entryTitle(ev, en, d.people)}</strong>
+                        <small>{en.user_id ? `@${p?.username || 'unknown'}` : 'Guest'} · {fmtDate(en.created_at)}</small>
+                    </span>
+                    {en.placement && <span className="ev-place">{placeLabel(en.placement)}</span>}
+                </header>
+                {asked && (
+                    <p className="ev-notice is-ask"><Icon name="pencil-square" size={15} />
+                        <span><strong>Edit requested {relTime(asked.at)}.</strong> {asked.reason}</span></p>
+                )}
+                <EntryAnswers ev={ev} d={d} entry={en} />
+                <div className="ev-form-actions">
+                    {perms.edit && <PlacementPicker entry={en} />}
+                    {perms.entries && en.user_id && effectivePhase(ev) !== 'ended' && (
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-request-edit', { entry: en, title: entryTitle(ev, en, d.people), who: authorName(d, en), current: asked?.reason || '' })}>
+                            <Icon name="pencil-square" size={14} />{asked ? 'Change the request' : 'Ask for changes'}</button>
+                    )}
+                    {perms.entries && <button type="button" className="btn btn-danger-ghost btn-sm" onClick={() => openDialog('event-remove-entry', { entry: en, title: entryTitle(ev, en, d.people), who: authorName(d, en) })}><Icon name="trash-2" size={14} />Remove entry</button>}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/** Asking an entrant to change their entry, with the reason they'll see. */
+function RequestEditDialog({ close, entry, title, who, current }: DialogProps<{ entry: Entry; title: string; who: string; current: string }>) {
+    const [reason, setReason] = useState(current);
+    const [busy, setBusy] = useState(false);
+    async function send(text: string) {
+        setBusy(true);
+        if (await requestEntryEdit(entry, text)) close();
+        setBusy(false);
+    }
+    return (
+        <Modal onClose={close} title="Ask for changes" className="ev-remove-modal" dismissible={!busy}>
+            <p className="ev-hint"><strong>{title}</strong> by {who}. They get a notification with your reason, and can edit their entry even after entries close, until the event ends.</p>
+            <div className="ev-field"><label className="ev-field-label" htmlFor="ev-edit-reason">What needs changing</label>
+                <textarea id="ev-edit-reason" rows={4} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="The artwork is missing its shiny version. Add it and you're all set." autoFocus />
+                <small className="ev-field-help">{500 - reason.length} characters left</small></div>
+            <div className="modal-actions">
+                {current && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => send('')}>Withdraw the request</button>}
+                <button type="button" className="btn btn-secondary" onClick={close} disabled={busy}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={() => send(reason)} disabled={busy || !reason.trim()}>{busy ? 'Sending…' : 'Send request'}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-request-edit', RequestEditDialog);
+
+/** A spreadsheet of the responses that keeps itself up to date (Google Sheets' IMPORTDATA). */
+function SheetLink({ ev, d }: { ev: EventRow; d: Detail }) {
+    const [priv, setPriv] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const make = async (includePrivate: boolean) => { setBusy(true); await createSheetLink(ev.id, includePrivate); setBusy(false); };
+    return (
+        <section className="ev-block ev-sheet">
+            <div className="ev-block-head"><h3><Icon name="table-cells" size={16} />Google Sheets</h3></div>
+            {!d.sheet ? (
+                <>
+                    <p className="ev-hint">Keep the responses in a spreadsheet that updates by itself. You get a private link; Google Sheets pulls in the latest responses about once an hour.</p>
+                    <label className="ev-check"><input type="checkbox" checked={priv} onChange={e => setPriv(e.target.checked)} />Include private answers (emails, Discord names and other questions only organizers see)</label>
+                    <div className="ev-form-actions"><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => make(priv)}><Icon name="link" size={14} />{busy ? 'Making the link…' : 'Link to Google Sheets'}</button></div>
+                </>
+            ) : (
+                <>
+                    <ol className="ev-sheet-steps">
+                        <li><span>Open a new Google Sheet.</span> <a className="btn btn-secondary btn-sm" href="https://sheets.new" target="_blank" rel="noopener noreferrer"><Icon name="arrow-top-right-on-square" size={14} />sheets.new</a></li>
+                        <li><span>Paste this into cell A1:</span>
+                            <div className="ev-share-field">
+                                <input type="text" readOnly value={sheetFormula(d.sheet.token)} aria-label="Formula for Google Sheets" onFocus={e => e.target.select()} />
+                                <button className="btn btn-secondary btn-sm" type="button" onClick={() => copyLink(sheetFormula(d.sheet!.token), 'Formula')}><Icon name="clipboard" size={14} />Copy</button>
+                            </div></li>
+                    </ol>
+                    <p className="ev-notice"><Icon name="shield-exclamation" size={15} />
+                        <span>Anyone with this link can read the responses{d.sheet.include_private ? ', private answers included' : ' (not the private answers)'}. Share the sheet only with your team. A new link stops the old one working.</span></p>
+                    <div className="ev-form-actions">
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => copyLink(sheetUrl(d.sheet!.token), 'CSV link')}><Icon name="clipboard" size={14} />Copy the CSV link</button>
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => make(!d.sheet!.include_private)}>{d.sheet.include_private ? 'New link without private answers' : 'New link with private answers'}</button>
+                        <button type="button" className="btn btn-danger-ghost btn-sm" onClick={() => deleteSheetLink(ev.id)}>Turn off</button>
+                    </div>
+                </>
+            )}
+        </section>
+    );
+}
+
+// ---- announcements, from the dashboard ----
+
+const announceKey = (eventId: string) => `woogidex.eventAnnouncement.${state.user?.id || ''}.${eventId}`;
+
+function AnnouncementsTab({ ev, d }: { ev: EventRow; d: Detail }) {
+    // what you've typed is kept on this device until it's posted
+    const [draft, setDraft] = useState<{ title: string; body: string }>(() => {
+        try { return JSON.parse(localStorage.getItem(announceKey(ev.id)) || 'null') || { title: '', body: '' }; } catch { return { title: '', body: '' }; }
+    });
+    const [mode, setMode] = useState<'write' | 'preview'>('write');
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        try { draft.title || draft.body ? localStorage.setItem(announceKey(ev.id), JSON.stringify(draft)) : localStorage.removeItem(announceKey(ev.id)); } catch { /* full or private mode */ }
+    }, [draft]);
+    useLeaveGuard(!!(draft.title.trim() || draft.body.trim()), 'Your announcement stays saved on this device until you post it.');
+    async function post() {
+        setBusy(true);
+        if (await postAnnouncement(ev.id, draft.title, draft.body)) setDraft({ title: '', body: '' });
+        setBusy(false);
+    }
+    return (
+        <>
+            <section className="ev-block">
+                <div className="ev-block-head">
+                    <h3>New announcement</h3>
+                    <div className="ev-segmented" role="tablist" aria-label="Announcement">
+                        <button type="button" role="tab" aria-selected={mode === 'write'} className={mode === 'write' ? 'active' : ''} onClick={() => setMode('write')}>Write</button>
+                        <button type="button" role="tab" aria-selected={mode === 'preview'} className={mode === 'preview' ? 'active' : ''} onClick={() => setMode('preview')}>Preview</button>
+                    </div>
+                </div>
+                <p className="ev-hint">{ev.phase === 'draft'
+                    ? 'It goes on the event page. While the event is a draft nobody is notified.'
+                    : 'It goes at the top of the event page, and everyone following the event gets a notification (and an email, if they turned that on). Entering an event follows it.'}</p>
+                {mode === 'write' ? (
+                    <>
+                        <div className="ev-field"><label className="ev-field-label" htmlFor="ev-ann-title">Title</label>
+                            <input id="ev-ann-title" maxLength={120} value={draft.title} onChange={e => setDraft(x => ({ ...x, title: e.target.value }))} placeholder="Voting opens tomorrow!" /></div>
+                        <EmojiInput value={draft.body} onChange={body => setDraft(x => ({ ...x, body }))} rows={6} maxLength={8000} className="ev-about-input" ariaLabel="Announcement" toolbar variables={VARIABLES}
+                            placeholder={'Entries are closed: thank you all!\nVoting opens {{voting_open}}.'} />
+                    </>
+                ) : (
+                    <div className="ev-preview-box">
+                        <ol className="ev-announce-list"><AnnouncementItem ev={ev} d={d} a={{ id: 'preview', event_id: ev.id, author_id: state.user?.id || null, title: draft.title || 'Untitled', body: draft.body, created_at: new Date().toISOString() }} /></ol>
+                    </div>
+                )}
+                <div className="ev-form-actions">
+                    <button type="button" className="btn btn-primary btn-sm" disabled={busy || !draft.title.trim()} onClick={post}><Icon name="megaphone" size={14} />{busy ? 'Posting…' : 'Post announcement'}</button>
+                </div>
+            </section>
+            <section className="ev-block">
+                <h3>Posted</h3>
+                {d.announcements.length
+                    ? <ol className="ev-announce-list">{d.announcements.map(a => <AnnouncementItem key={a.id} ev={ev} d={d} a={a} manage />)}</ol>
+                    : <p className="ev-hint">Nothing yet.</p>}
+            </section>
+        </>
+    );
+}
+
+/** Removing someone's entry: say why, if you like. They're told either way. */
+function RemoveEntryDialog({ close, entry, title, who }: DialogProps<{ entry: Entry; title: string; who: string }>) {
+    const [reason, setReason] = useState('');
+    const [busy, setBusy] = useState(false);
+    async function remove() {
+        setBusy(true);
+        if (await removeEntryAsTeam(entry, reason)) close();
+        setBusy(false);
+    }
+    return (
+        <Modal onClose={close} title="Remove this entry?" className="ev-remove-modal" dismissible={!busy}>
+            <p className="ev-hint"><strong>{title}</strong> by {who}, with its votes, is deleted for good.{entry.user_id ? ' They get a notification.' : ''}</p>
+            {entry.user_id && (
+                <div className="ev-field"><label className="ev-field-label" htmlFor="ev-remove-reason">Reason <span className="ev-optional">(optional, they'll see it)</span></label>
+                    <textarea id="ev-remove-reason" rows={3} maxLength={300} value={reason} onChange={e => setReason(e.target.value)} placeholder="It isn't an original design, so it can't be entered." autoFocus />
+                    <small className="ev-field-help">{300 - reason.length} characters left</small></div>
+            )}
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={close} disabled={busy}>Cancel</button>
+                <button type="button" className="btn btn-danger" onClick={remove} disabled={busy}>{busy ? 'Removing…' : 'Remove entry'}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-remove-entry', RemoveEntryDialog);
+
+/**
+ * Type a name, see who it is: matching people drop down with their picture,
+ * name and @username, and picking one shows them before you add them.
+ */
+function PersonField({ value, onChange, label = 'Username' }: { value: Person | null; onChange: (p: Person | null) => void; label?: string }) {
+    const [text, setText] = useState('');
+    const [found, setFound] = useState<Person[]>([]);
+    const [open, setOpen] = useState(false);
+    const [active, setActive] = useState(0);
+    useEffect(() => {
+        if (value) return;
+        let live = true;
+        const t = setTimeout(() => findPeople(text).then(list => { if (live) { setFound(list); setActive(0); } }).catch(() => {}), 200);
+        return () => { live = false; clearTimeout(t); };
+    }, [text, value]);
+    const pick = (p: Person) => { onChange(p); setOpen(false); setText(''); };
+    if (value) {
+        return (
+            <span className="ev-person-picked">
+                <Avatar userId={value.id} url={value.avatar_url} name={personName(value)} className="ev-avatar" />
+                <span className="ev-team-name"><strong>{personName(value)}</strong><small>@{value.username}</small></span>
+                <button type="button" className="ev-icon-btn" onClick={() => onChange(null)} aria-label="Pick someone else"><Icon name="x-mark" size={15} /></button>
+            </span>
+        );
+    }
+    const show = open && text.trim().replace(/^@/, '').length >= 2;
+    return (
+        <span className="ev-person-field">
+            <input type="text" placeholder="Search by @username or name" value={text} aria-label={label} autoComplete="off" role="combobox"
+                aria-expanded={show} aria-controls="ev-person-list" aria-autocomplete="list"
+                onChange={e => { setText(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+                onKeyDown={e => {
+                    if (!show || !found.length) return;
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => (i + 1) % found.length); }
+                    if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => (i - 1 + found.length) % found.length); }
+                    if (e.key === 'Enter') { e.preventDefault(); pick(found[active]); }
+                }} />
+            {show && (
+                <span className="ev-person-list feed-menu" id="ev-person-list" role="listbox">
+                    {found.length ? found.map((p, i) => (
+                        <button key={p.id} type="button" role="option" aria-selected={i === active} className={i === active ? 'is-active' : ''}
+                            onMouseDown={e => e.preventDefault()} onClick={() => pick(p)}>
+                            <Avatar userId={p.id} url={p.avatar_url} name={personName(p)} className="ev-avatar ev-avatar-xs" />
+                            <span className="ev-team-name"><strong>{personName(p)}</strong><small>@{p.username}</small></span>
+                        </button>
+                    )) : <span className="ev-person-none">Nobody by that name.</span>}
+                </span>
+            )}
+        </span>
+    );
+}
+
 /** People allowed a different number of entries than the event's default. */
 function ExtraEntries({ ev, d }: { ev: EventRow; d: Detail }) {
-    const [name, setName] = useState('');
+    const [person, setPerson] = useState<Person | null>(null);
     const [max, setMax] = useState(ev.max_entries_per_user + 1);
     const [busy, setBusy] = useState(false);
     async function add(e: React.FormEvent) {
         e.preventDefault();
         setBusy(true);
-        if (await setEntryLimit(ev.id, name, max)) setName('');
+        if (person && await setEntryLimit(ev.id, person.username || "", max)) setPerson(null);
         setBusy(false);
     }
     return (
@@ -1771,10 +2263,10 @@ function ExtraEntries({ ev, d }: { ev: EventRow; d: Detail }) {
                     })}
                 </ul>
             )}
-            <form className="ev-share-field" onSubmit={add}>
-                <input type="text" placeholder="@username" value={name} onChange={e => setName(e.target.value)} aria-label="Username" autoComplete="off" />
+            <form className="ev-share-field ev-person-row" onSubmit={add}>
+                <PersonField value={person} onChange={setPerson} />
                 <input type="number" min={1} max={100} value={max} onChange={e => setMax(Number(e.target.value))} aria-label="Entries allowed" className="ev-num" />
-                <button className="btn btn-primary btn-sm" type="submit" disabled={busy || !name.trim()}>Set</button>
+                <button className="btn btn-primary btn-sm" type="submit" disabled={busy || !person}>Set</button>
             </form>
         </section>
     );
@@ -1885,10 +2377,19 @@ function ResultsPostEditor({ ev, d }: { ev: EventRow; d: Detail }) {
     const [text, setText] = useState(d.resultsPost || '');
     const [mode, setMode] = useState<'write' | 'preview'>('write');
     const [busy, setBusy] = useState(false);
-    useEffect(() => { setText(d.resultsPost || ''); }, [d.resultsPost]);
+    // a reload brings the saved post in only if you haven't changed it here (it used to overwrite what you were typing)
+    const lastSaved = useRef(d.resultsPost || '');
+    useEffect(() => {
+        setText(t => t.trim() === lastSaved.current.trim() ? (d.resultsPost || '') : t);
+        lastSaved.current = d.resultsPost || '';
+    }, [d.resultsPost]);
     const stage = effectivePhase(ev);
     const dirty = text.trim() !== (d.resultsPost || '');
+    const waiting = !!ev.hold_results && !ev.results_released_at;
+    const filled = fillVariables(text, variablesFor(ev, d));
+    useLeaveGuard(dirty, 'Your results post isn\'t saved yet.');
     async function save() { setBusy(true); await saveResultsPost(ev.id, text); setBusy(false); }
+    async function publish() { setBusy(true); await publishResults(ev.id, text); setBusy(false); }
     return (
         <section className="ev-block">
             <div className="ev-block-head">
@@ -1898,18 +2399,21 @@ function ResultsPostEditor({ ev, d }: { ev: EventRow; d: Detail }) {
                     <button type="button" role="tab" aria-selected={mode === 'preview'} className={mode === 'preview' ? 'active' : ''} onClick={() => setMode('preview')}>Preview</button>
                 </div>
             </div>
-            <p className="ev-hint">Shown at the top of the event page once the results are out{ev.results_at && stage !== 'ended' ? ` (${fmtDate(ev.results_at)})` : ''}. Until then only the team can read it.</p>
+            <p className="ev-hint">{waiting
+                ? 'This event waits for this post: the results stay hidden until you publish it, whatever the dates say. Save it as a draft as often as you like.'
+                : <>Shown at the top of the event page once the results are out{ev.results_at && stage !== 'ended' ? ` (${fmtDate(ev.results_at)})` : ''}. Until then only the team can read it.</>}</p>
             {mode === 'write'
-                ? <EmojiInput value={text} onChange={setText} rows={10} maxLength={10000} className="ev-about-input" ariaLabel="Results post"
-                    placeholder={'## The results are in!\n🥇 **Blazelyn** by @mira\n🥈 **Mossbit** by @kai\n\nThanks to everyone who entered :woogi:'} />
-                : <div className="ev-preview-box">{text.trim() ? <RichText text={text} className="ev-rich" /> : <p className="ev-hint">Nothing written yet.</p>}</div>}
-            <small className="ev-field-help">Markdown works: # headings, **bold**, *italics*, lists, &gt; quotes, --- lines, ||spoilers||, [links](https://…) and :emojis:.</small>
+                ? <EmojiInput value={text} onChange={setText} rows={10} maxLength={10000} className="ev-about-input" ariaLabel="Results post" toolbar variables={VARIABLES}
+                    placeholder={'## The results are in!\n🥇 {{winner1}}\n🥈 {{winner2}}\n🥉 {{winner3}}\n\nThanks to all {{entrants}} of you who entered :woogi:'} />
+                : <div className="ev-preview-box">{text.trim() ? <RichText text={filled} className="ev-rich" /> : <p className="ev-hint">Nothing written yet.</p>}</div>}
+            <small className="ev-field-help">Variables like {'{{winner1}}'} fill in with the winners, counts and dates when people read it. The preview shows them as they stand now.</small>
             <div className="ev-form-actions">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setText(t => (t.trim() ? `${t.trim()}\n\n` : '') + standingsMarkdown(ev, d))} disabled={!d.results}>
-                    <Icon name="trophy" size={14} />Insert the winners</button>
-                {d.share && <button type="button" className="btn btn-secondary btn-sm" disabled={!text.trim()}
-                    onClick={() => openDialog('quote-repost', { item: d.share, text: text.trim().slice(0, 4000) })}><Icon name="megaphone" size={14} />Post it to the feed</button>}
-                <button type="button" className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save results post'}</button>
+                    <Icon name="trophy" size={14} />Insert the standings</button>
+                {d.share && !waiting && <button type="button" className="btn btn-secondary btn-sm" disabled={!text.trim()}
+                    onClick={() => openDialog('quote-repost', { item: d.share, text: filled.trim().slice(0, 4000) })}><Icon name="megaphone" size={14} />Post it to the feed</button>}
+                <button type="button" className={`btn btn-${waiting ? 'secondary' : 'primary'} btn-sm`} disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : waiting ? 'Save draft' : 'Save results post'}</button>
+                {waiting && <button type="button" className="btn btn-primary btn-sm" disabled={busy || !text.trim()} onClick={publish}><Icon name="trophy" size={14} />Publish results</button>}
             </div>
         </section>
     );
@@ -1967,71 +2471,138 @@ function VotersSection({ ev, d }: { ev: EventRow; d: Detail }) {
     );
 }
 
-const HELPER_PERMS: Array<[keyof Omit<Helper, 'event_id' | 'user_id'>, string, string]> = [
-    ['can_edit', 'Edit', 'Change details, the form, phases, entry limits and winners'],
-    ['can_entries', 'Entries', 'See every answer, private ones too, and remove entries'],
+type PermKey = 'can_edit' | 'can_entries' | 'can_judge' | 'can_results' | 'can_add' | 'is_organizer';
+const HELPER_PERMS: Array<[PermKey, string, string]> = [
+    ['is_organizer', 'Organizer', 'Everything you can do, except deleting the event'],
+    ['can_edit', 'Edit', 'Change details, the form, phases, entry limits, winners and announcements'],
+    ['can_entries', 'Entries', 'See every answer, private ones too, ask for changes and remove entries'],
     ['can_judge', 'Judge', 'Score entries when judges pick the winners'],
-    ['can_results', 'Results', 'See standings, scores and remarks before they are public']
+    ['can_results', 'Results', 'See standings, scores and remarks before they are public'],
+    ['can_add', 'Add people', 'Add people to the team, with no more permissions than they have']
 ];
+const NEW_GRANT = (ev?: Pick<EventRow, 'voting'>): HelperPerms => ({ can_edit: false, can_entries: false, can_judge: ev?.voting === 'judges', can_results: true, can_add: false, is_organizer: false });
+/** What the signed-in person holds, as a grant: someone who may only add people can't hand out more. */
+const heldGrant = (p: ReturnType<typeof permsFor>): Record<PermKey, boolean> =>
+    ({ is_organizer: p.team, can_edit: p.edit, can_entries: p.entries, can_judge: p.judge, can_results: p.results, can_add: p.add });
+
+/** A team member's permissions as chips; an organizer has them all. */
+function PermChips({ grant, onChange, allowed }: { grant: HelperPerms; onChange?: (g: HelperPerms) => void; allowed?: Record<PermKey, boolean> }) {
+    const org = !!grant.is_organizer;
+    return (
+        <span className="ev-perm-chips">
+            {HELPER_PERMS.map(([k, label, desc]) => {
+                const on = org || !!grant[k];
+                const locked = !onChange || (k !== 'is_organizer' && org) || (allowed ? !allowed[k] && !grant[k] : false);
+                return (
+                    <label key={k} className={`ev-chip${on ? ' is-on' : ''}${k === 'is_organizer' ? ' is-organizer' : ''}`} title={desc}>
+                        <input type="checkbox" checked={on} disabled={locked} onChange={e => onChange?.({ ...grant, [k]: e.target.checked })} />{label}
+                    </label>
+                );
+            })}
+        </span>
+    );
+}
+
+/** Choosing permissions for someone new: a checkbox per permission, with what it lets them do. */
+function PermGrid({ grant, onChange, allowed }: { grant: HelperPerms; onChange: (g: HelperPerms) => void; allowed: Record<PermKey, boolean> }) {
+    const org = !!grant.is_organizer;
+    return (
+        <div className="ev-perm-grid">
+            {HELPER_PERMS.map(([k, label, desc]) => (
+                <label key={k} className={`ev-perm-option${!allowed[k] ? ' is-locked' : ''}`} title={allowed[k] ? undefined : 'You can only give permissions you have yourself'}>
+                    <input type="checkbox" checked={org || !!grant[k]} disabled={!allowed[k] || (k !== 'is_organizer' && org)} onChange={e => onChange({ ...grant, [k]: e.target.checked })} />
+                    <span><strong>{label}</strong><small>{desc}</small></span>
+                </label>
+            ))}
+        </div>
+    );
+}
 
 function TeamTab({ ev, d }: { ev: EventRow; d: Detail }) {
     const perms = permsFor(ev, d.helpers);
-    const [name, setName] = useState('');
-    const [grant, setGrant] = useState({ can_edit: false, can_entries: false, can_judge: ev.voting === 'judges', can_results: true });
+    const allowed = heldGrant(perms);
+    const [person, setPerson] = useState<Person | null>(null);
+    const [grant, setGrant] = useState<HelperPerms>(() => NEW_GRANT(ev));
     const [busy, setBusy] = useState(false);
     const owner = d.people[ev.owner_id];
     async function add(e: React.FormEvent) {
         e.preventDefault();
         setBusy(true);
-        if (await addHelper(ev.id, name, grant)) setName('');
+        if (person && await addHelper(ev.id, person.username || "", grant)) setPerson(null);
         setBusy(false);
     }
     return (
         <section className="ev-block">
             <h3>Team</h3>
-            <p className="ev-hint">People you add can open this dashboard. Give each one only what they need.</p>
+            <p className="ev-hint">People you add can open this dashboard. Give each one only what they need. An organizer can do everything you can except delete the event.</p>
             <ul className="ev-team">
                 <li>
                     <Avatar userId={ev.owner_id} url={owner?.avatar_url} name={personName(owner)} className="ev-avatar" />
-                    <span className="ev-team-name"><strong>{personName(owner)}</strong><small>@{owner?.username} · Organizer, can do everything</small></span>
+                    <span className="ev-team-name"><strong>{personName(owner)}</strong><small>@{owner?.username} · Created the event, can do everything</small></span>
                 </li>
                 {d.helpers.map(h => {
                     const p = d.people[h.user_id];
                     const self = h.user_id === state.user?.id;
+                    const mineToRemove = perms.team || (perms.add && h.added_by === state.user?.id);
                     return (
                         <li key={h.user_id}>
                             <Avatar userId={h.user_id} url={p?.avatar_url} name={personName(p)} className="ev-avatar" />
-                            <span className="ev-team-name"><strong>{personName(p)}</strong><small>@{p?.username}</small></span>
-                            <span className="ev-perm-chips">
-                                {HELPER_PERMS.map(([k, label, desc]) => (
-                                    <label key={k} className={`ev-chip${h[k] ? ' is-on' : ''}`} title={desc}>
-                                        <input type="checkbox" checked={h[k]} disabled={!perms.owner} onChange={e => updateHelper(h, { [k]: e.target.checked })} />{label}
-                                    </label>
-                                ))}
-                            </span>
-                            {(perms.owner || self) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => removeHelper(h, self && !perms.owner)}>{self && !perms.owner ? 'Leave' : 'Remove'}</button>}
+                            <span className="ev-team-name"><strong>{personName(p)}</strong><small>@{p?.username}{h.is_organizer ? ' · Organizer' : ''}</small></span>
+                            <PermChips grant={h} onChange={perms.team ? g => updateHelper(h, g) : undefined} />
+                            {(mineToRemove || self) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => removeHelper(h, self && !perms.team)}>{self && !perms.team ? 'Leave' : 'Remove'}</button>}
                         </li>
                     );
                 })}
             </ul>
-            {perms.owner && (
+            {perms.add && (
                 <form className="ev-add-helper" onSubmit={add}>
                     <h4>Add someone</h4>
-                    <div className="ev-share-field">
-                        <input type="text" placeholder="@username" value={name} onChange={e => setName(e.target.value)} aria-label="Username" autoComplete="off" />
-                        <button className="btn btn-primary btn-sm" type="submit" disabled={busy || !name.trim()}><Icon name="user-plus" size={14} />Add</button>
+                    <div className="ev-share-field ev-person-row">
+                        <PersonField value={person} onChange={setPerson} />
+                        <button className="btn btn-primary btn-sm" type="submit" disabled={busy || !person}><Icon name="user-plus" size={14} />Add</button>
                     </div>
-                    <div className="ev-perm-grid">
-                        {HELPER_PERMS.map(([k, label, desc]) => (
-                            <label key={k} className="ev-perm-option">
-                                <input type="checkbox" checked={grant[k]} onChange={e => setGrant(g => ({ ...g, [k]: e.target.checked }))} />
-                                <span><strong>{label}</strong><small>{desc}</small></span>
-                            </label>
-                        ))}
-                    </div>
+                    <PermGrid grant={grant} onChange={setGrant} allowed={allowed} />
                 </form>
             )}
         </section>
+    );
+}
+
+/** A new event's team, added the moment it's created; templates keep it too. */
+function TeamPicker({ team, onChange }: { team: TeamPick[]; onChange: (t: TeamPick[]) => void }) {
+    const [person, setPerson] = useState<Person | null>(null);
+    const [grant, setGrant] = useState<HelperPerms>(() => NEW_GRANT());
+    const all = heldGrant(permsFor({ owner_id: state.user?.id || '' } as EventRow));
+    function add() {
+        if (!person) return;
+        if (person.id === state.user?.id) { api.showToast?.('You run the event already.', 'info'); return; }
+        onChange([...team.filter(t => t.person.id !== person.id), { person, perms: grant }]);
+        setPerson(null);
+    }
+    return (
+        <div className="ev-field">
+            <span className="ev-field-label">Team <span className="ev-optional">(optional)</span></span>
+            <small className="ev-field-help">Added to the team as soon as the event is created. Save it as a template and the next event starts with the same people.</small>
+            {team.length > 0 && (
+                <ul className="ev-team">
+                    {team.map((t, i) => (
+                        <li key={t.person.id}>
+                            <Avatar userId={t.person.id} url={t.person.avatar_url} name={personName(t.person)} className="ev-avatar" />
+                            <span className="ev-team-name"><strong>{personName(t.person)}</strong><small>@{t.person.username}</small></span>
+                            <PermChips grant={t.perms} onChange={g => onChange(team.map((x, j) => j === i ? { ...x, perms: g } : x))} />
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(team.filter((_, j) => j !== i))}>Remove</button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            <div className="ev-add-helper">
+                <div className="ev-share-field ev-person-row">
+                    <PersonField value={person} onChange={setPerson} label="Someone to add" />
+                    <button className="btn btn-secondary btn-sm" type="button" disabled={!person} onClick={add}><Icon name="user-plus" size={14} />Add to the list</button>
+                </div>
+                {person && <PermGrid grant={grant} onChange={setGrant} allowed={all} />}
+            </div>
+        </div>
     );
 }
 
@@ -2271,8 +2842,11 @@ type EditorValues = {
     title: string; tagline: string; description: string; category: string; cover_image: string | null;
     submissions_open_at: string; submissions_close_at: string; voting_open_at: string; voting_close_at: string; results_at: string;
     form: Field[]; votingOn: boolean; mode: VotingMode; votes_per_user: number; max_entries_per_user: number;
-    live_results: boolean; show_entries: boolean; public_access: boolean; slug: string; vote_form: Field[];
+    live_results: boolean; show_entries: boolean; public_access: boolean; slug: string; vote_form: Field[]; allow_self_vote: boolean;
     vote_display: { fields: string[] | null; author: boolean };
+    entries_private: boolean; hold_results: boolean;
+    /** a new event's team, added when it's created (and kept in templates) */
+    team: TeamPick[];
     criteria: Criterion[]; voter_remarks: Remarks; winner: { topn: string | null; toppct: string | null; minscore: string | null };
 };
 
@@ -2286,6 +2860,8 @@ function valuesFrom(event: EventRow | null): EditorValues {
         form: event?.form || PRESETS[0][2], votingOn: (event?.voting || PRESETS[0][3]) !== 'none',
         mode: (event && event.voting !== 'none' ? event.voting : 'ballot') as VotingMode, votes_per_user: event?.votes_per_user || 3,
         max_entries_per_user: event?.max_entries_per_user || 1, live_results: event?.live_results || false, show_entries: event?.show_entries ?? true,
+        allow_self_vote: event?.allow_self_vote ?? false,
+        entries_private: event?.entries_private ?? false, hold_results: event?.hold_results ?? false, team: [],
         public_access: event?.public_access || false, slug: event?.slug || '', vote_form: event?.vote_form || [],
         vote_display: event ? voteDisplay(event) : { fields: null, author: true },
         criteria: event ? criteriaOf(event) : DEFAULT_CRITERIA, voter_remarks: event?.voter_remarks || 'optional',
@@ -2314,10 +2890,33 @@ function rowFrom(f: EditorValues): Partial<EventRow> {
         vote_form: f.vote_form.map(x => ({ ...x, label: x.label.trim(), help: (x.help || '').trim(), options: hasOptions(x.type) ? (x.options || []).map(o => o.trim()).filter(Boolean) : undefined })),
         form: f.form.map(x => ({ ...x, label: x.label.trim(), help: (x.help || '').trim(), options: hasOptions(x.type) ? (x.options || []).map(o => o.trim()).filter(Boolean) : undefined })),
         voting: votingOn ? f.mode : 'none', votes_per_user: f.votes_per_user, max_entries_per_user: f.max_entries_per_user,
-        live_results: f.live_results, show_entries: f.show_entries,
+        live_results: f.live_results, show_entries: f.show_entries, allow_self_vote: f.votingOn && f.allow_self_vote,
+        entries_private: f.entries_private, hold_results: f.hold_results,
         criteria: criteria.length ? criteria : DEFAULT_CRITERIA, winner_criteria
     };
 }
+
+/** Name a template; one by the same name is replaced. */
+function TemplateSaveDialog({ close, name, values }: DialogProps<{ name: string; values: any }>) {
+    const [value, setValue] = useState(name);
+    const taken = readEventTemplates().some(t => t.name.toLowerCase() === value.trim().toLowerCase());
+    const save = (e: React.FormEvent) => { e.preventDefault(); if (value.trim() && saveEventTemplate(value.trim(), values)) close(); };
+    return (
+        <Modal onClose={close} title="Save as template" className="ev-template-modal">
+            <form onSubmit={save}>
+                <p className="ev-hint">Keeps the form, voting, rules, about text and the team list, but not the dates or link. Start a new event from it with "Start from". Saved on this device.</p>
+                <div className="ev-field"><label className="ev-field-label" htmlFor="ev-template-name">Template name</label>
+                    <input id="ev-template-name" maxLength={60} value={value} onChange={e => setValue(e.target.value)} placeholder="Monthly PoA contest" autoFocus />
+                    {taken && <small className="ev-field-help">You have a template with this name. Saving replaces it.</small>}</div>
+                <div className="modal-actions">
+                    <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+                    <button type="submit" className="btn btn-primary" disabled={!value.trim()}>{taken ? 'Replace template' : 'Save template'}</button>
+                </div>
+            </form>
+        </Modal>
+    );
+}
+registerDialog('event-template-save', TemplateSaveDialog);
 
 function EventEditor({ event }: { event: EventRow | null }) {
     const eventId = event?.id || null;
@@ -2338,10 +2937,23 @@ function EventEditor({ event }: { event: EventRow | null }) {
     const moveCriterion = (i: number, by: number) => { const c = [...f.criteria]; const [x] = c.splice(i, 1); c.splice(i + by, 0, x); set({ criteria: c }); };
     const [previewTab, setPreviewTab] = useState<EventTab>('about');
     const [tz, setTz] = useState(savedTimeZone);
+    const templates = readEventTemplates();
+    const [startFrom, setStartFrom] = useState('');
+    const mine = startFrom.startsWith('mine:') ? templates.find(t => `mine:${t.id}` === startFrom) : undefined;
+    function applyTemplate(key: string) {
+        setStartFrom(key);
+        const p = PRESETS.find(x => `preset:${x[0]}` === key);
+        if (p) { set({ form: p[2], votingOn: p[3] !== 'none', mode: p[3] === 'none' ? f.mode : p[3] as VotingMode, category: f.category || p[1] }); return; }
+        const t = templates.find(x => `mine:${x.id}` === key);
+        // its whole setup; the name only if you haven't typed one
+        if (t) setF(v => ({ ...v, ...t.values, title: v.title.trim() ? v.title : t.values.title || '', criteria: criteriaOf({ criteria: t.values.criteria || v.criteria }), team: t.values.team || v.team }));
+    }
     const [sample, setSample] = useState<{ scores: Record<string, number>; remarks: string; answers: Record<string, any> }>({ scores: {}, remarks: '', answers: {} });
 
     // autosave: what you've typed stays on this device until it's saved, like a post draft
     const pristine = useRef(JSON.stringify(valuesFrom(event)));
+    // the version these settings were loaded from: saving over a newer one is refused (saveEvent)
+    const loadedAt = useRef(event?.updated_at);
     useEffect(() => {
         const t = setTimeout(() => {
             if (JSON.stringify(f) === pristine.current) { clearEventDraft(eventId); setSavedAt(null); return; }
@@ -2377,9 +2989,9 @@ function EventEditor({ event }: { event: EventRow | null }) {
         const before = pristine.current;
         pristine.current = JSON.stringify(f);
         clearEventDraft(eventId);
-        const ok = event ? await saveEvent(event.id, rowFrom(f), 'Settings saved.') : !!(await createEvent(rowFrom(f)));
+        const ok = event ? await saveEvent(event.id, rowFrom(f), 'Settings saved.', loadedAt.current) : !!(await createEvent(rowFrom(f), f.team));
         setBusy(false);
-        if (ok) { setSavedAt(null); setNotice(false); }
+        if (ok) { setSavedAt(null); setNotice(false); loadedAt.current = events.detail?.event?.updated_at; }
         else { pristine.current = before; writeEventDraft(eventId, f); }
     }
 
@@ -2404,11 +3016,14 @@ function EventEditor({ event }: { event: EventRow | null }) {
             <header className="ev-list-head">
                 <div>
                     {!event && <h2>New event</h2>}
-                    <p>{event ? 'Changes go live when you save them.' : 'It starts as a draft only you can see. From its dashboard you can announce it early (entries stay closed) or open it for entries.'}</p>
+                    <p>{event ? 'Changes go live when you save them.' : 'It starts as a draft only you can see. When it\'s ready, go live from its dashboard, with entries closed or open.'}</p>
                 </div>
+                <div className="ev-editor-tools">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-template-save', { name: f.title.trim(), values: f })}><Icon name="bookmark" size={14} />Save as template</button>
                 <div className="ev-segmented" role="tablist" aria-label="Editor mode">
                     <button type="button" role="tab" aria-selected={mode === 'edit'} className={mode === 'edit' ? 'active' : ''} onClick={() => setMode('edit')}><Icon name="pencil" size={14} />Edit</button>
                     <button type="button" role="tab" aria-selected={mode === 'preview'} className={mode === 'preview' ? 'active' : ''} onClick={() => setMode('preview')}><Icon name="eye" size={14} />Preview</button>
+                </div>
                 </div>
             </header>
 
@@ -2464,8 +3079,9 @@ function EventEditor({ event }: { event: EventRow | null }) {
                     <div className="ev-field">
                         <span className="ev-field-label">About, rules and prizes</span>
                         <EmojiInput value={f.description} onChange={v => set({ description: v })} rows={9} maxLength={8000} className="ev-about-input" ariaLabel="About, rules and prizes"
-                            placeholder={'# New PoA Contest!\nMake a Fakémon for this round\'s PoA theme.\n\n## Rules\n- One entry each, original designs only\n- Keep it SFW\n\n## Prizes\n**1st place** gets featured on the hub'} />
-                        <small className="ev-field-help">Markdown works: # headings, **bold**, *italics*, ~~strike~~, - lists, &gt; quotes, `code`, ``` code blocks, --- for a line, ||spoilers|| and [links](https://…). Type : to add an emoji.</small>
+                            toolbar variables={VARIABLES}
+                            placeholder={'# New PoA Contest!\nMake a Fakémon for this round\'s PoA theme.\n\n## Rules\n- One entry each, original designs only\n- Keep it SFW\n\nEntries close {{entries_close}}.'} />
+                        <small className="ev-field-help">Use the bar above to format (or type markdown), : to add an emoji, @ to mention someone. Variables like {'{{entries_close}}'} fill in with the event's dates, counts and winners.</small>
                     </div>
                 </section>
 
@@ -2473,12 +3089,22 @@ function EventEditor({ event }: { event: EventRow | null }) {
                     <div className="ev-block-head">
                         <h3>What entrants send in</h3>
                         {!event && (
-                            <label className="ev-inline-select">Start from
-                                <select defaultValue="" onChange={e => { const p = PRESETS.find(x => x[0] === e.target.value); if (p) set({ form: p[2], votingOn: p[3] !== 'none', mode: p[3] === 'none' ? f.mode : p[3] as VotingMode, category: f.category || p[1] }); }}>
-                                    <option value="" disabled>Template…</option>
-                                    {PRESETS.map(([name]) => <option key={name} value={name}>{name}</option>)}
-                                </select>
-                            </label>
+                            <span className="ev-start-from">
+                                <label className="ev-inline-select">Start from
+                                    <select value={startFrom} onChange={e => applyTemplate(e.target.value)}>
+                                        <option value="" disabled>Template…</option>
+                                        {templates.length > 0 && (
+                                            <optgroup label="Your templates">
+                                                {templates.map(t => <option key={t.id} value={`mine:${t.id}`}>{t.name}</option>)}
+                                            </optgroup>
+                                        )}
+                                        <optgroup label="Built in">
+                                            {PRESETS.map(([name]) => <option key={name} value={`preset:${name}`}>{name}</option>)}
+                                        </optgroup>
+                                    </select>
+                                </label>
+                                {mine && <button type="button" className="ev-link" onClick={() => { deleteEventTemplate(mine.id); setStartFrom(''); }}>Delete this template</button>}
+                            </span>
                         )}
                     </div>
                     <p className="ev-hint">Email answers are always private and Discord ones are private unless you untick it. Both fill in by themselves for people who have them on their account. A Fakémon question takes the whole Fakémon, from the entrant's collection or a file they upload.</p>
@@ -2523,7 +3149,18 @@ function EventEditor({ event }: { event: EventRow | null }) {
                         <small className="ev-field-help">Give specific people more from the dashboard's Entries tab.</small></div>
                     <Toggle checked={f.public_access} onChange={v => set({ public_access: v })} label="Open to people without an account"
                         desc="Anyone with the link sees this event on its own page and can enter without signing in, like a form. Voting stays members-only." />
+                    <Toggle checked={f.entries_private} onChange={v => set({ entries_private: v })} label="Keep entries private"
+                        desc={f.votingOn && f.mode !== 'judges'
+                            ? 'Only your team sees the entries, and nobody else sees how many there are. Voters see them only while voting is open, since they need to.'
+                            : 'Only your team sees the entries, and nobody else sees how many there are, before or after the event.'} />
                 </section>
+
+                {!event && (
+                    <section className="ev-block">
+                        <h3>Team</h3>
+                        <TeamPicker team={f.team} onChange={team => set({ team })} />
+                    </section>
+                )}
 
                 <section className="ev-block">
                     <h3>Voting</h3>
@@ -2626,7 +3263,10 @@ function EventEditor({ event }: { event: EventRow | null }) {
                         </div>
                     )}
                     {f.votingOn && <Toggle checked={f.live_results} onChange={v => set({ live_results: v })} label="Live results" desc="Let everyone watch the standings while voting runs. Off: they're revealed when the results come out." />}
-                    <Toggle checked={f.show_entries} onChange={v => set({ show_entries: v })} label="Show entries while they come in" desc="Off: entries stay hidden until voting starts." />
+                    {!f.entries_private && <Toggle checked={f.show_entries} onChange={v => set({ show_entries: v })} label="Show entries while they come in" desc="Off: entries stay hidden until entries close." />}
+                    <Toggle checked={f.hold_results} onChange={v => set({ hold_results: v })} label="Wait for the results post"
+                        desc="The results stay hidden until you publish your results post from the dashboard's Results tab, even if the dates have passed." />
+                    {f.votingOn && <Toggle checked={f.allow_self_vote} onChange={v => set({ allow_self_vote: v })} label="Let people vote on their own entries" desc="Off by default: everyone votes on everyone else's. On: their own entries are on their ballot too." />}
                 </section>
             </>}
 

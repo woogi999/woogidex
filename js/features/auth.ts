@@ -237,6 +237,7 @@ function initAuth() {
             }
             if (event === 'SIGNED_OUT') {
                 api.showToast?.('Signed out', 'info');
+                leaveMembersOnlyPage();
             }
             if (event === 'PASSWORD_RECOVERY') {
                 closeAuthModal();
@@ -597,6 +598,18 @@ async function uploadAvatar(file) {
 // the same terms.md without drifting.
 
 // ==================== account gate ====================
+/**
+ * After signing out, a page that needs an account can't stay up: the hub (its
+ * sidebar included), a post, a profile, messages. An event that's open to
+ * everyone turns into its guest page; everything else goes home.
+ */
+function leaveMembersOnlyPage() {
+    const page = document.body.dataset.page || '';
+    if (!['community-view', 'community-detail-view', 'post-view', 'profile-view', 'messages-view', 'settings-view'].includes(page)) return;
+    if (page === 'community-view' && api.reopenEventAsGuest?.()) return;
+    api.showCollection?.();
+}
+
 // Reading the hub/profiles/published mons requires an account - the DB
 // refuses those tables to anonymous callers (see require_sign_in_for_community
 // migration), so this gate exists to explain why instead of showing an empty page.
@@ -1195,7 +1208,9 @@ async function profileLookFields(look: ProfileLook) {
         banner_color: look.bannerColor || '',
         accent_color: /^#[0-9a-f]{6}$/i.test(look.accentColor || '') ? look.accentColor : '',
         dm_privacy: ['everyone', 'following', 'nobody'].includes(look.dmPrivacy || '') ? look.dmPrivacy : 'everyone',
-        privacy: Object.fromEntries(Object.entries(look.privacy || {}).filter(([, v]) => v === 'followers' || v === 'only_me'))
+        // the parts' levels, plus the two set from Settings (mentions, discover)
+        privacy: Object.fromEntries(Object.entries(look.privacy || {}).filter(([k, v]) => v === 'followers' || v === 'only_me'
+            || (k === 'mentions' && (v === 'following' || v === 'nobody')) || (k === 'discover' && v === 'hidden')))
     };
     if (look.removeBanner) out.banner_url = '';
     if (look.bannerFile) {

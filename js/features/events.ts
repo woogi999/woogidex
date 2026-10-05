@@ -54,17 +54,34 @@ export interface EventRow {
     criteria: Criterion[]; voter_remarks: Remarks; winner_criteria: WinnerRules;
     form: Field[]; voting: Voting; votes_per_user: number; max_entries_per_user: number;
     live_results: boolean; show_entries: boolean; public_access: boolean; created_at: string; updated_at: string;
+    /** people may vote on their own entries (off by default) */
+    allow_self_vote?: boolean;
     /** questions voters answer about each entry, besides the scores */
     vote_form: Field[];
     /** the custom link, /events/<slug>; null uses the id */
     slug: string | null;
     /** what of an entry the voting form shows: which answers (null: all) and who sent it */
     vote_display: { fields: string[] | null; author: boolean };
+    /** the entries are the team's: the public sees them only while it votes on them, and never their number */
+    entries_private?: boolean;
+    /** the results wait for the team's results post (publish_event_results) */
+    hold_results?: boolean;
+    results_released_at?: string | null;
 }
 export interface EventCode { id: string; event_id: string; code: string; max_entries: number; max_uses: number | null; uses: number; created_at: string; }
 /** user_id is null for a guest's entry (public events) */
 export interface Entry { id: string; event_id: string; user_id: string | null; answers: Record<string, any>; placement: number | null; created_at: string; }
-export interface Helper { event_id: string; user_id: string; can_edit: boolean; can_entries: boolean; can_judge: boolean; can_results: boolean; }
+export interface Helper {
+    event_id: string; user_id: string; can_edit: boolean; can_entries: boolean; can_judge: boolean; can_results: boolean;
+    /** may add people to the team, with no more than they hold */
+    can_add?: boolean;
+    /** everything but deleting the event */
+    is_organizer?: boolean;
+    added_by?: string | null;
+}
+export interface Announcement { id: string; event_id: string; author_id: string | null; title: string; body: string; created_at: string; }
+/** the team asked the entrant to change their entry (event_entry_private) */
+export interface EditRequest { reason: string; at: string; }
 export interface Result {
     entry_id: string; votes: number; score_total: number; score_avg: number;
     criteria_avg: Record<string, number | null>; total_voters: number; points_percent: number;
@@ -72,7 +89,7 @@ export interface Result {
 export interface Vote { entry_id: string; voter_id: string; score: number; scores: Record<string, number> | null; answers: Record<string, any> | null; remarks: string; created_at: string; }
 export interface EntryLimit { event_id: string; user_id: string; max_entries: number; }
 export interface Person { id: string; username?: string; display_name?: string; avatar_url?: string; }
-export interface Perms { owner: boolean; view: boolean; edit: boolean; entries: boolean; judge: boolean; results: boolean; }
+export interface Perms { owner: boolean; view: boolean; edit: boolean; entries: boolean; judge: boolean; results: boolean; add: boolean; team: boolean; }
 export interface Detail {
     id: string; status: 'loading' | 'ready' | 'error'; error: string;
     event: EventRow | null; entries: Entry[]; privateAnswers: Record<string, Record<string, any>>;
@@ -84,6 +101,13 @@ export interface Detail {
     share: any | null;
     /** entry codes (the team, with edit) */
     codes: EventCode[];
+    announcements: Announcement[];
+    /** whether you follow it (announcements reach you) */
+    following: boolean;
+    /** edit requests on entries you may see the private side of, by entry id */
+    editRequests: Record<string, EditRequest>;
+    /** the Google Sheets link's token (the Entries team) */
+    sheet: { token: string; include_private: boolean } | null;
 }
 
 /** An event's page has tabs: what it is, entering it, voting, and the results. */
@@ -94,7 +118,7 @@ export type View =
     | { kind: 'event'; id: string; tab?: EventTab }
     | { kind: 'dashboard'; id: string; tab?: DashTab }
     | { kind: 'new' };
-export type DashTab = 'overview' | 'entries' | 'results' | 'team' | 'settings';
+export type DashTab = 'overview' | 'entries' | 'announcements' | 'results' | 'team' | 'settings';
 
 export const FIELD_TYPES: Array<[FieldType, string, string]> = [
     ['short', 'Short answer', 'pencil'],
@@ -139,7 +163,7 @@ export const isPrivateField = (f: Field) => f.type === 'email' || (f.private ?? 
 export const CATEGORIES = ['PoA contest', 'Fakémon contest', 'Art contest', 'Poster competition', 'Mascot contest', 'Writing contest', 'Tournament', 'Sign-ups', 'Community event'];
 export const DEFAULT_CRITERIA: Criterion[] = [{ name: 'Competitive', max: 10 }, { name: 'Design', max: 10 }];
 
-export const PHASES: Array<[Phase, string]> = [['draft', 'Draft'], ['announced', 'Announced'], ['open', 'Taking entries'], ['voting', 'Voting'], ['ended', 'Ended']];
+export const PHASES: Array<[Phase, string]> = [['draft', 'Draft'], ['announced', 'Live, entries not open'], ['open', 'Taking entries'], ['voting', 'Voting'], ['ended', 'Ended']];
 export const STAGE_LABEL: Record<Stage, string> = { draft: 'Draft', upcoming: 'Opens soon', open: 'Taking entries', closed: 'Entries closed', voting: 'Voting', tallying: 'Results soon', ended: 'Ended' };
 
 /** The voting form's criteria, whatever shape they were saved in. */
@@ -160,6 +184,8 @@ export const events: {
 } = { status: 'idle', error: '', list: [], helping: [], view: { kind: 'list' }, detail: null, ballot: null };
 
 const client = () => api.getClient();
+/** Everything of an entry but who sent it (event_entry_authors hands that out). */
+const ENTRY_COLUMNS = 'id,event_id,answers,placement,created_at';
 const me = () => state.user?.id || '';
 const sitePerms = () => (state.user?.permissions || {}) as Record<string, boolean>;
 
@@ -167,11 +193,15 @@ export const canCreateEvents = () => !!(sitePerms().create_events || sitePerms()
 
 /** What the signed-in user may do on an event. UI only: the database checks again. */
 export function permsFor(ev: EventRow | null | undefined, helpers: Helper[] = events.helping): Perms {
-    const none = { owner: false, view: false, edit: false, entries: false, judge: false, results: false };
+    const none = { owner: false, view: false, edit: false, entries: false, judge: false, results: false, add: false, team: false };
     if (!ev || !me()) return none;
-    if (ev.owner_id === me() || sitePerms().manage_events) return { owner: true, view: true, edit: true, entries: true, judge: true, results: true };
+    const all = { owner: true, view: true, edit: true, entries: true, judge: true, results: true, add: true, team: true };
+    if (ev.owner_id === me() || sitePerms().manage_events) return all;
     const h = helpers.find(x => x.event_id === ev.id && x.user_id === me());
-    return h ? { owner: false, view: true, edit: h.can_edit, entries: h.can_entries, judge: h.can_judge, results: h.can_results } : none;
+    if (!h) return none;
+    // a co-organizer: everything but deleting the event (event_can in the database)
+    if (h.is_organizer) return { ...all, owner: false };
+    return { owner: false, view: true, edit: h.can_edit, entries: h.can_entries, judge: h.can_judge, results: h.can_results, add: !!h.can_add, team: false };
 }
 
 /** An event's address: its custom link if it has one. */
@@ -194,6 +224,11 @@ export const isPast = (v: string | null) => !!v && Date.now() > new Date(v).getT
  * floor, and dates only ever move it forward.
  */
 export function effectivePhase(e: EventRow): Stage {
+    const stage = basePhase(e);
+    // held for the results post: "results soon" until the team publishes it
+    return stage === 'ended' && e.hold_results && !e.results_released_at ? 'tallying' : stage;
+}
+function basePhase(e: EventRow): Stage {
     const now = Date.now();
     const at = (v: string | null) => v ? new Date(v).getTime() : null;
     const vOpen = at(e.voting_open_at), vClose = at(e.voting_close_at), sOpen = at(e.submissions_open_at), sClose = at(e.submissions_close_at);
@@ -211,6 +246,17 @@ export function effectivePhase(e: EventRow): Stage {
     return 'open';
 }
 export const takingEntries = (e: EventRow) => effectivePhase(e) === 'open';
+/**
+ * Whether the public sees the entries now (public.event_entries_visible).
+ * Private ones: only while the public is the one voting on them.
+ */
+export function entriesPublic(e: EventRow): boolean {
+    const stage = effectivePhase(e);
+    if (e.entries_private) return (e.voting === 'community' || e.voting === 'ballot') && stage === 'voting';
+    return e.show_entries || ['closed', 'voting', 'tallying', 'ended'].includes(stage);
+}
+/** Whether this viewer sees the entries: the public's rule, or the team's access. */
+export const canSeeEntries = (e: EventRow, p: Perms) => entriesPublic(e) || p.entries || p.judge || p.results;
 export const votingOpen = (e: EventRow) => e.voting !== 'none' && effectivePhase(e) === 'voting';
 export const isLive = (e: EventRow) => takingEntries(e) || votingOpen(e);
 
@@ -360,7 +406,8 @@ export async function loadEvent(key: string) {
         id, status: keep?.event ? 'ready' : 'loading', error: '', event: keep?.event || null, entries: keep?.entries || [],
         privateAnswers: keep?.privateAnswers || {}, myVotes: keep?.myVotes || {}, votes: keep?.votes || [], ballots: keep?.ballots || [],
         limits: keep?.limits || [], results: keep?.results || null, helpers: keep?.helpers || [], people: keep?.people || {},
-        resultsPost: keep?.resultsPost ?? null, share: keep?.share || null, codes: keep?.codes || []
+        resultsPost: keep?.resultsPost ?? null, share: keep?.share || null, codes: keep?.codes || [],
+        announcements: keep?.announcements || [], following: keep?.following || false, editRequests: keep?.editRequests || {}, sheet: keep?.sheet || null
     };
     notify();
     const d = events.detail;
@@ -373,11 +420,13 @@ export async function loadEvent(key: string) {
         id = ev.id;
         const none = Promise.resolve({ data: [] });
         // votes, ballots, private answers: your own, or everyone's where the team may see them (RLS decides)
-        const [entries, helpers, votes, priv, results, ballots, limits, post, share, codes] = await Promise.all([
-            c.from('event_entries').select('*').eq('event_id', id).order('created_at', { ascending: true }),
+        const [entries, authors, helpers, votes, priv, results, ballots, limits, post, share, codes, news, follow, sheet] = await Promise.all([
+            // who sent each one comes from event_entry_authors: hidden where the event hides it (blind voting)
+            c.from('event_entries').select(ENTRY_COLUMNS).eq('event_id', id).order('created_at', { ascending: true }),
+            me() ? c.rpc('event_entry_authors', { p_event: id }) : none,
             me() ? c.from('event_helpers').select('*').eq('event_id', id) : none,
             me() ? c.from('event_votes').select('entry_id,voter_id,score,scores,answers,remarks,created_at').eq('event_id', id) : none,
-            me() ? c.from('event_entry_private').select('entry_id,answers').eq('event_id', id) : none,
+            me() ? c.from('event_entry_private').select('entry_id,answers,edit_request,edit_requested_at').eq('event_id', id) : none,
             // refused (not an error worth showing) until results are public or you're on the team
             c.rpc('get_event_results', { p_event: id }).then((r: any) => r.error ? null : r.data),
             me() ? c.from('event_ballots').select('voter_id,submitted_at').eq('event_id', id) : none,
@@ -386,15 +435,24 @@ export async function loadEvent(key: string) {
             c.from('event_results_posts').select('body').eq('event_id', id).maybeSingle(),
             me() && ev.phase !== 'draft' ? c.rpc('repost_embed', { p_kind: 'event', p_id: id }) : Promise.resolve({ data: null }),
             // RLS: only the team members who can edit see codes
-            me() ? c.from('event_codes').select('*').eq('event_id', id).order('created_at', { ascending: true }) : none
+            me() ? c.from('event_codes').select('*').eq('event_id', id).order('created_at', { ascending: true }) : none,
+            c.from('event_announcements').select('id,event_id,author_id,title,body,created_at').eq('event_id', id).order('created_at', { ascending: false }).limit(50),
+            me() ? c.from('event_follows').select('event_id').eq('event_id', id).eq('user_id', me()).maybeSingle() : Promise.resolve({ data: null }),
+            // RLS: the team members who see entries
+            me() ? c.from('event_sheet_links').select('token,include_private').eq('event_id', id).maybeSingle() : Promise.resolve({ data: null })
         ]);
         if (entries.error) throw entries.error;
+        const by = new Map<string, string>(((authors as any).data || []).map((a: any) => [a.entry_id, a.user_id]));
         d.event = ev;
-        d.entries = entries.data || [];
+        d.entries = ((entries.data || []) as any[]).map(en => ({ ...en, user_id: by.get(en.id) ?? null }));
         d.helpers = (helpers as any).data || [];
         d.votes = (votes as any).data || [];
         d.myVotes = Object.fromEntries(d.votes.filter(v => v.voter_id === me()).map(v => [v.entry_id, v]));
         d.privateAnswers = Object.fromEntries(((priv as any).data || []).map((p: any) => [p.entry_id, p.answers]));
+        d.editRequests = Object.fromEntries(((priv as any).data || []).filter((p: any) => p.edit_requested_at).map((p: any) => [p.entry_id, { reason: p.edit_request || '', at: p.edit_requested_at }]));
+        d.announcements = (news as any).data || [];
+        d.following = !!(follow as any).data;
+        d.sheet = (sheet as any).data || null;
         d.results = results;
         d.ballots = (ballots as any).data || [];
         d.limits = (limits as any).data || [];
@@ -402,8 +460,8 @@ export async function loadEvent(key: string) {
         d.share = (share as any).data || null;
         d.codes = (codes as any).data || [];
         // profiles are for signed-in readers only; a guest sees no names
-        if (me()) d.people = await fetchPeople([ev.owner_id, ...d.entries.map(e => e.user_id), ...d.helpers.map(h => h.user_id),
-            ...d.limits.map(l => l.user_id), ...d.votes.map(v => v.voter_id)]);
+        if (me()) d.people = await fetchPeople([ev.owner_id, ...d.entries.map(e => e.user_id || ''), ...d.helpers.map(h => h.user_id),
+            ...d.limits.map(l => l.user_id), ...d.votes.map(v => v.voter_id), ...d.announcements.map(a => a.author_id || '')]);
         // a helper row for this event also counts toward the list's permissions
         events.helping = [...events.helping.filter(h => h.event_id !== id), ...d.helpers.filter(h => h.user_id === me())];
         d.status = 'ready';
@@ -481,6 +539,20 @@ function openGuestEvent(id: string, tab: EventTab = 'about') {
 
 export const isGuestView = () => !state.user && document.body.classList.contains('event-guest');
 
+/**
+ * Signed out while an event's page was open: it carries on as the guest page
+ * (no hub sidebar), the way the link opens for someone without an account.
+ * Whether a guest may see it at all is up to the event (loadEvent says).
+ * @returns false when no event page was open
+ */
+export function reopenEventAsGuest(): boolean {
+    const v = events.view;
+    if (v.kind !== 'event' || (api.communityState?.().panel !== 'events')) return false;
+    openGuestEvent(v.id, v.tab);
+    loadEvent(v.id);
+    return true;
+}
+
 /** The hub calls this whenever the Events panel is shown. */
 export async function showEventsPanel() {
     const v = events.view;
@@ -510,21 +582,47 @@ export async function copyLink(url: string, what = 'Link') {
     catch { window.prompt('Copy this link:', url); }
 }
 
-export async function createEvent(row: Partial<EventRow>): Promise<string | null> {
+/** Someone to put on a new event's team as soon as it exists (the editor's team list, and templates). */
+export type HelperPerms = Pick<Helper, 'can_edit' | 'can_entries' | 'can_judge' | 'can_results'> & { can_add?: boolean; is_organizer?: boolean };
+export interface TeamPick { person: Person; perms: HelperPerms; }
+
+export async function createEvent(row: Partial<EventRow>, team: TeamPick[] = []): Promise<string | null> {
     try {
-        const { data, error } = await (await client()).from('events').insert({ ...row, owner_id: me() }).select('id').single();
+        const c = await client();
+        const { data, error } = await c.from('events').insert({ ...row, owner_id: me() }).select('id').single();
         if (error) throw error;
+        // the team goes on in one insert; if that fails the event still exists, and says so
+        const rows = team.filter(t => t.person.id !== me()).map(t => ({ event_id: data.id, user_id: t.person.id, ...t.perms }));
+        if (rows.length) {
+            const { error: teamError } = await c.from('event_helpers').insert(rows);
+            if (teamError) toast(`The event was created, but its team couldn't be added (${teamError.message}). Add them from the Team tab.`, 'warning');
+        }
         toast('Event created. It is a draft until you open it.', 'success');
         showEventView({ kind: 'dashboard', id: data.id, tab: 'overview' });
         return data.id;
     } catch (e) { fail(e); return null; }
 }
 
-export async function saveEvent(id: string, patch: Partial<EventRow>, message = 'Saved.'): Promise<boolean> {
+/**
+ * Saves changes to an event. With `since` (the updated_at the editor loaded),
+ * it refuses to save over someone else's newer changes instead of silently
+ * undoing them; the editor keeps yours as a draft.
+ */
+export async function saveEvent(id: string, patch: Partial<EventRow>, message = 'Saved.', since?: string): Promise<boolean> {
     try {
-        const { data, error } = await (await client()).from('events').update(patch).eq('id', id).select('*');
+        let q = (await client()).from('events').update(patch).eq('id', id);
+        if (since) q = q.eq('updated_at', since);
+        const { data, error } = await q.select('*');
         if (error) throw error;
-        if (!data?.length) throw new Error('You do not have permission to edit this event.');
+        if (!data?.length) {
+            if (since) {
+                await loadEvent(id);
+                if (events.detail?.event && events.detail.event.updated_at !== since) {
+                    throw new Error('Someone else on the team saved changes to this event since you opened it. Yours are kept as a draft on this device: look over theirs, then save again.');
+                }
+            }
+            throw new Error('You do not have permission to edit this event.');
+        }
         if (events.detail?.id === id) events.detail.event = data[0];
         toast(message, 'success');
         notify();
@@ -534,7 +632,7 @@ export async function saveEvent(id: string, patch: Partial<EventRow>, message = 
 
 /** Moves an event by hand, now. Dates that would contradict it are cleared, or they'd move it straight back. */
 export function setPhase(ev: EventRow, phase: Phase) {
-    const msg: Record<Phase, string> = { draft: 'Back to draft.', announced: ev.submissions_open_at && !isPast(ev.submissions_open_at) ? 'Announced. Entries open on schedule.' : 'Announced. Open entries when you\'re ready.', open: 'Entries are open.', voting: 'Voting is open.', ended: 'Event ended. Results are public.' };
+    const msg: Record<Phase, string> = { draft: 'Back to draft.', announced: ev.submissions_open_at && !isPast(ev.submissions_open_at) ? 'It\'s live. Entries open on schedule.' : 'It\'s live. Entries stay closed until you open them.', open: 'Entries are open.', voting: 'Voting is open.', ended: 'Event ended. Results are public.' };
     const patch: Partial<EventRow> = { phase };
     const future = (v: string | null) => !!v && !isPast(v);
     // announced: a start date that's already gone would open entries straight away
@@ -579,6 +677,26 @@ export async function removeEntry(en: Entry, own: boolean) {
     } catch (e) { fail(e); }
 }
 
+/** The team removes someone's entry; the entrant is told, with the reason if there is one (remove_event_entry). */
+export async function removeEntryAsTeam(en: Entry, reason: string): Promise<boolean> {
+    try {
+        const { error } = await (await client()).rpc('remove_event_entry', { p_entry: en.id, p_reason: reason.trim() });
+        if (error) throw error;
+        toast(en.user_id ? 'Entry removed. Its entrant has been told.' : 'Entry removed.', 'success');
+        await loadEvent(en.event_id);
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+/** People whose username or name starts with what's typed, for picking someone. */
+export async function findPeople(query: string): Promise<Person[]> {
+    const q = query.trim().replace(/^@/, '');
+    if (q.length < 2) return [];
+    // search_profiles leaves out people hidden from search (unless their exact username is typed)
+    const { data } = await (await client()).rpc('search_profiles', { p_query: q, p_limit: 6, p_for: 'search' });
+    return (data || []) as Person[];
+}
+
 export async function setPlacement(en: Entry, placement: number | null) {
     try {
         const { data, error } = await (await client()).from('event_entries').update({ placement }).eq('id', en.id).select('id');
@@ -589,7 +707,7 @@ export async function setPlacement(en: Entry, placement: number | null) {
     } catch (e) { fail(e); }
 }
 
-export async function addHelper(eventId: string, username: string, perms: Omit<Helper, 'event_id' | 'user_id'>): Promise<boolean> {
+export async function addHelper(eventId: string, username: string, perms: HelperPerms): Promise<boolean> {
     const name = username.trim().replace(/^@/, '');
     if (!name) return false;
     try {
@@ -760,6 +878,147 @@ export async function saveResultsPost(eventId: string, body: string): Promise<bo
     } catch (e) { fail(e); return false; }
 }
 
+/** Saves the results post and releases the results (what an event that holds them waits for). */
+export async function publishResults(eventId: string, body: string): Promise<boolean> {
+    if (!await confirmDialog({ title: 'Publish the results?', message: 'The results post goes up and everyone can see the results. This can\'t be taken back.', confirmLabel: 'Publish results' })) return false;
+    try {
+        const { error } = await (await client()).rpc('publish_event_results', { p_event: eventId, p_body: body.trim() });
+        if (error) throw error;
+        toast('The results are out.', 'success');
+        await loadEvent(eventId);
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+// ---- following, announcements ----
+
+export async function setFollowing(eventId: string, on: boolean): Promise<boolean> {
+    if (!api.requireAccount?.('Sign in to follow events.')) return false;
+    try {
+        const c = await client();
+        const { error } = on
+            ? await c.from('event_follows').upsert({ event_id: eventId, user_id: me() }, { onConflict: 'event_id,user_id', ignoreDuplicates: true })
+            : await c.from('event_follows').delete().eq('event_id', eventId).eq('user_id', me());
+        if (error) throw error;
+        if (events.detail?.id === eventId) events.detail.following = on;
+        toast(on ? 'Following. Its announcements will reach you.' : 'Unfollowed.', 'success');
+        notify();
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+/** Posts an announcement: followers are notified, and emailed if they asked for that. */
+export async function postAnnouncement(eventId: string, title: string, body: string): Promise<boolean> {
+    try {
+        const c = await client();
+        const { data: id, error } = await c.rpc('post_event_announcement', { p_event: eventId, p_title: title.trim(), p_body: body.trim() });
+        if (error) throw error;
+        toast('Announcement posted. Followers have been notified.', 'success');
+        // the emails go out from the server; if that fails, the announcement stands
+        c.functions.invoke('send-event-announcement', { body: { announcement_id: id } })
+            .then((r: any) => { if (r?.error) console.warn('Announcement emails were not sent', r.error); })
+            .catch(() => {});
+        await loadEvent(eventId);
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+export async function deleteAnnouncement(a: Announcement) {
+    if (!await confirmDialog({ title: 'Delete this announcement?', message: 'It comes off the event page. Notifications already sent stay sent.', confirmLabel: 'Delete', danger: true })) return;
+    try {
+        const { data, error } = await (await client()).from('event_announcements').delete().eq('id', a.id).select('id');
+        if (error) throw error;
+        if (!data?.length) throw new Error('You do not have permission to delete announcements.');
+        await loadEvent(a.event_id);
+    } catch (e) { fail(e); }
+}
+
+// ---- asking for changes ----
+
+/** Asks the entrant to change their entry (an empty reason takes the request back). */
+export async function requestEntryEdit(en: Entry, reason: string): Promise<boolean> {
+    try {
+        const { error } = await (await client()).rpc('request_event_entry_edit', { p_entry: en.id, p_reason: reason.trim() });
+        if (error) throw error;
+        toast(reason.trim() ? 'Asked. They\'ve been sent a notification.' : 'Request withdrawn.', 'success');
+        await loadEvent(en.event_id);
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+// ---- the Google Sheets link ----
+
+/** The address Google Sheets reads (=IMPORTDATA), served as CSV by worker/index.js. */
+export const sheetUrl = (token: string) => routeUrl(`sheets/${token}.csv`);
+export const sheetFormula = (token: string) => `=IMPORTDATA("${sheetUrl(token)}")`;
+
+/** Makes the link, or a new one (which retires the old). */
+export async function createSheetLink(eventId: string, includePrivate: boolean): Promise<boolean> {
+    try {
+        const { error } = await (await client()).rpc('create_event_sheet_link', { p_event: eventId, p_private: includePrivate });
+        if (error) throw error;
+        await loadEvent(eventId);
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+export async function deleteSheetLink(eventId: string) {
+    if (!await confirmDialog({ title: 'Turn off the sheet link?', message: 'Sheets that use it stop updating. You can make a new link later.', confirmLabel: 'Turn off', danger: true })) return;
+    try {
+        const { error } = await (await client()).from('event_sheet_links').delete().eq('event_id', eventId);
+        if (error) throw error;
+        await loadEvent(eventId);
+    } catch (e) { fail(e); }
+}
+
+// ---- variables ----
+// {{name}} in an event's texts (about, results post, announcements) is filled
+// in as it's shown: the winners in a results post, the dates, the counts.
+// What this viewer can't see yet (the winners before the results) reads "TBA".
+
+export const VARIABLES: Array<[string, string]> = [
+    ['event', 'Event name'], ['organizer', 'Organizer'],
+    ['winner1', '1st place'], ['winner2', '2nd place'], ['winner3', '3rd place'], ['winners', 'Every winner, as a list'],
+    ['entries', 'Number of entries'], ['entrants', 'Number of entrants'], ['voters', 'Number of voters'],
+    ['entries_open', 'When entries open'], ['entries_close', 'When entries close'],
+    ['voting_open', 'When voting opens'], ['voting_close', 'When voting closes'], ['results_date', 'When results come out'],
+    ['link', 'Link to the event']
+];
+
+/** Each variable's value for an event, as this viewer may see it. */
+export function variablesFor(ev: EventRow, d: Detail | null): Record<string, string> {
+    const tba = 'TBA';
+    const seen = !!d && canSeeEntries(ev, permsFor(ev, d.helpers));
+    const rows = d && seen ? ranked(ev, d.entries, d.results) : [];
+    // winners only from real results or placements the viewer may see
+    const winners = rows.length && (d!.results || rows.some(r => r.entry.placement)) ? computeWinners(ev, rows) : new Set<string>();
+    const won = rows.filter(r => winners.has(r.entry.id));
+    const name = (i: number) => {
+        const r = won[i];
+        if (!r) return tba;
+        const p = d!.people[r.entry.user_id || ''];
+        return `**${entryTitle(ev, r.entry, d!.people)}**${p?.username ? ` by @${p.username}` : ''}`;
+    };
+    const date = (v: string | null) => v ? fmtDate(v) : tba;
+    const organizer = d?.people[ev.owner_id];
+    return {
+        event: ev.title || 'this event', organizer: organizer?.username ? `@${organizer.username}` : tba,
+        winner1: name(0), winner2: name(1), winner3: name(2),
+        winners: won.length ? won.map((_, i) => `${['🥇', '🥈', '🥉'][i] || `${i + 1}.`} ${name(i)}`).join('\n') : tba,
+        entries: seen ? String(d!.entries.length) : tba,
+        entrants: seen ? String(new Set(d!.entries.map(e => e.user_id || e.id)).size) : tba,
+        voters: d?.results?.length ? String(d.results[0].total_voters) : tba,
+        entries_open: date(ev.submissions_open_at), entries_close: date(ev.submissions_close_at),
+        voting_open: date(ev.voting_open_at), voting_close: date(ev.voting_close_at), results_date: date(ev.results_at),
+        link: shareLink(ev)
+    };
+}
+
+/** Text with its {{variables}} filled in; names it doesn't know stay as typed. */
+export function fillVariables(text: string, vars: Record<string, string>): string {
+    return String(text || '').replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (m, k: string) => vars[k.toLowerCase()] ?? m);
+}
+
 /** The standings as markdown, to start a results post from. */
 export function standingsMarkdown(ev: EventRow, d: Detail): string {
     const rows = ranked(ev, d.entries, d.results);
@@ -794,7 +1053,9 @@ export async function castVote(en: Entry, score: number | null, scores: Record<s
 
 // ---- the full ballot (the Fakémon-contest way) ----
 // Every entry but yours, in an order shuffled per voter, each scored 1-10 on
-// every criterion, then sent in one go. Progress survives a reload.
+// every criterion, then sent in one go. Progress is kept on this device until
+// it's sent (localStorage: it used to be the tab's, so closing the tab lost a
+// half-finished ballot).
 
 const ballotKey = (eventId: string) => `woogidex.eventBallot.${me()}.${eventId}`;
 
@@ -804,7 +1065,7 @@ function shuffle<T>(items: T[]): T[] {
     return a;
 }
 
-export const ballotEntries = (ev: EventRow, entries: Entry[]) => entries.filter(e => e.event_id === ev.id && e.user_id !== me());
+export const ballotEntries = (ev: EventRow, entries: Entry[]) => entries.filter(e => e.event_id === ev.id && (ev.allow_self_vote || e.user_id !== me()));
 export const hasSubmittedBallot = (d: Detail | null = events.detail) => !!d?.ballots.some(b => b.voter_id === me());
 export const scoresComplete = (ev: EventRow, scores: Record<string, number> = {}) => criteriaOf(ev).every(c => scores[c.name] >= 1 && scores[c.name] <= c.max);
 export const remarksOk = (ev: EventRow, remarks = '') => ev.voter_remarks !== 'required' || !!remarks.trim();
@@ -818,7 +1079,7 @@ export function startBallot(ev: EventRow) {
     const ids = ballotEntries(ev, d.entries).map(e => e.id);
     if (!ids.length) { toast('There are no entries for you to vote on.'); return; }
     let saved: any = null;
-    try { saved = JSON.parse(sessionStorage.getItem(ballotKey(ev.id)) || 'null'); } catch { /* private mode */ }
+    try { saved = JSON.parse(localStorage.getItem(ballotKey(ev.id)) || sessionStorage.getItem(ballotKey(ev.id)) || 'null'); } catch { /* private mode */ }
     const sameEntries = saved?.order?.length === ids.length && saved.order.every((id: string) => ids.includes(id));
     events.ballot = sameEntries ? { answers: {}, ...saved, eventId: ev.id } : { eventId: ev.id, order: shuffle(ids), index: 0, scores: {}, remarks: {}, answers: {} };
     notify();
@@ -829,7 +1090,7 @@ export function updateBallot(patch: Partial<NonNullable<typeof events.ballot>>) 
     const b = events.ballot;
     if (!b) return;
     Object.assign(b, patch);
-    try { sessionStorage.setItem(ballotKey(b.eventId), JSON.stringify(b)); } catch { /* private mode */ }
+    try { localStorage.setItem(ballotKey(b.eventId), JSON.stringify(b)); } catch { /* full or private mode */ }
     notify();
 }
 
@@ -845,7 +1106,7 @@ export async function submitBallot(ev: EventRow) {
         const votes = b.order.map(id => ({ entry_id: id, scores: b.scores[id], remarks: b.remarks[id] || '', answers: b.answers[id] || {} }));
         const { error } = await (await client()).rpc('submit_event_ballot', { p_event: ev.id, p_votes: votes });
         if (error) throw error;
-        try { sessionStorage.removeItem(ballotKey(ev.id)); } catch { /* private mode */ }
+        try { localStorage.removeItem(ballotKey(ev.id)); sessionStorage.removeItem(ballotKey(ev.id)); } catch { /* private mode */ }
         events.ballot = null;
         toast('Your ballot is in. Thanks for voting!', 'success');
         await loadEvent(ev.id);
@@ -1044,6 +1305,35 @@ export async function libraryFromFile(file: File, kinds: LibKind[]): Promise<any
     const usable = found.filter(x => x && typeof x === 'object' && x.name && kinds.includes(x.kind));
     if (!usable.length) throw new Error(`No ${kinds.map(k => libLabel(k).toLowerCase()).join(', ')} found in that file.`);
     return usable;
+}
+
+// ---- your event templates ----
+// An event's setup (form, voting, rules, about) without its dates or link, to
+// start new events from. Per account, on this device, like the drafts below.
+// ponytail: device-only; a table keyed by owner if they should follow you between devices.
+
+export interface EventTemplate { id: string; name: string; savedAt: number; values: any; }
+const templatesKey = () => `woogidex.eventTemplates.${me()}`;
+
+export function readEventTemplates(): EventTemplate[] {
+    try { const list = JSON.parse(localStorage.getItem(templatesKey()) || '[]'); return Array.isArray(list) ? list : []; } catch { return []; }
+}
+function writeEventTemplates(list: EventTemplate[]): boolean {
+    try { localStorage.setItem(templatesKey(), JSON.stringify(list)); return true; } catch { return false; }
+}
+/** Saves (or, by the same name, replaces) a template. A cover too big for storage is left out. */
+export function saveEventTemplate(name: string, values: any): boolean {
+    const { submissions_open_at, submissions_close_at, voting_open_at, voting_close_at, results_at, slug, ...setup } = values;
+    const others = readEventTemplates().filter(t => t.name.toLowerCase() !== name.toLowerCase());
+    const entry = (v: any): EventTemplate => ({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, savedAt: Date.now(), values: v });
+    const ok = writeEventTemplates([entry(setup), ...others]) || writeEventTemplates([entry({ ...setup, cover_image: null }), ...others]);
+    if (ok) notify();
+    toast(ok ? `Saved "${name}" as a template.` : 'Couldn\'t save the template: this device\'s storage is full.', ok ? 'success' : 'error');
+    return ok;
+}
+export function deleteEventTemplate(id: string) {
+    writeEventTemplates(readEventTemplates().filter(t => t.id !== id));
+    notify();
 }
 
 // ---- unsaved event drafts ----

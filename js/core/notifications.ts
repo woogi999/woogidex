@@ -114,6 +114,10 @@ function notificationText(n) {
     if (n.type === 'repost') return `${n.preview ? 'shared' : 'reposted'} ${n.target_name || 'your post'}`;
     if (n.type === 'mon_deleted') return `removed your Fakemon "${n.target_name || 'submission'}" from the Community Hub`;
     if (n.type === 'contest_submission_deleted') return `removed your contest entry "${n.target_name || 'submission'}"`;
+    if (n.type === 'event_entry_removed') return `removed your entry from ${n.target_name || 'an event'}${n.preview ? '. Reason:' : ''}`;
+    if (n.type === 'event_edit_request') return `asked you to edit your entry in ${n.target_name || 'an event'}. Reason:`;
+    if (n.type === 'event_announcement') return `posted an announcement in ${n.target_name || 'an event'}:`;
+    if (n.type === 'mention') return `mentioned you in ${n.target_name || 'a post'}`;
     return `commented on ${n.target_name || 'your Fakemon'}`;
 }
 
@@ -248,6 +252,16 @@ async function openNotification(id) {
         await api.showProfileView?.(n.actor_id);
     } else if (n.type === 'post_comment' && n.target_id) {
         await api.openPost?.(n.target_id);
+    } else if ((n.type === 'event_entry_removed' || n.type === 'event_announcement') && n.target_id) {
+        await api.openEvents?.(String(n.target_id).replace(/^event:/, ''));
+    } else if (n.type === 'event_edit_request' && n.target_id) {
+        await api.openEvents?.(`${String(n.target_id).replace(/^event:/, '')}/enter`);
+    } else if (n.type === 'mention' && n.target_id) {
+        // "post:<id>", "mon:<id>" or "profile:<id>": where you were mentioned
+        const [kind, id] = String(n.target_id).split(':');
+        if (kind === 'mon') await api.openPublishedMonById?.(id);
+        else if (kind === 'profile') await api.showProfileView?.(id);
+        else await api.openPost?.(id);
     } else if (n.type === 'repost' && n.target_id) {
         // "mon:<id>", "post:<id>" or "event:<id>": what was reposted
         const [kind, id] = String(n.target_id).split(':');
@@ -268,7 +282,9 @@ export const NOTIFICATION_KINDS: Array<[string, string, string]> = [
     ['mon_comment', 'Comments on your Fakémon', 'When someone comments on a Fakémon you published.'],
     ['post_comment', 'Comments on your posts', 'When someone comments on something you posted.'],
     ['profile_comment', 'Posts on your wall', 'When someone writes on your profile.'],
-    ['repost', 'Reposts and shares', 'When someone reposts or shares your Fakémon or posts.']
+    ['repost', 'Reposts and shares', 'When someone reposts or shares your Fakémon or posts.'],
+    ['mention', 'Mentions', 'When someone @mentions you in a post or comment.'],
+    ['event_announcement', 'Event announcements', 'When an event you follow posts an announcement. Entering an event follows it.']
 ];
 
 const prefState: { userId: string | null; prefs: Record<string, boolean> | null; loading: boolean } = { userId: null, prefs: null, loading: false };

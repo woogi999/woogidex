@@ -13,7 +13,7 @@ import { Avatar } from '../components/Avatar.tsx';
 import { BadgeRow } from '../components/Badge.tsx';
 import { ConnectedAccounts } from '../components/ConnectedAccounts.tsx';
 import { Icon } from '../components/Icon.tsx';
-import { FeedCard, FeedSkeleton, PostComposer } from '../components/feed.tsx';
+import { FeedCard, FeedSkeleton } from '../components/feed.tsx';
 import { WallComposer, WallPostCard } from '../components/comments.tsx';
 import { getThread, loadThread } from '../../features/comments.ts';
 import { BadgePicker, ProfileMons } from '../components/profile.tsx';
@@ -303,11 +303,6 @@ function Timeline({ profile, isOwn }: { profile: any; isOwn: boolean }) {
             setMore(older.length < 30 ? 'done' : 'idle');
         } catch { setMore('idle'); }
     }
-    /** After posting from your own profile, the new post shows up at the top. */
-    async function refresh() {
-        try { profile.timeline = await api.fetchTimeline(profile.id); } catch { /* the post is still on the feed */ }
-        setMore((profile.timeline || []).length < 30 ? 'done' : 'idle');
-    }
 
     const oldest = more === 'done' ? 0 : new Date(items[items.length - 1]?.created_at || 0).getTime();
     const entries = [
@@ -320,9 +315,10 @@ function Timeline({ profile, isOwn }: { profile: any; isOwn: boolean }) {
 
     return (
         <div className="profile2-timeline">
-            {state.user && (isOwn ? <PostComposer onPosted={refresh} /> : <WallComposer profileId={profile.id} profileName={name} />)}
+            {/* on your own profile, what you write goes on your wall, not out to the feed */}
+            {state.user && <WallComposer profileId={profile.id} profileName={name} own={isOwn} />}
             {!entries.length && (wall?.status === 'ready' || wall?.status === 'error') && (
-                <div className="feed-empty"><Icon name="sparkles" size={24} /><p>{isOwn ? 'Nothing here yet. Share a post or publish a Fakémon!' : `No posts yet. Be the first to write on ${name}'s wall!`}</p></div>
+                <div className="feed-empty"><Icon name="sparkles" size={24} /><p>{isOwn ? 'Nothing here yet. Write on your wall, or publish a Fakémon!' : `No posts yet. Be the first to write on ${name}'s wall!`}</p></div>
             )}
             {!entries.length && (!wall || wall.status === 'loading') && <FeedSkeleton count={1} />}
             {entries.map(e => <div key={e.key} style={{ display: 'contents' }}>{e.node}</div>)}

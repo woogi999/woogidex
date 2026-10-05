@@ -5,7 +5,8 @@
   // worker/index.js handles /sb/*, the reverse proxy that puts Supabase API
   // traffic behind this zone's WAF and rate limiting rules (Realtime's
   // WebSocket included), and the pages people share links to, so Discord and
-  // friends show the right title and picture (link previews). Every other
+  // friends show the right title and picture (link previews), and /sheets/*,
+  // an event's responses as CSV for its team's Google Sheet. Every other
   // path is served straight from the asset store without running a Worker,
   // which is both faster and free -- that is what run_worker_first buys.
   "main": "worker/index.js",
@@ -16,8 +17,8 @@
     "not_found_handling": "single-page-application",
     "binding": "ASSETS",
     "run_worker_first": [
-      "/sb/*", "/og-image/*", "/turn-credentials",
-      "/community/*", "/post/*", "/profile/*",
+      "/sb/*", "/og-image/*", "/og-event/*", "/sheets/*", "/turn-credentials",
+      "/community/*", "/post/*", "/profile/*", "/events/*",
       "/", "/collection", "/community", "/events", "/battle", "/updates", "/messages", "/privacy", "/terms"
     ]
   }

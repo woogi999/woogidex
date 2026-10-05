@@ -18,6 +18,7 @@ import { CloudMeters } from '../components/CloudMeters.tsx';
 import { ConnectedAccounts } from '../components/ConnectedAccounts.tsx';
 import { useStore, useViewShown } from '../store.ts';
 import { NOTIFICATION_KINDS, notificationPrefs, setNotificationPref } from '../../core/notifications.ts';
+import { myPrivacy, setMyPrivacy } from '../../features/social.ts';
 
 type SectionKey = 'appearance' | 'editor' | 'notifications' | 'account' | 'data';
 
@@ -110,7 +111,7 @@ const SECTIONS: Section[] = [
         key: 'notifications', label: 'Notifications', when: signedIn,
         blurb: 'Choose what you hear about.',
         groups: [
-            { id: 'notifications', title: 'Notify me about', render: () => <NotificationsGroup />, keywords: 'notifications alerts bell follow comments wall repost share pause mute' }
+            { id: 'notifications', title: 'Notify me about', render: () => <NotificationsGroup />, keywords: 'notifications alerts bell follow comments wall repost share pause mute mentions tagged events announcements email' }
         ]
     },
     {
@@ -123,6 +124,7 @@ const SECTIONS: Section[] = [
                     { id: 'edit-profile', label: 'Edit your profile', desc: 'Change your display name, bio, avatar, username and badges.', control: () => <button type="button" className="btn btn-secondary btn-sm" onClick={() => api.showProfileView(null, { edit: true })}>Edit Profile</button> }
                 ]
             },
+            { id: 'privacy', title: 'Mentions & discovery', render: () => <PrivacyGroup />, keywords: 'privacy mention tag tagged search suggestions suggested hidden discover find' },
             {
                 id: 'security', title: 'Security',
                 items: [
@@ -652,7 +654,71 @@ function NotificationsGroup() {
                     ) : NOTIFICATION_KINDS.map(([type, label, desc]) => <NotificationRow key={type} type={type} label={label} desc={desc} on={prefs[type] !== false} disabled={paused} />)}
                 </div>
             </section>
+            <section className={`st-group${paused ? ' is-muted' : ''}`}>
+                <GroupHead title="Email" desc="Sent to the email on your account. Nothing else is ever emailed to you." />
+                <div className="st-card" aria-disabled={paused || undefined}>
+                    {prefs === null
+                        ? <div className="st-row st-row-static"><span className="st-row-text"><span className="skel skel-text" style={{ width: '50%' }} /></span></div>
+                        // off unless you turn it on (missing means off, unlike the bell's kinds)
+                        : <EmailRow on={prefs.email_event_announcements === true} disabled={paused || prefs.event_announcement === false} />}
+                </div>
+            </section>
         </>
+    );
+}
+
+/** Who can mention you, and whether search and suggestions include you (profiles.privacy). */
+function PrivacyGroup() {
+    const privacy = myPrivacy();
+    const mentionsId = useId();
+    const discoverId = useId();
+    const hidden = privacy?.discover === 'hidden';
+    return (
+        <section className="st-group">
+            <GroupHead title="Mentions & discovery" desc="Who can tag you, and who can come across you." />
+            <div className="st-card">
+                <div className="st-row st-row-static">
+                    <span className="st-row-text">
+                        <span className="st-label" id={mentionsId}>Who can mention you</span>
+                        <span className="st-desc">An @mention links to your profile and notifies you. Turned off, nobody can tag you and you won&rsquo;t show up when they type @.</span>
+                    </span>
+                    <span className="st-row-control">
+                        <select aria-labelledby={mentionsId} disabled={!privacy} value={privacy?.mentions || 'everyone'} onChange={e => setMyPrivacy('mentions', e.target.value === 'everyone' ? null : e.target.value)}>
+                            <option value="everyone">Everyone</option>
+                            <option value="following">People I follow</option>
+                            <option value="nobody">Nobody</option>
+                        </select>
+                    </span>
+                </div>
+                <label className={`st-row${!hidden && privacy ? ' is-on' : ''}`}>
+                    <span className="st-row-text">
+                        <span className="st-label" id={discoverId}>Show me in search and suggestions</span>
+                        <span className="st-desc">Off: you&rsquo;re left out of people search and &ldquo;Creators to follow&rdquo;. People who type your exact @username still find you, and your profile and posts stay as visible as you&rsquo;ve set them.</span>
+                    </span>
+                    <span className="st-switch">
+                        <input type="checkbox" role="switch" checked={!hidden} disabled={!privacy} aria-labelledby={discoverId} onChange={e => setMyPrivacy('discover', e.target.checked ? null : 'hidden')} />
+                        <span className="st-switch-track" aria-hidden="true" />
+                    </span>
+                </label>
+            </div>
+        </section>
+    );
+}
+
+function EmailRow({ on, disabled }: { on: boolean; disabled: boolean }) {
+    const id = useId();
+    const noEmail = !state.user?.hasRealEmail;
+    return (
+        <label className={`st-row${on && !disabled ? ' is-on' : ''}`}>
+            <span className="st-row-text">
+                <span className="st-label" id={id}>Email me event announcements</span>
+                <span className="st-desc">{noEmail ? 'Add an email to your account first (Account, Edit Profile).' : 'Announcements from events you follow, by email as well as on the bell.'}</span>
+            </span>
+            <span className="st-switch">
+                <input type="checkbox" role="switch" checked={on} disabled={disabled || noEmail} aria-labelledby={id} onChange={e => setNotificationPref('email_event_announcements', e.target.checked)} />
+                <span className="st-switch-track" aria-hidden="true" />
+            </span>
+        </label>
     );
 }
 

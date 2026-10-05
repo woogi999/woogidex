@@ -16,6 +16,8 @@ import { Icon } from './Icon.tsx';
 import { EmojiButton, EmojiGlyph, EmojiInput, QUICK_REACTIONS, RichText } from './EmojiInput.tsx';
 import { Modal } from './Modal.tsx';
 import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
+import { PollEditor, PollView } from './polls.tsx';
+import { commentPollParent, emptyPoll, type PollDraft } from '../../features/polls.ts';
 
 export function timeAgo(iso: string): string {
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -147,8 +149,9 @@ registerDialog('reaction-list', ReactionListDialog);
 
 // ==================== writing ====================
 
-export function CommentComposer({ onSubmit, placeholder = 'Write a comment…', autoFocus = false }: { onSubmit: (text: string) => Promise<boolean>; placeholder?: string; autoFocus?: boolean }) {
+export function CommentComposer({ onSubmit, placeholder = 'Write a comment…', autoFocus = false }: { onSubmit: (text: string, poll: PollDraft | null) => Promise<boolean>; placeholder?: string; autoFocus?: boolean }) {
     const [text, setText] = useState('');
+    const [poll, setPoll] = useState<PollDraft | null>(null);
     const [busy, setBusy] = useState(false);
     if (!state.user) {
         return <p className="comment-signin"><button type="button" className="link-btn" onClick={() => api.openAuthModal('signin')}>Sign in</button> to comment.</p>;
@@ -156,15 +159,21 @@ export function CommentComposer({ onSubmit, placeholder = 'Write a comment…', 
     async function send() {
         if (!text.trim() || busy) return;
         setBusy(true);
-        const ok = await onSubmit(text);
+        const ok = await onSubmit(text, poll);
         setBusy(false);
-        if (ok) setText('');
+        if (ok) { setText(''); setPoll(null); }
     }
     return (
-        <div className="comment-composer">
-            <Avatar userId={state.user.id} url={state.user.avatarUrl} name={state.user.displayName || state.user.username} className="feed-avatar feed-avatar-sm" />
-            <EmojiInput value={text} onChange={setText} maxLength={1000} rows={1} placeholder={placeholder} onSubmit={send} autoFocus={autoFocus}
-                tools={<button type="button" className="comment-send" disabled={busy || !text.trim()} onClick={send} aria-label="Post comment"><Icon name="paper-airplane" size={18} /></button>} />
+        <div className="comment-composer-wrap">
+            <div className="comment-composer">
+                <Avatar userId={state.user.id} url={state.user.avatarUrl} name={state.user.displayName || state.user.username} className="feed-avatar feed-avatar-sm" />
+                <EmojiInput value={text} onChange={setText} maxLength={1000} rows={1} placeholder={placeholder} onSubmit={poll ? undefined : send} autoFocus={autoFocus}
+                    tools={<>
+                        {!poll && <button type="button" className="comment-tool" onClick={() => setPoll(emptyPoll())} aria-label="Add a poll" title="Add a poll"><Icon name="chart-bar" size={18} /></button>}
+                        <button type="button" className="comment-send" disabled={busy || !text.trim()} onClick={send} aria-label="Post comment"><Icon name="paper-airplane" size={18} /></button>
+                    </>} />
+            </div>
+            {poll && <PollEditor compact value={poll} onChange={setPoll} onRemove={() => setPoll(null)} />}
         </div>
     );
 }
@@ -215,6 +224,7 @@ function CommentItem({ kind, parentId, parentOwnerId, comment }: { kind: Comment
                         <RichText text={comment.body} className="comment-body" />
                     </div>
                 )}
+                {!editing && <PollView kind={commentPollParent(kind)} parentId={comment.id} />}
                 {!editing && (
                     <div className="comment-meta">
                         <time dateTime={comment.created_at} title={new Date(comment.created_at).toLocaleString()}>{timeAgo(comment.created_at)}</time>
@@ -266,7 +276,7 @@ export function CommentThread({ kind, parentId, ownerId = null, targetName, onCo
 
     const box = (
         <CommentComposer autoFocus={autoFocus} placeholder={placeholder}
-            onSubmit={text => addComment(kind, parentId, text, ownerId ? { id: ownerId, targetName } : undefined)} />
+            onSubmit={(text, poll) => addComment(kind, parentId, text, ownerId ? { id: ownerId, targetName } : undefined, poll)} />
     );
     return (
         <div className="comment-thread">
@@ -365,6 +375,7 @@ export function WallPostCard({ profileId, profileName, comment }: { profileId: s
             ) : (
                 <div className="post-body"><RichText text={comment.body} /></div>
             )}
+            <PollView kind="profile_comment" parentId={comment.id} />
             <div className="feed-actions">
                 <ReactionBar counts={comment.reactions} mine={comment.my_reactions} always={['heart']} onToggle={emoji => toggleCommentReaction('profile', comment, emoji)} />
             </div>
@@ -372,29 +383,39 @@ export function WallPostCard({ profileId, profileName, comment }: { profileId: s
     );
 }
 
-/** The box at the top of someone else's timeline: "Write something to Ben…". */
-export function WallComposer({ profileId, profileName }: { profileId: string; profileName: string }) {
+/**
+ * The box at the top of a timeline: "Write something to Ben…" on someone
+ * else's, "Write on your wall…" on your own. Either way it's a wall post,
+ * kept on that profile rather than sent out to the feed.
+ */
+export function WallComposer({ profileId, profileName, own = false, onPosted }: { profileId: string; profileName: string; own?: boolean; onPosted?: () => void }) {
     const [text, setText] = useState('');
+    const [poll, setPoll] = useState<PollDraft | null>(null);
     const [busy, setBusy] = useState(false);
     const user = state.user;
     if (!user) return null;
     async function post() {
         if (!text.trim() || busy) return;
         setBusy(true);
-        const ok = await addComment('profile', profileId, text, { id: profileId });
+        const ok = await addComment('profile', profileId, text, own ? undefined : { id: profileId }, poll);
         setBusy(false);
-        if (ok) setText('');
+        if (ok) { setText(''); setPoll(null); onPosted?.(); }
     }
+    const label = own ? 'Write on your wall' : `Write on ${profileName}'s wall`;
     return (
         <div className="post-composer wall-composer">
             <div className="post-composer-top">
                 <Avatar userId={user.id} url={user.avatarUrl} name={user.displayName || user.username} className="feed-avatar" />
-                <EmojiInput value={text} onChange={setText} maxLength={1000} rows={2} placeholder={`Write something to ${profileName}…`} onSubmit={post} ariaLabel={`Write on ${profileName}'s wall`} />
+                <EmojiInput value={text} onChange={setText} maxLength={1000} rows={2} placeholder={own ? 'Write on your wall…' : `Write something to ${profileName}…`}
+                    onSubmit={poll ? undefined : post} ariaLabel={label} />
             </div>
-            {text.trim() && (
+            {poll && <PollEditor value={poll} onChange={setPoll} onRemove={() => setPoll(null)} />}
+            {(text.trim() || poll) && (
                 <div className="post-composer-actions">
+                    {!poll && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPoll(emptyPoll())}><Icon name="chart-bar" size={14} /> Poll</button>}
+                    {own && <span className="post-composer-note">Stays on your profile; it doesn't go to the feed.</span>}
                     <span className="post-composer-count">{text.length}/1000</span>
-                    <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={post}>{busy ? 'Posting…' : 'Post'}</button>
+                    <button type="button" className="btn btn-primary btn-sm" disabled={busy || !text.trim()} onClick={post}>{busy ? 'Posting…' : 'Post'}</button>
                 </div>
             )}
         </div>

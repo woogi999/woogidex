@@ -19,12 +19,16 @@
 //      * WebSocket upgrades (Realtime, which delivers chat messages live) are
 //        handed back untouched: rebuilding a 101 response drops the socket.
 //
-// 2. /community/<id>, /post/<id>, /profile/<name>, and the top-level pages --
+// 2. /community/<id>, /post/<id>, /profile/<name>, /events/<id or link>, and the top-level pages --
 //    link previews. Discord, iMessage, X and friends fetch a pasted link
 //    without running any JavaScript, so the single-page app always looked
 //    like the home page to them. Here the page's own HTML is served with its
 //    title, description and picture filled in for whatever the link points
 //    at. Ordinary visitors get the same HTML; the app ignores these tags.
+//
+// 3. /sheets/<token>.csv -- an event's responses as CSV, for the team's
+//    Google Sheet (=IMPORTDATA). The token is the key; the database decides
+//    what it shows (event_sheet_data).
 
 const SUPABASE_ORIGIN = 'https://qstbascfeolkyxtrqqwv.supabase.co';
 // the publishable key, same one the site ships with (js/core/supabase.ts)
@@ -39,6 +43,8 @@ export default {
         const url = new URL(request.url);
         if (url.pathname === PREFIX || url.pathname.startsWith(PREFIX + '/')) return proxy(request, env, url);
         if (url.pathname.startsWith('/og-image/')) return ogImage(url);
+        if (url.pathname.startsWith('/og-event/')) return ogEventImage(url);
+        if (url.pathname.startsWith('/sheets/')) return eventSheet(url);
         if (url.pathname === '/turn-credentials') return turnCredentials(request, env);
         if (request.method === 'GET' || request.method === 'HEAD') {
             const preview = await withLinkPreview(request, env, url).catch(() => null);
@@ -99,6 +105,9 @@ async function proxy(request, env, url) {
 }
 
 // ==================== link previews ====================
+// what event_phase() says, as an event's page shows it
+const EVENT_STAGES = { upcoming: 'Opening soon', open: 'Taking entries', closed: 'Entries closed', voting: 'Voting open', tallying: 'Results soon', ended: 'Ended' };
+
 const STATIC_PAGES = {
     '': { title: SITE_NAME, description: DEFAULT_DESCRIPTION },
     collection: { title: 'My Collection', description: 'Design your own Fakemon: stats, moves, abilities, evolutions, art and more.' },
@@ -170,6 +179,19 @@ async function previewFor(url) {
             type: 'profile'
         };
     }
+    if (first === 'events' && second && second !== 'new') {
+        const ev = await rpc('link_preview_event', { p_key: second });
+        if (!ev) return null;
+        const stage = EVENT_STAGES[ev.stage] || '';
+        const lead = [ev.category, stage].filter(Boolean).join(' · ');
+        return {
+            title: ev.title,
+            description: clip([lead && `${lead}.`, ev.tagline, ev.description].filter(Boolean).join(' ')) || `An event by ${ev.organizer} on Woogidex.`,
+            image: ev.has_cover ? absolute(`/og-event/${ev.id}`) : absolute(DEFAULT_IMAGE),
+            card: ev.has_cover ? 'summary_large_image' : 'summary',
+            type: 'website'
+        };
+    }
     const page = STATIC_PAGES[first];
     if (!page || second) return null;
     return { title: page.title === SITE_NAME ? SITE_NAME : `${page.title} · ${SITE_NAME}`, description: page.description, image: absolute(DEFAULT_IMAGE), card: 'summary', type: 'website', bare: page.title === SITE_NAME };
@@ -225,6 +247,52 @@ async function ogImage(url) {
     if (!m) return Response.redirect(new URL(DEFAULT_IMAGE, url.origin).toString(), 302);
     const bytes = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
     return new Response(bytes, { headers: { 'content-type': m[1], 'cache-control': 'public, max-age=3600' } });
+}
+
+// An event's cover, for its link preview. Drafts have none (the function checks).
+async function ogEventImage(url) {
+    const id = decodeURIComponent(url.pathname.slice('/og-event/'.length));
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return new Response('Not found', { status: 404 });
+    const cover = await rpc('link_preview_event_cover', { p_id: id });
+    const m = /^data:(image\/(?:webp|png|jpeg|gif));base64,(.+)$/.exec(String(cover || ''));
+    if (!m) return Response.redirect(new URL(DEFAULT_IMAGE, url.origin).toString(), 302);
+    const bytes = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
+    return new Response(bytes, { headers: { 'content-type': m[1], 'cache-control': 'public, max-age=3600' } });
+}
+
+// ==================== an event's responses, for Google Sheets ====================
+// Never cached by Cloudflare: a new response should show up on the next pull,
+// and a retired link must stop working at once.
+async function eventSheet(url) {
+    const token = decodeURIComponent(url.pathname.slice('/sheets/'.length)).replace(/\.csv$/, '');
+    const notFound = () => new Response('This sheet link is not valid. Ask the event\'s team for a new one.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+    if (!/^[0-9a-f]{64}$/.test(token)) return notFound();
+    const res = await fetch(`${SUPABASE_ORIGIN}/rest/v1/rpc/event_sheet_data`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${SUPABASE_ANON_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ p_token: token }),
+        cf: { cacheTtl: 0, cacheEverything: false }
+    });
+    const data = res.ok ? await res.json().catch(() => null) : null;
+    if (!data) return notFound();
+    // =, +, -, @ would run as a formula in the sheet (same rule as exportEntriesCsv)
+    const cell = v => {
+        const s = v == null ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? (v.name || '') : String(v);
+        return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+    };
+    const questions = data.questions || [];
+    const rows = [
+        ['Submitted', 'Entrant', 'Placement', ...questions.map(q => q.label)],
+        ...(data.entries || []).map(en => [en.created_at, en.entrant, en.placement ?? '', ...questions.map(q => en.answers?.[q.id])])
+    ];
+    return new Response(rows.map(r => r.map(cell).join(',')).join('\r\n'), {
+        headers: {
+            'content-type': 'text/csv; charset=utf-8',
+            'cache-control': 'no-store',
+            'x-robots-tag': 'noindex, nofollow',
+            'referrer-policy': 'no-referrer'
+        }
+    });
 }
 
 // ==================== TURN relay credentials ====================

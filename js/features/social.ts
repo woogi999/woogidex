@@ -15,6 +15,7 @@ import { navigateRoute, routeUrl } from '../core/router.ts';
 import { publicName } from '../core/html.ts';
 import { confirmDialog } from '../core/confirm-dialog.ts';
 import { chronological, dailySeed, rankFeed, typeAffinityFrom, type FeedItem } from './feed-algorithm.ts';
+import { createPoll, pollProblem, type PollDraft } from './polls.ts';
 
 export type FeedTab = 'foryou' | 'following' | 'latest';
 
@@ -300,10 +301,12 @@ export function tagsIn(text: string): string[] {
     return [...tags].slice(0, 8);
 }
 
-export async function createPost({ body = '', monIds = [] as string[] }): Promise<string | null> {
+export async function createPost({ body = '', monIds = [] as string[], poll = null as PollDraft | null }): Promise<string | null> {
     if (!api.requireAccount?.('Sign in to post.')) return null;
     const text = String(body || '').trim();
-    if (!text && !monIds.length) { api.showToast?.('Write something or add a Fakemon first.', 'warning'); return null; }
+    if (!text && !monIds.length && !poll) { api.showToast?.('Write something or add a Fakemon first.', 'warning'); return null; }
+    const pollIssue = poll ? pollProblem(poll) : '';
+    if (pollIssue) { api.showToast?.(pollIssue, 'warning'); return null; }
     if (text.length > 4000) { api.showToast?.('Posts can be up to 4000 characters.', 'warning'); return null; }
     if (text && !(await api.guardContent?.(text, 'community post') ?? true)) return null;
     const client = await api.getClient();
@@ -314,6 +317,15 @@ export async function createPost({ body = '', monIds = [] as string[] }): Promis
         log.error('SOCIAL', 'Post failed', error);
         api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Could not post.', 'error');
         return null;
+    }
+    // a post whose poll didn't attach comes back down, so the composer keeps it all for another try
+    if (poll) {
+        try { await createPoll('post', data.id, poll); }
+        catch (e: any) {
+            await client.from('community_posts').delete().eq('id', data.id);
+            api.showToast?.(`Your poll couldn't be added: ${e?.message || e}`, 'error');
+            return null;
+        }
     }
     api.showToast?.('Posted!', 'success');
     for (const t of Object.values(ss().feed)) t.fetchedAt = 0;
@@ -542,7 +554,7 @@ export async function copyPostLink(postId: string) {
     catch { window.prompt('Copy this link:', url); }
 }
 
-export async function commentOnPost(postId: string, body: string): Promise<boolean> {
+export async function commentOnPost(postId: string, body: string, poll: PollDraft | null = null): Promise<boolean> {
     if (!api.requireAccount?.('Sign in to comment.')) return false;
     const text = String(body || '').trim();
     if (!text) return false;
@@ -551,6 +563,14 @@ export async function commentOnPost(postId: string, body: string): Promise<boole
     const client = await api.getClient();
     const { data, error } = await client.from('post_comments').insert({ post_id: postId, user_id: state.user!.id, body: text }).select('*').single();
     if (error) { api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Comment failed.', 'error'); return false; }
+    if (poll) {
+        try { await createPoll('post_comment', data.id, poll); }
+        catch (e: any) {
+            await client.from('post_comments').delete().eq('id', data.id);
+            api.showToast?.(`Your poll couldn't be added: ${e?.message || e}`, 'error');
+            return false;
+        }
+    }
     await api.attachLiveAuthorInfo?.([data]);
     const p = ss().post;
     if (p.id === postId) p.comments = [...(p.comments || []), data];
@@ -619,4 +639,53 @@ export function setFeedTab(tab: FeedTab) {
     try { localStorage.setItem(TAB_KEY, tab); } catch {}
     notify();
     fetchFeed(tab);
+}
+
+// ==================== your mention and discovery settings ====================
+// Two keys of profiles.privacy, set from Settings: mentions ('following' |
+// 'nobody'; missing: everyone) and discover ('hidden'; missing: shown). The
+// database applies them (notify_mentions, search_profiles).
+
+const privacyState: { userId: string | null; privacy: Record<string, string> | null } = { userId: null, privacy: null };
+
+/** Your privacy settings, or null while they load (asking starts the load). */
+export function myPrivacy(): Record<string, string> | null {
+    const me = state.user?.id || null;
+    if (!me) return null;
+    if (privacyState.userId !== me) {
+        privacyState.userId = me;
+        privacyState.privacy = null;
+        api.getClient().then((client: any) => client.from('profiles').select('privacy').eq('id', me).single())
+            .then(({ data }: any) => { if (privacyState.userId === me) { privacyState.privacy = data?.privacy || {}; notify(); } })
+            .catch(() => { privacyState.privacy = {}; notify(); });
+    }
+    return privacyState.privacy;
+}
+
+/** Sets one key (null removes it, back to the default). */
+export async function setMyPrivacy(key: 'mentions' | 'discover', value: string | null) {
+    const me = state.user?.id;
+    if (!me || !privacyState.privacy) return;
+    const before = privacyState.privacy;
+    const next = { ...before };
+    if (value === null) delete next[key]; else next[key] = value;
+    privacyState.privacy = next;
+    notify();
+    try {
+        const client = await api.getClient();
+        // read-modify-write on the latest row, so a profile edit in another tab isn't undone
+        const { data, error: readError } = await client.from('profiles').select('privacy').eq('id', me).single();
+        if (readError) throw readError;
+        const merged = { ...(data?.privacy || {}) };
+        if (value === null) delete merged[key]; else merged[key] = value;
+        const { error } = await client.from('profiles').update({ privacy: merged }).eq('id', me);
+        if (error) throw error;
+        privacyState.privacy = merged;
+        api.invalidateProfile?.(me);
+    } catch (e: any) {
+        privacyState.privacy = before;
+        api.showToast?.('Could not save that setting. Please try again.', 'error');
+        log.warn('SOCIAL', 'Could not save a privacy setting', e);
+    }
+    notify();
 }

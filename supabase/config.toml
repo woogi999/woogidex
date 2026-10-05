@@ -403,6 +403,11 @@ verify_jwt = true
 # per-address limits are what keep it from being a spam pipe.
 verify_jwt = true
 
+[functions.send-event-announcement]
+# only a signed-in team member: the function asks event_can(..., 'edit') as
+# the caller before emailing anyone.
+verify_jwt = true
+
 [functions.admin-ip-lookup]
 # only a signed-in user should reach this at all; the function then further
 # requires the caller to hold the `view_ips` permission via my_permissions().

@@ -17,6 +17,8 @@ import { TypeBadges } from './profile.tsx';
 import { Modal } from './Modal.tsx';
 import { useClickAway } from './editor/fields.tsx';
 import { registerDialog, openDialog, type DialogProps } from '../dialogs.tsx';
+import { PollEditor, PollView } from './polls.tsx';
+import { emptyPoll, type PollDraft } from '../../features/polls.ts';
 import type { FeedItem } from '../../features/feed-algorithm.ts';
 
 // timeAgo lives with the comments now; it's re-exported for the pages that
@@ -280,6 +282,7 @@ export function PostFeedCard({ item, full = false }: { item: FeedItem; full?: bo
                 </div>
             ) : null}
             <PostMons mons={item.mons || []} />
+            <PollView kind="post" parentId={item.id} />
             {item.repost && <div className="repost-embed-wrap"><RepostEmbed item={item.repost} /></div>}
             {(item.tags || []).length > 0 && (
                 <div className="post-tags">{(item.tags || []).map((t: string) => <span key={t} className="post-tag">#{t}</span>)}</div>
@@ -360,6 +363,7 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
     const [open, setOpen] = useState(false);
     const [text, setText] = useState('');
     const [mons, setMons] = useState<any[]>([]);
+    const [poll, setPoll] = useState<PollDraft | null>(null);
     const [busy, setBusy] = useState(false);
     const user = state.user;
     if (!user) return null;
@@ -367,9 +371,9 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
     async function post() {
         if (busy) return;
         setBusy(true);
-        const id = await api.createPost({ body: text, monIds: mons.map(m => m.id) });
+        const id = await api.createPost({ body: text, monIds: mons.map(m => m.id), poll });
         setBusy(false);
-        if (id) { setText(''); setMons([]); setOpen(false); onPosted?.(); }
+        if (id) { setText(''); setMons([]); setPoll(null); setOpen(false); onPosted?.(); }
     }
     if (!open) {
         return (
@@ -389,7 +393,8 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
                 <strong>{name}</strong>
             </div>
             <EmojiInput value={text} onChange={setText} maxLength={4000} rows={4} autoFocus
-                placeholder="Say something! Use #tags, **bold**, and :emojis: (try typing :tatsu)" />
+                placeholder="Say something! Use #tags, @mentions, **bold**, and :emojis: (try typing :tatsu)" />
+            {poll && <PollEditor value={poll} onChange={setPoll} onRemove={() => setPoll(null)} />}
             {mons.length > 0 && (
                 <div className="post-composer-mons">
                     {mons.map(m => (
@@ -404,9 +409,10 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('pick-post-mons', { selected: mons, onDone: setMons })}>
                     <Icon name="sparkles" size={14} /> {mons.length ? `Fakémon (${mons.length})` : 'Add Fakémon'}
                 </button>
+                {!poll && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPoll(emptyPoll())}><Icon name="chart-bar" size={14} /> Poll</button>}
                 <span className="post-composer-count">{text.length}/4000</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setOpen(false); }}>Cancel</button>
-                <button type="button" className="btn btn-primary btn-sm" disabled={busy || (!text.trim() && !mons.length)} onClick={post}>{busy ? 'Posting…' : 'Post'}</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy || (!text.trim() && !mons.length && !poll)} onClick={post}>{busy ? 'Posting…' : 'Post'}</button>
             </div>
         </div>
     );

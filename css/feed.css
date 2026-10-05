@@ -237,12 +237,14 @@
 .feed-rail-person { display: flex; align-items: center; gap: 8px; }
 .feed-rail-person-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 0; color: var(--text-primary); font: 600 13px 'Exo 2', sans-serif; cursor: pointer; text-align: left; }
 .feed-rail-person-main span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.feed-rail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.feed-rail-mon { border: 0; padding: 0; background: var(--bg-panel); border-radius: 10px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; font-size: 11px; font-weight: 700; color: var(--text-primary); }
+/* minmax(0, ...) and an out-of-flow picture: a big artwork's own size can't
+   widen the columns or stretch the square (1fr alone lets it) */
+.feed-rail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.feed-rail-mon { min-width: 0; border: 0; padding: 0; background: var(--bg-panel); border-radius: 10px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; font-size: 11px; font-weight: 700; color: var(--text-primary); }
 .feed-rail-mon span:last-child { padding: 3px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.feed-rail-mon-art { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
-.feed-rail-mon-art img, .feed-rail-mon-art canvas { width: 100%; height: 100%; object-fit: contain; }
-.feed-rail-mon-art .no-art-placeholder { width: 50%; height: auto; }
+.feed-rail-mon-art { position: relative; aspect-ratio: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.feed-rail-mon-art img, .feed-rail-mon-art canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
+.feed-rail-mon-art .no-art-placeholder { position: static; width: 50%; height: auto; }
 
 /* ---- one post's page ---- */
 .post-page { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-4); }
@@ -408,3 +410,53 @@
 .quote-repost-modal .emoji-input { margin-bottom: 12px; }
 .community-card .reaction-react-label { display: none; }
 .community-card .reaction-react .emoji-button { padding: 0 6px; min-width: 28px; }
+
+/* ==================== polls (js/app/components/polls.tsx) ==================== */
+.poll { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; min-width: 0; }
+.comment-main .poll { margin: 6px 0 2px; max-width: 420px; }
+.poll-question { margin: 0; font-weight: 700; font-size: 14px; color: var(--text-primary); overflow-wrap: anywhere; }
+.poll-hint { margin: -4px 0 0; font-size: 12px; color: var(--text-muted); }
+.poll-options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.poll-choice, .poll-result {
+    position: relative; width: 100%; min-height: 38px; display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+    border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg-card); color: var(--text-primary);
+    font: inherit; font-size: 14px; text-align: left; cursor: pointer; overflow: hidden; overflow-wrap: anywhere;
+}
+.poll-choice:hover { border-color: var(--accent); background: var(--accent-soft); }
+.poll-choice.is-picked { border-color: var(--accent); background: var(--accent-soft); }
+.poll-mark { width: 16px; height: 16px; flex: 0 0 auto; border: 2px solid var(--border-strong); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; }
+.poll-mark.is-box { border-radius: 4px; }
+.poll-choice.is-picked .poll-mark { background: var(--accent); border-color: var(--accent); }
+.poll-result { border-color: transparent; background: var(--bg-panel); }
+.poll-result:disabled { cursor: default; color: var(--text-primary); }
+.poll-result:not(:disabled):hover { border-color: var(--border-strong); }
+.poll-bar { position: absolute; inset: 0; background: color-mix(in srgb, var(--accent) 16%, var(--bg-panel)); transform-origin: left; transition: transform .35s ease; }
+.poll-result.is-top .poll-bar { background: color-mix(in srgb, var(--accent) 28%, var(--bg-panel)); }
+.poll-label { position: relative; flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+.poll-result.is-mine .poll-label { font-weight: 700; }
+.poll-result.is-mine .poll-label svg { color: var(--accent); flex: 0 0 auto; }
+.poll-pct { position: relative; flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px; }
+.poll-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-muted); }
+.poll-meta .link-btn { font-size: 12px; }
+.poll-meta .poll-remove { margin-left: auto; }
+.poll-choice:focus-visible, .poll-result:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .poll-bar { transition: none; } }
+
+.poll-editor { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px; border-radius: 10px; background: var(--bg-panel); }
+.poll-editor.is-compact { margin: 6px 0 0 40px; }
+.poll-editor-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.poll-editor-head > span { display: inline-flex; align-items: center; gap: 6px; }
+.poll-editor input[type="text"] { width: 100%; }
+.poll-editor-option { display: flex; align-items: center; gap: 6px; }
+.poll-editor-x { width: 28px; height: 28px; flex: 0 0 auto; border: 0; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.poll-editor-x:hover { background: var(--bg-card); color: var(--danger); }
+.poll-editor-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-secondary); }
+.poll-editor-foot .link-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.poll-editor-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.poll-editor-len { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.poll-editor-len select { height: 28px; width: auto; padding: 0 8px; font-size: 12px; }
+
+.comment-composer-wrap { display: flex; flex-direction: column; }
+.comment-tool { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.comment-tool:hover { background: var(--bg-panel); color: var(--accent); }
+.post-composer-note { font-size: 12px; color: var(--text-muted); margin-right: auto; }

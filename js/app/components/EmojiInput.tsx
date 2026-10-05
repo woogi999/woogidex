@@ -2,12 +2,16 @@
 // ":ta" offers matching emojis like Discord does, and the smiley button opens
 // the full picker. Ours go in as their ":name:" code (the picture only appears
 // when the text is shown, renderCommentMarkdown); standard emojis go in as
-// the character itself.
+// the character itself. Typing "@na" offers people to mention, and boxes for
+// longer writing (an event's about text, its results post) get a forum-style
+// formatting bar, so nobody has to remember the markdown.
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { emojiByName, emojiCategories, isUnicodeKey, loadUnicodeEmoji, searchEmojis, unicodeChar, type Emoji, type UnicodeEmoji } from '../../core/emoji.ts';
 import { renderCommentMarkdown } from '../../core/data.ts';
+import { api } from '../../core/app.ts';
+import { Avatar } from './Avatar.tsx';
 import { Icon } from './Icon.tsx';
 
 const RECENT_KEY = 'woogidex.emoji.recent.v1';
@@ -24,11 +28,19 @@ export function EmojiImg({ emoji, size = 22 }: { emoji: Emoji; size?: number }) 
     return <img className="emoji" src={emoji.src} alt={`:${emoji.name}:`} title={`:${emoji.name}:`} width={size} height={size} loading="lazy" decoding="async" draggable={false} />;
 }
 
-/** Text with markdown and emojis, the way comments and posts read. */
+/** Text with markdown and emojis, the way comments and posts read. An @name opens that profile. */
 export function RichText({ text, className = '' }: { text: string; className?: string }) {
     // renderCommentMarkdown escapes the text first, then builds a closed set of tags
     const html = useMemo(() => renderCommentMarkdown(text), [text]);
-    return <div className={`rich-text ${className}`.trim()} dangerouslySetInnerHTML={{ __html: html }} />;
+    function openMention(e: React.MouseEvent) {
+        const a = (e.target as Element).closest?.('a.rt-mention') as HTMLAnchorElement | null;
+        if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        api.activateTopLevelView?.('profile-view');
+        api.handleProfileRoute?.(a.dataset.mention || '');
+    }
+    return <div className={`rich-text ${className}`.trim()} onClick={openMention} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 // ==================== the picker ====================
@@ -200,6 +212,95 @@ interface EmojiInputProps {
     tools?: ReactNode;
     ariaLabel?: string;
     onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+    /** the formatting bar (bold, headings, lists, links...) above the box */
+    toolbar?: boolean;
+    /** {{name}} placeholders the bar offers: [name, what it is] */
+    variables?: Array<[string, string]>;
+    /** "@na" offers people to mention (on unless turned off) */
+    mentions?: boolean;
+}
+
+/** The "@na" being typed right before the caret, if any. */
+function pendingMention(text: string, caret: number): { start: number; query: string } | null {
+    const m = text.slice(0, caret).match(/(^|[\s(])@([A-Za-z0-9_]{1,20})$/);
+    return m ? { start: caret - m[2].length - 1, query: m[2] } : null;
+}
+
+interface Mentionable { id: string; username: string; display_name?: string; avatar_url?: string; }
+
+/** People matching what's typed after @ (search_profiles leaves out anyone you can't mention). */
+function useMentionMatches(query: string | null): Mentionable[] {
+    const [found, setFound] = useState<Mentionable[]>([]);
+    useEffect(() => {
+        if (!query) { setFound([]); return; }
+        let live = true;
+        const t = setTimeout(async () => {
+            try {
+                const client = await api.getClient();
+                const { data } = await client.rpc('search_profiles', { p_query: query, p_limit: 6, p_for: 'mention' });
+                if (live) setFound((data || []).filter((p: any) => p.username));
+            } catch { if (live) setFound([]); }
+        }, 160);
+        return () => { live = false; clearTimeout(t); };
+    }, [query]);
+    return found;
+}
+
+// ==================== the formatting bar ====================
+
+type Format = { kind: 'wrap'; before: string; after: string; sample: string } | { kind: 'line'; prefix: string; sample: string } | { kind: 'insert'; text: string };
+const FORMATS: Array<[string, string, string, Format]> = [
+    ['bold', 'Bold', 'Ctrl+B', { kind: 'wrap', before: '**', after: '**', sample: 'bold text' }],
+    ['italic', 'Italic', 'Ctrl+I', { kind: 'wrap', before: '*', after: '*', sample: 'italic text' }],
+    ['strikethrough', 'Strikethrough', '', { kind: 'wrap', before: '~~', after: '~~', sample: 'crossed out' }],
+    ['h1', 'Heading', '', { kind: 'line', prefix: '## ', sample: 'Heading' }],
+    ['list-bullet', 'Bulleted list', '', { kind: 'line', prefix: '- ', sample: 'Item' }],
+    ['numbered-list', 'Numbered list', '', { kind: 'line', prefix: '1. ', sample: 'First' }],
+    ['chat-bubble-bottom-center-text', 'Quote', '', { kind: 'line', prefix: '> ', sample: 'Quoted text' }],
+    ['code-bracket', 'Code', '', { kind: 'wrap', before: '`', after: '`', sample: 'code' }],
+    ['eye-slash', 'Spoiler', '', { kind: 'wrap', before: '||', after: '||', sample: 'hidden until clicked' }],
+    ['link', 'Link', 'Ctrl+K', { kind: 'wrap', before: '[', after: '](https://)', sample: 'link text' }],
+    ['minus', 'Divider', '', { kind: 'insert', text: '\n---\n' }]
+];
+
+function FormatBar({ apply, variables, onVariable }: { apply: (f: Format) => void; variables?: Array<[string, string]>; onVariable: (name: string) => void }) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!open) return;
+        const away = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+        document.addEventListener('mousedown', away);
+        return () => document.removeEventListener('mousedown', away);
+    }, [open]);
+    return (
+        <div className="format-bar" role="toolbar" aria-label="Formatting">
+            {FORMATS.map(([icon, label, keys, f], i) => (
+                <span key={icon} className="format-bar-item">
+                    {(i === 3 || i === 7) && <span className="format-bar-sep" aria-hidden="true" />}
+                    {/* mousedown kept off the button, so the text box keeps its selection */}
+                    <button type="button" className="format-btn" title={keys ? `${label} (${keys})` : label} aria-label={label}
+                        onMouseDown={e => e.preventDefault()} onClick={() => apply(f)}><Icon name={icon} size={16} /></button>
+                </span>
+            ))}
+            {variables && variables.length > 0 && (
+                <div className="format-vars" ref={ref}>
+                    <button type="button" className="format-btn format-btn-text" aria-haspopup="menu" aria-expanded={open}
+                        onMouseDown={e => e.preventDefault()} onClick={() => setOpen(o => !o)} title="Insert a variable, filled in when people read it">
+                        <Icon name="variable" size={16} /><span>Variables</span>
+                    </button>
+                    {open && (
+                        <div className="format-vars-menu feed-menu" role="menu">
+                            {variables.map(([name, label]) => (
+                                <button key={name} type="button" role="menuitem" onMouseDown={e => e.preventDefault()} onClick={() => { setOpen(false); onVariable(name); }}>
+                                    <code>{`{{${name}}}`}</code><span>{label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
 
 /** The ":name" being typed right before the caret, if any. */
@@ -210,15 +311,19 @@ function pendingCode(text: string, caret: number): { start: number; query: strin
     return { start: caret - m[2].length - 1, query: m[2].toLowerCase() };
 }
 
-export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, className = '', autoFocus, disabled, onSubmit, tools, ariaLabel, onPaste }: EmojiInputProps) {
+export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, className = '', autoFocus, disabled, onSubmit, tools, ariaLabel, onPaste, toolbar = false, variables, mentions = true }: EmojiInputProps) {
     const box = useRef<HTMLTextAreaElement>(null);
     const [caret, setCaret] = useState(0);
     const [active, setActive] = useState(0);
     const [dismissed, setDismissed] = useState(false);
-    const pending = !dismissed && box.current === document.activeElement ? pendingCode(value, caret) : null;
+    const focused = !dismissed && box.current === document.activeElement;
+    const pending = focused ? pendingCode(value, caret) : null;
     const matches = pending ? searchEmojis(pending.query, 8) : [];
+    const mention = focused && mentions && !pending ? pendingMention(value, caret) : null;
+    const people = useMentionMatches(mention?.query || null);
+    const peopleShown = mention ? people : [];
 
-    useEffect(() => { setActive(0); }, [pending?.query]);
+    useEffect(() => { setActive(0); }, [pending?.query, mention?.query]);
 
     function insertAt(start: number, end: number, text: string) {
         const next = value.slice(0, start) + text + value.slice(end);
@@ -238,6 +343,50 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
         insertAt(pending.start, caret, `:${e.name}: `);
     }
 
+    function completeMention(p: Mentionable) {
+        if (!mention) return;
+        insertAt(mention.start, caret, `@${p.username} `);
+    }
+
+    /** Bold, a heading, a link...: around the selection, or a sample to type over. */
+    function applyFormat(f: Format) {
+        const el = box.current;
+        const start = el ? el.selectionStart : value.length;
+        const end = el ? el.selectionEnd : value.length;
+        const picked = value.slice(start, end);
+        let next: string, from: number, to: number;
+        if (f.kind === 'insert') {
+            next = value.slice(0, start) + f.text + value.slice(end);
+            from = to = start + f.text.length;
+        } else if (f.kind === 'wrap') {
+            const inner = picked || f.sample;
+            next = value.slice(0, start) + f.before + inner + f.after + value.slice(end);
+            from = start + f.before.length;
+            to = from + inner.length;
+        } else {
+            // every line the selection touches gets the prefix
+            const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            const body = value.slice(lineStart, end) || f.sample;
+            const numbered = f.prefix === '1. ';
+            const done = body.split('\n').map((l, i) => (numbered ? `${i + 1}. ` : f.prefix) + l).join('\n');
+            next = value.slice(0, lineStart) + done + value.slice(end);
+            from = lineStart + (numbered ? 3 : f.prefix.length);
+            to = lineStart + done.length;
+        }
+        if (maxLength && next.length > maxLength) return;
+        onChange(next);
+        requestAnimationFrame(() => {
+            box.current?.focus();
+            box.current?.setSelectionRange(from, to);
+            setCaret(to);
+        });
+    }
+
+    function insertVariable(name: string) {
+        const el = box.current;
+        insertAt(el ? el.selectionStart : value.length, el ? el.selectionEnd : value.length, `{{${name}}}`);
+    }
+
     function insertFromPicker(name: string) {
         const el = box.current;
         const start = el ? el.selectionStart : value.length;
@@ -249,6 +398,17 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
     }
 
     function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+        if (peopleShown.length) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => (i + 1) % peopleShown.length); return; }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => (i - 1 + peopleShown.length) % peopleShown.length); return; }
+            if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); completeMention(peopleShown[active] || peopleShown[0]); return; }
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(true); return; }
+        }
+        if (toolbar && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+            const k = e.key.toLowerCase();
+            const f = k === 'b' ? FORMATS[0][3] : k === 'i' ? FORMATS[1][3] : k === 'k' ? FORMATS[9][3] : null;
+            if (f) { e.preventDefault(); applyFormat(f); return; }
+        }
         if (matches.length) {
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => (i + 1) % matches.length); return; }
             if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => (i - 1 + matches.length) % matches.length); return; }
@@ -264,7 +424,21 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
     const track = () => setCaret(box.current?.selectionStart ?? 0);
 
     return (
-        <div className={`emoji-input ${className}`.trim()}>
+        <div className={`emoji-input${toolbar ? ' has-toolbar' : ''} ${className}`.trim()}>
+            {toolbar && <FormatBar apply={applyFormat} variables={variables} onVariable={insertVariable} />}
+            {peopleShown.length > 0 && (
+                <div className="emoji-autocomplete mention-autocomplete" role="listbox" aria-label="People to mention">
+                    <div className="emoji-autocomplete-head">Mention <strong>@{mention!.query}</strong></div>
+                    {peopleShown.map((p, i) => (
+                        <button key={p.id} type="button" role="option" aria-selected={i === active} className={i === active ? 'active' : ''}
+                            onMouseDown={e => e.preventDefault()} onClick={() => completeMention(p)} onMouseEnter={() => setActive(i)}>
+                            <Avatar userId={p.id} url={p.avatar_url} name={p.display_name || p.username} className="feed-avatar feed-avatar-xs" />
+                            <span className="mention-autocomplete-name">{p.display_name || p.username}</span>
+                            <span className="mention-autocomplete-user">@{p.username}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
             {matches.length > 0 && (
                 <div className="emoji-autocomplete" role="listbox" aria-label="Matching emojis">
                     <div className="emoji-autocomplete-head">Emojis matching <strong>:{pending!.query}</strong></div>
