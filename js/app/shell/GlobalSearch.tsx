@@ -6,7 +6,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { state } from '../../core/app.ts';
 import { log } from '../../core/log.ts';
 import { closeGlobalSearch, globalSearchState, openGlobalSearch, openSearchPage } from '../../features/global-search.ts';
-import { COMMUNITY_DROPDOWN_LIMIT, DROPDOWN_LIMIT, communityResults, localGroups, quickResults, type SearchResult } from '../../features/search.ts';
+import { COMMUNITY_DROPDOWN_LIMIT, DROPDOWN_LIMIT, PEOPLE_DROPDOWN_LIMIT, communityResults, localGroups, peopleResults, quickResults, type SearchResult } from '../../features/search.ts';
 import { Icon } from '../components/Icon.tsx';
 import { SearchRow } from '../components/SearchRow.tsx';
 import { useStore } from '../store.ts';
@@ -24,7 +24,7 @@ export function GlobalSearch() {
     // the dropdown is only up while the box has focus
     const [listOpen, setListOpen] = useState(false);
     const [active, setActive] = useState(-1);
-    const [community, setCommunity] = useState<{ query: string; list: SearchResult[]; status: string }>({ query: '', list: [], status: '' });
+    const [community, setCommunity] = useState<{ query: string; list: SearchResult[]; people: SearchResult[]; status: string }>({ query: '', list: [], people: [], status: '' });
 
     const query = text.trim();
 
@@ -39,20 +39,26 @@ export function GlobalSearch() {
     // a picked result or a search (here or on the results page) empties and closes it
     useEffect(() => { if (box.clearSeq) { setText(''); close(); } }, [box.clearSeq]);
 
-    // Community Hub posts, a moment after typing stops; signed in only
+    // Community Hub posts and people, a moment after typing stops; signed in only
     useEffect(() => {
         if (!query || !state.user) return;
         let live = true;
-        setCommunity({ query, list: [], status: 'Searching the Community Hub…' });
+        setCommunity({ query, list: [], people: [], status: 'Searching the Community Hub…' });
         const timer = setTimeout(async () => {
-            let list: SearchResult[] = [];
+            const [mons, people] = await Promise.allSettled([
+                communityResults(query, COMMUNITY_DROPDOWN_LIMIT),
+                peopleResults(query, PEOPLE_DROPDOWN_LIMIT)
+            ]);
             let status = '';
-            try { list = await communityResults(query, COMMUNITY_DROPDOWN_LIMIT); }
-            catch (err: any) {
-                log.warn('SEARCH', 'Community search failed', { error: String(err?.message || err) });
+            if (mons.status === 'rejected' || people.status === 'rejected') {
+                log.warn('SEARCH', 'Community search failed', { error: String((mons as any).reason || (people as any).reason) });
                 status = 'The Community Hub could not be searched right now.';
             }
-            if (live) setCommunity({ query, list, status });
+            if (live) setCommunity({
+                query, status,
+                list: mons.status === 'fulfilled' ? mons.value : [],
+                people: people.status === 'fulfilled' ? people.value : []
+            });
         }, COMMUNITY_DEBOUNCE_MS);
         return () => { live = false; clearTimeout(timer); };
     }, [query, !!state.user]);
@@ -73,10 +79,10 @@ export function GlobalSearch() {
     else {
         const g = localGroups(query, DROPDOWN_LIMIT);
         const local: Group[] = [['Your Fakémon', g.fakemon], ['Your library', g.library], ['Pages and actions', g.pages]];
-        if (!state.user) { groups = local; status = 'Sign in to search Community Hub posts too.'; }
+        if (!state.user) { groups = local; status = 'Sign in to search people and Community Hub posts too.'; }
         else {
-            const mine = community.query === query ? community : { list: [], status: 'Searching the Community Hub…' };
-            groups = [local[0], local[1], ['Community Hub', mine.list], local[2]];
+            const mine = community.query === query ? community : { list: [], people: [], status: 'Searching the Community Hub…' };
+            groups = [local[0], local[1], ['People', mine.people], ['Community Hub', mine.list], local[2]];
             status = mine.status;
         }
     }

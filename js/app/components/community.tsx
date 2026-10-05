@@ -3,7 +3,6 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../core/app.ts';
-import { renderCommentMarkdown } from '../../core/data.ts';
 import { emptyFeedMessage, evoBadgeLabel, prepareCommunityFeed } from '../../features/community-feed-model.ts';
 import { Avatar } from './Avatar.tsx';
 import { BadgeRow } from './Badge.tsx';
@@ -126,7 +125,6 @@ function CommunityCard({ row, isMine, canDelete }: { row: FeedRow; isMine: boole
                     <button type="button" className="community-stat-btn" title="Comments" onClick={e => { e.stopPropagation(); open(); }}>
                         <Icon name="message-circle" /><span>{row.comment_count || 0}</span>
                     </button>
-                    <span className="community-stat-btn community-stat-static" title="Views"><Icon name="eye" /><span>{row.view_count || 0}</span></span>
                 </div>
                 <AuthorLine row={row} />
             </div>
@@ -177,51 +175,5 @@ export function LandingCard({ row }: { row: FeedRow }) {
                 </span>
             </span>
         </button>
-    );
-}
-
-// ==================== a post's comments ====================
-
-export interface MonComment { id: string; user_id: string; body: string; created_at: string; author_name?: string; author_avatar_url?: string; author_badges?: string[]; }
-
-export function CommentList({ comments, loading, monId, viewerId, viewerIsStaff }:
-    { comments: MonComment[]; loading: boolean; monId: string; viewerId: string | null; viewerIsStaff: boolean }) {
-    if (loading) {
-        return (
-            <>
-                {Array.from({ length: 3 }, (_, i) => (
-                    <div className="mon-comment skel-card" key={i}>
-                        <div className="mon-comment-header"><span className="skel skel-circle" /><span className="skel skel-text" /></div>
-                        <div className="mon-comment-body"><span className="skel skel-text" /><span className="skel skel-text" /></div>
-                    </div>
-                ))}
-            </>
-        );
-    }
-    if (!comments.length) return <div className="community-empty">No comments yet.</div>;
-    return (
-        <>
-            {comments.map(c => {
-                const isMine = !!viewerId && c.user_id === viewerId;
-                return (
-                    <div className="mon-comment" key={c.id}>
-                        <div className="mon-comment-header">
-                            <Avatar userId={c.user_id} url={c.author_avatar_url} name={c.author_name} />
-                            <span className="mon-comment-author community-author-link" data-user-id={c.user_id}
-                                onClick={e => { e.stopPropagation(); api.showUserProfile(c.user_id); }}>{c.author_name}</span>
-                            <BadgeRow badgeKeys={c.author_badges} size={12} />
-                            <span className="mon-comment-time">{new Date(c.created_at).toLocaleString()}</span>
-                            {(isMine || viewerIsStaff) && (
-                                <button className="mon-comment-delete" type="button" title={isMine ? 'Delete' : 'Remove (staff)'} onClick={() => api.deleteComment(c.id, monId)}>
-                                    <Icon name="trash-2" style={{ width: 12, height: 12 }} />
-                                </button>
-                            )}
-                        </div>
-                        {/* renderCommentMarkdown escapes the text first, then builds a closed set of tags */}
-                        <div className="mon-comment-body" dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(c.body) }} />
-                    </div>
-                );
-            })}
-        </>
     );
 }

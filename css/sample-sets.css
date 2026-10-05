@@ -209,25 +209,7 @@
             border-radius: 2px;
             transition: width 0.3s ease, background 0.3s ease;
         }
-        .sample-set-ev-total-bar {
-            position: relative;
-            height: 22px;
-            background: var(--bg-dark);
-            border-radius: 11px;
-            overflow: hidden;
-            margin-top: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .sample-set-ev-total-fill {
-            position: absolute;
-            left: 0;
-            top: 0;
-            height: 100%;
-            border-radius: 11px;
-            transition: width 0.3s ease, background 0.3s ease;
-        }
+
         .sample-set-ev-total-text {
             position: relative;
             z-index: 1;
@@ -284,38 +266,8 @@
             object-fit: contain;
             flex-shrink: 0;
         }
-        .sample-set-item-input {
-            flex: 1;
-            padding: 10px 14px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            font-family: 'Exo 2', sans-serif;
-            font-size: 14px;
-            color: var(--text-primary);
-            transition: all 0.2s ease;
-        }
-        .sample-set-item-input:focus {
-            outline: none;
-            border-color: var(--text-secondary);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
+
         /* sample set move inputs */
-        .sample-set-move-input {
-            padding: 10px 14px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            font-family: 'Exo 2', sans-serif;
-            font-size: 14px;
-            color: var(--text-primary);
-            transition: all 0.2s ease;
-        }
-        .sample-set-move-input:focus {
-            outline: none;
-            border-color: var(--text-secondary);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
 
         /* custom move modal */
         .flag-checkboxes {
@@ -397,9 +349,7 @@
             color: white;
         }
         /* board custom moves section */
-        .board-custom-moves {
-            margin-top: 16px;
-        }
+        
         .board-custom-move-item {
             display: flex;
             align-items: flex-start;

@@ -212,9 +212,13 @@ const WARNINGS: Record<string, { title: string; body: ReactNode }> = {
 
 function CollectionWarningDialog({ kind, close }: DialogProps<{ kind: string }>) {
     const w = WARNINGS[kind] || WARNINGS['load-failed'];
+    // a stale tab always clears on reload; the other two can stick for good
+    // in some browsers, and then this is the only way to keep working
+    const canTurnOff = kind !== 'stale-tab';
     return (
         <PolicyDialog title={w.title} close={close}>
             {w.body}
+            {canTurnOff && <p>Still seeing this after reloading? You can turn this check off and save anyway. Export a backup first if you can: with the check off, saving may replace whatever is stored in this browser.</p>}
             <div className="policy-actions">
                 <button type="button" className="btn btn-primary" onClick={() => location.reload()}><Icon name="rotate-cw" size={14} /> Reload the Page</button>
                 {/* only the "looks wiped" case has anywhere else to go */}
@@ -222,6 +226,7 @@ function CollectionWarningDialog({ kind, close }: DialogProps<{ kind: string }>)
                     <button type="button" className="btn btn-secondary" onClick={() => api.checkForLostFakemonFromWarning()}>Check for Lost Fakémon</button>
                     <button type="button" className="btn btn-secondary" onClick={() => api.confirmCollectionIsEmpty()}>I Deleted Them Myself</button>
                 </>}
+                {canTurnOff && <button type="button" className="btn btn-secondary" onClick={() => api.disableCollectionSafetyChecks()}>Turn Off This Check</button>}
             </div>
         </PolicyDialog>
     );

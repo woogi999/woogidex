@@ -1,0 +1,30 @@
+/* ==================== low-end devices ====================
+   .low-end is set on <html> before first paint (index.html) for devices with
+   little memory, few cores, or Data Saver on. The site looks the same; it
+   just skips the effects that cost the most on a weak GPU.
+   Linked last so these win.
+   ==================== */
+
+/* backdrop blur re-samples everything behind the element on every frame
+   that changes; on a cheap phone that's the single biggest source of jank */
+.low-end *, .low-end *::before, .low-end *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+/* purely decorative loops: they keep the page repainting while idle,
+   which also drains the battery */
+.low-end .notification-dot,
+.low-end .notifications-badge,
+.low-end .not-found-ball,
+.low-end .event-live-dot {
+    animation: none !important;
+}
+
+/* skeleton shimmer: a still placeholder reads just as well */
+.low-end .skel { animation: none !important; }
+
+/* big soft shadows are expensive to paint and re-paint on scroll */
+.low-end .collection-card,
+.low-end .panel,
+.low-end .editor-sheet { box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }

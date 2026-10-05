@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { readdirSync, readFileSync, writeFileSync } from 'fs';
+import { createHash } from 'crypto';
 
 // static site on GitHub Pages, so this has to survive being served from a
 // subdirectory *and* from paths that don't exist on disk (/community/12).
@@ -36,6 +37,43 @@ function fallback404() {
                 fileName: '404.html',
                 source: NOTICE + html.source
             });
+        }
+    };
+}
+
+// The service worker (sw/service-worker.js) needs the exact file list of this
+// build to keep an offline copy, so it is written here rather than copied from
+// public/. Precached: the page, every chunk the app can run offline, and the
+// small pictures the collection draws. Left out (fetched and kept on first use
+// instead, so a cheap phone doesn't download them up front): the admin panel,
+// and Battle (its page, engine and 3D renderer), which only works online anyway.
+const SW_SKIP = /^(admin|three\.module|battle-ui|BattlePage)-/;
+const SW_PUBLIC = ['assets/favicon.png', 'assets/no_art_placeholder.png', 'assets/woogidex_logo.png'];
+
+function serviceWorker() {
+    return {
+        name: 'woogidex-service-worker',
+        apply: 'build',
+        enforce: 'post',
+        generateBundle(_options, bundle) {
+            const publicDir = resolve(import.meta.dirname, 'public');
+            const typeIcons = readdirSync(resolve(publicDir, 'assets/types')).map(f => `assets/types/${f}`);
+            const chunks = Object.keys(bundle)
+                .filter(f => /^bundle\/[^/]+\.(js|css)$/.test(f) && !SW_SKIP.test(f.slice('bundle/'.length)))
+                .sort();
+            const files = ['./', ...chunks, ...SW_PUBLIC, ...typeIcons];
+            // changes whenever anything it caches does, which is what makes the
+            // browser install the new worker and refresh the offline copy
+            const hash = createHash('sha256');
+            for (const f of chunks) hash.update(f);
+            hash.update(String(bundle['index.html']?.source ?? ''));
+            for (const f of [...SW_PUBLIC, ...typeIcons]) hash.update(readFileSync(resolve(publicDir, f)));
+            const source = readFileSync(resolve(import.meta.dirname, 'sw/service-worker.js'), 'utf8')
+                .replace('const VERSION = __VERSION__', `const VERSION = ${JSON.stringify(hash.digest('hex').slice(0, 12))}`)
+                .replace('const PRECACHE = __PRECACHE__', `const PRECACHE = ${JSON.stringify(files)}`)
+                // same rule as the HTML below: no source comments on the live site
+                .replace(/^[ \t]*\/\/.*(?:\r?\n)?/gm, '');
+            this.emitFile({ type: 'asset', fileName: 'sw.js', source });
         }
     };
 }
@@ -146,7 +184,7 @@ const SB_PROXY = {
 export default defineConfig({
     base: './',
     publicDir: 'public',
-    plugins: [react(), emojiManifest(), fallback404(), stripHtmlComments()],
+    plugins: [react(), emojiManifest(), fallback404(), serviceWorker(), stripHtmlComments()],
     build: {
         outDir: 'dist',
         assetsDir: 'bundle',
@@ -160,7 +198,6 @@ export default defineConfig({
                 // big, rarely-changing deps split out to stay cached across
                 // releases instead of invalidating with every code change
                 manualChunks(id) {
-                    if (id.includes('node_modules/lucide')) return 'lucide';
                     if (id.includes('node_modules/@supabase')) return 'supabase';
                 }
             }

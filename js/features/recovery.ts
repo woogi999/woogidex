@@ -210,10 +210,21 @@ export function confirmCollectionIsEmpty() {
 }
 
 /**
+ * The warning's opt-out, for a browser where reloading never fixes the read.
+ * Same switch as Settings > Data > Collection safety checks.
+ */
+export function disableCollectionSafetyChecks() {
+    api.setCollectionSafetyChecks?.(false);
+    closeCollectionWarning();
+    api.showToast?.('Safety checks are off and saving is back on. You can turn them on again in Settings > Data.', 'success');
+}
+
+/**
  * Boot check, ahead of the lost-Fakemon scan. Returns true when it showed
  * something, in which case its own buttons drive whatever happens next.
  */
 export function maybeWarnAboutCollectionHealth() {
+    if (api.getCollectionSafetyChecks?.() === false) return false;
     if (api.isCollectionLoaded && !api.isCollectionLoaded()) { openCollectionWarning('load-failed'); return true; }
     if (api.isCollectionWipeSuspected?.()) { openCollectionWarning('wiped'); return true; }
     return false;

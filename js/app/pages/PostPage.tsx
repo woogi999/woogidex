@@ -2,7 +2,7 @@
 // comments. js/features/social.ts loads it (openPost) and does the actions.
 
 import { api } from '../../core/app.ts';
-import { CommentComposer, PostComments, PostFeedCard } from '../components/feed.tsx';
+import { PostFeedCard } from '../components/feed.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { useStore } from '../store.ts';
 
@@ -23,12 +23,8 @@ export function PostPage() {
                 <div className="feed-card skel-card" style={{ minHeight: 220 }} />
             ) : (
                 <>
+                    {/* "full" opens the card with its comments already showing */}
                     <PostFeedCard item={p.row} full />
-                    <section className="post-page-comments">
-                        <h3>Comments <span className="post-page-count">{Number(p.row.comment_count || 0)}</span></h3>
-                        <CommentComposer onSubmit={text => api.commentOnPost(p.row.id, text)} />
-                        <PostComments postId={p.row.id} postOwner={p.row.user_id} comments={p.loading && !p.comments ? null : (p.comments || [])} />
-                    </section>
                 </>
             )}
         </div>

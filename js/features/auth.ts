@@ -886,9 +886,9 @@ async function loadPublicProfile(userId) {
     if (profileError) throw profileError;
     if (!profile) throw new Error('Profile not found.');
 
-    // loaded independently - a problem with comments must never block the header/gallery from rendering.
+    // loaded independently - a problem with these must never block the header from rendering.
+    // (the wall loads with the timeline, through js/features/comments.ts)
     let mons: any[] = [];
-    let comments: any[] = [];
     try {
         // same egress fix as the hub feed: skip the full fakemon_data blob and
         // `artwork` (~176kB base64 each, ~17MB for a 100-mon gallery). The
@@ -912,37 +912,6 @@ async function loadPublicProfile(userId) {
         console.warn('Could not load published mons:', e);
     }
 
-    try {
-        const result = await withProfileTimeout(
-            client.from('profile_comments')
-                .select('id, profile_id, user_id, body, created_at')
-                .eq('profile_id', userId)
-                .order('created_at', { ascending: true })
-                .limit(200),
-            'Profile comments request'
-        );
-        if (result.error) console.warn('Could not load profile comments:', result.error);
-        else comments = result.data || [];
-    } catch (e: any) {
-        console.warn('Could not load profile comments:', e);
-    }
-
-    const ids = [...new Set(comments.map(c => c.user_id).filter(Boolean))];
-    let authors: Record<string, any> = {};
-    if (ids.length) {
-        try {
-            const result = await withProfileTimeout(
-                client.from('profiles')
-                    .select('id, username, display_name, avatar_url, role, display_badges')
-                    .in('id', ids),
-                'Comment authors request'
-            );
-            (result.data || []).forEach(x => { authors[x.id] = x; });
-        } catch (e: any) {
-            console.warn('Could not load comment authors:', e);
-        }
-    }
-
     // the new profile page: follower numbers and the posts-and-Fakemon timeline
     let stats: any = null;
     let timeline: any[] = [];
@@ -959,8 +928,7 @@ async function loadPublicProfile(userId) {
         ...profile,
         mons,
         stats: stats || { followers: 0, following: 0, mons: mons.length, posts: 0 },
-        timeline: timeline || [],
-        comments: comments.map(c => ({ ...c, author: authors[c.user_id] || null }))
+        timeline: timeline || []
     };
     profileCache.set(key, { at: Date.now(), value: state.profilePageUser });
     return state.profilePageUser;
@@ -989,53 +957,6 @@ function renderProfilePage() {
     });
     notify();
 }
-
-/**
- * Posts a comment on the open profile.
- * @param text
- * @returns '' when posted, otherwise what went wrong
- */
-async function submitProfileComment(text: string): Promise<string> {
-    if (!state.user || !state.profilePageUser) { openAuthModal('signin'); return 'Sign in to comment.'; }
-    const body = String(text || '').trim();
-    if (!body) return '';
-    if (body.length > 1000) return 'Comments are limited to 1000 characters.';
-
-    // blocklist scan + mute/ban check before the write, so a refusal is
-    // explained here rather than surfacing as a raw Postgres error.
-    if (!(await api.guardContent?.(body, 'profile comment') ?? true)) return 'That comment can’t be posted.';
-
-    const client = await getClient();
-    const { error } = await client.from('profile_comments').insert({ profile_id: state.profilePageUser.id, user_id: state.user.id, body });
-    if (error) return api.friendlyModerationError?.(error) || error.message || 'Could not post comment.';
-    invalidateProfile(state.profilePageUser.id);
-    await loadPublicProfile(state.profilePageUser.id);
-    renderProfilePage();
-
-    api.createNotification?.({
-        userId: state.profilePageUser.id,
-        actorId: state.user.id,
-        actorName: publicName(state.user),
-        actorAvatarUrl: state.user.avatarUrl || null,
-        type: 'profile_comment',
-        targetId: state.profilePageUser.id,
-        preview: body
-    });
-    return '';
-}
-
-async function deleteProfileComment(commentId) {
-    if (!state.user) return;
-    const client = await getClient();
-    let query = client.from('profile_comments').delete().eq('id', commentId);
-    if (!isStaff()) query = query.eq('user_id', state.user.id);
-    const { error } = await query;
-    if (error) { api.showToast?.('Could not delete comment: ' + error.message, 'error'); return; }
-    invalidateProfile(state.profilePageUser.id);
-    await loadPublicProfile(state.profilePageUser.id);
-    renderProfilePage();
-}
-
 
 // ==================== user hover card ====================
 let userHoverCardEl: any = null;
@@ -1422,7 +1343,7 @@ export {
     openSetNewPasswordModal, closeSetNewPasswordModal, submitSetNewPasswordForm,
     openChangePasswordModal, closeChangePasswordModal, submitChangePasswordForm,
     requireAccount, invalidateProfile,
-    showProfileView, showUserProfile, handleProfileRoute, exitProfileRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, renderProfilePage, renderProfileLoading, submitProfileComment, deleteProfileComment,
+    showProfileView, showUserProfile, handleProfileRoute, exitProfileRoute, editOwnProfile, cancelEditOwnProfile, openProfileModal, closeProfileModal, renderProfilePage, renderProfileLoading,
     saveProfileDetails, saveUsername, saveEmail, removeAccountEmail, saveDisplayedBadges, avatarFileProblem, bannerFileProblem, usernameChangesRemainingText,
     handleSignOutClick, updateAuthUI, promptUsernameIfMissing, submitAccountSetup, closeAccountSetupModal,
     toggleHeaderProfilePopover, closeHeaderProfilePopover,

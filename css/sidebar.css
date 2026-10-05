@@ -53,10 +53,7 @@ body[data-page="collection-view"] .app-sidebar { display: flex; }
 }
 
 /* "Blur & dim effects" off: strips the scrim from every overlay site-wide */
-.no-overlay-blur .modal-overlay.active,
-.no-overlay-blur .overlay-dark.active,
-.no-overlay-blur .editor-sheet-backdrop,
-.no-overlay-blur .region-drawer-backdrop {
+.no-overlay-blur .modal-overlay.active, .no-overlay-blur .overlay-dark.active, .no-overlay-blur .region-drawer-backdrop {
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -149,9 +146,6 @@ body[data-page="collection-view"] .app-sidebar { display: flex; }
 #region-color-options .color-option { border: 0; padding: 0; }
 
 /* the editor: dex number and region side by side */
-.dex-region-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4); }
-@media (max-width: 520px) { .dex-region-row { grid-template-columns: 1fr; } }
-
 
 /* ---- a region's own page, from the sidebar ---- */
 .region-subrow {

@@ -17,7 +17,7 @@ import { state, api } from '../core/app.ts';
 import { log } from '../core/log.ts';
 import { notify } from '../app/store.ts';
 
-// providers to show, in order. `icon` is inline SVG since lucide has no brand marks.
+// providers to show, in order. `icon` is inline SVG since Heroicons has no brand marks.
 export const OAUTH_PROVIDERS = [
     {
         id: 'google',

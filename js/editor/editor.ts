@@ -62,7 +62,17 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
             pokedex:   'https://play.pokemonshowdown.com/data/pokedex.json',
             learnsets: 'https://play.pokemonshowdown.com/data/learnsets.json'
         };
-        async function fetchShowdownData() {
+        // memoised like ensureLearnsets(): boot, the regions page and battle all
+        // ask for it, and each used to start its own ~1 MB download and parse
+        let showdownDataPromise: Promise<void> | null = null;
+        function fetchShowdownData() {
+            if (state.sdLoaded) return Promise.resolve();
+            showdownDataPromise ||= loadShowdownData().finally(() => {
+                if (!state.sdLoaded) showdownDataPromise = null;    // failed: let a later call retry
+            });
+            return showdownDataPromise;
+        }
+        async function loadShowdownData() {
             const done = log.time('SHOWDOWN', 'fetchShowdownData');
             log.info('SHOWDOWN', 'Fetching Showdown datasets');
             log.debug('SHOWDOWN', 'Requesting moves, abilities, items and pokedex (learnsets load separately)');
@@ -408,8 +418,9 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
             return browsableAbilityCache;
         }
 
-        function openAbilityBrowserModal() {
-            if (!state.sdLoaded) { api.showToast('Ability data is still loading. Try again in a moment.', 'info'); return; }
+        async function openAbilityBrowserModal() {
+            if (!state.sdLoaded) await fetchShowdownData();
+            if (!state.sdLoaded) { api.showToast('Ability data could not be loaded. Check your connection and try again.', 'error'); return; }
             openDialog('ability-browser', {});
         }
 
@@ -1166,8 +1177,9 @@ import { form } from './draft.ts';
         const UNIVERSAL_MOVES = ['Toxic', 'Hidden Power', 'Tera Blast', 'Protect', 'Frustration', 'Return', 'Double Team', 'Facade', 'Rest', 'Attract', 'Round', 'Swagger', 'Sleep Talk', 'Substitute'];
 
         async function addUniversalMoves() {
-            await ensureLearnsets();
-            if (!state.sdLoaded) { api.showToast('Showdown data still loading, try again shortly.', 'error'); return; }
+            // both load lazily (boot may still be waiting for an idle moment)
+            await Promise.all([fetchShowdownData(), ensureLearnsets()]);
+            if (!state.sdLoaded) { api.showToast('Showdown data could not be loaded. Check your connection and try again.', 'error'); return; }
             let added = 0;
             UNIVERSAL_MOVES.forEach(name => {
                 const move = findClosestMove(name);
@@ -1564,8 +1576,9 @@ import { form } from './draft.ts';
         }
 
         async function openRecommendMovesModal() {
-            await ensureLearnsets();
-            if (!state.sdLoaded) { api.showToast('Showdown data still loading, try again shortly.', 'error'); return; }
+            // both load lazily (boot may still be waiting for an idle moment)
+            await Promise.all([fetchShowdownData(), ensureLearnsets()]);
+            if (!state.sdLoaded) { api.showToast('Showdown data could not be loaded. Check your connection and try again.', 'error'); return; }
             openDialog('recommend-moves', {});
         }
 
@@ -1600,8 +1613,9 @@ import { form } from './draft.ts';
         // real Pokemon's Showdown learnsets, weighted by similarity. moves already in
         // the learnset are woven in (method/level updated) rather than duplicated.
         async function generateLearnset() {
-            await ensureLearnsets();
-            if (!state.sdLoaded) { api.showToast('Showdown data still loading, try again shortly.', 'error'); return; }
+            // both load lazily (boot may still be waiting for an idle moment)
+            await Promise.all([fetchShowdownData(), ensureLearnsets()]);
+            if (!state.sdLoaded) { api.showToast('Showdown data could not be loaded. Check your connection and try again.', 'error'); return; }
             const profile = getFakemonProfile();
             if (!profile.types.length) { api.showToast('Set a primary type first so we can generate a state.learnset.', 'error'); return; }
 

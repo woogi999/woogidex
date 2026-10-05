@@ -27,29 +27,24 @@ export function CommunityPage() {
     const cs = api.communityState();
     const panel: Panel = (['feed', 'browse', 'events', 'uploads'].includes(cs.panel) ? cs.panel : 'feed') as Panel;
     return (
-        <>
-            <div className="page-header">
-                <div className="page-heading">
-                    <h1 className="page-title">Community Hub</h1>
-                    <p className="page-subtitle">Fakémon, posts and chatter from everyone making things here. Follow creators you like to see more of them.</p>
-                </div>
-                <div className="page-actions">
-                    <button className="btn btn-primary" type="button" onClick={() => api.openCommunityPublishModal()}><Icon name="upload" /><span>Publish a Fakémon</span></button>
-                </div>
+        <div className="hub">
+            {/* the hub's sections, as a sidebar (a scrolling row of chips on a phone) */}
+            <aside className="hub-nav" aria-label="Community Hub">
+                <button className="btn btn-primary hub-publish" type="button" onClick={() => api.openCommunityPublishModal()}><Icon name="upload" /><span>Publish a Fakémon</span></button>
+                <nav className="hub-nav-list" id="community-tabs" role="tablist" aria-orientation="vertical">
+                    {TABS.map(([key, label]) => (
+                        <button key={key} className={`hub-nav-item${panel === key ? ' active' : ''}`} type="button" role="tab" aria-selected={panel === key}
+                            onClick={() => api.showCommunityPanel(key)}>{label}</button>
+                    ))}
+                </nav>
+            </aside>
+            <div className="hub-main">
+                {panel === 'feed' && <Feed />}
+                {panel === 'browse' && <Browse />}
+                {panel === 'events' && <div className="community-panel"><EventsPanel /></div>}
+                {panel === 'uploads' && <Uploads />}
             </div>
-
-            <div className="tabs community-tabs" id="community-tabs" role="tablist" aria-label="Community Hub">
-                {TABS.map(([key, label]) => (
-                    <button key={key} className={`tab${panel === key ? ' active' : ''}`} type="button" role="tab" aria-selected={panel === key}
-                        onClick={() => api.showCommunityPanel(key)}>{label}</button>
-                ))}
-            </div>
-
-            {panel === 'feed' && <Feed />}
-            {panel === 'browse' && <Browse />}
-            {panel === 'events' && <div className="community-panel"><EventsPanel /></div>}
-            {panel === 'uploads' && <Uploads />}
-        </>
+        </div>
     );
 }
 
@@ -216,7 +211,6 @@ function Browse() {
                     <option value="activity">Activity</option>
                     <option value="likes">Total likes</option>
                     <option value="comments">Total comments</option>
-                    <option value="views">Total views</option>
                     <option value="published">Date published</option>
                     <option value="name">Name</option>
                     <option value="author">Creator</option>
@@ -284,7 +278,6 @@ function Uploads() {
                                 <span className="community-upload-stats">
                                     <span><Icon name="heart" size={12} /> {Number(row.like_count || 0)}</span>
                                     <span><Icon name="message-circle" size={12} /> {Number(row.comment_count || 0)}</span>
-                                    <span><Icon name="eye" size={12} /> {Number(row.view_count || 0)}</span>
                                 </span>
                             </div>
                             <div className="community-upload-actions">

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { state } from '../../core/app.ts';
 import { log } from '../../core/log.ts';
 import { Icon } from '../components/Icon.tsx';
-import { COMMUNITY_PAGE_LIMIT, GROUPS, PAGE_LIMIT, communityResults, localGroups, type GroupKey, type SearchResult } from '../../features/search.ts';
+import { COMMUNITY_PAGE_LIMIT, GROUPS, PAGE_LIMIT, PEOPLE_PAGE_LIMIT, communityResults, localGroups, peopleResults, type GroupKey, type SearchResult } from '../../features/search.ts';
 import { openSearchPage, takeSearchFilter } from '../../features/global-search.ts';
 import { SearchRow } from '../components/SearchRow.tsx';
 import { useQueryParam } from '../hooks.ts';
@@ -20,7 +20,7 @@ export function SearchPage() {
     const query = useQueryParam('q').trim();
     const [filter, setFilter] = useState<Filter>('all');
     const [draft, setDraft] = useState(query);
-    const [community, setCommunity] = useState<{ query: string; list: SearchResult[]; status: CommunityStatus }>({ query: '', list: [], status: '' });
+    const [community, setCommunity] = useState<{ query: string; list: SearchResult[]; people: SearchResult[]; status: CommunityStatus }>({ query: '', list: [], people: [], status: '' });
 
     // a new search (typed here, from the header, or back/forward) starts over
     useEffect(() => { setDraft(query); setFilter(takeSearchFilter() as Filter); }, [query]);
@@ -29,16 +29,20 @@ export function SearchPage() {
     const signedIn = !!state.user;
 
     useEffect(() => {
-        if (!query) { setCommunity({ query, list: [], status: '' }); return; }
-        if (!signedIn) { setCommunity({ query, list: [], status: 'signed-out' }); return; }
+        if (!query) { setCommunity({ query, list: [], people: [], status: '' }); return; }
+        if (!signedIn) { setCommunity({ query, list: [], people: [], status: 'signed-out' }); return; }
         let live = true;
-        setCommunity({ query, list: [], status: 'loading' });
-        communityResults(query, COMMUNITY_PAGE_LIMIT)
-            .then(list => { if (live) setCommunity({ query, list, status: '' }); })
-            .catch(err => {
-                log.warn('SEARCH', 'Community search failed', { error: String(err?.message || err) });
-                if (live) setCommunity({ query, list: [], status: 'error' });
+        setCommunity({ query, list: [], people: [], status: 'loading' });
+        Promise.allSettled([communityResults(query, COMMUNITY_PAGE_LIMIT), peopleResults(query, PEOPLE_PAGE_LIMIT)]).then(([mons, people]) => {
+            if (!live) return;
+            const failed = mons.status === 'rejected' || people.status === 'rejected';
+            if (failed) log.warn('SEARCH', 'Community search failed', { error: String((mons as any).reason || (people as any).reason) });
+            setCommunity({
+                query, status: failed ? 'error' : '',
+                list: mons.status === 'fulfilled' ? mons.value : [],
+                people: people.status === 'fulfilled' ? people.value : []
             });
+        });
         return () => { live = false; };
     }, [query, signedIn]);
 
@@ -46,6 +50,7 @@ export function SearchPage() {
         fakemon: local?.fakemon || [],
         library: local?.library || [],
         pages: local?.pages || [],
+        people: community.query === query ? community.people : [],
         community: community.query === query ? community.list : []
     };
     const communityStatus = community.query === query ? community.status : (query && signedIn ? 'loading' : '');
@@ -68,10 +73,11 @@ export function SearchPage() {
     const section = ([key, label]: [GroupKey, string], cap: number) => {
         const list = groups[key];
         let status = '';
-        if (key === 'community') {
-            if (communityStatus === 'loading') status = 'Searching the Community Hub…';
-            else if (communityStatus === 'signed-out') status = 'Sign in to search Community Hub posts.';
-            else if (communityStatus === 'error') status = 'The Community Hub could not be searched right now.';
+        if (key === 'community' || key === 'people') {
+            const what = key === 'people' ? 'people' : 'the Community Hub';
+            if (communityStatus === 'loading') status = `Searching ${what}…`;
+            else if (communityStatus === 'signed-out') status = key === 'people' ? 'Sign in to search for people.' : 'Sign in to search Community Hub posts.';
+            else if (communityStatus === 'error') status = `Couldn't search ${what} right now.`;
         }
         if (!list.length && !status) return null;
         const shown = cap ? list.slice(0, cap) : list;
@@ -102,7 +108,7 @@ export function SearchPage() {
             <div className="page-header">
                 <div className="page-heading">
                     <h1 className="page-title">Search</h1>
-                    <p className="page-subtitle">{query ? `Results for “${query}”` : 'Search your collection, pages and the Community Hub.'}</p>
+                    <p className="page-subtitle">{query ? `Results for “${query}”` : 'Search your collection, people, pages and the Community Hub.'}</p>
                 </div>
             </div>
 

@@ -2,7 +2,7 @@
 // (#legal-view, #not-found-view, ...). The shell still decides which one is
 // showing; each page renders what its route or the shared state says.
 
-import type { ComponentType } from 'react';
+import { lazy, Suspense, type ComponentType } from 'react';
 import { mountIsland } from './island.tsx';
 import './dialogs/account.tsx';
 import './dialogs/cloudBackup.tsx';
@@ -20,13 +20,29 @@ import { CommunityPage } from './pages/CommunityPage.tsx';
 import { CommunityDetailPage } from './pages/CommunityDetailPage.tsx';
 import { PostPage } from './pages/PostPage.tsx';
 import { MessagesPage } from './pages/MessagesPage.tsx';
-import { BattlePage } from './pages/BattlePage.tsx';
+import { useViewShown } from './store.ts';
+import { api } from '../core/app.ts';
 import { CollectionPage } from './pages/CollectionPage.tsx';
 import { EditorPage } from './pages/EditorPage.tsx';
 import { AbilityBlockEditorPage } from './pages/AbilityBlockEditorPage.tsx';
 import { Header } from './shell/Header.tsx';
 import { Sidebar } from './shell/Sidebar.tsx';
 import { Toasts } from './shell/Toasts.tsx';
+
+// Battle (its engine, the 3D field, the netcode: a sizeable share of the
+// site) only downloads the first time someone opens it. Until then the page
+// renders nothing, so mounting it at boot costs nothing either.
+// waits for the battle functions to be on `api` too, which the page calls
+const BattlePageChunk = lazy(() => Promise.all([import('./pages/BattlePage.tsx'), api.loadBattle()]).then(([m]) => ({ default: m.BattlePage })));
+function BattlePage() {
+    const shown = useViewShown('battle-view');
+    if (!shown) return null;
+    return (
+        <Suspense fallback={<div className="battle-loading" aria-busy="true"><span className="skel" style={{ display: 'block', height: 420, borderRadius: 'var(--panel-r)' }} /></div>}>
+            <BattlePageChunk />
+        </Suspense>
+    );
+}
 
 const PAGES: Array<[string, ComponentType]> = [
     ['not-found-view', NotFoundPage],

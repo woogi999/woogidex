@@ -1,4 +1,4 @@
-import { JSZip } from '../core/vendor.ts';
+import { Zip } from './zip.ts';
 import { log } from '../core/log.ts';
 import { state, api } from '../core/app.ts';
 
@@ -346,7 +346,7 @@ A couple things worth knowing:
                 });
                 const join = blocks => blocks.map(b => `#-------------------------------\r\n${b}`).join('\r\n') + '\r\n';
 
-                const zip = new JSZip();
+                const zip = new Zip();
                 zip.file('pokemon.txt', join(pokemonBlocks));
                 zip.file('pokemon_metrics.txt', join(metricsBlocks));
                 zip.file('pokemon_dexentries.txt', join(dexBlocks));
@@ -400,7 +400,7 @@ A couple things worth knowing:
 
                 const join = blocks => blocks.map(b => `#-------------------------------\r\n${b}`).join('\r\n') + '\r\n';
 
-                const zip = new JSZip();
+                const zip = new Zip();
                 const pbsFolder = zip.folder('PBS')!;
                 pbsFolder.file('pokemon.txt', join(pokemonBlocks));
                 pbsFolder.file('pokemon_metrics.txt', join(metricsBlocks));

@@ -1,8 +1,8 @@
 // A creator's profile (/profile/<username>), part Facebook, part Tumblr: a
 // cover banner with their picture and numbers on it, an intro column (bio,
 // links, badges, a peek at their Fakémon and followers), and their timeline
-// of posts and Fakémon, with tabs for the full gallery, the wall (comments
-// left for them), and who they follow / who follows them. Their accent colour
+// (their posts and Fakémon, and what others write on their wall, in one
+// stream like Facebook), with a tab for the full gallery. Their accent colour
 // tints the page. On your own profile, Edit Profile swaps in the forms for
 // your name, bio, pictures, look, username, badges, email and connected accounts.
 
@@ -12,16 +12,17 @@ import { Avatar } from '../components/Avatar.tsx';
 import { BadgeRow } from '../components/Badge.tsx';
 import { ConnectedAccounts } from '../components/ConnectedAccounts.tsx';
 import { Icon } from '../components/Icon.tsx';
-import { EmojiInput } from '../components/EmojiInput.tsx';
-import { FeedCard, FeedSkeleton } from '../components/feed.tsx';
-import { BadgePicker, ProfileComments, ProfileMons } from '../components/profile.tsx';
+import { FeedCard, FeedSkeleton, PostComposer } from '../components/feed.tsx';
+import { WallComposer, WallPostCard } from '../components/comments.tsx';
+import { getThread, loadThread } from '../../features/comments.ts';
+import { BadgePicker, ProfileMons } from '../components/profile.tsx';
 import { LazyArt } from '../components/community.tsx';
 import { useStore } from '../store.ts';
 import { Modal } from '../components/Modal.tsx';
 import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
 
 type Message = { text: string; ok?: boolean };
-type Tab = 'posts' | 'fakemon' | 'wall';
+type Tab = 'posts' | 'fakemon';
 
 // banner presets: name -> CSS background. Stored as "preset:<name>".
 export const BANNER_PRESETS: Record<string, string> = {
@@ -128,8 +129,7 @@ function PublicProfile({ profile, isOwn }: { profile: any; isOwn: boolean }) {
     const cover = bannerBackground(profile);
     const followers = Number(stats.followers || 0) + (following && !stats.i_follow ? 1 : 0) - (!following && stats.i_follow ? 1 : 0);
     const tabs: Array<[Tab, string, number | null]> = [
-        ['posts', 'Posts', null], ['fakemon', 'Fakémon', Number(stats.mons ?? (profile.mons || []).length)],
-        ['wall', 'Wall', (profile.comments || []).length]
+        ['posts', 'Posts', null], ['fakemon', 'Fakémon', Number(stats.mons ?? (profile.mons || []).length)]
     ];
     // followers and following open as a pop-up list, like Instagram
     const showFollows = (which: 'followers' | 'following') => openDialog('follow-list', { userId: profile.id, which, isOwn, name: displayName });
@@ -193,9 +193,8 @@ function PublicProfile({ profile, isOwn }: { profile: any; isOwn: boolean }) {
                                 </button>
                             ))}
                         </div>
-                        {tab === 'posts' && <Timeline profile={profile} />}
+                        {tab === 'posts' && <Timeline profile={profile} isOwn={isOwn} />}
                         {tab === 'fakemon' && <div className="profile-mons-grid"><ProfileMons mons={profile.mons || []} /></div>}
-                        {tab === 'wall' && <Wall profile={profile} />}
                     </div>
                 </div>
             )}
@@ -262,9 +261,19 @@ function GalleryPeek({ profile, onAll }: { profile: any; onAll: () => void }) {
     );
 }
 
-function Timeline({ profile }: { profile: any }) {
+/**
+ * Everything on a profile in one stream, newest first: their posts and
+ * Fakémon, and what other people wrote on their wall. The posts page in 30s;
+ * wall posts older than the oldest loaded post wait for "Show older", so the
+ * order never jumps.
+ */
+function Timeline({ profile, isOwn }: { profile: any; isOwn: boolean }) {
     const items: any[] = profile.timeline || [];
     const [more, setMore] = useState<'idle' | 'loading' | 'done'>(items.length < 30 ? 'done' : 'idle');
+    const name = profile.display_name || profile.username || 'them';
+    useEffect(() => { loadThread('profile', profile.id); }, [profile.id]);
+    const wall = getThread('profile', profile.id);
+
     async function loadMore() {
         setMore('loading');
         try {
@@ -273,24 +282,31 @@ function Timeline({ profile }: { profile: any }) {
             setMore(older.length < 30 ? 'done' : 'idle');
         } catch { setMore('idle'); }
     }
-    if (!items.length) return <div className="feed-empty"><Icon name="sparkles" size={24} /><p>No posts or Fakémon yet.</p></div>;
+    /** After posting from your own profile, the new post shows up at the top. */
+    async function refresh() {
+        try { profile.timeline = await api.fetchTimeline(profile.id); } catch { /* the post is still on the feed */ }
+        setMore((profile.timeline || []).length < 30 ? 'done' : 'idle');
+    }
+
+    const oldest = more === 'done' ? 0 : new Date(items[items.length - 1]?.created_at || 0).getTime();
+    const entries = [
+        ...items.map(item => ({ at: new Date(item.created_at).getTime(), key: `${item.kind}:${item.id}`, node: <FeedCard item={item} /> })),
+        ...(wall?.comments || []).filter(c => new Date(c.created_at).getTime() >= oldest).map(c => ({
+            at: new Date(c.created_at).getTime(), key: `wall:${c.id}`,
+            node: <WallPostCard profileId={profile.id} profileName={name} comment={c} />
+        }))
+    ].sort((a, b) => b.at - a.at);
+
     return (
         <div className="profile2-timeline">
-            {items.map(item => <FeedCard key={`${item.kind}:${item.id}`} item={item} />)}
+            {state.user && (isOwn ? <PostComposer onPosted={refresh} /> : <WallComposer profileId={profile.id} profileName={name} />)}
+            {!entries.length && (wall?.status === 'ready' || wall?.status === 'error') && (
+                <div className="feed-empty"><Icon name="sparkles" size={24} /><p>{isOwn ? 'Nothing here yet. Share a post or publish a Fakémon!' : `No posts yet. Be the first to write on ${name}'s wall!`}</p></div>
+            )}
+            {!entries.length && (!wall || wall.status === 'loading') && <FeedSkeleton count={1} />}
+            {entries.map(e => <div key={e.key} style={{ display: 'contents' }}>{e.node}</div>)}
             {more !== 'done' && <button type="button" className="btn btn-secondary btn-sm profile2-wide" disabled={more === 'loading'} onClick={loadMore}>{more === 'loading' ? 'Loading…' : 'Show older'}</button>}
         </div>
-    );
-}
-
-function Wall({ profile }: { profile: any }) {
-    return (
-        <section className="panel profile2-card">
-            <p className="field-hint">The wall is for saying hi to {profile.display_name || profile.username}.</p>
-            {state.user ? <WallBox /> : <div className="profile-signin-hint">Sign in to leave a comment.</div>}
-            <div className="profile-comments-list">
-                <ProfileComments comments={[...(profile.comments || [])].reverse()} viewerId={state.user?.id || null} viewerIsStaff={!!api.isStaff?.()} />
-            </div>
-        </section>
     );
 }
 
@@ -357,30 +373,6 @@ function ConnectedBadges() {
     if (!html) return null;
     // brand marks from oauth.ts's own constants
     return <div className="profile-connected-badges" style={{ display: 'flex' }} dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-function WallBox() {
-    const [text, setText] = useState('');
-    const [error, setError] = useState('');
-    const [busy, setBusy] = useState(false);
-    async function post() {
-        if (!text.trim() || busy) return;
-        setBusy(true);
-        setError('');
-        const problem: string = await api.submitProfileComment(text);
-        setBusy(false);
-        if (problem) setError(problem);
-        else setText('');
-    }
-    return (
-        <div className="profile-comment-box" style={{ display: 'flex' }}>
-            <EmojiInput maxLength={1000} rows={3} placeholder="Say hello..." value={text} onChange={setText} />
-            <div className="profile-comment-actions">
-                <span className="auth-modal-error">{error}</span>
-                <button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={post}>Post to wall</button>
-            </div>
-        </div>
-    );
 }
 
 // ==================== editing your own ====================

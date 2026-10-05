@@ -10,7 +10,10 @@ import { RegionSidebar } from '../components/collection/RegionSidebar.tsx';
 export function Sidebar() {
     return (
         <>
-            {createPortal(<div className="region-drawer-backdrop" onClick={() => api.closeRegionDrawer()} />, document.body)}
+            {/* beside the sidebar, inside .app-container: that container is its
+                own stacking context (z-index: 1), so a backdrop on <body> sat
+                above the whole drawer and swallowed every tap meant for it */}
+            {createPortal(<div className="region-drawer-backdrop" onClick={() => api.closeRegionDrawer()} />, document.querySelector('.app-container') || document.body)}
             <div className="sidebar-section-head">
                 <span className="sidebar-section-label">Regions</span>
                 <button className="sidebar-section-add" type="button" onClick={() => api.createRegion()} title="New region" aria-label="New region"><Icon name="plus" /></button>

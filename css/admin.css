@@ -82,7 +82,6 @@ h1, h2, h3, h4 { margin: 0; line-height: 1.25; color: var(--text-primary); }
 p { margin: 0 0 10px; }
 code, pre { font-family: var(--mono); }
 ::selection { background: var(--accent); color: #fff; }
-svg.lucide { flex: 0 0 auto; }
 
 /* ==================== header ==================== */
 .term-header {
@@ -574,8 +573,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
     border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700;
 }
 .admin-voter-detail-head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
-.admin-voter-line { display: grid; grid-template-columns: 1.2fr 1fr 2fr auto; gap: var(--sp-2); padding: 6px 0; border-top: 1px solid var(--border-light); font-size: 12px; }
-.admin-voter-line small { color: var(--text-muted); }
+
 .admin-response-row { padding: var(--sp-3); margin-bottom: var(--sp-2); background: var(--bg-panel); border-radius: var(--ctl-r); }
 .admin-response-row > div:first-child { display: flex; justify-content: space-between; gap: var(--sp-3); }
 .admin-response-row p { margin: var(--sp-2) 0 0; color: var(--text-secondary); white-space: pre-wrap; }

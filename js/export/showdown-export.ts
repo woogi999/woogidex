@@ -1,4 +1,4 @@
-import { JSZip } from '../core/vendor.ts';
+import { Zip } from './zip.ts';
 import { log } from '../core/log.ts';
 import { state, api } from '../core/app.ts';
 
@@ -376,7 +376,7 @@ A couple things worth knowing:
                 // evolution board; export the whole family, not name-only stubs
                 const family = api.buildFakemonExportBundle?.(fakemon)?.fakemonDB || [fakemon];
                 const speciesIds = makeUniqueSpeciesIds(family);
-                const zip = new JSZip();
+                const zip = new Zip();
                 zip.file('pokedex.ts', buildCollectionPokedexTs(family, speciesIds));
                 const { text: learnsetsText } = buildCollectionLearnsetsTs(family, speciesIds);
                 zip.file('learnsets.ts', learnsetsText);
@@ -457,7 +457,7 @@ ${entries}
                 const modId = lists.region ? `woogidex${lists.slug}` : 'woogidexmod';
                 const speciesIds = makeUniqueSpeciesIds(fakemonList);
 
-                const zip = new JSZip();
+                const zip = new Zip();
                 const modFolder = zip.folder(modId)!;
                 modFolder.file('pokedex.ts', buildCollectionPokedexTs(fakemonList, speciesIds));
                 const { text: learnsetsText, totalSkipped } = buildCollectionLearnsetsTs(fakemonList, speciesIds);

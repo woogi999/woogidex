@@ -80,3 +80,36 @@ export function isEmojiOnly(text: string): boolean {
 export function isEmojiCode(code: string): boolean {
     return /^[a-z0-9_]{1,48}$/.test(code) && byName.has(code);
 }
+
+// ==================== standard emojis ====================
+// The everyday ones (😀 👍 ❤️), next to our own in the picker. In text they
+// go in as the character itself. As a reaction they're stored as "u_" plus
+// their codepoints in hex ("u_1f44d"), which fits the same key format as our
+// names, so posts, Fakémon and comments take them with no schema change.
+
+export interface UnicodeEmoji { key: string; char: string; name: string; }
+
+/** Whether a reaction key is a standard emoji rather than one of ours. */
+export function isUnicodeKey(key: string): boolean {
+    return /^u_[0-9a-f]{2,6}(_[0-9a-f]{2,6})*$/.test(String(key || ''));
+}
+
+/** The character a "u_..." key stands for. */
+export function unicodeChar(key: string): string {
+    try { return String.fromCodePoint(...key.slice(2).split('_').map(h => parseInt(h, 16))); }
+    catch { return ''; }
+}
+
+let unicodeGroups: Promise<Array<{ label: string; emojis: UnicodeEmoji[] }>> | null = null;
+
+/** The standard emojis by group; ~36 KB, so only fetched once a picker opens. */
+export function loadUnicodeEmoji() {
+    return unicodeGroups ||= import('./emoji-unicode-data.ts').then(m => m.UNICODE_EMOJI.map(([label, list]) => ({
+        label,
+        emojis: list.split('|').map(entry => {
+            const at = entry.indexOf(' ');
+            const key = 'u_' + entry.slice(0, at);
+            return { key, char: unicodeChar(key), name: entry.slice(at + 1) };
+        })
+    })));
+}

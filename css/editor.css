@@ -87,8 +87,18 @@
         }
         .editor-preview-pane { max-width: 1100px; margin: 0 auto; }
 
+        /* full screen: the sheet takes the whole window under the header
+           (the toggle in its head; remembered as a setting in app.ts) */
+        .editor-fullscreen #editor-view { left: 0; width: auto; }
+        .editor-fullscreen .editor-sheet { border-left: 0; box-shadow: none; }
+        .editor-fullscreen .editor-sheet-head,
+        .editor-fullscreen .editor-tabs { padding-left: max(var(--sp-5), calc((100% - 1400px) / 2)); padding-right: max(var(--sp-5), calc((100% - 1400px) / 2)); }
+        .editor-fullscreen .editor-sheet-body > .tab-content:not(.editor-preview-pane) { max-width: 1400px; margin: 0 auto; }
+
         @media (max-width: 760px) {
             #editor-view { width: 100vw; }
+            /* already the full width on a phone */
+            .editor-fullscreen-toggle { display: none !important; }
             .editor-sheet { border-left: 0; }
             .editor-sheet-head { padding: var(--sp-2) var(--sp-3); gap: var(--sp-2); }
             .editor-sheet-title { font-size: 16px; }
@@ -105,15 +115,7 @@
         }
         .artwork-preview img { width: 100%; height: 100%; object-fit: contain; }
         .artwork-preview .placeholder { font-size: 48px; opacity: 0.3; color: var(--text-muted); }
-        .ability-chip {
-            display: inline-flex; align-items: center; gap: 6px;
-            background: var(--bg-panel); border: 1px solid var(--border);
-            padding: 6px 12px; border-radius: 8px; font-size: 13px; margin: 4px;
-            cursor: pointer; transition: all 0.15s;
-        }
-        .ability-chip:hover { background: var(--bg-dark); }
-        .ability-chip .remove { cursor: pointer; opacity: 0.5; transition: opacity 0.2s; }
-        .ability-chip .remove:hover { opacity: 1; color: var(--danger); }
+
         .autocomplete-container { position: relative; }
         .autocomplete-dropdown {
             position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-card);
@@ -149,11 +151,10 @@
         .cat-special { background: rgba(68,102,204,0.15); color: #2244aa; }
         .cat-status { background: rgba(107,114,128,0.15); color: #4b5563; }
         .custom-entity-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 10px; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
-        .custom-entity-row .entity-name { flex: 1; font-weight: 600; font-size: 14px; }
-        .custom-entity-row .entity-desc { flex: 2; font-size: 12px; color: var(--text-secondary); }
+
         .custom-entity-row input { background: transparent; border: none; color: var(--text-primary); font-family: 'Exo 2', sans-serif; font-size: 14px; padding: 4px; }
         .custom-entity-row input:focus { outline: none; }
-        .custom-entity-row input.desc-input { font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border-strong); border-radius: 6px; }
+        
         .learnset-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: all 0.15s; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
         .learnset-item:hover { background: var(--bg-panel); transform: translateX(4px); }
         .learnset-item .move-name { flex: 1; font-weight: 600; font-size: 14px; }
@@ -255,19 +256,7 @@
             color: var(--text-primary);
         }
         .sample-set-moves input:focus { outline: none; border-color: var(--text-secondary); }
-        .sample-set-evs {
-            display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 12px;
-        }
-        .sample-set-evs input {
-            padding: 6px 8px; background: var(--bg-input);
-            border: 1px solid var(--border); border-radius: 6px;
-            font-family: 'Inconsolata', monospace; font-size: 12px; text-align: center;
-            color: var(--text-primary);
-        }
-        .sample-set-evs input:focus { outline: none; border-color: var(--text-secondary); }
-        .sample-set-evs-label {
-            font-size: 10px; text-align: center; color: var(--text-muted); font-weight: 700;
-        }
+
         .sample-set-output {
             background: var(--bg-dark); color: var(--text-primary);
             border-radius: 10px; padding: 16px 44px 16px 16px;
@@ -306,22 +295,6 @@
             text-align: center;
         }
         .sample-set-add:hover { border-color: var(--text-secondary); color: var(--text-primary); }
-    
-        .method-pill {
-            font-size: 11px;
-            padding: 3px 10px;
-            border-radius: 6px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            color: white;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-            flex-shrink: 0;
-        }
-        .method-level { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-        .method-tm { background: linear-gradient(135deg, #a855f7, #9333ea); }
-        .method-egg { background: linear-gradient(135deg, #ec4899, #db2777); }
-        .method-none { background: linear-gradient(135deg, #9ca3af, #6b7280); }
 
         .learnset-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; position: relative; background: transparent; border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0; }
         .learnset-item:hover { background: var(--bg-panel); transform: translateX(4px); }
@@ -399,7 +372,6 @@
             transition: all 0.2s;
         }
         .learnset-item .remove-btn:hover { background: var(--danger); color: white; }
-
 
         /* the long tab names on wide screens, short ones on phones */
         .editor-tabs .tab-short { display: none; }

@@ -6,7 +6,7 @@
 // public/updates/<slug>.md:
 //
 //     ---
-//     version: v1.25.0
+//     version: v1.10.0
 //     date: September 1, 2026
 //     title: What changed
 //     ---
@@ -17,6 +17,9 @@
 // A static host cannot list a directory, so index.json is the running order.
 // Add the new file's name to the top of its "updates" array. The page is
 // js/app/pages/UpdatesPage.tsx.
+//
+// Numbering: a big update bumps the middle number and resets the last
+// (v1.12.0 -> v1.13.0); a small one bumps the last (v1.13.0 -> v1.13.1).
 
 import { notify } from '../app/store.ts';
 import { log } from '../core/log.ts';
@@ -122,8 +125,35 @@ export async function loadUpdates(forceReload = false): Promise<Update[]> {
 // ==================== read / unread ====================
 // "unread" = entries above the last-seen id in the ordered index -- only
 // needs index.json, so the badge never downloads the full changelog.
+// The changelog was renumbered (a big update bumps the middle number, a
+// small one the last), which renamed the files. The last-seen marker is a
+// file name, so an old one is translated here; otherwise it would match
+// nothing, count as "caught up", and hide the next update's badge.
+const RENAMED: Record<string, string> = {
+    'v1.8.0-evolution-publishing.md': 'v1.7.1-evolution-publishing.md',
+    'v1.9.0-name-generator.md': 'v1.7.2-name-generator.md',
+    'v1.10.0-events-tab-and-battle-sim.md': 'v1.8.0-events-tab-and-battle-sim.md',
+    'v1.11.0-performance-rework.md': 'v1.8.1-performance-rework.md',
+    'v1.12.0-battle-sim-fixes.md': 'v1.8.2-battle-sim-fixes.md',
+    'v1.13.0-coding-block-polish.md': 'v1.8.3-coding-block-polish.md',
+    'v1.16.0-bug-fixes.md': 'v1.8.4-bug-fixes.md',
+    'v1.17.0-rules-and-protection.md': 'v1.8.5-rules-and-protection.md',
+    'v1.18.0-accounts-and-real-links.md': 'v1.8.6-accounts-and-real-links.md',
+    'v1.19.0-community-fixes.md': 'v1.8.7-community-fixes.md',
+    'v1.20.0-cleaning-house.md': 'v1.8.8-cleaning-house.md',
+    'v1.21.0-fixed-fakemon-disappearing.md': 'v1.8.9-fixed-fakemon-disappearing.md',
+    'v1.22.0-privacy-policy-and-account-deletion.md': 'v1.8.10-privacy-policy-and-account-deletion.md',
+    'v1.23.0-sign-in-with-google-discord-or-github.md': 'v1.9.0-sign-in-with-google-discord-or-github.md',
+    'v1.24.0-much-faster-loading.md': 'v1.9.1-much-faster-loading.md',
+    'v1.25.0-cloud-backup-and-the-new-community-hub.md': 'v1.10.0-cloud-backup-and-the-new-community-hub.md',
+    'v1.26.0-a-fresh-new-look.md': 'v1.11.0-a-fresh-new-look.md',
+    'v1.27.0-follows-messages-and-a-real-feed.md': 'v1.12.0-follows-messages-and-a-real-feed.md'
+};
+
 function readLastSeen(): string {
-    try { return localStorage.getItem(SEEN_KEY) || ''; } catch { return ''; }
+    let seen = '';
+    try { seen = localStorage.getItem(SEEN_KEY) || ''; } catch { return ''; }
+    return RENAMED[seen] || seen;
 }
 
 function writeLastSeen(id: string) {

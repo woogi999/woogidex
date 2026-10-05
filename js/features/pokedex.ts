@@ -89,9 +89,11 @@ const POKEAPI_CACHE = { cacheName: 'woogidex-pokeapi-v1', maxAgeMs: 30 * 8640000
         }
 
         /** The template picker, carrying over the name typed so far (it may be empty). */
-        function openPokemonTemplateChooser(name = '') {
+        async function openPokemonTemplateChooser(name = '') {
+            // boot may still be holding the data back for an idle moment; wait for it
+            if (!state.sdLoaded) await api.fetchShowdownData?.();
             if (!state.sdLoaded || !Object.keys(state.sdPokedex || {}).length) {
-                api.showToast('Vanilla Pokemon data is still loading. Please try again in a moment.', 'info');
+                api.showToast('Vanilla Pokemon data could not be loaded. Check your connection and try again.', 'error');
                 return;
             }
             closeDialog('new-fakemon');

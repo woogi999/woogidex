@@ -5,12 +5,12 @@
 
 import { useState } from 'react';
 import { api, state } from '../../core/app.ts';
-import { AuthorLine, CommentList, LikeButton } from '../components/community.tsx';
+import { AuthorLine, LikeButton } from '../components/community.tsx';
+import { CommentThread } from '../components/comments.tsx';
 import { PokedexBoard } from '../components/board/PokedexBoard.tsx';
 import { CommunityEvoStrip } from '../components/board/CommunityEvoStrip.tsx';
 import { ShieldedArt } from '../components/ShieldedArt.tsx';
 import { Icon } from '../components/Icon.tsx';
-import { EmojiInput } from '../components/EmojiInput.tsx';
 import { useStore } from '../store.ts';
 
 export function CommunityDetailPage() {
@@ -19,8 +19,9 @@ export function CommunityDetailPage() {
     const row = cs.openMonRow;
     const isMine = !!state.user && !!row && row.user_id === state.user.id;
     const canRemove = isMine || !!api.isStaff?.();
-    // the loaded thread is freshest; the stored count stands in until it arrives
-    const commentCount = cs.commentsLoaded && Array.isArray(cs.comments) ? cs.comments.length : Number(row?.comment_count || 0);
+    // the thread reports its count once loaded; the stored count stands in until then
+    const [loadedCount, setLoadedCount] = useState<{ id: string; n: number } | null>(null);
+    const commentCount = loadedCount && loadedCount.id === row?.id ? loadedCount.n : Number(row?.comment_count || 0);
 
     return (
         <div className="share-view-shell">
@@ -31,7 +32,6 @@ export function CommunityDetailPage() {
                         <div className="community-detail-stats">
                             <LikeButton row={row} className="community-detail-stat community-like-btn" />
                             <span className="community-detail-stat" title="Comments"><Icon name="message-circle" /><span>{commentCount}</span></span>
-                            <span className="community-detail-stat" title="Views"><Icon name="eye" /><span>{Number(row.view_count || 0)}</span></span>
                         </div>
                     )}
                 </div>
@@ -72,32 +72,11 @@ export function CommunityDetailPage() {
             <div className="section-divider" />
             <h4 className="mon-detail-comments-heading">Comments</h4>
             <div className="mon-detail-comments">
-                <CommentList comments={cs.comments || []} loading={!cs.commentsLoaded && !!row} monId={cs.openMonId || ''}
-                    viewerId={state.user?.id || null} viewerIsStaff={!!api.isStaff?.()} />
+                {row && (
+                    <CommentThread key={row.id} kind="mon" parentId={row.id} ownerId={row.user_id} targetName={row.fakemon_data?.name || 'your Fakémon'}
+                        placeholder="Say something nice…" onCount={n => { setLoadedCount({ id: row.id, n }); row.comment_count = n; }} />
+                )}
             </div>
-            {state.user ? <CommentBox key={cs.openMonId || ''} /> : (
-                <p className="mon-detail-signin-hint" style={{ display: 'block' }}>
-                    <a href="#" onClick={e => { e.preventDefault(); api.openAuthModal('signin'); }}>Sign in</a> to leave a comment.
-                </p>
-            )}
-        </div>
-    );
-}
-
-function CommentBox() {
-    const [text, setText] = useState('');
-    const [busy, setBusy] = useState(false);
-    async function post() {
-        if (!text.trim() || busy) return;
-        setBusy(true);
-        const posted: boolean = await api.submitMonComment(text);
-        setBusy(false);
-        if (posted) setText('');
-    }
-    return (
-        <div className="mon-detail-comment-box" style={{ display: 'flex' }}>
-            <EmojiInput placeholder="Say something nice…" maxLength={1000} value={text} onChange={setText} />
-            <button className="btn btn-primary" type="button" disabled={busy} onClick={post}>Post</button>
         </div>
     );
 }

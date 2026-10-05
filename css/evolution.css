@@ -52,7 +52,7 @@
 .evolution-node-modal .pokemon-template-list { padding:0 16px 16px; }
 .evo-handle.evo-snap-target { transform:translateY(-50%) scale(1.45); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent), 0 0 0 1px var(--accent); }
 .evolution-node-list { max-height:55vh; overflow-y:auto; padding:0 3px 3px; }
-.evo-picker-empty { grid-column:1/-1; padding:30px; text-align:center; color:var(--text-muted); border:1px dashed var(--border); border-radius:10px; }
+
 @media (max-width:640px) {
     .species-evo-row { flex-direction:column; align-items:stretch; gap:8px; }
     .species-evo-toggles { justify-content:flex-start; }
@@ -114,12 +114,7 @@
     box-shadow:0 8px 30px rgba(0,0,0,.15); padding:6px; z-index:500; display:none;
 }
 .evo-combobox-menu.open { display:block; }
-.evo-combobox-option {
-    padding:8px 12px; border-radius:8px; cursor:pointer; color:var(--text-primary);
-    font-size:13px; font-weight:600; transition:background .15s;
-}
-.evo-combobox-option:hover,
-.evo-combobox-option.selected { background:var(--accent-glow); }
+
 .evo-method-node {
     min-height:76px !important;
     height:76px;
@@ -167,10 +162,6 @@
 .evo-method-item-icon { width:24px; height:24px; object-fit:contain; flex:0 0 24px; }
 .evo-combobox-menu .meta { font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:55%; }
 
-.evo-method-item-input-wrap { position:relative; display:flex; align-items:center; }
-.evo-method-item-input-wrap input { flex:1; padding-left:42px !important; }
-.evo-method-item-selected-icon { position:absolute; left:10px; width:24px; height:24px; object-fit:contain; z-index:2; pointer-events:none; }
-
 .collection-library-artwork { width:100%; height:110px; margin:-2px 0 10px; border-radius:10px; background:var(--bg-panel); overflow:hidden; display:flex; align-items:center; justify-content:center; }
 .collection-library-artwork img { width:100%; height:100%; object-fit:contain; }
 .custom-item-artwork-zone { max-width:none; }
@@ -186,24 +177,15 @@
 .custom-item-mega-toggle-copy { display:flex; flex-direction:column; gap:2px; }
 .custom-item-mega-toggle-copy strong { color:var(--text-primary); font-size:13px; }
 .custom-item-mega-toggle-copy span { color:var(--text-muted); font-size:11px; line-height:1.4; }
-.mega-stone-badge {
-    display:inline-flex; align-items:center; gap:4px; margin-left:6px; padding:2px 7px;
-    border-radius:999px; background:rgba(212,175,55,.14); color:#c9a227;
-    border:1px solid rgba(212,175,55,.38); font-size:10px; font-weight:800;
-    vertical-align:middle; white-space:nowrap;
-}
 
 /* unified collection card actions */
-.collection-card .card-actions,
-.collection-library-card .card-actions {
+.collection-card .card-actions {
     display:flex;
     align-items:center;
     gap:4px;
     flex-wrap:nowrap;
 }
-.collection-card .card-actions > button,
-.collection-library-card .card-actions > button,
-.collection-card-export-wrap > button {
+.collection-card .card-actions > button, .collection-card-export-wrap > button {
     flex:0 0 30px;
 }
 .collection-card-export-wrap { position:relative; display:flex; flex:0 0 30px; }
@@ -271,27 +253,6 @@
 }
 
 /* collection library cards intentionally share the exact Fakemon action-button layout. */
-.collection-library-card .card-actions {
-    position:absolute; top:8px; right:8px; display:flex; align-items:center; gap:4px;
-    flex-wrap:nowrap; opacity:0; transition:opacity .2s;
-}
-.collection-library-card:hover .card-actions { opacity:1; }
-.collection-library-card .card-actions > button,
-.collection-library-card .card-actions .collection-card-export-wrap > button {
-    width:28px; height:28px; flex:0 0 28px; padding:0; border-radius:6px; border:none;
-    background:var(--bg-panel); color:var(--text-primary); cursor:pointer; font-size:14px;
-    display:flex; align-items:center; justify-content:center;
-}
-.collection-library-card .card-actions > button:hover,
-.collection-library-card .card-actions .collection-card-export-wrap > button:hover {
-    background:var(--accent); color:white;
-}
-.collection-library-card .card-actions > button.card-delete-btn:hover { background:var(--danger); color:white; }
-.collection-library-card .card-actions > button.pinned-btn { background:var(--accent); color:white; }
-.collection-library-card.pinned { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent-glow); }
-.collection-library-card .collection-card-export-wrap { position:relative; display:flex; flex:0 0 28px; }
-.collection-library-card .collection-card-export-wrap > button { border:0; border-radius:6px; }
-
 
 /* the tools in a card's head (js/app/components/editor/EvolutionBoard.tsx) */
 .evo-method-tools { display: flex; align-items: center; gap: 4px; }

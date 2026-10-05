@@ -30,7 +30,7 @@
 }
 .community-stat-btn svg { width:14px; height:14px; stroke-width:1.8; }
 .community-stat-btn:hover { color:var(--text-primary); }
-.community-stat-static { cursor:default; }
+
 .community-like-btn.liked { color:#ef4444; }
 .community-like-btn.liked svg { fill:currentColor; }
 .community-card-author {
@@ -64,29 +64,11 @@
 
 .mon-detail-comments-heading { margin: 4px 0 10px; font-size: 14px; }
 .share-view-shell .community-card-author { margin-top: 6px; }
-.share-view-shell .mon-detail-comments,
-.share-view-shell .mon-detail-comment-box,
-.share-view-shell .mon-detail-signin-hint,
-.share-view-shell .mon-detail-comments-heading {
+.share-view-shell .mon-detail-comments, .share-view-shell .mon-detail-comments-heading {
     margin-left: 4px;
     margin-right: 4px;
 }
-.mon-detail-comments { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
-.mon-comment { font-size: 13px; }
-.mon-comment-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
-.mon-comment-author { font-weight: 600; }
-.mon-comment-time { font-size: 11px; color: var(--text-secondary, #888); margin-left: auto; }
-.mon-comment-delete { background: none; border: none; cursor: pointer; color: var(--text-secondary, #888); padding: 2px; }
-.mon-comment-delete:hover { color: var(--danger, #ef4444); }
-.mon-comment-body { color: var(--text-primary, #eee); white-space: pre-wrap; word-break: break-word; }
-.mon-detail-comment-box { display: flex; gap: 8px; align-items: flex-end; }
-.mon-detail-comment-box textarea {
-    flex: 1; min-height: 44px; max-height: 120px; resize: vertical;
-    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #444);
-    background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;
-}
-.mon-detail-signin-hint { font-size: 13px; color: var(--text-secondary, #888); }
-.mon-detail-signin-hint a { color: var(--accent, #6366f1); }
+.mon-detail-comments { margin-bottom: 14px; }
 
 .profile-field-hint { font-size: 11px; color: var(--text-secondary, #888); margin-top: 4px; }
 .profile-email-actions {
@@ -116,7 +98,7 @@
     overflow-x: hidden;
 }
 /* collection / community sorting controls */
-.collection-controls, .community-controls { align-items: center; }
+.community-controls { align-items: center; }
 .community-controls #community-search-input { min-width: 180px; flex: 1 1 240px; }
 .community-controls select, #collection-sort-by, #collection-sort-order { max-width: 190px; }
 @media (max-width: 640px) {
@@ -197,97 +179,6 @@
    the page the Community Hub opens onto; #community-browse below it is the
    original listing, unchanged, with a shelf-and-hero layer in front of it.
    ==================== */
-.community-landing {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-}
-
-.community-hero {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.community-hero-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.community-hero-title {
-    margin: 0;
-    font-size: clamp(22px, 3.4vw, 32px);
-    line-height: 1.15;
-}
-
-.community-hero-sub {
-    margin: 0;
-    max-width: 62ch;
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--text-secondary);
-}
-
-.community-hero-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 4px;
-}
-
-.community-hero-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 10px;
-    margin-top: 6px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border-light);
-}
-
-.community-hero-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.community-hero-stat strong {
-    font-size: 20px;
-    font-variant-numeric: tabular-nums;
-}
-
-.community-hero-stat span {
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
-.community-landing-section + .community-landing-section { margin-top: 18px; }
-
-.community-landing-section-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 14px;
-}
-
-.community-landing-section-head h3 {
-    margin: 0 0 2px;
-    font-size: 16px;
-}
-
-.community-landing-section-head p {
-    margin: 0;
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
-.community-landing-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 12px;
-}
 
 .community-landing-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; text-align: left; cursor: pointer; border-radius: 12px; background: var(--bg-card); color: var(--text-primary); transition: transform .15s ease, border-color .15s ease; border: 0; }
 
@@ -348,47 +239,7 @@
     white-space: nowrap;
 }
 
-.community-landing-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding: 36px 16px;
-    text-align: center;
-    color: var(--text-muted);
-}
-
-.community-landing-empty p {
-    margin: 0;
-    max-width: 44ch;
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-@media (max-width: 600px) {
-    .community-landing-row { grid-template-columns: repeat(2, 1fr); }
-    .community-hero-top { flex-direction: column; align-items: flex-start; }
-}
-
-/* ---- the hub's tab bar ---- */
-/* prevents "My uploads" wrapping to two lines and standing taller than the other tabs */
-#community-tabs .tab { white-space: nowrap; }
-
-.community-tabs-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 14px;
-}
-
 /* the way out of the hub, on its own line under the tabs */
-.community-back-row {
-    display: flex;
-    justify-content: flex-start;
-    margin-bottom: 14px;
-}
 
 /* ---- a panel's title row (Browse, Events, My uploads) ----
    heading on the left, the panel's actions on the right, centred on the same
@@ -477,18 +328,6 @@
 }
 
 /* ---- the hub's contest shelf ---- */
-.community-contest-section .community-landing-section-head h3 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.community-contest-row {
-    display: grid;
-    /* auto-fill not auto-fit: auto-fit would stretch 1-2 contest cards into a banner-sized track */
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 12px;
-}
 
 .community-contest-card {
     display: flex;
@@ -519,7 +358,6 @@
     white-space: nowrap;
 }
 
-.community-contest-event,
 .community-contest-count {
     font-size: 11px;
     color: var(--text-muted);
@@ -527,13 +365,6 @@
 
 /* ---- hub polish ---- */
 /* soft accent wash gives the hero panel a front door without an image asset */
-.community-hero {
-    background:
-        radial-gradient(120% 140% at 0% 0%, var(--accent-glow) 0%, transparent 55%),
-        var(--bg-card);
-}
-
-.community-landing-section-head h3 { letter-spacing: -.01em; }
 
 /* cards carry their own border, so the shelf doesn't need one too */
 .community-landing-card {
@@ -550,7 +381,6 @@
 }
 
 /* boxing each stat makes the strip read as a row of facts, not loose numbers */
-.community-hero-stat { padding: 10px 12px; border-radius: 10px; background: var(--bg-panel); border: 0; }
 
 /* ==================== the detail page's stat strip ====================
    likes/comments/views under the author line; heart reuses .community-like-btn
@@ -588,71 +418,73 @@ button.community-detail-stat:focus-visible {
 }
 
 /* ==================== Community Hub, flat ====================
-   The hub now sits straight on the page like My Collection: page header,
-   tabs, then the panel -- no card around any of it. */
-.community-tabs { margin-bottom: var(--sp-5); }
+   The hub sits straight on the page: its sections in a sidebar on the left,
+   the open one beside it -- no card around any of it. */
+.hub {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: var(--sp-6);
+    align-items: start;
+}
+.hub-nav {
+    position: sticky;
+    top: calc(var(--header-h) + var(--sp-6));
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+.hub-publish { width: 100%; justify-content: center; }
+.hub-nav-list { display: flex; flex-direction: column; gap: 2px; }
+.hub-nav-item {
+    display: flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 var(--sp-4);
+    border: 0;
+    border-radius: var(--ctl-r);
+    background: transparent;
+    color: var(--text-secondary);
+    font: 700 14px 'Exo 2', sans-serif;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.hub-nav-item:hover { background: var(--bg-panel); color: var(--text-primary); }
+.hub-nav-item.active { background: var(--accent-soft); color: var(--accent-dark); }
+[data-theme="dark"] .hub-nav-item.active { color: #b9a8ff; }
+.hub-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hub-main { min-width: 0; }
+/* with the sidebar taking room, the feed's side rail drops under it sooner */
+@media (max-width: 1300px) {
+    .hub .feed-layout { grid-template-columns: minmax(0, 470px); justify-content: start; }
+    .hub .feed-rail { position: static; }
+}
+/* phones and small tablets: the sections become a scrolling row of chips */
+@media (max-width: 900px) {
+    .hub { grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
+    .hub-nav { position: static; flex-direction: row; align-items: center; gap: var(--sp-2); }
+    .hub-publish { width: auto; flex: 0 0 auto; }
+    .hub-nav-list {
+        flex-direction: row; gap: var(--sp-1); overflow-x: auto; scrollbar-width: none;
+        min-width: 0; flex: 1;
+    }
+    .hub-nav-list::-webkit-scrollbar { display: none; }
+    .hub-nav-item { flex: 0 0 auto; height: 36px; padding: 0 var(--sp-3); border-radius: 999px; }
+    .hub .feed-layout { justify-content: center; }
+}
+@media (max-width: 520px) {
+    .hub-nav { flex-direction: column; align-items: stretch; }
+    .hub-publish { width: 100%; }
+}
 .community-panel { min-width: 0; }
 
 /* hub stats: one quiet strip under the tabs */
-.community-hero-stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0;
-    margin: 0 0 var(--sp-6);
-    padding: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--card-r);
-    background: var(--bg-card);
-    overflow: hidden;
-}
-.community-hero-stat {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    grid-template-rows: auto auto;
-    column-gap: var(--sp-3);
-    align-items: center;
-    padding: var(--sp-4) var(--sp-5);
-    border: 0;
-    border-left: 1px solid var(--border-light);
-    border-radius: 0;
-    background: transparent;
-}
-.community-hero-stat:first-child { border-left: 0; }
-.community-hero-stat svg {
-    grid-row: 1 / span 2;
-    width: 36px; height: 36px; padding: 8px;
-    border-radius: 10px;
-    background: var(--accent-soft); color: var(--accent);
-}
-.community-hero-stat strong { font-size: 20px; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.community-hero-stat span { font-size: 12px; color: var(--text-muted); }
-.community-hero-stats:empty { display: none; }
 
 /* shelves: a heading row, then one full row of cards */
-.community-landing { gap: 0; }
-.community-landing-section { padding: 0; margin: 0 0 var(--sp-6); background: none; border: 0; }
-.community-landing-section + .community-landing-section { margin-top: 0; }
-.community-landing-section-head { align-items: flex-end; margin-bottom: var(--sp-3); }
-.community-landing-section-head h3 { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
-.community-landing-section-head p { font-size: 13px; }
-.community-landing-section-head .btn svg { width: 14px; height: 14px; }
+
 /* exactly one row: as many whole cards as fit, the rest clipped. Twelve are
    rendered, which covers the widest screen. */
-.community-landing-row {
-    grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
-    grid-template-rows: auto;
-    grid-auto-rows: 0;
-    row-gap: 0;
-    column-gap: var(--sp-4);
-    overflow: hidden;
-    /* room above for the hover lift; none below, so the clipped second row
-       starts exactly at the edge and not one pixel of it shows */
-    padding: 4px 2px 0;
-    margin: -4px -2px 0;
-}
-@media (max-width: 600px) {
-    .community-landing-row { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--sp-3); }
-}
 
 /* the landing card: the same frame as a collection card */
 .community-landing-card {
@@ -707,10 +539,3 @@ button.community-detail-stat:focus-visible {
 /* the list layout has no room on its 38px thumbnail */
 .collection-grid.collection-list .community-card .card-art .community-card-evo-badge { display: none; }
 
-@media (max-width: 760px) {
-    .community-hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .community-hero-stat:nth-child(3) { border-left: 0; }
-    .community-hero-stat:nth-child(n+3) { border-top: 1px solid var(--border-light); }
-    .community-hero-stat { padding: var(--sp-3) var(--sp-4); }
-    .community-hero-stat svg { width: 30px; height: 30px; padding: 6px; }
-}

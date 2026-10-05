@@ -70,6 +70,7 @@ function Panel({ tab, current, className = '', children }: { tab: Tab; current: 
 export function EditorPage() {
     useStore();
     const tab: Tab = api.getEditorTab();
+    const fullscreen = !!api.getEditorFullscreen?.();
     return (
         <div className="editor-sheet" role="dialog" aria-labelledby="editor-sheet-title">
             <div className="editor-sheet-head">
@@ -79,6 +80,9 @@ export function EditorPage() {
                     <RegionAssign value={form.regionIds} onChange={regionIds => { editForm({ regionIds }); api.renderRegionSidebar(); }} />
                 </div>
                 <div className="editor-actionbar-group">
+                    <button className="btn btn-secondary btn-icon btn-sm editor-fullscreen-toggle" type="button" onClick={() => api.toggleEditorFullscreen()}
+                        aria-pressed={fullscreen} aria-label={fullscreen ? 'Shrink the editor to a side panel' : 'Expand the editor to full screen'}
+                        title={fullscreen ? 'Side panel' : 'Full screen'}><Icon name={fullscreen ? 'arrows-pointing-in' : 'arrows-pointing-out'} /></button>
                     <button className="btn btn-secondary btn-sm" type="button" onClick={() => api.publishCurrentEditorFakemon()}><Icon name="upload" /><span>Publish</span></button>
                     <button className="btn btn-secondary btn-sm" type="button" onClick={() => api.openFakemonImport()}><Icon name="file-input" /><span>Import</span></button>
                     <ExportMenu />

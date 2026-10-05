@@ -56,11 +56,24 @@
                     document.documentElement.classList.add('reduce-motion');
                 }
             } catch (e) {}
+            // low-end device: little memory, few cores, or Data Saver on.
+            // js/core/device.ts reads this class back; css/perf.css acts on it
+            try {
+                var nav = navigator, mem = nav.deviceMemory, cores = nav.hardwareConcurrency;
+                if ((mem && mem <= 2) || (cores && cores <= 2) || (mem && mem <= 4 && cores && cores <= 4) || (nav.connection && nav.connection.saveData)) {
+                    document.documentElement.classList.add('low-end');
+                }
+            } catch (e) {}
         })();
     </script>
-    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Inconsolata:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- the font stylesheet is third-party: loaded without blocking the first
+         paint (text shows in the fallback font, then swaps), so a slow
+         connection to Google can't hold the whole page blank -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Inconsolata:wght@400;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Inconsolata:wght@400;600;700;800&display=swap" rel="stylesheet"></noscript>
     <link rel="icon" type="image/png" href="assets/favicon.png">
-    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
     <!-- artwork is hand-drawn; asks well-behaved crawlers to stay out of it
          (robots.txt carries the same refusal in full) -->
     <meta name="robots" content="noai, noimageai, max-image-preview:standard">
@@ -83,6 +96,7 @@
     <link rel="stylesheet" href="css/library.css">
     <link rel="stylesheet" href="css/cloud-backup.css">
     <link rel="stylesheet" href="css/responsive.css">
+    <link rel="stylesheet" href="css/settings.css">
     <link rel="stylesheet" href="css/templates.css">
     <link rel="stylesheet" href="css/evolution.css">
     <link rel="stylesheet" href="css/analysis.css">
@@ -109,6 +123,8 @@
     <!-- phone and touch overrides; last so they win -->
     <link rel="stylesheet" href="css/feedback.css">
     <link rel="stylesheet" href="css/mobile.css">
+    <!-- toned-down effects for low-end devices (.low-end); last of all -->
+    <link rel="stylesheet" href="css/perf.css">
 </head>
 <body>
     <div class="app-container">

@@ -33,7 +33,7 @@
 /* collection / pokédex card skeleton - mirrors .collection-card layout exactly */
 .collection-card.skel-card .card-art { animation-delay: 0s; }
 .collection-card.skel-card .skel-text.skel-name { height: 16px; width: 68%; margin-bottom: 8px; }
-.collection-card.skel-card .skel-text.skel-number { height: 11px; width: 34%; margin-bottom: 6px; }
+
 .collection-card.skel-card .card-types { display: flex; gap: 6px; margin-bottom: 8px; }
 .collection-card.skel-card .skel-text.skel-bst { height: 12px; width: 46%; }
 
@@ -43,10 +43,6 @@
 .community-card.skel-card .community-card-author .skel-text { width: 70px; height: 11px; }
 
 /* comment skeleton - mirrors .mon-comment */
-.mon-comment.skel-card .mon-comment-header .skel-circle { width: 22px; height: 22px; }
-.mon-comment.skel-card .mon-comment-header .skel-text { width: 90px; height: 11px; }
-.mon-comment.skel-card .mon-comment-body .skel-text { width: 100%; }
-.mon-comment.skel-card .mon-comment-body .skel-text:last-child { width: 60%; }
 
 /* notification item skeleton - mirrors .notification-item */
 .notification-item.skel-card .notification-avatar.skel-circle { width: 32px; height: 32px; }
@@ -76,11 +72,10 @@
 
 /* cards animate in with a soft stagger. real content and skeletons both
    get this, so the transition between them doesn't introduce a pop. */
-.collection-card, .community-card, .collection-library-card, .library-card,
-.mon-comment, .notification-item {
+.collection-card, .community-card, .library-card, .notification-item {
     animation: fadeInUp 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.collection-grid > *:nth-child(1), .community-hub-grid > *:nth-child(1), #community-grid > *:nth-child(1) { animation-delay: 0.02s; }
+.collection-grid > *:nth-child(1), #community-grid > *:nth-child(1) { animation-delay: 0.02s; }
 .collection-grid > *:nth-child(2), #community-grid > *:nth-child(2) { animation-delay: 0.05s; }
 .collection-grid > *:nth-child(3), #community-grid > *:nth-child(3) { animation-delay: 0.08s; }
 .collection-grid > *:nth-child(4), #community-grid > *:nth-child(4) { animation-delay: 0.11s; }
@@ -89,7 +84,6 @@
 .collection-grid > *:nth-child(7), #community-grid > *:nth-child(7) { animation-delay: 0.20s; }
 .collection-grid > *:nth-child(8), #community-grid > *:nth-child(8) { animation-delay: 0.23s; }
 .collection-grid > *:nth-child(n+9), #community-grid > *:nth-child(n+9) { animation-delay: 0.25s; }
-.mon-comment { animation-duration: 0.3s; }
 
 /* skeleton shimmer shouldn't also fight the shimmer keyframe's own opacity ramp */
 .skel-card { animation: fadeIn 0.2s ease both; }
@@ -117,63 +111,22 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96
 
 @media (prefers-reduced-motion: reduce) {
     .skel { animation: none; background-image: linear-gradient(90deg, var(--bg-panel), var(--border-light)); }
-    .collection-card, .community-card, .collection-library-card, .library-card,
-    .mon-comment, .notification-item, .skel-card, .notifications-panel,
-    .notifications-badge, .notification-dot, .community-empty, .community-loading,
-    .profile-empty, .notifications-empty, .header-profile-popover {
+    .collection-card, .community-card, .library-card, .notification-item, .skel-card, .notifications-panel, .notifications-badge, .notification-dot, .community-empty, .community-loading, .profile-empty, .notifications-empty, .header-profile-popover {
         animation: none !important;
     }
     body { animation: none; }
-    .collection-card:hover, .sidebar-nav-btn:hover, .btn-primary:hover, .btn-secondary:hover { transform: none; }
+    .collection-card:hover, .btn-primary:hover, .btn-secondary:hover { transform: none; }
     .notifications-badge { animation: none; }
 }
 
 /* "reduce motion" app setting - same intent as the media query above, without needing the OS-level preference */
-.reduce-motion body,
-.reduce-motion .collection-card:hover,
-.reduce-motion .sidebar-nav-btn:hover,
-.reduce-motion .btn-primary:hover,
-.reduce-motion .btn-primary:active,
-.reduce-motion .btn-secondary:hover,
-.reduce-motion .btn-secondary:active,
-.reduce-motion .btn-danger:hover,
-.reduce-motion .btn-danger:active,
-.reduce-motion .btn-success:hover,
-.reduce-motion .btn-success:active,
-.reduce-motion .btn-info:hover,
-.reduce-motion .btn-info:active { transform: none; animation: none; }
+.reduce-motion body, .reduce-motion .collection-card:hover, .reduce-motion .btn-primary:hover, .reduce-motion .btn-primary:active, .reduce-motion .btn-secondary:hover, .reduce-motion .btn-secondary:active, .reduce-motion .btn-danger:hover, .reduce-motion .btn-danger:active { transform: none; animation: none; }
 .reduce-motion .notifications-badge { animation: none; }
 .reduce-motion .tab-content-enter, .reduce-motion .top-level-view-enter { animation: none !important; }
 
 /* ======================================================================
    profile page polish
    ====================================================================== */
-.profile-public-hero.trainer-card {
-    background: linear-gradient(135deg, var(--bg-card), var(--bg-panel));
-    box-shadow: 0 14px 36px rgba(0,0,0,.1);
-    transition: box-shadow 0.25s ease;
-}
-.profile-public-hero.trainer-card::before {
-    content: '' !important;
-    display: block !important;
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--accent), transparent 70%);
-    opacity: .55;
-}
-.profile-public-hero.trainer-card:hover { box-shadow: 0 18px 44px rgba(0,0,0,.13); }
-.profile-public-hero.trainer-card .profile-public-avatar-wrap {
-    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
-}
-.profile-public-hero.trainer-card:hover .profile-public-avatar-wrap {
-    transform: scale(1.04);
-    box-shadow: 0 0 0 4px var(--accent-glow);
-}
-.profile-public-badges { animation: fadeIn 0.4s ease 0.1s both; }
-.profile-public-hero, .profile-public-section { animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.profile-public-section:nth-of-type(2) { animation-delay: 0.06s; }
-.profile-public-section:nth-of-type(3) { animation-delay: 0.1s; }
 
 /* Fakemon gallery cards get the same lift/zoom treatment as collection cards */
 .profile-mon-card { transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease, box-shadow 0.2s ease; }
@@ -189,16 +142,6 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96
 .profile-mons-grid > *:nth-child(n+5) { animation-delay: 0.13s; }
 
 /* comments */
-.profile-comment { transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease; }
-.profile-comment:hover { border-color: var(--text-secondary); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
-.profile-comment .community-mini-avatar { transition: transform 0.2s ease; }
-.profile-comment-header:hover .community-mini-avatar { transform: scale(1.08); }
-.profile-comments-list > * { animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.profile-comments-list > *:nth-child(1) { animation-delay: 0.02s; }
-.profile-comments-list > *:nth-child(2) { animation-delay: 0.05s; }
-.profile-comments-list > *:nth-child(3) { animation-delay: 0.08s; }
-.profile-comments-list > *:nth-child(n+4) { animation-delay: 0.1s; }
-.profile-comment-box textarea { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
 
 /* skeleton state for the hero + edit button while a profile loads */
 #profile-public-avatar-fallback.skel { font-size: 0; }
@@ -219,10 +162,7 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(0.96
 .analysis-card, .analysis-matchup-card { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
 
 @media (prefers-reduced-motion: reduce) {
-    .profile-public-hero, .profile-public-section, .profile-public-badges,
-    .profile-mons-grid > *, .profile-comments-list > *,
-    .analysis-profile, .analysis-two-col > *, .analysis-detail-grid > *,
-    .analysis-matchups-card, .analysis-matchup-card {
+    .profile-mons-grid > *, .analysis-profile, .analysis-two-col > *, .analysis-detail-grid > *, .analysis-matchups-card, .analysis-matchup-card {
         animation: none !important;
     }
 }

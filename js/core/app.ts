@@ -2,6 +2,8 @@
 // so it can explain an empty shell instead of leaving it unexplained
 window.__woogidexBooted = true;
 import { log } from './log.ts';
+import { isLowEndDevice, prefersSavingData, whenIdle } from './device.ts';
+import { registerOfflineSupport } from './offline.ts';
 import * as updates from '../features/updates.ts';
 import { SELECTABLE_TYPES, POKEMON_COLORS } from './data.ts';
 import * as data from './data.ts';
@@ -20,7 +22,6 @@ import * as community from '../features/community.ts';
 import * as notifications from './notifications.ts';
 import * as moderation from './moderation.ts';
 import * as events from '../features/contests.ts';
-import * as battleUI from '../battle/ui/battle-ui.ts';
 import * as abilityBlocks from '../editor/ability-blocks.ts';
 import * as nameRoll from '../tools/name-roll.ts';
 import * as fieldRoll from '../tools/field-roll.ts';
@@ -108,8 +109,10 @@ const BOOLEAN_SETTINGS = {
         storageKey: 'woogidex-fade-useless-moves', defaultValue: true,
         onChange: () => api.updatePreview?.()
     },
+    // flat sprites by default on a low-end device: animated 3D models are the
+    // heaviest thing the collection and template picker can draw
     Use2DSprites: {
-        storageKey: 'woogidex-use-2d-sprites', defaultValue: false,
+        storageKey: 'woogidex-use-2d-sprites', defaultValue: isLowEndDevice(),
         onChange: () => {
             // the template picker's sprites
             notify();
@@ -132,7 +135,7 @@ const BOOLEAN_SETTINGS = {
         apply: (enabled) => document.documentElement.classList.toggle('reduce-motion', enabled)
     },
     OverlayBlur: {
-        storageKey: 'woogidex-overlay-blur', defaultValue: true,
+        storageKey: 'woogidex-overlay-blur', defaultValue: !isLowEndDevice(),
         apply: (enabled) => document.documentElement.classList.toggle('no-overlay-blur', !enabled)
     },
     ConfirmBeforeDelete: {
@@ -144,6 +147,16 @@ const BOOLEAN_SETTINGS = {
     AlwaysShowCardActions: {
         storageKey: 'woogidex-always-show-card-actions', defaultValue: false,
         apply: (enabled) => document.documentElement.classList.toggle('always-show-card-actions', enabled)
+    },
+    // the editor sheet covers the whole window under the header instead of the right side
+    EditorFullscreen: {
+        storageKey: 'woogidex-editor-fullscreen', defaultValue: false,
+        apply: (enabled) => document.documentElement.classList.toggle('editor-fullscreen', enabled)
+    },
+    // the "did not load" / "looks empty" save locks in js/core/storage.ts
+    CollectionSafetyChecks: {
+        storageKey: 'woogidex-collection-safety-checks', defaultValue: true,
+        onChange: () => api.closeCollectionWarning?.()
     }
 };
 
@@ -168,17 +181,19 @@ function isDarkModeEnabled() {
     return document.documentElement.getAttribute('data-theme') === 'dark';
 }
 
-// the tab the next Settings visit opens on (js/app/pages/SettingsPage.tsx takes it)
-let settingsTabRequest = 'appearance';
+// the section the next Settings visit opens on (js/app/pages/SettingsPage.tsx
+// takes it). '' is "none in particular": the first section on a wide screen,
+// the list of sections on a phone.
+let settingsTabRequest = '';
 function takeSettingsTab() {
     const tab = settingsTabRequest;
-    settingsTabRequest = 'appearance';
+    settingsTabRequest = '';
     return tab;
 }
 
-function openSettings(tab = 'appearance') {
+function openSettings(tab = '') {
     log.debug('SETTINGS', 'Opening settings page');
-    settingsTabRequest = typeof tab === 'string' ? tab : 'appearance';
+    settingsTabRequest = typeof tab === 'string' ? tab : '';
     api.activateTopLevelView?.('settings-view');
     api.setRoute?.('settings', 'Settings');
 }
@@ -297,6 +312,9 @@ function activateTopLevelView(viewId, options: Record<string, any> = {}) {
     // hides the header, and an open sheet locks the page scroll behind it
     document.body.dataset.page = pageId;
     document.body.classList.toggle('editor-sheet-open', viewId === 'editor-view');
+    // nearly every editor tool reads the Showdown data; don't make it wait for
+    // the idle moment boot left it for (memoised, so a no-op once loaded)
+    if (viewId === 'editor-view') api.fetchShowdownData?.();
 
     // the page under a sheet stays put; only what just appeared animates in
     const target = document.getElementById(viewId);
@@ -322,7 +340,24 @@ function activateTopLevelView(viewId, options: Record<string, any> = {}) {
 
 log.setContext({ state, api });
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleUI, abilityBlocks, nameRoll, fieldRoll, protect, router, recovery, cloudSave, siteNotice, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, feedback, moveInheritance, social, messaging, updates, settingsApi, {
+// Battle loads on first use (js/app/mount.tsx draws its page lazily too).
+// Until then these stand in for the few battle functions the rest of the site
+// calls; loading the module puts every real one on `api`, replacing them.
+let battleModule: Promise<any> | null = null;
+function loadBattle() {
+    return battleModule ||= import('../battle/ui/battle-ui.ts').then(m => { Object.assign(api, m); return m; });
+}
+const battleStubs = {
+    loadBattle,
+    openBattle: (...args: any[]) => loadBattle().then(m => m.openBattle(...args)),
+    renderBattleSkeleton: (...args: any[]) => loadBattle().then(m => m.renderBattleSkeleton(...args)),
+    // only ever asked once a battle is running, by which point the real one is in place
+    battleMoveChoices: () => [],
+    pickBattleMove: () => false,
+    onBattleViewLeave: (...args: any[]) => { battleModule?.then(m => m.onBattleViewLeave?.(...args)); }
+};
+
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleStubs, abilityBlocks, nameRoll, fieldRoll, protect, router, recovery, cloudSave, siteNotice, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, feedback, moveInheritance, social, messaging, updates, settingsApi, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, takeSettingsTab, isDarkModeEnabled,
     setRoute, setPageTitle, setShareMeta, activateTopLevelView,
     updateSettingsUI, loadSettings, showToast
@@ -393,8 +428,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         // editor/ability-editor open a specific Fakemon that only exists after
         // loadFromStorage() resolves, so there's nothing to skeleton yet
     }
-    await api.initAuth();
+    // The collection lives on this device and does not depend on the account,
+    // so reading it never waits on auth. It used to: a sign-in that threw or
+    // hung (Supabase blocked, offline with an expired token, a stale chunk
+    // after a deploy) meant loadFromStorage() never ran, and every save was
+    // refused with "Your Collection Did Not Load" on every reload.
+    const authDone = Promise.resolve().then(() => api.initAuth())
+        .catch(e => log.error('BOOT', 'Sign-in setup failed; carrying on signed out', e));
     await api.loadFromStorage();
+    await authDone;
     // custom types join the shared type lists before anything draws a type picker
     api.syncCustomTypes?.(true);
     // Showdown data (moves/abilities/items/pokedex, 1MB+) is only needed
@@ -404,10 +446,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Callers elsewhere show their own loading state if they beat it (see
     // state.sdLoaded checks in editor.ts/analysis.ts/pokedex.ts).
     const NEEDS_SHOWDOWN_DATA_UP_FRONT = new Set(['editor', 'ability-editor', 'community', 'events', 'battle']);
-    const showdownDataPromise = api.fetchShowdownData?.();
-    if (NEEDS_SHOWDOWN_DATA_UP_FRONT.has(bootRoute.name)) await showdownDataPromise;
-    // learnsets.json (3.2 MB) warms in the background; callers await api.ensureLearnsets() themselves
-    api.ensureLearnsets?.();
+    if (NEEDS_SHOWDOWN_DATA_UP_FRONT.has(bootRoute.name)) await api.fetchShowdownData?.();
+    // Everywhere else it waits for the first quiet moment, so parsing ~1 MB of
+    // JSON doesn't land on top of the first render (seconds, on a cheap phone).
+    // learnsets.json (3.2 MB) warms after it; callers await api.ensureLearnsets()
+    // themselves, so a low-end device or Data Saver skips the warm-up entirely.
+    else whenIdle(() => api.fetchShowdownData?.());
+    if (!isLowEndDevice() && !prefersSavingData()) whenIdle(() => api.ensureLearnsets?.(), 8000);
     // opening the page the address already names must not add an entry
     const handled = await router.replacingHistory(() => handleRoute(bootRoute));
     if (!handled) api.renderCollection();
@@ -434,6 +479,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     // the unread count on the header's Updates tab
     updates.refreshUpdatesBadge();
+    // keeps the site usable offline (js/core/offline.ts)
+    registerOfflineSupport();
 });
 
 // restores whichever page a URL names, on load and on back/forward, so both

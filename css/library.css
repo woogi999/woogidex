@@ -3,105 +3,13 @@
    link order in index.html = cascade order; later files override earlier ones.
    ==================== */
 
-.collection-library-add { white-space:nowrap; }
 .breadcrumb-current { color:var(--text-primary); }
-.collection-library-card .card-actions {
-    position:absolute; top:8px; right:8px; display:flex; gap:4px; opacity:0; transition:opacity .2s;
-}
-.collection-library-card:hover .card-actions { opacity:1; }
-.collection-library-card .card-actions button {
-    width:28px; height:28px; border-radius:6px; border:none;
-    background:var(--bg-panel); color:var(--text-primary); cursor:pointer;
-    font-size:14px; display:flex; align-items:center; justify-content:center;
-}
-.collection-library-card .card-actions button:hover { background:var(--accent); color:#fff; }
-.collection-library-card .card-actions button.card-delete-btn:hover { background:var(--danger); color:#fff; }
-.collection-library-card .card-actions button.pinned-btn { background:var(--accent); color:#fff; }
-.collection-library-card {
-    position:relative;
-    min-width:0;
-    padding:var(--sp-4) var(--sp-5);
-    background:var(--bg-card);
-    border:1px solid var(--border);
-    border-radius:var(--card-r);
-    transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
-}
-.collection-library-card:hover {
-    transform:translateY(-2px);
-    border-color:var(--border-strong);
-    box-shadow:var(--shadow-md);
-}
-.collection-library-card-title {
-    padding-right:128px;
-    font-size:16px;
-    font-weight:700;
-    color:var(--text-primary);
-}
-.collection-library-card-meta {
-    margin-top:8px;
-    font-size:11px;
-    color:var(--text-secondary);
-    line-height:1.6;
-}
-.collection-library-card-desc {
-    margin-top:10px;
-    font-size:12px;
-    line-height:1.5;
-    color:var(--text-secondary);
-    white-space:pre-wrap;
-}
 
 /* --- custom-library list layout ---
    same card, its parts on one row; grid/list toggle applies to moves/items/abilities too, not just Fakemon */
-.collection-library-list-card {
-    display:flex;
-    align-items:center;
-    gap:14px;
-    padding:10px 14px;
-}
-.collection-library-list-card .collection-library-card-body {
-    display:flex;
-    align-items:baseline;
-    gap:14px;
-    flex:1;
-    min-width:0;
-}
-.collection-library-list-card .collection-library-card-title {
-    padding-right:0;
-    font-size:15px;
-    flex:0 0 auto;
-    max-width:34%;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-}
-.collection-library-list-card .collection-library-card-meta {
-    margin-top:0;
-    flex:0 0 auto;
-    white-space:nowrap;
-}
-.collection-library-list-card .collection-library-card-desc {
-    margin-top:0;
-    flex:1;
-    min-width:0;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-}
+
 /* buttons ride at the end of the row rather than floating over the text */
-.collection-library-list-card .card-actions {
-    position:static;
-    flex:none;
-    margin-left:auto;
-}
-.collection-library-list-card .collection-library-artwork {
-    width:44px;
-    height:44px;
-    margin:0;
-    flex:0 0 44px;
-    border-radius:8px;
-}
-.collection-library-card.pinned { border-color:var(--accent); }
+
 .library-card-actions {
     position:absolute;
     top:10px;
@@ -112,7 +20,7 @@
     transform:translateY(-2px);
     transition:opacity .15s ease, transform .15s ease;
 }
-.collection-library-card:hover .library-card-actions { opacity:1; transform:translateY(0); }
+
 .library-card-actions button {
     width:30px;
     height:30px;
@@ -127,6 +35,3 @@
 }
 .library-card-actions button:hover { color:var(--text-primary); border-color:var(--text-secondary); }
 
-@media (max-width: 700px) {
-    .collection-library-add { width:100%; }
-}

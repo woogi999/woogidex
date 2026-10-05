@@ -205,16 +205,24 @@ const FEED_MAX_AGE_MS = 60000;
 
 /** A feed row as the hub's existing cards expect a published mon (fakemon_data.*). */
 function shapeItem(raw: any): FeedItem {
+    const shared = { reactions: raw.reactions || {}, my_reactions: raw.my_reactions || [], repost_count: Number(raw.repost_count || 0) };
     if (raw.kind === 'mon') {
         api.registerTypeLooks?.(raw.customTypes);
         return {
-            ...raw,
+            ...raw, ...shared,
             fakemon_data: { name: raw.name, species: raw.species, number: raw.number, type1: raw.type1, type2: raw.type2, customTypes: raw.customTypes || [] },
             published_at: raw.created_at
         };
     }
     for (const m of raw.mons || []) api.registerTypeLooks?.(m.customTypes);
-    return { ...raw, mon_ids: raw.mon_ids || [], tags: raw.tags || [], reactions: raw.reactions || {}, my_reactions: raw.my_reactions || [] };
+    // a repost carries its original (or {missing: true} once that's deleted)
+    const repost = raw.repost && !raw.repost.missing ? shapeItem(raw.repost) : raw.repost || null;
+    return { ...raw, ...shared, repost, mon_ids: raw.mon_ids || [], tags: raw.tags || [] };
+}
+
+/** The rows plus the originals their reposts carry, for author names and avatars. */
+function withEmbeds(rows: any[]): any[] {
+    return [...rows, ...rows.map(r => r.repost).filter((r: any) => r && !r.missing)];
 }
 
 export async function fetchFeed(tab: FeedTab = 'foryou', { force = false, older = false }: { force?: boolean; older?: boolean } = {}) {
@@ -233,7 +241,7 @@ export async function fetchFeed(tab: FeedTab = 'foryou', { force = false, older 
         });
         if (error) throw error;
         const rows = (data || []).map(shapeItem);
-        await api.attachLiveAuthorInfo?.(rows);
+        await api.attachLiveAuthorInfo?.(withEmbeds(rows));
         if (older) {
             const known = new Set(t.items.map(i => `${i.kind}:${i.id}`));
             const fresh = rows.filter(r => !known.has(`${r.kind}:${r.id}`));
@@ -338,55 +346,143 @@ export async function deletePost(postId: string): Promise<boolean> {
     return true;
 }
 
-/** Every copy of a post on screen (feed tabs, the open post, a profile's timeline). */
-function postCopies(postId: string): any[] {
+/**
+ * Every copy of a post or Fakémon on screen: the feed tabs, the open post,
+ * a profile's timeline, the originals inside reposts, and (for Fakémon) the
+ * hub's grid and the open Fakémon page.
+ */
+function itemCopies(kind: 'mon' | 'post', id: string): any[] {
     const out: any[] = [];
-    for (const t of Object.values(ss().feed)) for (const i of t.items) if (i.kind === 'post' && i.id === postId) out.push(i);
-    if (ss().post.row?.id === postId) out.push(ss().post.row);
-    for (const i of state.profilePageUser?.timeline || []) if (i.kind === 'post' && i.id === postId) out.push(i);
+    const look = (i: any) => {
+        if (!i) return;
+        if (i.kind === kind && i.id === id) out.push(i);
+        if (i.repost && i.repost.kind === kind && i.repost.id === id) out.push(i.repost);
+    };
+    for (const t of Object.values(ss().feed)) t.items.forEach(look);
+    look(ss().post.row);
+    (state.profilePageUser?.timeline || []).forEach(look);
+    if (kind === 'mon') {
+        const cs = state.community;
+        for (const r of cs?.mons || []) if (r.id === id) out.push(r);
+        if (cs?.openMonRow?.id === id) out.push(cs.openMonRow);
+    }
     return [...new Set(out)];
 }
+function postCopies(postId: string): any[] { return itemCopies('post', postId); }
 
 function patchPostEverywhere(postId: string, patch: any) {
     for (const p of postCopies(postId)) Object.assign(p, patch);
     notify();
 }
 
-export async function toggleReaction(post: any, emoji: string) {
+/**
+ * Adds or takes back one emoji reaction on a post or a Fakémon. On a Fakémon,
+ * the heart is what used to be its like, so its like numbers move with it.
+ */
+export async function toggleReaction(item: any, emoji: string) {
     if (!api.requireAccount?.('Sign in to react.')) return;
-    const mine: string[] = post.my_reactions || [];
-    const had = mine.includes(emoji);
+    const kind: 'mon' | 'post' = item.kind === 'mon' ? 'mon' : 'post';
+    const had = (item.my_reactions || []).includes(emoji);
     const client = await api.getClient();
-    const { error } = had
-        ? await client.from('post_reactions').delete().eq('post_id', post.id).eq('user_id', state.user!.id).eq('emoji', emoji)
-        : await client.from('post_reactions').insert({ post_id: post.id, user_id: state.user!.id, emoji });
-    if (error && error.code !== '23505') { api.showToast?.(error.message || 'Could not react.', 'error'); return; }
-    for (const p of postCopies(post.id)) {
+    const table = kind === 'mon' ? 'mon_reactions' : 'post_reactions';
+    const row = { [kind === 'mon' ? 'mon_id' : 'post_id']: item.id, user_id: state.user!.id, emoji };
+    const { error } = had ? await client.from(table).delete().match(row) : await client.from(table).insert(row);
+    if (error && error.code !== '23505') { api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Could not react.', 'error'); return; }
+    for (const p of itemCopies(kind, item.id)) {
         const reactions = { ...(p.reactions || {}) };
         reactions[emoji] = Math.max(0, Number(reactions[emoji] || 0) + (had ? -1 : 1));
         if (!reactions[emoji]) delete reactions[emoji];
         p.reactions = reactions;
         p.my_reactions = had ? (p.my_reactions || []).filter((e: string) => e !== emoji) : [...(p.my_reactions || []), emoji];
+        if (kind === 'mon') {
+            p.like_count = Math.max(0, Number(p.like_count || 0) + (had ? -1 : 1));
+            if (emoji === 'heart') p.liked_by_me = !had;
+        }
     }
-    if (!had) recordInteraction(post.user_id);
+    if (!had) recordInteraction(item.user_id);
     notify();
 }
 
-/** Like/unlike a published mon shown in the feed or a timeline (rows that aren't in the hub's grid). */
-export async function toggleFeedMonLike(row: any) {
-    if (!api.requireAccount?.('Sign in to like Fakemon.')) return;
+/** The heart on a Fakémon (what used to be its like). */
+export function toggleFeedMonLike(row: any) {
+    return toggleReaction({ ...row, kind: 'mon', my_reactions: row.my_reactions || (row.liked_by_me ? ['heart'] : []) }, 'heart');
+}
+
+// ==================== reposts ====================
+// A repost is a community post pointing at a Fakémon or another post, like
+// Threads' Repost and Facebook's Share. With no words of its own it's a plain
+// repost (one each, undone the same way); with words it's a share with your
+// thoughts on top (quote). Reposting a repost reposts its original.
+
+/** What a repost button acts on: a plain repost stands for its original. */
+export function repostTarget(item: any): any {
+    if (item.kind === 'post' && item.repost && !item.repost.missing && !item.body && !(item.mon_ids || []).length) return item.repost;
+    return item;
+}
+
+function bumpReposts(target: any, by: number, mine?: boolean) {
+    for (const c of itemCopies(target.kind, target.id)) {
+        c.repost_count = Math.max(0, Number(c.repost_count || 0) + by);
+        if (mine !== undefined) c.reposted_by_me = mine;
+    }
+}
+
+/** Reposts, or takes back your plain repost of, a Fakémon or post. */
+export async function toggleRepost(item: any): Promise<boolean> {
+    if (!api.requireAccount?.('Sign in to repost.')) return false;
+    const target = repostTarget(item);
     const client = await api.getClient();
-    const liked = !!row.liked_by_me;
-    const { error } = liked
-        ? await client.from('mon_likes').delete().eq('mon_id', row.id).eq('user_id', state.user!.id)
-        : await client.from('mon_likes').insert({ mon_id: row.id, user_id: state.user!.id });
-    if (error && error.code !== '23505') { api.showToast?.('Could not like: ' + error.message, 'error'); return; }
-    const copies = new Set<any>([row]);
-    for (const t of Object.values(ss().feed)) for (const i of t.items) if (i.kind === 'mon' && i.id === row.id) copies.add(i);
-    for (const i of state.profilePageUser?.timeline || []) if (i.kind === 'mon' && i.id === row.id) copies.add(i);
-    for (const r of copies) { r.liked_by_me = !liked; r.like_count = Math.max(0, Number(r.like_count || 0) + (liked ? -1 : 1)); }
-    if (!liked) recordInteraction(row.user_id);
+    const me = state.user!.id;
+    if (target.reposted_by_me) {
+        const { error } = await client.from('community_posts').delete()
+            .eq('user_id', me).eq('repost_kind', target.kind).eq('repost_id', target.id).eq('body', '').eq('mon_ids', '{}');
+        if (error) { api.showToast?.('Could not undo the repost: ' + error.message, 'error'); return false; }
+        bumpReposts(target, -1, false);
+        for (const t of Object.values(ss().feed)) t.items = t.items.filter(i => !(i.user_id === me && i.repost && i.repost.id === target.id && !i.body));
+        api.showToast?.('Repost removed.', 'info');
+    } else {
+        const { error } = await client.from('community_posts').insert({ user_id: me, body: '', repost_kind: target.kind, repost_id: target.id });
+        if (error && error.code !== '23505') { api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Could not repost.', 'error'); return false; }
+        bumpReposts(target, 1, true);
+        notifyRepost(target, '');
+        recordInteraction(target.user_id);
+        for (const t of Object.values(ss().feed)) t.fetchedAt = 0;
+        api.showToast?.('Reposted!', 'success');
+    }
+    api.invalidateProfile?.(me);
     notify();
+    return true;
+}
+
+/** Shares a Fakémon or post with your own words on top. @returns whether it posted */
+export async function quoteRepost(item: any, body: string): Promise<boolean> {
+    if (!api.requireAccount?.('Sign in to share.')) return false;
+    const target = repostTarget(item);
+    const text = String(body || '').trim();
+    if (!text) { api.showToast?.('Write something to go with it, or use Repost.', 'warning'); return false; }
+    if (text.length > 4000) { api.showToast?.('Posts can be up to 4000 characters.', 'warning'); return false; }
+    if (!(await api.guardContent?.(text, 'community post') ?? true)) return false;
+    const client = await api.getClient();
+    const { error } = await client.from('community_posts')
+        .insert({ user_id: state.user!.id, body: text, tags: tagsIn(text), repost_kind: target.kind, repost_id: target.id });
+    if (error) { api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Could not share.', 'error'); return false; }
+    bumpReposts(target, 1);
+    notifyRepost(target, text);
+    recordInteraction(target.user_id);
+    for (const t of Object.values(ss().feed)) t.fetchedAt = 0;
+    api.invalidateProfile?.(state.user!.id);
+    fetchFeed(currentFeedTab(), { force: true });
+    api.showToast?.('Shared!', 'success');
+    return true;
+}
+
+function notifyRepost(target: any, text: string) {
+    api.createNotification?.({
+        userId: target.user_id, actorId: state.user!.id, actorName: publicName(state.user), actorAvatarUrl: state.user!.avatarUrl || null,
+        type: 'repost', targetId: `${target.kind}:${target.id}`,
+        targetName: target.kind === 'mon' ? (target.fakemon_data?.name || target.name || 'your Fakémon') : 'your post',
+        preview: text
+    });
 }
 
 // ==================== one post (/post/<id>) ====================
@@ -419,9 +515,14 @@ export async function openPost(postId: string, { preserveRoute = false } = {}): 
                 .in('id', row.mon_ids);
             mons = (row.mon_ids as string[]).map(id => (data || []).find((m: any) => m.id === id)).filter(Boolean);
         }
-        const full = shapeItem({ ...row, kind: 'post', mons, comment_count: Number(s.comment_count || 0), reactions: s.reactions || {}, my_reactions: s.my_reactions || [] });
+        let repost: any = null;
+        if (row.repost_id) {
+            const { data: embed } = await client.rpc('repost_embed', { p_kind: row.repost_kind, p_id: row.repost_id });
+            repost = embed || { missing: true };
+        }
+        const full = shapeItem({ ...row, kind: 'post', mons, repost, comment_count: Number(s.comment_count || 0), reactions: s.reactions || {}, my_reactions: s.my_reactions || [] });
         const rows = [full, ...(comments.data || [])];
-        await api.attachLiveAuthorInfo?.(rows);
+        await api.attachLiveAuthorInfo?.(withEmbeds(rows));
         p.row = full;
         p.comments = comments.data || [];
         recordOpened(postId, row.user_id);
@@ -487,7 +588,7 @@ export async function fetchTimeline(userId: string, before: string | null = null
     const { data, error } = await client.rpc('profile_timeline', { p_user: userId, p_before: before, p_limit: 30 });
     if (error) throw error;
     const rows = (data || []).map(shapeItem);
-    await api.attachLiveAuthorInfo?.(rows);
+    await api.attachLiveAuthorInfo?.(withEmbeds(rows));
     return rows;
 }
 

@@ -1,4 +1,5 @@
-import { JSZip, html2canvas } from '../core/vendor.ts';
+import { loadHtml2canvas } from '../core/vendor.ts';
+import { Zip } from './zip.ts';
 import { log } from '../core/log.ts';
 import { state, api } from '../core/app.ts';
 import { sortLearnsetEntries, normalizeMoveCategoryInput, normalizeMoveTypeInput } from '../editor/editor.ts';
@@ -419,7 +420,7 @@ import { openDialog } from '../app/dialogs.tsx';
                 // a font still loading would be measured with its fallback
                 await document.fonts?.ready;
 
-                const canvas = await html2canvas(clone, {
+                const canvas = await (await loadHtml2canvas())(clone, {
                     backgroundColor: bg,
                     scale: 2,
                     useCORS: true,
@@ -1143,7 +1144,7 @@ import { openDialog } from '../app/dialogs.tsx';
                     api.showToast('Nothing to export!', 'error'); return;
                 }
 
-                const zip = new JSZip();
+                const zip = new Zip();
                 const everything: any[] = [];
                 const used = { fakemon: new Set(), moves: new Set(), abilities: new Set(), items: new Set() };
 

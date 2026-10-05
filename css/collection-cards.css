@@ -98,21 +98,13 @@
 .collection-add-card:hover .collection-add-icon { background: var(--bg-card); }
 .collection-add-icon svg { width: 24px; height: 24px; }
 /* custom moves / abilities / items: icon and label on one line */
-.collection-library-card.collection-add-card {
-    display: flex; align-items: center; justify-content: center; gap: var(--sp-3);
-    min-height: 84px;
-    cursor: pointer;
-    font-weight: 700; font-size: 14px;
-}
-.collection-library-card.collection-add-card .collection-add-icon { width: 36px; height: 36px; }
-.collection-library-card.collection-add-card .collection-add-icon svg { width: 18px; height: 18px; }
+
 /* list layout: a row like the others */
 .collection-grid.collection-list .collection-add-card {
     border: 0; border-bottom: 1px solid var(--border-light); border-radius: 0;
 }
 .collection-grid.collection-list .collection-card.collection-add-card .collection-add-icon { width: 30px; height: 30px; }
 .collection-grid.collection-list .collection-card.collection-add-card .collection-add-icon svg { width: 16px; height: 16px; }
-.collection-grid.collection-list .collection-library-card.collection-add-card { min-height: 0; justify-content: flex-start; padding: var(--sp-3) var(--sp-4); }
 
 /* custom moves / abilities / items: the Fakémon card frame, with an emblem
    (or an item's artwork) where the Fakémon art goes -- same width and height
@@ -185,23 +177,20 @@ html.always-show-card-actions .collection-card .card-actions { opacity: 1; }
 .collection-card .card-actions button.card-delete-btn:hover { background: var(--danger); border-color: var(--danger); }
 .collection-card .card-actions button.pinned-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-.collection-grid:not(.collection-list) .collection-card,
-.collection-grid:not(.collection-list) .collection-library-card { overflow: visible; }
+.collection-grid:not(.collection-list) .collection-card { overflow: visible; }
+/* the action buttons sit inside the card, in the artwork's top-right corner,
+   wrapping onto a second row on a narrow card. They used to hang off the
+   card's right edge, over the next card. */
 .collection-grid:not(.collection-list) .card-actions {
-    position: absolute; top: 0; left: 100%; z-index: 1;
-    flex-direction: column;
-    /* padding, not margin, so the pointer never crosses a dead zone card -> strip */
-    padding-left: var(--sp-1);
+    position: absolute; top: 6px; right: 6px; z-index: 2;
+    flex-direction: row; flex-wrap: wrap; justify-content: flex-end;
+    max-width: calc(100% - 12px);
 }
-.collection-grid:not(.collection-list) .card-actions:hover { opacity: 1; }
-/* the strip overlaps the next card; lift the hovered card above its neighbours */
-.collection-grid:not(.collection-list) .collection-card:hover,
-.collection-grid:not(.collection-list) .collection-card:has(.card-actions:hover),
-.collection-grid:not(.collection-list) .collection-library-card:hover,
-.collection-grid:not(.collection-list) .collection-library-card:has(.card-actions:hover) { z-index: 300; }
+/* an open export menu still has to float above the neighbouring cards */
+.collection-grid:not(.collection-list) .collection-card:has(.collection-card-export-menu) { z-index: 300; }
 .collection-grid:not(.collection-list) .card-actions .collection-card-export-wrap { display: flex; flex: 0 0 26px; width: 26px; height: 26px; }
-/* room for the rightmost column's strip */
-.collection-grid:not(.collection-list) { padding-right: 30px; }
+/* the number moves to the bottom corner, out from under the buttons */
+.collection-grid:not(.collection-list) .card-art .card-number { top: auto; bottom: 8px; right: auto; left: 10px; }
 
 /* ==================== list layout ====================
    one divided table instead of a stack of cards */
@@ -256,19 +245,6 @@ html.always-show-card-actions .collection-card .card-actions { opacity: 1; }
     .search-bar select { flex: 1 1 0; min-width: 0; }
     .collection-header-actions .btn span { display: none; }
     .collection-header-actions .btn { padding: 0 var(--sp-3); }
-}
-
-/* the Community Hub's cards have no side action strip, so no room kept for one */
-#community-grid.collection-grid:not(.collection-list) { padding-right: 0; }
-/* phones: no spare width beside the cards, so the action strip moves inside
-   the card's top-right corner instead of hanging off its edge */
-@media (max-width: 640px) {
-    .collection-grid:not(.collection-list) { padding-right: 0; }
-    .collection-grid:not(.collection-list) .card-actions {
-        top: 6px; left: auto; right: 6px;
-        padding-left: 0;
-    }
-    .collection-grid:not(.collection-list) .collection-card .card-number { right: auto; left: 10px; }
 }
 
 /* the export menu's rows sit inside .card-actions but aren't its square icon buttons */

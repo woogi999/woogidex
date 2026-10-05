@@ -15,3 +15,8 @@
 # caching means each one is downloaded once per visitor, not once per message
 /emojis/*
   Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
+# the service worker: always checked fresh, so a new release's offline copy
+# replaces the old one on the next visit instead of up to a day later
+/sw.js
+  Cache-Control: no-cache

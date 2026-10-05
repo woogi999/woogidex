@@ -35,7 +35,11 @@ img.emoji.emoji-jumbo { width: 3em; height: 3em; vertical-align: middle; }
     background: transparent; color: var(--text-secondary); cursor: pointer;
 }
 .emoji-button:hover { background: var(--bg-panel); color: var(--accent); }
-.emoji-popover { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 60; }
+/* drawn on <body> and placed from its button (EmojiButton), so no card,
+   thread or modal it opens from can clip it; above everything, modals too */
+.emoji-popover { position: fixed; z-index: 20000; }
+.emoji-char { display: inline-block; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.emoji-picker-tabs-gap { flex: 0 0 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
 
 .emoji-picker {
     width: min(340px, calc(100vw - 32px));
@@ -43,7 +47,9 @@ img.emoji.emoji-jumbo { width: 3em; height: 3em; vertical-align: middle; }
     box-shadow: var(--shadow-lg); padding: 10px; display: flex; flex-direction: column; gap: 8px;
 }
 .emoji-picker-search { width: 100%; }
-.emoji-picker-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-light); padding-bottom: 6px; }
+.emoji-picker-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-light); padding-bottom: 6px; overflow-x: auto; scrollbar-width: none; }
+.emoji-picker-tabs::-webkit-scrollbar { display: none; }
+.emoji-picker-tabs > button { flex: 0 0 auto; }
 .emoji-picker-tabs button {
     width: 34px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary);
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
@@ -64,3 +70,16 @@ img.emoji.emoji-jumbo { width: 3em; height: 3em; vertical-align: middle; }
 .rich-text p { margin: 0 0 .5em; }
 .rich-text p:last-child { margin-bottom: 0; }
 .rich-text a { color: var(--accent); }
+
+/* reaction pickers: one-tap favourites on top, Facebook style */
+.emoji-picker-quick { display: flex; justify-content: space-between; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border-light); }
+.emoji-picker-quick-cell {
+    width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: transform .12s ease, background .12s ease;
+}
+.emoji-picker-quick-cell:hover { background: var(--bg-panel); transform: scale(1.15); }
+.emoji-picker-quick-cell .reaction-heart { color: #e0245e; }
+.reduce-motion .emoji-picker-quick-cell:hover { transform: none; }
+/* the comment line's React link: is-on once you've reacted */
+.comment-meta .comment-act .emoji-button.is-on { color: var(--accent); }

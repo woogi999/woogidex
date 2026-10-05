@@ -1,30 +1,27 @@
-// The Community Hub feed's pieces: a Fakemon card (big picture first, like
-// Instagram), a post (text first, like Tumblr, with the Fakemon it shows
-// off), emoji reactions, the "write a post" box, and the picker for adding
-// your published Fakemon to a post. Data and actions: js/features/social.ts.
+// The Community Hub feed's pieces: a Fakemon card (laid out like Instagram),
+// a post (text first, like Tumblr, with the Fakemon it shows off), reposts
+// and shares, emoji reactions, the "write a post" box, and the picker for
+// adding your published Fakemon to a post. Data and actions: js/features/social.ts.
 
 import { useEffect, useRef, useState } from 'react';
 import { api, state } from '../../core/app.ts';
-import { emojiByName } from '../../core/emoji.ts';
 import { evoBadgeLabel } from '../../features/community-feed-model.ts';
 import { Avatar } from './Avatar.tsx';
 import { BadgeRow } from './Badge.tsx';
 import { Icon } from './Icon.tsx';
-import { EmojiButton, EmojiImg, EmojiInput, RichText } from './EmojiInput.tsx';
+import { EmojiInput, RichText } from './EmojiInput.tsx';
+import { CommentThread, ReactionBar, timeAgo } from './comments.tsx';
+import { notify } from '../store.ts';
 import { LazyArt } from './community.tsx';
 import { TypeBadges } from './profile.tsx';
 import { Modal } from './Modal.tsx';
+import { useClickAway } from './editor/fields.tsx';
 import { registerDialog, openDialog, type DialogProps } from '../dialogs.tsx';
 import type { FeedItem } from '../../features/feed-algorithm.ts';
 
-export function timeAgo(iso: string): string {
-    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.floor(s / 60)}m`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h`;
-    if (s < 86400 * 7) return `${Math.floor(s / 86400)}d`;
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: s > 86400 * 300 ? 'numeric' : undefined });
-}
+// timeAgo lives with the comments now; it's re-exported for the pages that
+// already import it from here
+export { timeAgo };
 
 /** Counts a card as seen once most of it has been on screen for a moment. */
 function useImpression(id: string) {
@@ -72,10 +69,69 @@ function Byline({ item, verb }: { item: FeedItem; verb?: string }) {
     );
 }
 
+// ==================== under every card ====================
+
+/** A card's comments, opened in place under it (like Facebook) rather than on another page. */
+function InlineComments({ kind, item, targetName }: { kind: 'mon' | 'post'; item: FeedItem; targetName?: string }) {
+    return (
+        <div className="feed-comments">
+            <CommentThread kind={kind} parentId={item.id} ownerId={item.user_id} targetName={targetName} autoFocus
+                onCount={n => { if (Number(item.comment_count || 0) !== n) { item.comment_count = n; notify(); } }} />
+        </div>
+    );
+}
+
+export function Reactions({ post }: { post: any }) {
+    return <ReactionBar counts={post.reactions || {}} mine={post.my_reactions || []} always={['heart']} onToggle={emoji => api.toggleReaction(post, emoji)} />;
+}
+
+/** Repost, or share with your own words on top (Threads' Repost / Quote, Facebook's Share). */
+function RepostButton({ item }: { item: FeedItem }) {
+    const [menu, setMenu] = useState(false);
+    const target = api.repostTarget(item);
+    const mine = !!target.reposted_by_me;
+    const ref = useClickAway(menu, () => setMenu(false));
+    return (
+        <div className="feed-menu-wrap feed-repost-wrap" ref={ref}>
+            <button type="button" className={`feed-action${mine ? ' is-reposted' : ''}`} aria-haspopup="menu" aria-expanded={menu}
+                title={mine ? 'Reposted' : 'Repost'} onClick={() => { if (api.requireAccount?.('Sign in to repost.')) setMenu(v => !v); }}>
+                <Icon name="arrow-path-rounded-square" size={18} /><span>{Number(target.repost_count || 0)}</span>
+            </button>
+            {menu && (
+                <div className="feed-menu feed-repost-menu" role="menu">
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); api.toggleRepost(item); }}>
+                        <Icon name="arrow-path-rounded-square" size={14} /> {mine ? 'Undo repost' : 'Repost'}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); openDialog('quote-repost', { item: target }); }}>
+                        <Icon name="pencil-square" size={14} /> Share with your thoughts
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** The same row on every card, Fakémon and posts alike. */
+function FeedActions({ item, comments, onComments }: { item: FeedItem; comments: boolean; onComments: () => void }) {
+    const copy = () => (item.kind === 'mon' ? api.copyCommunityShareLink(item.id) : api.copyPostLink(item.id));
+    return (
+        <div className="feed-actions">
+            <Reactions post={item} />
+            <button type="button" className={`feed-action${comments ? ' is-open' : ''}`} onClick={onComments} aria-expanded={comments} title="Comments">
+                <Icon name="message-circle" size={18} /><span>{Number(item.comment_count || 0)}</span>
+            </button>
+            <RepostButton item={item} />
+            <button type="button" className="feed-action feed-action-end" onClick={copy} title="Copy link"><Icon name="link" size={18} /></button>
+        </div>
+    );
+}
+
 // ==================== a published Fakemon ====================
+// Instagram's order: who posted it, the picture, the actions, then the words.
 
 export function MonFeedCard({ item }: { item: FeedItem }) {
     const ref = useImpression(`mon:${item.id}`);
+    const [comments, setComments] = useState(false);
     const mon = item.fakemon_data || {};
     const evo = evoBadgeLabel(item);
     const open = () => { api.recordOpened?.(item.id, item.user_id); openMon(item); };
@@ -85,23 +141,17 @@ export function MonFeedCard({ item }: { item: FeedItem }) {
             <button type="button" className="feed-mon-art-btn" onClick={open} aria-label={`Open ${mon.name || 'this Fakémon'}`}>
                 <LazyArt row={item as any} className="feed-mon-art">{evo && <span className="community-card-evo-badge">{evo}</span>}</LazyArt>
             </button>
+            <FeedActions item={item} comments={comments} onComments={() => setComments(v => !v)} />
             <div className="feed-mon-body">
                 <div className="feed-mon-title">
                     <button type="button" className="feed-mon-name" onClick={open}>{mon.name || 'Unnamed'}</button>
                     {mon.number && <span className="feed-mon-number">{mon.number}</span>}
+                    <TypeBadges type1={mon.type1} type2={mon.type2} />
                 </div>
                 {mon.species && <div className="feed-mon-species">The {mon.species}</div>}
-                <TypeBadges type1={mon.type1} type2={mon.type2} />
                 {item.caption && <p className="feed-mon-caption">{item.caption}</p>}
             </div>
-            <div className="feed-actions">
-                <button type="button" className={`feed-action${item.liked_by_me ? ' is-on' : ''}`} onClick={() => api.toggleFeedMonLike(item)} aria-pressed={!!item.liked_by_me} title={item.liked_by_me ? 'Unlike' : 'Like'}>
-                    <Icon name="heart" size={18} /><span>{Number(item.like_count || 0)}</span>
-                </button>
-                <button type="button" className="feed-action" onClick={open} title="Comments"><Icon name="message-circle" size={18} /><span>{Number(item.comment_count || 0)}</span></button>
-                <span className="feed-action feed-action-static" title="Views"><Icon name="eye" size={18} /><span>{Number(item.view_count || 0)}</span></span>
-                <button type="button" className="feed-action feed-action-end" onClick={() => api.copyCommunityShareLink(item.id)} title="Copy link"><Icon name="link" size={18} /></button>
-            </div>
+            {comments && <InlineComments kind="mon" item={item} targetName={mon.name || 'your Fakémon'} />}
         </article>
     );
 }
@@ -109,34 +159,6 @@ export function MonFeedCard({ item }: { item: FeedItem }) {
 /** The feed's rows aren't in the hub grid's list; the detail page opens from the id. */
 function openMon(item: FeedItem) {
     api.openPublishedMonById(item.id);
-}
-
-// ==================== reactions ====================
-
-const QUICK_REACTIONS = ['heart'];
-
-function ReactionChip({ emoji, count, mine, onClick }: { emoji: string; count: number; mine: boolean; onClick: () => void }) {
-    const e = emoji === 'heart' ? null : emojiByName(emoji);
-    if (emoji !== 'heart' && !e) return null;     // an emoji this copy of the site doesn't have
-    return (
-        <button type="button" className={`reaction-chip${mine ? ' is-mine' : ''}`} onClick={onClick} aria-pressed={mine} title={`:${emoji}:`}>
-            {e ? <EmojiImg emoji={e} size={18} /> : <Icon name="heart" size={16} className="reaction-heart" />}
-            <span>{count}</span>
-        </button>
-    );
-}
-
-export function Reactions({ post }: { post: any }) {
-    const counts: Record<string, number> = post.reactions || {};
-    const mine: string[] = post.my_reactions || [];
-    const keys = Object.keys(counts).filter(k => counts[k] > 0).sort((a, b) => counts[b] - counts[a]);
-    for (const q of QUICK_REACTIONS) if (!keys.includes(q)) keys.unshift(q);
-    return (
-        <div className="reaction-bar">
-            {keys.map(k => <ReactionChip key={k} emoji={k} count={counts[k] || 0} mine={mine.includes(k)} onClick={() => api.toggleReaction(post, k)} />)}
-            {state.user && <EmojiButton className="reaction-add" title="Add a reaction" onPick={name => api.toggleReaction(post, name)}><Icon name="face-smile" size={18} /><span className="reaction-add-plus">+</span></EmojiButton>}
-        </div>
-    );
 }
 
 // ==================== a post ====================
@@ -165,6 +187,35 @@ export function PostMons({ mons }: { mons: any[] }) {
     );
 }
 
+/** What a share-with-your-thoughts shows of its original: a small card you can open. */
+export function RepostEmbed({ item }: { item: any }) {
+    if (!item || item.missing) return <div className="repost-embed is-missing"><Icon name="no-symbol" size={16} /> This is no longer available.</div>;
+    const name = item.author_name || 'Someone';
+    if (item.kind === 'mon') {
+        const mon = item.fakemon_data || {};
+        return (
+            <button type="button" className="repost-embed is-mon" onClick={() => api.openPublishedMonById(item.id)}>
+                <LazyArt row={item} className="repost-embed-art" />
+                <span className="repost-embed-text">
+                    <span className="repost-embed-by"><Avatar userId={item.user_id} url={item.author_avatar_url} name={name} className="feed-avatar feed-avatar-xs" />{name}</span>
+                    <strong>{mon.name || 'Unnamed'}</strong>
+                    <TypeBadges type1={mon.type1} type2={mon.type2} />
+                </span>
+            </button>
+        );
+    }
+    return (
+        <div className="repost-embed is-post" role="link" tabIndex={0} onClick={() => api.openPost(item.id)} onKeyDown={e => { if (e.key === 'Enter') api.openPost(item.id); }}>
+            <span className="repost-embed-by">
+                <Avatar userId={item.user_id} url={item.author_avatar_url} name={name} className="feed-avatar feed-avatar-xs" />{name}
+                <time dateTime={item.created_at}>{timeAgo(item.created_at)}</time>
+            </span>
+            {item.body && <div className="post-body is-clamped repost-embed-body"><RichText text={item.body} /></div>}
+            {(item.mons || []).length > 0 && <span className="repost-embed-mons">{(item.mons || []).map((m: any) => m.name).filter(Boolean).join(' · ')}</span>}
+        </div>
+    );
+}
+
 export function PostFeedCard({ item, full = false }: { item: FeedItem; full?: boolean }) {
     const ref = useImpression(`post:${item.id}`);
     const isMine = !!state.user && state.user.id === item.user_id;
@@ -172,8 +223,10 @@ export function PostFeedCard({ item, full = false }: { item: FeedItem; full?: bo
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(item.body || '');
     const [menu, setMenu] = useState(false);
+    // the full post page still has its own link; comments open right here
+    const [comments, setComments] = useState(full);
     const open = () => api.openPost(item.id);
-    const verb = (item.mon_ids || []).length ? `shared ${(item.mon_ids || []).length} Fakémon` : '';
+    const verb = item.repost ? 'shared' : (item.mon_ids || []).length ? `shared ${(item.mon_ids || []).length} Fakémon` : '';
     return (
         <article className={`feed-card feed-card-post${full ? ' is-full' : ''}`} ref={ref as any}>
             <div className="feed-card-head">
@@ -206,20 +259,62 @@ export function PostFeedCard({ item, full = false }: { item: FeedItem; full?: bo
                 </div>
             ) : null}
             <PostMons mons={item.mons || []} />
+            {item.repost && <div className="repost-embed-wrap"><RepostEmbed item={item.repost} /></div>}
             {(item.tags || []).length > 0 && (
                 <div className="post-tags">{(item.tags || []).map((t: string) => <span key={t} className="post-tag">#{t}</span>)}</div>
             )}
-            <div className="feed-actions">
-                <Reactions post={item} />
-                <button type="button" className="feed-action feed-action-end" onClick={open} title="Comments"><Icon name="message-circle" size={18} /><span>{Number(item.comment_count || 0)}</span></button>
-            </div>
+            <FeedActions item={item} comments={comments} onComments={() => setComments(v => !v)} />
+            {comments && <InlineComments kind="post" item={item} />}
         </article>
     );
 }
 
-export function FeedCard({ item }: { item: FeedItem }) {
-    return item.kind === 'mon' ? <MonFeedCard item={item} /> : <PostFeedCard item={item} />;
+/** A plain repost (no words of its own): the original's own card, under who reposted it. */
+function RepostedCard({ item }: { item: FeedItem }) {
+    const mine = !!state.user && state.user.id === item.user_id;
+    const original = item.repost;
+    return (
+        <div className="reposted">
+            <div className="reposted-by">
+                <Icon name="arrow-path-rounded-square" size={15} />
+                <button type="button" className="link-btn" onClick={() => api.showUserProfile(item.user_id)}>{mine ? 'You' : item.author_name || 'Someone'}</button>
+                <span>reposted · {timeAgo(item.created_at)}</span>
+            </div>
+            {original.kind === 'mon' ? <MonFeedCard item={original} /> : <PostFeedCard item={original} />}
+        </div>
+    );
 }
+
+export function FeedCard({ item }: { item: FeedItem }) {
+    if (item.kind === 'mon') return <MonFeedCard item={item} />;
+    const plain = item.repost && !item.repost.missing && !item.body && !(item.mon_ids || []).length;
+    return plain ? <RepostedCard item={item} /> : <PostFeedCard item={item} />;
+}
+
+// ==================== sharing with your thoughts ====================
+
+function QuoteRepostDialog({ close, item }: DialogProps<{ item: any }>) {
+    const [text, setText] = useState('');
+    const [busy, setBusy] = useState(false);
+    async function share() {
+        if (busy) return;
+        setBusy(true);
+        const ok = await api.quoteRepost(item, text);
+        setBusy(false);
+        if (ok) close();
+    }
+    return (
+        <Modal onClose={close} title="Share with your thoughts" className="quote-repost-modal">
+            <EmojiInput value={text} onChange={setText} maxLength={4000} rows={3} autoFocus placeholder="Say something about it…" ariaLabel="What you want to say" />
+            <RepostEmbed item={item} />
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+                <button type="button" className="btn btn-primary" disabled={busy || !text.trim()} onClick={share}>{busy ? 'Sharing…' : 'Share'}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('quote-repost', QuoteRepostDialog);
 
 export function FeedSkeleton({ count = 3 }: { count?: number }) {
     return (
@@ -341,54 +436,3 @@ function PickPostMons({ close, selected, onDone }: DialogProps<{ selected: any[]
     );
 }
 registerDialog('pick-post-mons', PickPostMons);
-
-// ==================== comments on a post ====================
-
-export function PostComments({ postId, postOwner, comments }: { postId: string; postOwner: string; comments: any[] | null }) {
-    if (comments === null) return <div className="community-empty">Loading comments…</div>;
-    if (!comments.length) return <div className="community-empty">No comments yet. Say something!</div>;
-    const me = state.user?.id;
-    return (
-        <div className="post-comments">
-            {comments.map(c => {
-                const canDelete = c.user_id === me || postOwner === me || !!api.isStaff?.();
-                return (
-                    <div className="post-comment" key={c.id}>
-                        <Avatar userId={c.user_id} url={c.author_avatar_url} name={c.author_name} className="feed-avatar feed-avatar-sm" />
-                        <div className="post-comment-bubble">
-                            <div className="post-comment-head">
-                                <span className="community-author-link" data-user-id={c.user_id} onClick={() => api.showUserProfile(c.user_id)}>{c.author_name || 'Someone'}</span>
-                                <BadgeRow badgeKeys={c.author_badges} size={12} />
-                                <time className="post-comment-time" title={new Date(c.created_at).toLocaleString()}>{timeAgo(c.created_at)}</time>
-                                {canDelete && (
-                                    <button type="button" className="mon-comment-delete" title="Delete" onClick={() => api.deletePostComment(c.id, postId)}><Icon name="trash-2" size={12} /></button>
-                                )}
-                            </div>
-                            <RichText text={c.body} className="post-comment-body" />
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-export function CommentComposer({ onSubmit, placeholder = 'Write a comment…' }: { onSubmit: (text: string) => Promise<boolean>; placeholder?: string }) {
-    const [text, setText] = useState('');
-    const [busy, setBusy] = useState(false);
-    if (!state.user) return <p className="mon-detail-signin-hint" style={{ display: 'block' }}><a href="#" onClick={e => { e.preventDefault(); api.openAuthModal('signin'); }}>Sign in</a> to comment.</p>;
-    async function send() {
-        if (!text.trim() || busy) return;
-        setBusy(true);
-        const ok = await onSubmit(text);
-        setBusy(false);
-        if (ok) setText('');
-    }
-    return (
-        <div className="comment-composer">
-            <Avatar userId={state.user.id} url={state.user.avatarUrl} name={state.user.displayName || state.user.username} className="feed-avatar feed-avatar-sm" />
-            <EmojiInput value={text} onChange={setText} maxLength={1000} rows={2} placeholder={placeholder} onSubmit={send}
-                tools={<button type="button" className="comment-send" disabled={busy || !text.trim()} onClick={send} aria-label="Post comment"><Icon name="paper-airplane" size={18} /></button>} />
-        </div>
-    );
-}

@@ -146,6 +146,7 @@ function reportLoadFailure(e) {
     if (loadFailureReported) return;
     loadFailureReported = true;
     log.error('STORAGE', 'Collection could not be read; saving is disabled for this session', e);
+    if (api.getCollectionSafetyChecks?.() === false) return;
     // A modal, not a toast: this one has to stop the user before they start
     // creating things on top of a collection that is still recoverable.
     api.warnCollectionLoadFailed?.();
@@ -622,7 +623,10 @@ function normalizeCollections() {
             // read back. Writing here would replace a real collection with whatever
             // this session happens to be holding - which is exactly how a failed
             // read turned into a permanent wipe.
-            if (!collectionLoaded) {
+            // Settings > Data can switch the two load guards below off, for a
+            // browser where the read keeps failing and reloading never helps.
+            const safetyChecks = api.getCollectionSafetyChecks?.() !== false;
+            if (!collectionLoaded && safetyChecks) {
                 log.error('STORAGE', 'Refusing to save: the stored collection was never loaded this session');
                 // straight to the modal: reportLoadFailure() only speaks once per
                 // session, and a user who closed it and then tried to save needs
@@ -634,7 +638,7 @@ function normalizeCollections() {
             // The collection came up empty when this device says it should not have.
             // Until the user tells us which it is, every write is a potential
             // overwrite of data that is still sitting there recoverable.
-            if (isCollectionWipeSuspected()) {
+            if (isCollectionWipeSuspected() && safetyChecks) {
                 log.error('STORAGE', 'Refusing to save while the collection looks wiped');
                 api.warnCollectionLooksWiped?.();
                 return false;
@@ -766,7 +770,13 @@ function normalizeCollections() {
                             || localStorage.getItem('fakemonDB_v3')
                             || localStorage.getItem('fakemonDB_v2')
                             || localStorage.getItem('fakemonDB');
-                        state.fakemonDB = legacy ? JSON.parse(legacy) : [];
+                        // a garbled legacy copy is not a failed read: it used to
+                        // throw here, so this browser could never load (or save)
+                        // again. recovery.ts still sees it untouched.
+                        let parsed: any = [];
+                        try { parsed = legacy ? JSON.parse(legacy) : []; }
+                        catch (err: any) { log.warn('STORAGE', 'Legacy localStorage collection is unreadable; ignoring it', err); }
+                        state.fakemonDB = Array.isArray(parsed) ? parsed : [];
                     }
                     collectionLoaded = true;
                     break;

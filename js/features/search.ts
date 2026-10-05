@@ -7,6 +7,8 @@
 //     abilities / items, all already in memory
 //   - Community Hub posts, by name, species or creator -- signed in only,
 //     since the hub itself asks you to sign in to open a post
+//   - people, by username or display name -- signed in only, for the same
+//     reason (profiles are only readable when signed in)
 
 import { state, api } from '../core/app.ts';
 
@@ -18,6 +20,8 @@ export interface SearchResult {
     art?: string;
     /** a Community Hub post, whose artwork is fetched separately */
     publishedId?: string;
+    /** a person, drawn with their avatar */
+    person?: { id: string; avatarUrl: string; name: string };
     score: number;
     run: () => void;
 }
@@ -28,6 +32,8 @@ export const DROPDOWN_LIMIT = 5;
 export const PAGE_LIMIT = 60;
 export const COMMUNITY_DROPDOWN_LIMIT = 6;
 export const COMMUNITY_PAGE_LIMIT = 40;
+export const PEOPLE_DROPDOWN_LIMIT = 4;
+export const PEOPLE_PAGE_LIMIT = 30;
 
 // ---- places and actions ----
 // keywords widen what a place answers to; `when` hides it if it doesn't apply
@@ -63,11 +69,12 @@ export const ACTIONS: Entry[] = [
 /** what the box offers before you type anything */
 export const QUICK = ['New Fakémon', 'My Collection', 'Community Hub', 'Battle', 'Updates'];
 
-export type GroupKey = 'fakemon' | 'library' | 'community' | 'pages';
+export type GroupKey = 'fakemon' | 'library' | 'people' | 'community' | 'pages';
 /** the result groups, in display order; the page's filter tabs use the keys */
 export const GROUPS: Array<[GroupKey, string]> = [
     ['fakemon', 'Your Fakémon'],
     ['library', 'Your library'],
+    ['people', 'People'],
     ['community', 'Community Hub'],
     ['pages', 'Pages and actions']
 ];
@@ -215,8 +222,35 @@ export async function communityResults(query: string, limit: number): Promise<Se
     })), limit);
 }
 
+/** Creators, by username or display name. */
+export async function peopleResults(query: string, limit: number): Promise<SearchResult[]> {
+    const pattern = communityPattern(query.replace(/^@/, ''));
+    if (!pattern || !state.user) return [];
+    const client = await api.getClient?.();
+    if (!client) return [];
+    const { data, error } = await client
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .or(`username.ilike.${pattern},display_name.ilike.${pattern}`)
+        .not('username', 'is', null)
+        .limit(limit * 2);
+    if (error) throw error;
+    const q = query.replace(/^@/, '');
+    return top((data || []).filter((p: any) => !api.hasBlocked?.(p.id)).map((p: any) => {
+        const name = p.display_name || p.username || 'Someone';
+        return {
+            title: name,
+            sub: p.username ? `@${p.username}` : 'Creator',
+            icon: 'user',
+            person: { id: p.id, avatarUrl: p.avatar_url || '', name },
+            score: Math.max(score(q, p.display_name), score(q, p.username), 1),
+            run: () => api.showUserProfile?.(p.id)
+        };
+    }), limit);
+}
+
 /** Everything in memory, synchronously. */
-export function localGroups(query: string, limit: number): Record<Exclude<GroupKey, 'community'>, SearchResult[]> {
+export function localGroups(query: string, limit: number): Record<Exclude<GroupKey, 'community' | 'people'>, SearchResult[]> {
     return {
         fakemon: fakemonResults(query, limit),
         library: libraryResults(query, limit),

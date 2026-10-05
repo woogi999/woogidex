@@ -111,6 +111,7 @@ function notificationText(n) {
     if (n.type === 'profile_comment') return 'commented on your profile';
     if (n.type === 'follow') return 'started following you';
     if (n.type === 'post_comment') return 'commented on your post';
+    if (n.type === 'repost') return `${n.preview ? 'shared' : 'reposted'} ${n.target_name || 'your post'}`;
     if (n.type === 'mon_deleted') return `removed your Fakemon "${n.target_name || 'submission'}" from the Community Hub`;
     if (n.type === 'contest_submission_deleted') return `removed your contest entry "${n.target_name || 'submission'}"`;
     return `commented on ${n.target_name || 'your Fakemon'}`;
@@ -247,6 +248,77 @@ async function openNotification(id) {
         await api.showProfileView?.(n.actor_id);
     } else if (n.type === 'post_comment' && n.target_id) {
         await api.openPost?.(n.target_id);
+    } else if (n.type === 'repost' && n.target_id) {
+        // "mon:<id>" or "post:<id>": what was reposted
+        const [kind, id] = String(n.target_id).split(':');
+        if (kind === 'mon') await api.openPublishedMonById?.(id);
+        else await api.openPost?.(id);
+    }
+}
+
+// ==================== which kinds you get ====================
+// Saved in a private row (notification_prefs); the server drops a kind you've
+// turned off before it's ever stored, so it can't show up or count as unread.
+// Moderation notices always get through.
+
+/** The kinds you can switch off: [type, label, what it is]. */
+export const NOTIFICATION_KINDS: Array<[string, string, string]> = [
+    ['follow', 'New followers', 'When someone starts following you.'],
+    ['mon_comment', 'Comments on your Fakémon', 'When someone comments on a Fakémon you published.'],
+    ['post_comment', 'Comments on your posts', 'When someone comments on something you posted.'],
+    ['profile_comment', 'Posts on your wall', 'When someone writes on your profile.'],
+    ['repost', 'Reposts and shares', 'When someone reposts or shares your Fakémon or posts.']
+];
+
+const prefState: { userId: string | null; prefs: Record<string, boolean> | null; loading: boolean } = { userId: null, prefs: null, loading: false };
+
+async function loadNotificationPrefs() {
+    const me = state.user?.id;
+    if (!me || prefState.loading) return;
+    prefState.loading = true;
+    try {
+        const client = await api.getClient();
+        const { data, error } = await client.from('notification_prefs').select('prefs').eq('user_id', me).maybeSingle();
+        if (error) throw error;
+        prefState.userId = me;
+        prefState.prefs = data?.prefs || {};
+    } catch (e: any) {
+        log.warn('NOTIFICATIONS', 'Could not load notification settings', e);
+        prefState.prefs = prefState.prefs || {};
+    } finally {
+        prefState.loading = false;
+        notify();
+    }
+}
+
+/** Your settings, or null while they load (asking starts the load). Missing keys mean on. */
+export function notificationPrefs(): Record<string, boolean> | null {
+    if (!state.user) return null;
+    if (prefState.userId !== state.user.id) {
+        prefState.prefs = null;
+        prefState.userId = state.user.id;
+        loadNotificationPrefs();
+    }
+    return prefState.prefs;
+}
+
+/** Turns one kind (or "all") on or off. */
+export async function setNotificationPref(key: string, on: boolean) {
+    const me = state.user?.id;
+    if (!me) return;
+    const before = { ...(prefState.prefs || {}) };
+    const next = { ...before, [key]: on };
+    prefState.prefs = next;
+    notify();
+    try {
+        const client = await api.getClient();
+        const { error } = await client.from('notification_prefs').upsert({ user_id: me, prefs: next, updated_at: new Date().toISOString() });
+        if (error) throw error;
+    } catch (e: any) {
+        prefState.prefs = before;
+        notify();
+        api.showToast?.('Could not save that setting. Please try again.', 'error');
+        log.warn('NOTIFICATIONS', 'Could not save notification settings', e);
     }
 }
 

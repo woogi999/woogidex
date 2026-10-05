@@ -14,13 +14,6 @@
     border: 1px solid var(--border);
 }
 .collection-region-banner[hidden] { display: none; }
-#collection-view.showing-region-details .collection-region-banner,
-#collection-view.showing-region-details .page-header,
-#collection-view.showing-region-details .collection-tabs,
-#collection-view.showing-region-details .collection-toolbar,
-#collection-view.showing-region-details #collection-grid,
-#collection-view.showing-region-details #collection-extra,
-#collection-view.showing-region-details #empty-collection { display: none !important; }
 
 /* the vanilla Pokemon a region brings over: the card frame, marked as borrowed */
 /* clickable and hoverable like your own cards: same actions, same lift */
@@ -149,12 +142,7 @@
 .collection-grid:not(.collection-list) .vanilla-card-tag-inline { display: none; }
 .collection-grid.collection-list .type-tile .card-art .vanilla-card-tag,
 .collection-grid.collection-list .type-tile .card-art .library-tile-corner { display: none; }
-.types-hint {
-    display: flex; align-items: center; gap: var(--sp-2);
-    margin-top: var(--sp-5);
-    font-size: 13px; color: var(--text-muted);
-}
-.types-hint svg { width: 16px; height: 16px; }
+
 .types-empty { margin-top: var(--sp-4); color: var(--text-muted); font-size: 13px; }
 
 .type-chart-section { margin-top: var(--sp-6); }

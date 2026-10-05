@@ -32,7 +32,7 @@ export function Header() {
         <>
             <div className="header-left">
                 <button className="logo logo-button" type="button" onClick={() => api.showCollection()} aria-label="Woogidex home" title="Woogidex">
-                    <img src="assets/woogidex_icon.png" alt="Woogidex" />
+                    <img src="assets/woogidex_logo.png" alt="Woogidex" width="95" height="32" />
                 </button>
                 <GlobalSearch />
             </div>

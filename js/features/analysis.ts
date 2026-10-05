@@ -2197,8 +2197,9 @@ function ensurePanel(){
   scheduleAnalysis();
 }
 async function runFakemonAnalysis(){
-  // Coverage/role scoring reads vanilla learnsets, which load lazily.
-  await api.ensureLearnsets?.();
+  // Coverage/role scoring reads vanilla learnsets, which load lazily, and the
+  // rest of the Showdown data, which boot may still be holding for an idle moment.
+  await Promise.all([api.fetchShowdownData?.(), api.ensureLearnsets?.()]);
   if(analysisBusy)return;
   if(!state.sdLoaded||!Object.keys(state.sdPokedex||{}).length){setView({status:{kind:'busy',text:'Loading data…'}});return;}
   const cfg=getCfg();

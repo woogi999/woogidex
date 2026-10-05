@@ -4,14 +4,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../core/app.ts';
-import { renderCommentMarkdown } from '../../core/data.ts';
 import { Avatar } from './Avatar.tsx';
 import { BadgeIcon, BadgeRow, badgeDefinition } from './Badge.tsx';
-import { Icon } from './Icon.tsx';
 import { ShieldedArt } from './ShieldedArt.tsx';
 
 export interface PublishedRow { id: string; user_id?: string; published_at?: string; fakemon_data?: { name?: string; type1?: string; type2?: string; artwork?: string }; }
-export interface ProfileComment { id: string; user_id: string; body: string; created_at: string; author?: any; }
 
 // ==================== published Fakemon ====================
 
@@ -78,58 +75,6 @@ export function ProfileMons({ mons, loading = false }: { mons?: PublishedRow[]; 
                         <strong>{mon.name || 'Fakemon'}</strong>
                         <TypeBadges type1={mon.type1} type2={mon.type2} />
                     </button>
-                );
-            })}
-        </>
-    );
-}
-
-// ==================== comments on a profile ====================
-
-export function ProfileComments({ comments, loading = false, viewerId = null, viewerIsStaff = false }:
-    { comments?: ProfileComment[]; loading?: boolean; viewerId?: string | null; viewerIsStaff?: boolean }) {
-    if (loading) {
-        return (
-            <>
-                {Array.from({ length: 3 }, (_, i) => (
-                    <div className="profile-comment skel-card" key={i}>
-                        <div className="profile-comment-header">
-                            <span className="community-mini-avatar skel skel-circle" />
-                            <strong className="skel skel-text" style={{ width: 90 }} />
-                        </div>
-                        <div className="profile-comment-body">
-                            <span className="skel skel-text" style={{ width: '95%' }} />
-                            <span className="skel skel-text" style={{ width: '65%' }} />
-                        </div>
-                    </div>
-                ))}
-            </>
-        );
-    }
-    if (!comments?.length) return <div className="profile-empty">No comments yet. Be the first to say hello!</div>;
-    return (
-        <>
-            {comments.map(c => {
-                const author = c.author || {};
-                const name = author.display_name || author.username || 'User';
-                const canDelete = (!!viewerId && c.user_id === viewerId) || viewerIsStaff;
-                return (
-                    <div className="profile-comment" key={c.id}>
-                        <div className="profile-comment-header" title="View profile" data-user-id={c.user_id} onClick={() => api.showUserProfile(c.user_id)}>
-                            <Avatar userId={c.user_id} url={author.avatar_url} name={name} />
-                            <strong>{name}</strong>
-                            <BadgeRow badgeKeys={Array.isArray(author.display_badges) ? author.display_badges : []} size={12} />
-                            <span className="profile-comment-time">{new Date(c.created_at).toLocaleString()}</span>
-                            {canDelete && (
-                                <button type="button" className="mon-comment-delete" title="Delete"
-                                    onClick={e => { e.stopPropagation(); api.deleteProfileComment(c.id); }}>
-                                    <Icon name="trash-2" style={{ width: 12, height: 12 }} />
-                                </button>
-                            )}
-                        </div>
-                        {/* app-generated markup from renderCommentMarkdown, which escapes the text first */}
-                        <div className="profile-comment-body" dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(c.body) }} />
-                    </div>
                 );
             })}
         </>

@@ -6,6 +6,7 @@ import { api } from '../../core/app.ts';
 import { Icon } from './Icon.tsx';
 import { matchParts, type SearchResult } from '../../features/search.ts';
 import { ShieldedArt } from './ShieldedArt.tsx';
+import { Avatar } from './Avatar.tsx';
 
 export function Highlighted({ text, query }: { text: string; query: string }) {
     const parts = matchParts(text, query);
@@ -22,6 +23,7 @@ function Thumb({ result }: { result: SearchResult }) {
         return () => { live = false; };
     }, [result.publishedId]);
 
+    if (result.person) return <span className="gs-thumb is-person"><Avatar userId={result.person.id} url={result.person.avatarUrl} name={result.person.name} className="gs-avatar" /></span>;
     if (result.art) return <span className="gs-thumb is-art"><img src={result.art} alt="" loading="lazy" decoding="async" /></span>;
     if (communityArt) return <span className="gs-thumb is-art"><ShieldedArt src={communityArt} /></span>;
     return <span className="gs-thumb"><Icon name={result.icon || 'search'} /></span>;

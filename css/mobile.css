@@ -132,7 +132,7 @@
     .collection-grid:not(.collection-list) .community-card .card-art .community-card-evo-badge { left: 4px; bottom: 4px; padding: 1px 5px; font-size: 8.5px; }
 
     /* hub landing shelves: three across, like the grids */
-    .community-landing-row { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; }
+    
     .community-landing-card .community-landing-art { padding: 6px; }
     .community-landing-body { padding: 6px 7px 8px; gap: 2px; }
     .community-landing-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -141,7 +141,6 @@
     .community-landing-types .type-badge { flex: 1 1 0; padding: 1px 3px; font-size: 9px; text-align: center; overflow: hidden; text-overflow: ellipsis; }
     .community-landing-stats { font-size: 10px; gap: 6px; }
     .community-landing-stats svg { width: 11px; height: 11px; }
-    .community-landing-section-head { gap: 8px; }
 
     /* profile: a creator's Fakemon, three across */
     .profile-mons-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px; }
@@ -175,7 +174,7 @@
 
     /* ---- modals: full width, room to breathe, never wider than the screen ---- */
     .modal-overlay:not(.as-sheet) .modal { max-width: calc(100vw - 24px); }
-    .modal .modal-footer, .region-modal-actions { flex-wrap: wrap; gap: 8px; }
+    .region-modal-actions { flex-wrap: wrap; gap: 8px; }
 
     /* ---- the uploads meter reads as a bar, not a hairline ---- */
     .cloud-meter-track { height: 8px; }
@@ -224,7 +223,5 @@
     .collection-header-actions { flex-wrap: nowrap !important; gap: 6px !important; }
     .collection-header-actions .collection-regions-btn { flex: 1 1 auto; min-width: 0; }
     .collection-header-actions .btn-icon, .collection-header-actions .btn:not(.collection-regions-btn) { flex: 0 0 auto; padding: 0 9px; }
-    .collection-grid:not(.collection-list),
-    .community-landing-row,
-    .profile-mons-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .collection-grid:not(.collection-list), .profile-mons-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }

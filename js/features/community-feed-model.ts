@@ -29,7 +29,6 @@ const SORT_KEYS = {
     activity: (a, b) => time(a.activity_at || a.published_at) - time(b.activity_at || b.published_at),
     likes: (a, b) => Number(a.like_count || 0) - Number(b.like_count || 0),
     comments: (a, b) => Number(a.comment_count || 0) - Number(b.comment_count || 0),
-    views: (a, b) => Number(a.view_count || 0) - Number(b.view_count || 0),
     name: (a, b) => String(a.fakemon_data?.name || '').localeCompare(String(b.fakemon_data?.name || '')),
     author: (a, b) => String(a.author_name || '').localeCompare(String(b.author_name || '')),
     number: (a, b) => getCommunityDexNumber(a.fakemon_data) - getCommunityDexNumber(b.fakemon_data),

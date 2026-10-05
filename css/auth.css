@@ -4,14 +4,7 @@
    ==================== */
 
 .auth-signed-in { display: flex; }
-.auth-user-email {
-    font-size: 13px;
-    color: var(--text-secondary, #888);
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+
 .auth-modal { max-width: 380px; width: 100%; }
 
 /* The site's own name and mark, on every dialog that asks for a password.
@@ -62,26 +55,14 @@
 .auth-forgot-link:hover { color: var(--accent, #6366f1); text-decoration: underline; }
 
 /* ---- avatar / profile additions ---- */
-.auth-avatar-btn {
-    width: 32px; height: 32px; border-radius: 50%;
-    border: none; padding: 0; cursor: pointer; overflow: hidden;
-    background: var(--accent, #6366f1); flex-shrink: 0;
-}
+
 .auth-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .auth-avatar-fallback {
     width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
     color: #fff; font-size: 14px; font-weight: 700;
 }
-.profile-avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-.profile-avatar-picker {
-    width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
-    background: var(--bg-secondary, #2a2a35); border: 2px dashed var(--border, #444);
-    display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
-}
-.profile-avatar-preview { width: 100%; height: 100%; object-fit: cover; display: block; }
-.profile-avatar-placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-secondary, #888); }
-.profile-avatar-hint { font-size: 12px; color: var(--text-secondary, #888); }
 
+.profile-avatar-preview { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* extends .policy-actions from community.css: error line gets its own row, and
    the destructive button pair is grouped instead of spread by justify-content */

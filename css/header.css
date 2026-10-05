@@ -156,6 +156,8 @@ input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appe
 .gs-thumb svg { width: 17px; height: 17px; }
 .gs-thumb img { width: 100%; height: 100%; object-fit: contain; }
 .gs-thumb.is-art { border-radius: 8px; }
+.gs-thumb.is-person { border-radius: 50%; overflow: hidden; }
+.gs-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; background: var(--accent-soft); color: var(--accent); }
 .gs-text { display: flex; flex-direction: column; min-width: 0; }
 .gs-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gs-title mark { background: none; color: var(--accent); font-weight: 800; }

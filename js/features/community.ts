@@ -78,7 +78,6 @@ function ensureCommunityState() {
             loading: false,
             openMonId: null as any,   // currently open detail page, if any
             openMonRow: null as any,  // the full row object for the open detail page
-            comments: [] as any[],        // comments for the currently open mon
             search: '',
             sortBy: 'activity',
             sortOrder: 'desc',
@@ -619,7 +618,7 @@ async function hydrateCommunityStats(rows) {
 async function countStatsClientSide(client, ids) {
     const [{ data: comments }, { data: likes }] = await Promise.all([
         client.from('mon_comments').select('mon_id').in('mon_id', ids),
-        client.from('mon_likes').select('mon_id, user_id').in('mon_id', ids)
+        client.from('mon_reactions').select('mon_id, user_id, emoji').in('mon_id', ids)
     ]);
     const stats = new Map<any, any>(ids.map(id => [id, { like_count: 0, comment_count: 0, liked_by_me: false }]));
     (comments || []).forEach(r => { const s = stats.get(r.mon_id); if (s) s.comment_count++; });
@@ -627,125 +626,27 @@ async function countStatsClientSide(client, ids) {
         const s = stats.get(r.mon_id);
         if (!s) return;
         s.like_count++;
-        if (state.user && r.user_id === state.user.id) s.liked_by_me = true;
+        if (state.user && r.user_id === state.user.id && r.emoji === 'heart') s.liked_by_me = true;
     });
     return stats;
 }
 
+/** The heart on a hub card or a Fakémon's page: its heart reaction (what used to be a like). */
 async function toggleCommunityLike(publishedId, event) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    if (!state.user) { api.showToast?.('Sign in to like Fakemon.', 'warning'); return; }
-    const client = await api.getClient();
+    if (!state.user) { api.showToast?.('Sign in to react to Fakemon.', 'warning'); return; }
     const cs = ensureCommunityState();
     // A detail page reached from a share link never went through the feed, so
     // the row is not in cs.mons. openMonRow is the one that is always there.
     const row = cs.mons.find(r => r.id === publishedId)
         || (cs.openMonId === publishedId ? cs.openMonRow : null);
-    const liked = !!row?.liked_by_me;
-    if (liked) {
-        const { error } = await client.from('mon_likes').delete().eq('mon_id', publishedId).eq('user_id', state.user.id);
-        if (error) { api.showToast?.('Could not remove like: ' + error.message, 'error'); return; }
-    } else {
-        const { error } = await client.from('mon_likes').insert({ mon_id: publishedId, user_id: state.user.id });
-        if (error) { api.showToast?.('Could not like this Fakemon: ' + error.message, 'error'); return; }
-    }
-    // the feed row and the open post's row may be one object or two
-    for (const r of new Set([row, cs.openMonId === publishedId ? cs.openMonRow : null].filter(Boolean))) {
-        r.liked_by_me = !liked;
-        r.like_count = Math.max(0, Number(r.like_count || 0) + (liked ? -1 : 1));
-    }
-    notify();
+    if (!row) return;
+    await api.toggleFeedMonLike(row);
 }
 
 // the detail page's stat strip reads the open row; this re-renders it
 function renderCommunityDetailStats() {
-    notify();
-}
-
-// ==================== comments ====================
-async function fetchComments(publishedId) {
-    const cs = ensureCommunityState();
-    try {
-        const client = await api.getClient();
-        const { data, error } = await client
-            .from('mon_comments')
-            .select('*')
-            .eq('mon_id', publishedId)
-            .order('created_at', { ascending: true });
-        if (error) throw error;
-        cs.comments = await attachLiveAuthorInfo(data || []);
-        cs.commentsLoaded = true;
-    } catch (e: any) {
-        log.error('COMMUNITY', 'Comments load failed', e);
-        cs.comments = [];
-        // a failed load isn't zero comments - count falls back to the
-        // listing's stored value.
-        cs.commentsLoaded = false;
-    }
-}
-
-/** @returns whether the comment was posted */
-async function postComment(publishedId, body): Promise<boolean> {
-    if (!state.user) { api.showToast?.('Sign in to comment.', 'warning'); return false; }
-    const text = String(body || '').trim();
-    if (!text) return false;
-    if (text.length > 1000) { api.showToast?.('Comments are limited to 1000 characters.', 'warning'); return false; }
-
-    // blocklist scan + standing check; also records infractions and escalates
-    // repeat offenders, so it must run before insert (the trigger can only refuse).
-    if (!(await api.guardContent?.(text, 'mon comment') ?? true)) return false;
-
-    const client = await api.getClient();
-    const payload = {
-        mon_id: publishedId,
-        user_id: state.user!.id,
-        author_name: publicName(state.user),
-        author_avatar_url: state.user!.avatarUrl || null,
-        author_role: state.user!.role || 'user',
-        author_badges: state.user!.badges || [],
-        body: text
-    };
-    const { error } = await client.from('mon_comments').insert(payload);
-    if (error) {
-        log.error('COMMUNITY', 'Comment failed', error);
-        const friendly = api.friendlyModerationError?.(error);
-        api.showToast?.(friendly || ('Comment failed: ' + error.message), 'error');
-        return false;
-    }
-    await fetchComments(publishedId);
-    notify();
-
-    // notify the mon's owner (unless commenting on their own). openMonRow is
-    // reliably set while the comment box is visible, so no extra fetch needed.
-    const cs = ensureCommunityState();
-    const ownerRow = cs.openMonId === publishedId ? cs.openMonRow : null;
-    if (ownerRow) {
-        api.createNotification?.({
-            userId: ownerRow.user_id,
-            actorId: state.user.id,
-            actorName: payload.author_name,
-            actorAvatarUrl: payload.author_avatar_url,
-            type: 'mon_comment',
-            targetId: publishedId,
-            targetName: (ownerRow.fakemon_data || {}).name || 'your Fakemon',
-            preview: text
-        });
-    }
-    return true;
-}
-
-// staff can delete any comment, others only their own. guard dropped for
-// staff since RLS already allows is_staff() - filtering by user_id too would
-// silently no-op staff deletes.
-async function deleteComment(commentId, publishedId) {
-    if (!state.user) return;
-    const client = await api.getClient();
-    let query = client.from('mon_comments').delete().eq('id', commentId);
-    if (!api.isStaff?.()) query = query.eq('user_id', state.user.id);
-    const { error } = await query;
-    if (error) { api.showToast?.('Could not delete comment: ' + error.message, 'error'); return; }
-    await fetchComments(publishedId);
     notify();
 }
 
@@ -869,7 +770,7 @@ function getCommunityPrefs() {
     try {
         const saved = JSON.parse(localStorage.getItem(COMMUNITY_SORT_KEY) || 'null');
         if (saved) {
-            cs.sortBy = ['activity','likes','comments','views','published','name','author','number'].includes(saved.sortBy) ? saved.sortBy : 'activity';
+            cs.sortBy = ['activity','likes','comments','published','name','author','number'].includes(saved.sortBy) ? saved.sortBy : 'activity';
             cs.sortOrder = saved.sortOrder === 'asc' ? 'asc' : 'desc';
         }
     } catch {}
@@ -1357,10 +1258,6 @@ async function openMonDetail(publishedId, options: Record<string, any> = {}) {
     }
     cs.openMonId = publishedId;
     cs.openMonRow = row;
-    // Drop the previous mon's thread so the stat strip falls back to the
-    // stored count rather than briefly showing the last mon's comment total.
-    cs.comments = null;
-    cs.commentsLoaded = false;
     if (!options.preserveRoute) navigateRoute(`community/${encodeURIComponent(String(publishedId))}`);
 
     // if opened via an evolution/mega/forme chip (options.stage), show that
@@ -1389,9 +1286,6 @@ async function openMonDetail(publishedId, options: Record<string, any> = {}) {
         // but log it.
         log.error('COMMUNITY', 'Failed to record view', e);
     }
-
-    await fetchComments(publishedId);
-    notify();
 }
 
 
@@ -1473,26 +1367,6 @@ async function addOpenCommunityMonToCollection() {
 window.exportOpenCommunityMon = exportOpenCommunityMon;
 window.addOpenCommunityMonToCollection = addOpenCommunityMonToCollection;
 
-// the detail page (js/app/pages/CommunityDetailPage.tsx) draws the thread
-function renderCommentsSkeleton() {
-    ensureCommunityState().commentsLoaded = false;
-    notify();
-}
-
-function renderMonComments() {
-    notify();
-}
-
-/**
- * Posts a comment on the open post.
- * @returns whether it was posted
- */
-async function submitMonComment(text): Promise<boolean> {
-    const cs = ensureCommunityState();
-    if (!cs.openMonId) return false;
-    return postComment(cs.openMonId, text);
-}
-
 /** What the Community pages draw from. */
 function communityState() {
     return ensureCommunityState();
@@ -1500,12 +1374,11 @@ function communityState() {
 
 export {
     publishFakemon, publishCurrentEditorFakemon, unpublishMon, unpublishOpenCommunityMon, updatePublishedMon, updateOpenCommunityMon, fetchCommunityFeed,
-    fetchComments, postComment, deleteComment,
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal,
     hasAcceptedCommunityRules, markCommunityRulesAccepted,
-    openMonDetail, openPublishedMonById, closeMonDetail, renderMonComments, submitMonComment, handleCommunityRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
+    openMonDetail, openPublishedMonById, closeMonDetail, handleCommunityRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
     toggleCommunityLike, openCommunityUpdateModal, closeCommunityUpdateModal,
-    renderCommunityGridSkeleton, renderCommentsSkeleton,
+    renderCommunityGridSkeleton,
     switchCommunityPreviewMon, toggleCommunityLayout, applyCommunityLayoutUI, communityLayoutMode, getCommunityPrefs,
     requestCardArtwork,
     showCommunityLanding, browseCommunityFakemon, renderCommunityLanding, featuredThisWeek,
