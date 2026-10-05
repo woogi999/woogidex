@@ -128,7 +128,6 @@ button.st-identity:hover { border-color: var(--border-strong); }
 }
 .st-nav-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .st-nav-label { font-size: 14.5px; font-weight: 700; }
-.st-nav-blurb { font-size: 12px; line-height: 1.35; color: var(--text-secondary); }
 .st-nav-chevron { color: var(--text-muted); flex: 0 0 auto; }
 .st:not(.st-narrow) .st-nav-list .st-nav-chevron { display: none; }
 
@@ -362,7 +361,6 @@ label.st-row:hover { background: color-mix(in srgb, var(--bg-panel) 60%, var(--b
 /* ---------- tablets: a slimmer navigation column ---------- */
 @media (max-width: 1080px) {
     .st { grid-template-columns: 250px minmax(0, 1fr); gap: var(--sp-6); }
-    .st-nav-blurb { display: none; }
 }
 
 /* ---------- phones: navigation is its own screen ---------- */
@@ -377,7 +375,6 @@ label.st-row:hover { background: color-mix(in srgb, var(--bg-panel) 60%, var(--b
 }
 .st-narrow .st-nav-item { border-radius: 0; padding: var(--sp-3) var(--sp-4); }
 .st-narrow .st-nav-item + .st-nav-item { border-top: 1px solid var(--border-light); }
-.st-narrow .st-nav-blurb { display: block; }
 .st-narrow .st-main { margin-top: var(--sp-5); }
 .st-narrow.st-in-section .st-main { margin-top: 0; }
 .st-narrow.st-in-section .st-head { animation: st-slide .24s cubic-bezier(.16, 1, .3, 1) both; }

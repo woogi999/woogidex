@@ -223,7 +223,6 @@ export function SettingsPage() {
                                     onClick={() => open(s.key)}>
                                     <span className="st-nav-text">
                                         <span className="st-nav-label">{s.label}</span>
-                                        <span className="st-nav-blurb">{s.blurb}</span>
                                     </span>
                                     <Icon name="chevron-right" size={16} className="st-nav-chevron" />
                                 </button>
