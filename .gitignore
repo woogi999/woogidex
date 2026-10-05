@@ -1,3 +1,6 @@
 node_modules/
 *.log
 dist/
+
+# wrangler dev-server cache (local only)
+.wrangler/
