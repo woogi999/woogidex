@@ -245,7 +245,6 @@ function openRecoveryModal() {
 export function closeRecoveryModal() {
     closeDialog('lost-fakemon');
     rememberDismissed(candidates.map(m => m.id)); // don't nag every boot for declined items
-    api.maybeShowSiteTransferNotice?.();
 }
 
 /** Restore Selected: the ticked ones go back into the collection. */
@@ -255,10 +254,7 @@ export async function restoreSelectedFakemon(selectedIds: any[] = []) {
     rememberDismissed(candidates.map(m => m.id));
     closeDialog('lost-fakemon');
 
-    if (!toRestore.length) {
-        api.maybeShowSiteTransferNotice?.();
-        return;
-    }
+    if (!toRestore.length) return;
 
     // matched by name, not id -- the recovered copy's id is always new (that's why it was offered)
     const existingNames = new Set(state.fakemonDB.map(f => String(f.name || '').trim().toLowerCase()));
@@ -281,11 +277,7 @@ export async function restoreSelectedFakemon(selectedIds: any[] = []) {
         api.showToast?.(`Restored ${toRestore.length} Fakemon.`, 'success');
     }
 
-    if (newlyDuplicated.length) {
-        openDuplicateModal(newlyDuplicated);
-    } else {
-        api.maybeShowSiteTransferNotice?.();
-    }
+    if (newlyDuplicated.length) openDuplicateModal(newlyDuplicated);
 }
 
 // ==================== possible duplicates ====================
@@ -298,13 +290,12 @@ function openDuplicateModal(restored) {
         .map(m => ({ recoveredId: String(m.id), name: m.name || 'Unnamed Fakemon' }))
         .filter(p => state.fakemonDB.some(f => String(f.id) !== p.recoveredId
             && String(f.name || '').trim().toLowerCase() === p.name.trim().toLowerCase()));
-    if (!pairs.length) { api.maybeShowSiteTransferNotice?.(); return; }
+    if (!pairs.length) return;
     openDialog('duplicate-fakemon', { pairs });
 }
 
 export function closeDuplicateModal() {
     closeDialog('duplicate-fakemon');
-    api.maybeShowSiteTransferNotice?.();
 }
 
 /** Deletes a recovered copy (the dialog then drops its row). */

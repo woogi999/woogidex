@@ -21,7 +21,7 @@ import * as auth from '../features/auth.ts';
 import * as community from '../features/community.ts';
 import * as notifications from './notifications.ts';
 import * as moderation from './moderation.ts';
-import * as events from '../features/contests.ts';
+import * as events from '../features/events.ts';
 import * as abilityBlocks from '../editor/ability-blocks.ts';
 import * as nameRoll from '../tools/name-roll.ts';
 import * as fieldRoll from '../tools/field-roll.ts';
@@ -29,10 +29,9 @@ import * as protect from './protect.ts';
 import * as router from './router.ts';
 import * as recovery from '../features/recovery.ts';
 import * as cloudSave from '../features/cloud-save.ts';
-import * as siteNotice from '../features/site-notice.ts';
 import * as legal from '../features/legal.ts';
 import { mountPages } from '../app/mount.tsx';
-import { mountDialogHost } from '../app/dialogs.tsx';
+import { mountDialogHost, openDialog } from '../app/dialogs.tsx';
 import { notify, markViewShown } from '../app/store.ts';
 import { pushToast } from '../app/shell/Toasts.tsx';
 import * as accountDeletion from '../features/account-deletion.ts';
@@ -282,6 +281,8 @@ const SHEET_VIEWS = { 'editor-view': 'collection-view' };
 
 function activateTopLevelView(viewId, options: Record<string, any> = {}) {
     const { preserveAbilityEditor = false } = options;
+    // the guest view of a public event is one page only; anything else ends it
+    document.body.classList.remove('event-guest');
 
     if (viewId !== 'ability-block-editor-view' && !preserveAbilityEditor) {
         api.onTopLevelNavigation?.(viewId);
@@ -349,7 +350,9 @@ function loadBattle() {
 }
 const battleStubs = {
     loadBattle,
-    openBattle: (...args: any[]) => loadBattle().then(m => m.openBattle(...args)),
+    // ponytail: battles are switched off until the new simulator lands; restore
+    // `loadBattle().then(m => m.openBattle(...args))` to bring them back
+    openBattle: () => openDialog('battle-paused', {}),
     renderBattleSkeleton: (...args: any[]) => loadBattle().then(m => m.renderBattleSkeleton(...args)),
     // only ever asked once a battle is running, by which point the real one is in place
     battleMoveChoices: () => [],
@@ -357,7 +360,7 @@ const battleStubs = {
     onBattleViewLeave: (...args: any[]) => { battleModule?.then(m => m.onBattleViewLeave?.(...args)); }
 };
 
-Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleStubs, abilityBlocks, nameRoll, fieldRoll, protect, router, recovery, cloudSave, siteNotice, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, feedback, moveInheritance, social, messaging, updates, settingsApi, {
+Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleStubs, abilityBlocks, nameRoll, fieldRoll, protect, router, recovery, cloudSave, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, feedback, moveInheritance, social, messaging, updates, settingsApi, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, takeSettingsTab, isDarkModeEnabled,
     setRoute, setPageTitle, setShareMeta, activateTopLevelView,
     updateSettingsUI, loadSettings, showToast
@@ -399,6 +402,10 @@ window.addEventListener('touchstart', (event) => {
 document.addEventListener('DOMContentLoaded', async () => {
     const done = log.time('BOOT', 'Application initialization');
     log.info('BOOT', 'DOMContentLoaded fired');
+    // theme and settings are local: apply them before anything paints, so a
+    // slow or unreachable backend never leaves the page in the wrong theme
+    loadDarkMode();
+    loadSettings();
     // the pages, the shell around them, and the dialog layer (js/app)
     mountPages();
     mountDialogHost();
@@ -419,9 +426,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         case 'events':
             api.renderEventsSkeleton?.();
             break;
-        case 'battle':
-            api.renderBattleSkeleton?.();
-            break;
         case 'profile':
             api.renderProfileLoading?.();
             break;
@@ -436,7 +440,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const authDone = Promise.resolve().then(() => api.initAuth())
         .catch(e => log.error('BOOT', 'Sign-in setup failed; carrying on signed out', e));
     await api.loadFromStorage();
-    await authDone;
+    // Supabase being down must not hold the page hostage: everything local
+    // works without it. Wait briefly so a restored session is there for the
+    // first route, then go on; the header catches up when auth settles.
+    // Pages that live on this device don't wait at all.
+    // ponytail: fixed 2.5s cap, tune if slow networks sign in late too often
+    const LOCAL_ROUTES = new Set(['', 'collection', 'editor', 'ability-editor', 'battle', 'settings', 'privacy', 'terms']);
+    if (!LOCAL_ROUTES.has(bootRoute.name)) await Promise.race([authDone, new Promise(r => setTimeout(r, 2500))]);
     // custom types join the shared type lists before anything draws a type picker
     api.syncCustomTypes?.(true);
     // Showdown data (moves/abilities/items/pokedex, 1MB+) is only needed
@@ -445,7 +455,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // from the Fakemon's own saved fields, so it doesn't block on this fetch.
     // Callers elsewhere show their own loading state if they beat it (see
     // state.sdLoaded checks in editor.ts/analysis.ts/pokedex.ts).
-    const NEEDS_SHOWDOWN_DATA_UP_FRONT = new Set(['editor', 'ability-editor', 'community', 'events', 'battle']);
+    const NEEDS_SHOWDOWN_DATA_UP_FRONT = new Set(['editor', 'ability-editor', 'community', 'events']);
     if (NEEDS_SHOWDOWN_DATA_UP_FRONT.has(bootRoute.name)) await api.fetchShowdownData?.();
     // Everywhere else it waits for the first quiet moment, so parsing ~1 MB of
     // JSON doesn't land on top of the first render (seconds, on a cheap phone).
@@ -454,10 +464,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     else whenIdle(() => api.fetchShowdownData?.());
     if (!isLowEndDevice() && !prefersSavingData()) whenIdle(() => api.ensureLearnsets?.(), 8000);
     // opening the page the address already names must not add an entry
-    const handled = await router.replacingHistory(() => handleRoute(bootRoute));
-    if (!handled) api.renderCollection();
-    loadDarkMode();
-    loadSettings();
+    // not awaited: a route waiting on the network shows its skeleton while
+    // the rest of boot (offline support, art shield, notices) carries on
+    router.replacingHistory(() => handleRoute(bootRoute))
+        .then(handled => { if (!handled) api.renderCollection(); })
+        .catch(e => { log.error('BOOT', 'Could not open the first page', e); api.showCollection?.(); });
     api.initContentProtection?.();
     initArtShield();
     // avatars come from the same masked pipe artwork does; this hands the
@@ -471,12 +482,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Order matters. A collection that did not load, or that came up empty on a
     // device that had Fakemon, is the only thing worth showing first: it tells
     // the user not to create anything yet, and its own buttons lead to the
-    // recovery scan. Otherwise recovery takes priority over the transfer notice;
-    // recovery.ts shows the transfer notice itself once it is done (restored,
-    // dismissed, or nothing found).
-    if (!api.maybeWarnAboutCollectionHealth?.()) {
-        if (!(await api.checkForLostFakemon?.())) api.maybeShowSiteTransferNotice?.();
-    }
+    // recovery scan. Otherwise the lost-Fakemon scan runs.
+    if (!api.maybeWarnAboutCollectionHealth?.()) await api.checkForLostFakemon?.();
     // the unread count on the header's Updates tab
     updates.refreshUpdatesBadge();
     // keeps the site usable offline (js/core/offline.ts)
@@ -518,8 +525,8 @@ async function handleRoute(route) {
         return true;
     }
     if (name === 'privacy' || name === 'terms') return await legal.openLegalPage(name) === true;
-    if (name === 'events') { await api.openEvents?.(); return true; }
-    if (name === 'battle') { await api.openBattle?.(); return true; }
+    if (name === 'events') { await api.openEvents?.(param); return true; }
+    if (name === 'battle') { api.showCollection?.(); api.openBattle?.(); return true; }
     if (name === 'settings') { api.openSettings?.(); return true; }
     if (name === 'search') { await api.openSearchPage?.(new URLSearchParams(window.location.search).get('q') || ''); return true; }
     if (name === 'updates') { await api.openUpdatesPage?.(param === 'credits' ? 'credits' : 'updates'); return true; }

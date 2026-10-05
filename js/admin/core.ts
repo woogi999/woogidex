@@ -31,7 +31,8 @@ export const PERMISSIONS: Array<[string, string, string]> = [
     ['manage_filter', 'Content filter', 'Add, edit and disable auto-moderator rules'],
     ['view_ips', 'View addresses', 'See sign-in / registration IPs and locations'],
     ['view_log', 'Moderation log', 'Read the full moderation history'],
-    ['manage_events', 'Events', 'Create and run events and contests'],
+    ['create_events', 'Organize events', 'Create their own events from the Community Hub and run them'],
+    ['manage_events', 'All events', "Edit, moderate and delete anyone's event"],
     ['manage_badges', 'Badges', 'Create badges and assign them to users'],
     ['manage_limits', 'Limits', 'Set the site-wide quotas and the per-badge overrides'],
     ['manage_feedback', 'Feedback', 'Read and answer feedback and bug reports']
@@ -73,7 +74,7 @@ export async function loadBadges(): Promise<void> {
 // ==================== refreshes across tabs ====================
 // An action in one tab can change what another shows (a mute lands in the mod
 // log); each list reloads when its counter moves.
-export const reloads = { users: 0, log: 0, comments: 0, contests: 0 };
+export const reloads = { users: 0, log: 0, comments: 0 };
 export function reload(which: keyof typeof reloads): void {
     reloads[which]++;
     notify();

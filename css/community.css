@@ -142,7 +142,7 @@
 .auth-terms-check input { width:16px; height:16px; flex:0 0 16px; cursor:pointer; }
 .inline-link-btn { display:inline; vertical-align:baseline; }
 
-/* shared consent-panel style, used by both the Community Rules agreement and the site-transfer "don't show again" box */
+/* shared consent-panel style, used by both the Community Rules agreement */
 .policy-check-row { padding:12px; border-radius:10px; background:var(--bg-panel); border: 0; }
 .policy-check-row .auth-terms-check { color:var(--text-primary); }
 @media (max-width:640px) {

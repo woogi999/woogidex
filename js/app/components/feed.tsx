@@ -192,6 +192,7 @@ export function PostMons({ mons }: { mons: any[] }) {
 /** What a share-with-your-thoughts shows of its original: a small card you can open. */
 export function RepostEmbed({ item }: { item: any }) {
     if (!item || item.missing) return <div className="repost-embed is-missing"><Icon name="no-symbol" size={16} /> This is no longer available.</div>;
+    if (item.kind === 'event') return <EventEmbed item={item} />;
     const name = item.author_name || 'Someone';
     if (item.kind === 'mon') {
         const mon = item.fakemon_data || {};
@@ -214,6 +215,24 @@ export function RepostEmbed({ item }: { item: any }) {
             </span>
             {item.body && <div className="post-body is-clamped repost-embed-body"><RichText text={item.body} /></div>}
             {(item.mons || []).length > 0 && <span className="repost-embed-mons">{(item.mons || []).map((m: any) => m.name).filter(Boolean).join(' · ')}</span>}
+        </div>
+    );
+}
+
+const EVENT_STAGE: Record<string, string> = { upcoming: 'Opens soon', open: 'Taking entries', closed: 'Entries closed', voting: 'Voting', tallying: 'Results soon', ended: 'Ended' };
+
+/** A shared event (js/features/events.ts): its cover, name and where it's at; opens the event. */
+function EventEmbed({ item }: { item: any }) {
+    const open = () => api.openEvents?.(item.id);
+    return (
+        <div className="repost-embed is-event" role="link" tabIndex={0} onClick={open} onKeyDown={e => { if (e.key === 'Enter') open(); }}>
+            <span className="repost-embed-event-art">{item.cover_image ? <img src={item.cover_image} alt="" loading="lazy" draggable={false} /> : <Icon name="trophy" size={24} />}</span>
+            <span className="repost-embed-text">
+                <span className="repost-embed-event-meta"><Icon name="calendar-days" size={13} />Event{item.category ? ` · ${item.category}` : ''} · {EVENT_STAGE[item.stage] || 'Event'}</span>
+                <strong>{item.title}</strong>
+                {item.tagline && <span className="repost-embed-event-tagline">{item.tagline}</span>}
+                <span className="repost-embed-event-meta">{item.entry_count} {Number(item.entry_count) === 1 ? 'entry' : 'entries'}</span>
+            </span>
         </div>
     );
 }
@@ -282,7 +301,9 @@ function RepostedCard({ item }: { item: FeedItem }) {
                 <button type="button" className="link-btn" onClick={() => api.showUserProfile(item.user_id)}>{mine ? 'You' : item.author_name || 'Someone'}</button>
                 <span>reposted · {timeAgo(item.created_at)}</span>
             </div>
-            {original.kind === 'mon' ? <MonFeedCard item={original} /> : <PostFeedCard item={original} />}
+            {original.kind === 'mon' ? <MonFeedCard item={original} />
+                : original.kind === 'event' ? <div className="feed-card feed-event-card"><RepostEmbed item={original} /></div>
+                : <PostFeedCard item={original} />}
         </div>
     );
 }
@@ -295,8 +316,9 @@ export function FeedCard({ item }: { item: FeedItem }) {
 
 // ==================== sharing with your thoughts ====================
 
-function QuoteRepostDialog({ close, item }: DialogProps<{ item: any }>) {
-    const [text, setText] = useState('');
+/** text: words to start from (an event's results post, say) */
+function QuoteRepostDialog({ close, item, text: initial = '' }: DialogProps<{ item: any; text?: string }>) {
+    const [text, setText] = useState(initial);
     const [busy, setBusy] = useState(false);
     async function share() {
         if (busy) return;

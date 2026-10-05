@@ -16,8 +16,7 @@
    which also drains the battery */
 .low-end .notification-dot,
 .low-end .notifications-badge,
-.low-end .not-found-ball,
-.low-end .event-live-dot {
+.low-end .not-found-ball {
     animation: none !important;
 }
 

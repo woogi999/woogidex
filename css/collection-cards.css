@@ -42,6 +42,9 @@
 .collection-card .card-art img { width: 100%; height: 100%; object-fit: contain; }
 .collection-card .card-art .placeholder { font-size: 40px; opacity: .3; color: var(--text-muted); }
 .card-art img { -webkit-user-drag: none; user-select: none; pointer-events: none; }
+/* the no-artwork creature is drawn light-on-white; on a dark theme that's a
+   glaring white blob, so it's inverted to a dark body with a light outline */
+[data-theme="dark"] img.no-art-placeholder { filter: invert(.86) hue-rotate(180deg); }
 /* the dex number sits on the art like a page corner */
 .collection-card .card-art .card-number {
     position: absolute; top: 8px; right: 10px;
@@ -178,13 +181,13 @@ html.always-show-card-actions .collection-card .card-actions { opacity: 1; }
 .collection-card .card-actions button.pinned-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .collection-grid:not(.collection-list) .collection-card { overflow: visible; }
-/* the action buttons sit inside the card, in the artwork's top-right corner,
-   wrapping onto a second row on a narrow card. They used to hang off the
-   card's right edge, over the next card. */
+/* the action buttons sit inside the card, stacked down the artwork's
+   top-right corner; a short card wraps them into a second column to the left.
+   They used to hang off the card's right edge, over the next card. */
 .collection-grid:not(.collection-list) .card-actions {
     position: absolute; top: 6px; right: 6px; z-index: 2;
-    flex-direction: row; flex-wrap: wrap; justify-content: flex-end;
-    max-width: calc(100% - 12px);
+    flex-direction: column; flex-wrap: wrap-reverse; align-content: flex-start;
+    max-height: calc(100% - 12px);
 }
 /* an open export menu still has to float above the neighbouring cards */
 .collection-grid:not(.collection-list) .collection-card:has(.collection-card-export-menu) { z-index: 300; }

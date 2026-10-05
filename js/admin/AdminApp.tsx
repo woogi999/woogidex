@@ -11,11 +11,10 @@ import { UsersTab } from './UsersTab.tsx';
 import { CommentsTab, FilterTab, ModLogTab } from './ModerationTabs.tsx';
 import { FeedbackTab, feedbackOpenCount, refreshOpenCount } from './FeedbackTab.tsx';
 import { BadgesTab, LimitsTab } from './SiteTabs.tsx';
-import { EventsTab } from './EventsTab.tsx';
 import { MessageReportsTab } from './MessageReportsTab.tsx';
 import { Toast } from './ui.tsx';
 
-type TabKey = 'users' | 'comments' | 'messages' | 'filter' | 'history' | 'feedback' | 'badges' | 'events' | 'limits';
+type TabKey = 'users' | 'comments' | 'messages' | 'filter' | 'history' | 'feedback' | 'badges' | 'limits';
 
 const TABS: Array<{ key: TabKey; label: string; icon: string; group: 'Moderation' | 'Site'; needs?: string; Page: ComponentType }> = [
     { key: 'users', label: 'Users', icon: 'users', group: 'Moderation', Page: UsersTab },
@@ -27,7 +26,6 @@ const TABS: Array<{ key: TabKey; label: string; icon: string; group: 'Moderation
     { key: 'history', label: 'Mod log', icon: 'scroll-text', group: 'Moderation', needs: 'view_log', Page: ModLogTab },
     { key: 'feedback', label: 'Feedback', icon: 'message-circle-warning', group: 'Moderation', needs: 'manage_feedback', Page: FeedbackTab },
     { key: 'badges', label: 'Badges', icon: 'award', group: 'Site', needs: 'manage_badges', Page: BadgesTab },
-    { key: 'events', label: 'Events', icon: 'calendar-days', group: 'Site', needs: 'manage_events', Page: EventsTab },
     { key: 'limits', label: 'Limits', icon: 'gauge', group: 'Site', needs: 'manage_limits', Page: LimitsTab }
 ];
 

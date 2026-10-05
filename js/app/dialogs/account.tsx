@@ -1,8 +1,8 @@
 // Account and safety dialogs: finishing account setup, the Terms (read
-// during sign-up), scheduling account deletion and its sign-in notice, the
-// site-move notice, and the collection health warnings with lost-Fakémon
+// during sign-up), scheduling account deletion and its sign-in notice, and the
+// collection health warnings with lost-Fakémon
 // recovery. The logic is in js/features/{auth,legal,account-deletion,
-// site-notice,recovery}.js.
+// recovery}.js.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../core/app.ts';
@@ -156,33 +156,6 @@ function DeletionNoticeDialog({ when, close }: DialogProps<{ when: string }>) {
     );
 }
 
-// ---- the site's move to a new address ----
-
-function SiteTransferDialog(_: DialogProps) {
-    const [neverShow, setNeverShow] = useState(false);
-    const done = () => api.closeSiteTransferNotice(neverShow);
-    return (
-        <PolicyDialog title="We're Moving to dex.woogi.xyz" close={done}>
-            <p>Woogidex is moving to a new address: <span className="site-transfer-url">dex.woogi.xyz</span>. Your collection is saved in this browser only, so it will not follow you to the new site automatically. You'll need to bring it over yourself.</p>
-            <ol className="site-transfer-steps">
-                <li>On this site's Collection page, click <strong>Export Collection</strong> and choose <strong>Export as JSON</strong> to download a backup file.</li>
-                <li>Go to <span className="site-transfer-url">dex.woogi.xyz</span> and sign in (or create an account).</li>
-                <li>On its Collection page, click <strong>Import</strong> and choose the file you just downloaded.</li>
-            </ol>
-            <p>That brings over every Fakémon with its artwork and movesets, plus your custom moves, abilities, and items. Folders and battle teams don't travel with it, so you'll need to rebuild those on the new site.</p>
-            <div className="policy-actions">
-                <div className="policy-check-row">
-                    <label className="auth-terms-check">
-                        <input type="checkbox" checked={neverShow} onChange={e => setNeverShow(e.target.checked)} autoComplete="off" />
-                        <span>Don't show this again</span>
-                    </label>
-                </div>
-                <button type="button" className="btn btn-primary" onClick={done}>Got it</button>
-            </div>
-        </PolicyDialog>
-    );
-}
-
 // ---- "something is wrong with your collection" ----
 
 const WARNINGS: Record<string, { title: string; body: ReactNode }> = {
@@ -287,7 +260,6 @@ registerDialog('account-setup', AccountSetupDialog);
 registerDialog('terms', TermsDialog);
 registerDialog('delete-account', DeleteAccountDialog);
 registerDialog('account-deletion-notice', DeletionNoticeDialog);
-registerDialog('site-transfer', SiteTransferDialog);
 registerDialog('collection-warning', CollectionWarningDialog);
 registerDialog('lost-fakemon', LostFakemonDialog);
 registerDialog('duplicate-fakemon', DuplicateFakemonDialog);

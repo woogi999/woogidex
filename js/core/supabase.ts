@@ -16,11 +16,21 @@ export const SUPABASE_URL = USE_SAME_ORIGIN_PROXY && typeof window !== 'undefine
 
 let supabase: any = null;
 
+const FETCH_TIMEOUT_MS = 30000;
+function timedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+    const signal = init.signal && 'any' in AbortSignal ? (AbortSignal as any).any([init.signal, timeout]) : init.signal || timeout;
+    return fetch(input, { ...init, signal });
+}
+
 export async function getClient() {
     if (supabase) return supabase;
     const { createClient } = await import('@supabase/supabase-js');
     supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { persistSession: true, autoRefreshToken: true }
+        auth: { persistSession: true, autoRefreshToken: true },
+        // a backend that's down often hangs instead of failing; this turns a
+        // hang into an error, so loaders fall through to their error state
+        global: { fetch: timedFetch }
     });
     return supabase;
 }

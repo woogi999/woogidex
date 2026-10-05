@@ -397,6 +397,12 @@ verify_jwt = true
 # only a signed-in user should be able to log an event for themselves.
 verify_jwt = true
 
+[functions.submit-event-guest]
+# Guests entering a public event have no session, so they reach it with the
+# anon key like the sign-in endpoints. Turnstile plus the database's
+# per-address limits are what keep it from being a spam pipe.
+verify_jwt = true
+
 [functions.admin-ip-lookup]
 # only a signed-in user should reach this at all; the function then further
 # requires the caller to hold the `view_ips` permission via my_permissions().

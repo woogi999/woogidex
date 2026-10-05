@@ -10,7 +10,7 @@ import { EventsPanel } from '../components/EventsPanel.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Avatar } from '../components/Avatar.tsx';
 import { FeedCard, FeedSkeleton, PostComposer } from '../components/feed.tsx';
-import { getLiveContests } from '../../features/contests.ts';
+import { events, getLiveEvents, showEventView } from '../../features/events.ts';
 import { useStore } from '../store.ts';
 import type { FeedItem } from '../../features/feed-algorithm.ts';
 
@@ -34,7 +34,7 @@ export function CommunityPage() {
                 <nav className="hub-nav-list" id="community-tabs" role="tablist" aria-orientation="vertical">
                     {TABS.map(([key, label]) => (
                         <button key={key} className={`hub-nav-item${panel === key ? ' active' : ''}`} type="button" role="tab" aria-selected={panel === key}
-                            onClick={() => api.showCommunityPanel(key)}>{label}</button>
+                            onClick={() => { if (key === 'events') events.view = { kind: 'list' }; api.showCommunityPanel(key); }}>{label}</button>
                     ))}
                 </nav>
             </aside>
@@ -175,23 +175,20 @@ function FeaturedMini() {
     );
 }
 
-// contests have a deadline, so they sit at the top of the rail while one is live
+// live events have a deadline, so they sit at the top of the rail
 function LiveContests() {
-    const live = getLiveContests();
+    const live = getLiveEvents();
     if (!live.length) return null;
     return (
         <section className="feed-rail-card community-contest-section">
-            <h3><span className="event-live-dot" /> Happening now</h3>
-            {live.slice(0, 3).map(c => {
-                const n = (c.submissions || []).length;
-                return (
-                    <button type="button" className="community-contest-card" key={c.id} onClick={() => api.showCommunityPanel('events')}>
-                        <span className="community-contest-phase">{c.phase === 'voting' ? 'Voting open' : 'Accepting entries'}</span>
-                        <strong>{c.title || 'Contest'}</strong>
-                        <span className="community-contest-count">{n} entr{n === 1 ? 'y' : 'ies'}</span>
-                    </button>
-                );
-            })}
+            <h3>Happening now</h3>
+            {live.slice(0, 3).map(ev => (
+                <button type="button" className="community-contest-card" key={ev.id} onClick={() => { api.showCommunityPanel('events'); showEventView({ kind: 'event', id: ev.id }); }}>
+                    <span className="community-contest-phase">{ev.phase === 'voting' ? 'Voting open' : 'Taking entries'}</span>
+                    <strong>{ev.title}</strong>
+                    {ev.category && <span className="community-contest-count">{ev.category}</span>}
+                </button>
+            ))}
         </section>
     );
 }

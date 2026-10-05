@@ -812,7 +812,7 @@ function renderCommunityGrid() {
 const COMMUNITY_PANELS = {
     feed:    { title: 'Community Hub' },
     browse:  { title: 'Browse Fakemon' },
-    events:  { title: 'Events and contests' },
+    events:  { title: 'Events' },
     uploads: { title: 'My uploads' }
 };
 

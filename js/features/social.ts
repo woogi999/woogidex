@@ -475,7 +475,7 @@ function notifyRepost(target: any, text: string) {
     api.createNotification?.({
         userId: target.user_id, actorId: state.user!.id, actorName: publicName(state.user), actorAvatarUrl: state.user!.avatarUrl || null,
         type: 'repost', targetId: `${target.kind}:${target.id}`,
-        targetName: target.kind === 'mon' ? (target.fakemon_data?.name || target.name || 'your Fakémon') : 'your post',
+        targetName: target.kind === 'mon' ? (target.fakemon_data?.name || target.name || 'your Fakémon') : target.kind === 'event' ? (target.title || 'your event') : 'your post',
         preview: text
     });
 }

@@ -119,6 +119,8 @@ function renderCommentMarkdown(value) {
         out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
         out = out.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
         out = out.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+        // ||spoiler||, Discord style: hidden until clicked or focused (css/emoji.css, no script)
+        out = out.replace(/\|\|([^|\n]+)\|\|/g, '<span class="rt-spoiler" tabindex="0">$1</span>');
         out = out.replace(/\u0000E(\d+)\u0000/g, (_, i) => emojis[Number(i)]);
         out = out.replace(/\u0000C(\d+)\u0000/g, (_, i) => `<code>${code[Number(i)]}</code>`);
         out = out.replace(/\u0000L(\d+)\u0000/g, (_, i) => {
@@ -134,9 +136,17 @@ function renderCommentMarkdown(value) {
     let quote = false;
     const closeList = () => { if (list) { html.push(`</${list}>`); list=null; } };
     const closeQuote = () => { if (quote) { html.push('</blockquote>'); quote=false; } };
+    let fence: string[] | null = null;   // lines of an open ``` block, kept verbatim
     for (const line of lines) {
         const trimmed = line.trim();
+        if (trimmed.startsWith('```')) {
+            if (fence) { html.push(`<pre><code>${escape(fence.join('\n'))}</code></pre>`); fence = null; }
+            else { closeList(); closeQuote(); fence = []; }
+            continue;
+        }
+        if (fence) { fence.push(line); continue; }
         if (!trimmed) { closeList(); closeQuote(); continue; }
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) { closeList(); closeQuote(); html.push('<hr>'); continue; }
         const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
         if (heading) { closeList(); closeQuote(); const level=heading[1].length; html.push(`<h${level}>${inline(heading[2])}</h${level}>`); continue; }
         const bullet = trimmed.match(/^[-*]\s+(.+)$/);
@@ -147,6 +157,7 @@ function renderCommentMarkdown(value) {
         if (quoteLine) { closeList(); if (!quote) { html.push('<blockquote>'); quote=true; } html.push(`<p>${inline(quoteLine[1])}</p>`); continue; }
         closeList(); closeQuote(); html.push(`<p>${inline(trimmed)}</p>`);
     }
+    if (fence) html.push(`<pre><code>${escape(fence.join('\n'))}</code></pre>`);
     closeList(); closeQuote();
     return html.join('');
 }

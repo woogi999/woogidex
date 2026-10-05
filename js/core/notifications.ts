@@ -249,9 +249,10 @@ async function openNotification(id) {
     } else if (n.type === 'post_comment' && n.target_id) {
         await api.openPost?.(n.target_id);
     } else if (n.type === 'repost' && n.target_id) {
-        // "mon:<id>" or "post:<id>": what was reposted
+        // "mon:<id>", "post:<id>" or "event:<id>": what was reposted
         const [kind, id] = String(n.target_id).split(':');
         if (kind === 'mon') await api.openPublishedMonById?.(id);
+        else if (kind === 'event') await api.openEvents?.(id);
         else await api.openPost?.(id);
     }
 }

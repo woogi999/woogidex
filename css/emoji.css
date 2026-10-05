@@ -69,7 +69,25 @@ img.emoji.emoji-jumbo { width: 3em; height: 3em; vertical-align: middle; }
 
 .rich-text p { margin: 0 0 .5em; }
 .rich-text p:last-child { margin-bottom: 0; }
-.rich-text a { color: var(--accent); }
+.rich-text a { color: var(--accent); text-underline-offset: 3px; }
+.rich-text h1, .rich-text h2, .rich-text h3 { color: var(--text-primary); line-height: 1.25; margin: 1em 0 .4em; letter-spacing: -0.01em; }
+.rich-text h1 { font-size: 1.5em; }
+.rich-text h2 { font-size: 1.25em; }
+.rich-text h3 { font-size: 1.08em; }
+.rich-text > :first-child { margin-top: 0; }
+.rich-text ul, .rich-text ol { margin: 0 0 .6em; padding-left: 1.4em; }
+.rich-text li + li { margin-top: .2em; }
+.rich-text blockquote { margin: 0 0 .6em; padding: .1em 0 .1em .9em; border-left: 1px solid var(--border-strong); color: var(--text-secondary); }
+.rich-text code { padding: .1em .35em; border-radius: 5px; background: var(--bg-panel); font-family: 'Inconsolata', monospace; font-size: .92em; }
+.rich-text pre { margin: 0 0 .7em; padding: .7em .9em; border-radius: 8px; background: var(--bg-panel); overflow-x: auto; }
+.rich-text pre code { padding: 0; background: none; white-space: pre; }
+.rich-text hr { border: 0; border-top: 1px solid var(--border); margin: 1em 0; }
+.rich-text del { color: var(--text-muted); }
+/* ||spoiler||: hidden until clicked or tabbed to */
+.rich-text .rt-spoiler { border-radius: 4px; background: var(--text-primary); color: transparent; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.rich-text .rt-spoiler img { visibility: hidden; }
+.rich-text .rt-spoiler:focus, .rich-text .rt-spoiler:focus-within { background: var(--bg-panel); color: inherit; outline: none; }
+.rich-text .rt-spoiler:focus img { visibility: visible; }
 
 /* reaction pickers: one-tap favourites on top, Facebook style */
 .emoji-picker-quick { display: flex; justify-content: space-between; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border-light); }
