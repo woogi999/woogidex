@@ -9,11 +9,23 @@ import { SampleSets } from './SampleSets.tsx';
 import { Icon } from '../Icon.tsx';
 import '../../dialogs/sampleSets.tsx';
 
+const COMPACT_KEY = 'woogidex.learnset.compact';
+
 export function MovesTab() {
+    const [compact, setCompact] = useState(() => { try { return localStorage.getItem(COMPACT_KEY) === '1'; } catch { return false; } });
+    const toggleCompact = () => {
+        setCompact(!compact);
+        try { localStorage.setItem(COMPACT_KEY, compact ? '0' : '1'); } catch { /* just this visit then */ }
+    };
     return (
         <>
-            <div className="form-group">
-                <label>Learnset</label>
+            <div className={`form-group${compact ? ' learnset-compact' : ''}`}>
+                <div className="learnset-head">
+                    <label>Learnset</label>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={toggleCompact} aria-pressed={compact} title={compact ? 'Show roomy cards' : 'Show a compact list'}>
+                        <Icon name={compact ? 'squares-2x2' : 'list-bullet'} size={14} /> {compact ? 'Cards' : 'Compact list'}
+                    </button>
+                </div>
                 <p className="field-hint">Add your moves here!</p>
                 <LearnsetFilters />
                 <LearnsetList />

@@ -103,7 +103,7 @@ export function connectionBanner(meta: Record<string, any> = {}): {tone: 'bad'|'
     // STUN-only, and saying so turns a silent failure into something the player
     // -- or whoever runs the site -- can act on.
     const note = status !== 'connected' && meta.rtc && meta.rtc.hasTurn === false
-        ? "No relay server available - if this doesn't connect, the metered-ice function needs its Metered.ca credentials."
+        ? "No relay server available - if this doesn't connect, the worker's TURN secrets (TURN_KEY_ID / TURN_API_TOKEN) need setting."
         : '';
 
     return {

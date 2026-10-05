@@ -10,7 +10,7 @@ import { Avatar } from './Avatar.tsx';
 import { BadgeRow } from './Badge.tsx';
 import { Icon } from './Icon.tsx';
 import { EmojiInput, RichText } from './EmojiInput.tsx';
-import { CommentThread, ReactionBar, timeAgo } from './comments.tsx';
+import { CommentThread, ReactionSummary, timeAgo } from './comments.tsx';
 import { notify } from '../store.ts';
 import { LazyArt } from './community.tsx';
 import { TypeBadges } from './profile.tsx';
@@ -82,10 +82,11 @@ function InlineComments({ kind, item, targetName }: { kind: 'mon' | 'post'; item
 }
 
 export function Reactions({ post }: { post: any }) {
-    return <ReactionBar counts={post.reactions || {}} mine={post.my_reactions || []} always={['heart']} onToggle={emoji => api.toggleReaction(post, emoji)} />;
+    const kind = post.kind === 'mon' ? 'mon' : 'post';
+    return <ReactionSummary kind={kind} id={post.id} counts={post.reactions || {}} mine={post.my_reactions || []} onToggle={emoji => api.toggleReaction({ ...post, kind }, emoji)} />;
 }
 
-/** Repost, or share with your own words on top (Threads' Repost / Quote, Facebook's Share). */
+/** Repost, share with your own words on top (Threads' Repost / Quote, Facebook's Share), or copy the link. */
 function RepostButton({ item }: { item: FeedItem }) {
     const [menu, setMenu] = useState(false);
     const target = api.repostTarget(item);
@@ -94,16 +95,19 @@ function RepostButton({ item }: { item: FeedItem }) {
     return (
         <div className="feed-menu-wrap feed-repost-wrap" ref={ref}>
             <button type="button" className={`feed-action${mine ? ' is-reposted' : ''}`} aria-haspopup="menu" aria-expanded={menu}
-                title={mine ? 'Reposted' : 'Repost'} onClick={() => { if (api.requireAccount?.('Sign in to repost.')) setMenu(v => !v); }}>
+                title={mine ? 'Reposted' : 'Share'} onClick={() => setMenu(v => !v)}>
                 <Icon name="arrow-path-rounded-square" size={18} /><span>{Number(target.repost_count || 0)}</span>
             </button>
             {menu && (
                 <div className="feed-menu feed-repost-menu" role="menu">
-                    <button type="button" role="menuitem" onClick={() => { setMenu(false); api.toggleRepost(item); }}>
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); if (api.requireAccount?.('Sign in to repost.')) api.toggleRepost(item); }}>
                         <Icon name="arrow-path-rounded-square" size={14} /> {mine ? 'Undo repost' : 'Repost'}
                     </button>
-                    <button type="button" role="menuitem" onClick={() => { setMenu(false); openDialog('quote-repost', { item: target }); }}>
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); if (api.requireAccount?.('Sign in to share.')) openDialog('quote-repost', { item: target }); }}>
                         <Icon name="pencil-square" size={14} /> Share with your thoughts
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); target.kind === 'mon' ? api.copyCommunityShareLink(target.id) : api.copyPostLink(target.id); }}>
+                        <Icon name="link" size={14} /> Copy link
                     </button>
                 </div>
             )}
@@ -113,7 +117,6 @@ function RepostButton({ item }: { item: FeedItem }) {
 
 /** The same row on every card, Fakémon and posts alike. */
 function FeedActions({ item, comments, onComments }: { item: FeedItem; comments: boolean; onComments: () => void }) {
-    const copy = () => (item.kind === 'mon' ? api.copyCommunityShareLink(item.id) : api.copyPostLink(item.id));
     return (
         <div className="feed-actions">
             <Reactions post={item} />
@@ -121,7 +124,6 @@ function FeedActions({ item, comments, onComments }: { item: FeedItem; comments:
                 <Icon name="message-circle" size={18} /><span>{Number(item.comment_count || 0)}</span>
             </button>
             <RepostButton item={item} />
-            <button type="button" className="feed-action feed-action-end" onClick={copy} title="Copy link"><Icon name="link" size={18} /></button>
         </div>
     );
 }
@@ -322,7 +324,7 @@ export function FeedSkeleton({ count = 3 }: { count?: number }) {
             {Array.from({ length: count }, (_, i) => (
                 <div className="feed-card skel-card" key={i}>
                     <div className="feed-byline"><span className="feed-avatar skel skel-circle" /><span className="skel skel-text" style={{ width: 140 }} /></div>
-                    <div className="feed-mon-art skel" style={{ aspectRatio: i % 2 ? '16 / 7' : '1 / 1' }} />
+                    <div className="feed-mon-art skel" style={{ aspectRatio: i % 2 ? '16 / 7' : '4 / 3' }} />
                     <div className="feed-mon-body"><span className="skel skel-text" style={{ width: '60%' }} /><span className="skel skel-text" style={{ width: '40%' }} /></div>
                 </div>
             ))}

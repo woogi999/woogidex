@@ -15,11 +15,11 @@
 .ui-icon.spin { animation: woogi-spin .9s linear infinite; }
 @keyframes woogi-spin { to { transform: rotate(360deg); } }
 
-.feed-layout { display: grid; grid-template-columns: minmax(0, 470px) 300px; gap: var(--sp-6); justify-content: center; align-items: start; }
+.feed-layout { display: grid; grid-template-columns: minmax(0, 640px) 300px; gap: var(--sp-6); justify-content: center; align-items: start; }
 .feed-main { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 .feed-rail { position: sticky; top: calc(var(--header-h) + var(--sp-4)); display: flex; flex-direction: column; gap: var(--sp-4); }
 @media (max-width: 1000px) {
-    .feed-layout { grid-template-columns: minmax(0, 470px); }
+    .feed-layout { grid-template-columns: minmax(0, 640px); }
     .feed-rail { position: static; }
 }
 
@@ -61,11 +61,10 @@
 .feed-follow-btn:hover { background: var(--accent); color: #fff; }
 .feed-following-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-muted); flex: 0 0 auto; }
 
-/* Fakemon, Instagram style: the square picture, the actions right under it,
-   then the name and caption. The feed column is Instagram-narrow (470px), so
-   the picture is a comfortable square rather than a wall. */
+/* Fakemon, Facebook style: a wide frame with the art kept square inside it,
+   the actions right under it, then the name and caption. */
 .feed-mon-art-btn { border: 0; padding: 0; background: var(--bg-panel); cursor: pointer; display: block; width: 100%; }
-.feed-mon-art { position: relative; width: 100%; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; background: var(--bg-panel); padding: 6%; box-sizing: border-box; }
+.feed-mon-art { position: relative; width: 100%; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; background: var(--bg-panel); padding: 4%; box-sizing: border-box; overflow: hidden; }
 .feed-mon-art img, .feed-mon-art canvas { width: 100%; height: 100%; object-fit: contain; }
 .feed-mon-art .no-art-placeholder { width: 40%; height: auto; opacity: .5; }
 .feed-mon-body { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 4px; }
@@ -108,14 +107,20 @@
     position: relative; border: 0; padding: 0; border-radius: var(--card-r); overflow: hidden; background: var(--bg-panel); cursor: pointer;
     display: flex; flex-direction: column; text-align: left;
 }
-.post-mon-art { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; }
+.post-mon-art { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .post-mons-1 .post-mon-art { aspect-ratio: 4 / 3; }
 .post-mon-art img, .post-mon-art canvas { width: 100%; height: 100%; object-fit: contain; }
 .post-mon-art .no-art-placeholder { width: 45%; height: auto; opacity: .5; }
 .post-mon-label { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; font-size: 13px; color: var(--text-primary); }
 .post-mon-label strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.post-mon-types { display: flex; gap: 3px; flex: 0 0 auto; }
-.post-mon-types .type-badge { font-size: 9px; padding: 2px 5px; }
+.post-mon-types { display: flex; gap: 4px; flex: 0 0 auto; }
+/* type badges inside cards: the base .type-badge is sized for a dex page
+   (72px minimum), which crammed and overflowed at feed size */
+.feed-card .card-types, .repost-embed .card-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.feed-card .type-badge, .repost-embed .type-badge {
+    min-width: 0; padding: 2px 8px; font-size: 10.5px; line-height: 1.4; border-radius: 5px;
+}
+.post-mon-types .type-badge { padding: 1px 6px; font-size: 9.5px; }
 .post-mon:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ---- reactions ---- */
@@ -131,6 +136,47 @@
 .reaction-chip .reaction-heart { color: #e0245e; }
 .reaction-add .emoji-button { height: 30px; border-radius: 999px; border: 1px dashed var(--border-strong); }
 .reaction-add-plus { font-weight: 800; font-size: 13px; }
+
+/* the feed's summary: React button, then the top three and a total (opens everyone's) */
+.reaction-summary { display: flex; align-items: center; gap: 4px; }
+.reaction-react .emoji-button { gap: 6px; height: 34px; padding: 0 10px; border-radius: 999px; font: 600 13px 'Exo 2', sans-serif; }
+.reaction-react .emoji-button.is-on { color: var(--accent); }
+.reaction-react img.emoji { width: 18px; height: 18px; margin: 0; }
+.reaction-top {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 4px; border: 0; border-radius: 999px;
+    background: transparent; color: var(--text-secondary); font: 600 13px 'Exo 2', sans-serif; cursor: pointer;
+}
+.reaction-top:hover { background: var(--bg-panel); color: var(--text-primary); text-decoration: underline; }
+.reaction-top-icons { display: inline-flex; }
+.reaction-top-icon {
+    width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-card); box-shadow: 0 0 0 2px var(--bg-card); margin-left: -6px;
+}
+.reaction-top-icon:first-child { margin-left: 0; }
+.reaction-top-icon img.emoji { width: 16px; height: 16px; margin: 0; }
+.reaction-top-icon .reaction-heart { color: #e0245e; }
+
+.reaction-list-modal { max-width: 420px; }
+.reaction-list-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border-light); padding-bottom: 6px; margin-bottom: 6px; }
+.reaction-list-tabs button {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 10px; border: 0; border-radius: 999px;
+    background: transparent; color: var(--text-secondary); font: 700 13px 'Exo 2', sans-serif; cursor: pointer;
+}
+.reaction-list-tabs button.active { background: var(--accent-soft); color: var(--accent); }
+.reaction-list-tabs img.emoji { width: 16px; height: 16px; margin: 0; }
+.reaction-list { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; }
+.reaction-list-row {
+    display: flex; align-items: center; gap: 10px; padding: 6px 4px; border: 0; border-radius: 8px; background: transparent;
+    color: var(--text-primary); font: 600 14px 'Exo 2', sans-serif; text-align: left; cursor: pointer;
+}
+.reaction-list-row:hover { background: var(--bg-panel); }
+.reaction-list-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reaction-list-row img.emoji { width: 18px; height: 18px; margin: 0; }
+.reaction-list-row .reaction-heart { color: #e0245e; }
+
+/* the hub grid and a Fakémon's page use the same summary, a size down */
+.community-reactions .reaction-react .emoji-button { height: 28px; padding: 0 8px; font-size: 12px; }
+.community-reactions .reaction-top { height: 28px; font-size: 12px; }
 
 /* ---- the menu on a post ---- */
 .feed-menu-wrap { position: relative; padding: 10px 10px 0 0; }
@@ -348,3 +394,5 @@
 .repost-embed-mons { font-size: 12.5px; color: var(--text-muted); }
 .feed-avatar-xs, canvas.feed-avatar-xs, img.feed-avatar-xs { width: 20px; height: 20px; font-size: 10px; }
 .quote-repost-modal .emoji-input { margin-bottom: 12px; }
+.community-card .reaction-react-label { display: none; }
+.community-card .reaction-react .emoji-button { padding: 0 6px; min-width: 28px; }

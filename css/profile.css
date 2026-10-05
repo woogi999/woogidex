@@ -250,3 +250,16 @@
 .follow-dialog-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: 100%; color: var(--text-muted); text-align: center; }
 .follow-dialog-empty p { margin: 0; }
 .follow-dialog .follow-row .btn { flex: 0 0 auto; }
+
+/* ---- cropping a picture or cover (CropDialog in ProfilePage.tsx) ---- */
+.crop-modal { max-width: 540px; }
+.crop-frame {
+    position: relative; margin: 0 auto; overflow: hidden; border-radius: var(--card-r);
+    background: var(--bg-panel); cursor: grab; touch-action: none; user-select: none;
+}
+.crop-frame:active { cursor: grabbing; }
+.crop-frame img { position: absolute; max-width: none; pointer-events: none; }
+/* the circle your picture shows in; outside it is dimmed, not cut */
+.crop-frame.is-round::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgba(0, 0, 0, .5); pointer-events: none; }
+.crop-zoom { display: flex; align-items: center; gap: 10px; margin: 12px auto 0; max-width: 360px; color: var(--text-secondary); }
+.crop-zoom input { flex: 1; }

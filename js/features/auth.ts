@@ -56,7 +56,7 @@ function mapUser(supabaseUser) {
 
 async function fetchProfile(userId) {
     const client = await getClient();
-    const { data, error } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
+    const { data, error } = await client.from('profiles').select('username, username_history, role, display_badges, deletion_requested_at').eq('id', userId).maybeSingle();
     if (error) { log.error('AUTH', 'Profile fetch failed', error); return null; }
     return data;
 }
@@ -454,13 +454,8 @@ async function updateEmail(newEmail) {
             throw error;
         }
         if (data !== true) throw new Error('Could not repair the account email.');
-        const { data: refreshed, error: refreshError } = await client.auth.refreshSession();
-        if (refreshError) throw refreshError;
-        if (refreshed?.user) {
-            state.user = await attachProfile(mapUser(refreshed.user));
-            updateAuthUI();
-        }
-        return true;
+        // the placeholder is cleared, so Supabase now sends a single
+        // confirmation link, to the new address; it becomes yours when clicked
     }
 
     const { error } = await client.auth.updateUser({ email });
@@ -543,7 +538,10 @@ async function smallAvatarDataUri(file) {
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(bitmap.width * scale));
         canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-        canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        const ctx = canvas.getContext('2d')!;
+        // ponytail: "small source = pixel art" heuristic; hard edges for those, smoothing only for a big photo being shrunk
+        ctx.imageSmoothingEnabled = Math.max(bitmap.width, bitmap.height) > 512;
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         bitmap.close();
         // browsers that cannot encode webp return a png, which at 256px is
         // still comfortably inside the column's size check
@@ -866,7 +864,7 @@ async function loadPublicProfile(userId) {
 
     let { data: profile, error: profileError } = await withProfileTimeout(
         client.from('profiles')
-            .select('id, username, display_name, avatar_url, role, bio, display_badges, created_at, banner_url, banner_color, accent_color, pronouns, location, website, dm_privacy')
+            .select('id, username, display_name, avatar_url, role, display_badges, created_at, banner_url, banner_color, accent_color, dm_privacy, privacy')
             .eq('id', userId)
             .maybeSingle(),
         'Profile request'
@@ -885,6 +883,10 @@ async function loadPublicProfile(userId) {
     }
     if (profileError) throw profileError;
     if (!profile) throw new Error('Profile not found.');
+    // bio, pronouns, location and website aren't readable columns: the server
+    // hands them over only where this profile's privacy allows
+    const { data: details } = await client.rpc('profile_details', { p_user: userId });
+    profile = { ...profile, bio: '', pronouns: '', location: '', website: '', ...(details || {}) };
 
     // loaded independently - a problem with these must never block the header from rendering.
     // (the wall loads with the timeline, through js/features/comments.ts)
@@ -1017,10 +1019,11 @@ async function showUserHoverCard(userId, anchor) {
         const client = await getClient();
         let { data: profile, error } = await client
             .from('profiles')
-            .select('id, username, display_name, avatar_url, bio, created_at, display_badges')
+            .select('id, username, display_name, avatar_url, created_at, display_badges')
             .eq('id', userId)
             .maybeSingle();
         if (error) throw error;
+        if (profile) profile = { ...profile, bio: (await client.rpc('profile_details', { p_user: userId })).data?.bio || '' };
         if (!profile || requestId !== userHoverRequest) return;
         renderUserHoverCard(profile);
         positionUserHoverCard(anchor);
@@ -1155,7 +1158,10 @@ async function saveProfileDetails({ displayName = '', bio = '', file = null, loo
     invalidateProfile(me.id);
     const fields: Record<string, any> = { id: me.id, bio };
     if (look) Object.assign(fields, await profileLookFields(look));
-    const { error } = await client.from('profiles').upsert(fields, { onConflict: 'id' });
+    // a plain update: upsert needs SELECT on every column it writes, and the
+    // private ones aren't readable (the profile row exists by now; updateDisplayName mirrored it)
+    const { id: _id, ...changes } = fields;
+    const { error } = await client.from('profiles').update(changes).eq('id', me.id);
     if (error) throw new Error(/website/.test(error.message) ? 'That website link doesn’t look right.' : error.message);
     state.profilePageEditing = false;
     await loadPublicProfile(me.id);
@@ -1168,6 +1174,7 @@ export interface ProfileLook {
     pronouns?: string; location?: string; website?: string;
     bannerColor?: string; accentColor?: string; dmPrivacy?: string;
     bannerFile?: File | null; removeBanner?: boolean;
+    privacy?: Record<string, string>;
 }
 
 const BANNER_MAX_BYTES = 2 * 1024 * 1024;
@@ -1190,7 +1197,8 @@ async function profileLookFields(look: ProfileLook) {
         website: website.slice(0, 200),
         banner_color: look.bannerColor || '',
         accent_color: /^#[0-9a-f]{6}$/i.test(look.accentColor || '') ? look.accentColor : '',
-        dm_privacy: ['everyone', 'following', 'nobody'].includes(look.dmPrivacy || '') ? look.dmPrivacy : 'everyone'
+        dm_privacy: ['everyone', 'following', 'nobody'].includes(look.dmPrivacy || '') ? look.dmPrivacy : 'everyone',
+        privacy: Object.fromEntries(Object.entries(look.privacy || {}).filter(([, v]) => v === 'followers' || v === 'only_me'))
     };
     if (look.removeBanner) out.banner_url = '';
     if (look.bannerFile) {

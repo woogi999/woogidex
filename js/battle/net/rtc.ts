@@ -261,17 +261,19 @@ export class BattleRTC {
     }
 }
 
-// TURN credentials fetched server-side via the `metered-ice` function; a
-// `warning` in the response means it fell back to STUN-only, surfaced via log.warn
-// so misconfiguration doesn't silently fail until two players behind NAT can't connect.
+// TURN credentials from worker/index.js (/turn-credentials), which mints
+// short-lived Cloudflare TURN ones for a signed-in player. A `warning` means
+// no relay came back, surfaced via log.warn so misconfiguration doesn't
+// silently fail until two players behind NAT can't connect.
 async function fetchIceServers(client) {
     try {
-        const { data, error } = await client.functions.invoke('metered-ice');
-        if (error) throw error;
-        if (data?.warning) log.warn('RTC', 'metered-ice fell back to STUN', { warning: data.warning });
+        const { data: { session } } = await client.auth.getSession();
+        const res = await fetch('/turn-credentials', { method: 'POST', headers: { authorization: `Bearer ${session?.access_token || ''}` } });
+        const data = await res.json();
+        if (data?.warning) log.warn('RTC', 'No TURN relay', { warning: data.warning });
         if (Array.isArray(data?.iceServers) && data.iceServers.length) return data.iceServers;
     } catch (err: any) {
-        log.warn('RTC', 'metered-ice unreachable', err);
+        log.warn('RTC', 'TURN credentials unreachable', err);
     }
     // empty, not a STUN fallback -- _newPeerConnection refuses to build without a relay
     return [];

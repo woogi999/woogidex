@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { api, state } from '../../core/app.ts';
-import { AuthorLine, LikeButton } from '../components/community.tsx';
+import { AuthorLine, MonReactions } from '../components/community.tsx';
 import { CommentThread } from '../components/comments.tsx';
 import { PokedexBoard } from '../components/board/PokedexBoard.tsx';
 import { CommunityEvoStrip } from '../components/board/CommunityEvoStrip.tsx';
@@ -30,7 +30,7 @@ export function CommunityDetailPage() {
                     <div className="share-view-kicker">Community Fakémon</div>
                     {row && (
                         <div className="community-detail-stats">
-                            <LikeButton row={row} className="community-detail-stat community-like-btn" />
+                            <MonReactions row={row} className="community-detail-stat community-reactions" />
                             <span className="community-detail-stat" title="Comments"><Icon name="message-circle" /><span>{commentCount}</span></span>
                         </div>
                     )}

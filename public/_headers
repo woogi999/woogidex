@@ -4,6 +4,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(self), camera=()
   X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'
 
 # content-hashed bundle filenames change whenever their content does, so it's
 # safe (and the whole point of the hash) to cache these forever - the browser

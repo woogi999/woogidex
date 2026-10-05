@@ -59,8 +59,10 @@ export function cachedAvatar(userId) {
 
 async function flush() {
     flushTimer = null;
-    const ids = [...queue];
-    queue.clear();
+    // capped like the artwork batches: a big thread's faces in one response can time out
+    const ids = [...queue].slice(0, 40);
+    ids.forEach(id => queue.delete(id));
+    if (queue.size) flushTimer = setTimeout(flush, 0);
     if (!ids.length) return;
     try {
         if (!getClient) throw new Error('avatars: no client getter registered');

@@ -214,3 +214,20 @@
 .learnset-chart-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
 .learnset-chart-label { color: var(--text-primary); }
 .learnset-chart-count { font-family: 'Inconsolata', monospace; color: var(--text-muted); font-size: 11px; }
+
+/* ==================== compact list (MovesTab's toggle) ====================
+   one line per move: name, type, category, power, how it's learned */
+.learnset-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.learnset-compact #learnset-list { grid-template-columns: 1fr; }
+.learnset-compact .learnset-item { align-items: center; padding: 4px 8px; margin: 0; gap: 8px; }
+.learnset-compact .learnset-item:hover { transform: none; }
+.learnset-compact .learnset-main { flex-direction: row; align-items: center; gap: 10px; }
+.learnset-compact .learnset-item .move-name { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.learnset-compact .learnset-item .move-meta { flex-wrap: nowrap; gap: 6px; }
+.learnset-compact .learnset-item .power-text { min-width: 92px; font-size: 12px; }
+.learnset-compact .learnset-item .move-method-row { margin: 0; flex-wrap: nowrap; }
+.learnset-compact .learnset-item .method-select-inline { padding: 2px 6px; min-width: 60px; }
+.learnset-compact .learnset-item .level-input-inline { width: 52px; padding: 2px 6px; }
+@media (max-width: 560px) {
+    .learnset-compact .learnset-item .power-text { display: none; }
+}

@@ -585,6 +585,9 @@ async function hydrateCommunityStats(rows) {
     const ids = rows.map(r => r.id).filter(Boolean);
 
     let stats: any = null;
+    // per-emoji counts for the cards' top-three reactions, fetched beside the numbers
+    // ponytail: PostgREST caps this at 1000 rows; past that the top three come from a sample. An RPC aggregating them fixes it.
+    const reactionsPromise = client.from('mon_reactions').select('mon_id, user_id, emoji').in('mon_id', ids).limit(1000);
     const { data, error } = statsRpcMissing
         ? { data: null as any, error: { message: 'community_mon_stats is not installed' } }
         : await client.rpc('community_mon_stats', { p_ids: ids });
@@ -604,8 +607,19 @@ async function hydrateCommunityStats(rows) {
         }]));
     }
 
+    const reactions = new Map<string, { counts: Record<string, number>; mine: string[] }>(ids.map(id => [id, { counts: {}, mine: [] }]));
+    const { data: reactionRows } = await reactionsPromise;
+    for (const x of reactionRows || []) {
+        const entry = reactions.get(x.mon_id);
+        if (!entry) continue;
+        entry.counts[x.emoji] = (entry.counts[x.emoji] || 0) + 1;
+        if (state.user && x.user_id === state.user.id) entry.mine.push(x.emoji);
+    }
+
     rows.forEach(r => {
         const s = stats.get(r.id);
+        r.reactions = reactions.get(r.id)?.counts || {};
+        r.my_reactions = reactions.get(r.id)?.mine || [];
         r.comment_count = s?.comment_count || 0;
         r.like_count = s?.like_count || 0;
         r.liked_by_me = !!s?.liked_by_me;
@@ -629,20 +643,6 @@ async function countStatsClientSide(client, ids) {
         if (state.user && r.user_id === state.user.id && r.emoji === 'heart') s.liked_by_me = true;
     });
     return stats;
-}
-
-/** The heart on a hub card or a Fakémon's page: its heart reaction (what used to be a like). */
-async function toggleCommunityLike(publishedId, event) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    if (!state.user) { api.showToast?.('Sign in to react to Fakemon.', 'warning'); return; }
-    const cs = ensureCommunityState();
-    // A detail page reached from a share link never went through the feed, so
-    // the row is not in cs.mons. openMonRow is the one that is always there.
-    const row = cs.mons.find(r => r.id === publishedId)
-        || (cs.openMonId === publishedId ? cs.openMonRow : null);
-    if (!row) return;
-    await api.toggleFeedMonLike(row);
 }
 
 // the detail page's stat strip reads the open row; this re-renders it
@@ -1050,7 +1050,8 @@ function requestCardArtwork(id) {
         // Disk first. A hit settles the waiter without a request at all; a
         // miss falls through to the batched network queue.
         getCachedArt(id).then(art => {
-            if (art === null) return queueArtwork(id);
+            // '' on disk is an old "no artwork" answer; ask again rather than trust it for a week
+            if (!art) return queueArtwork(id);
             artworkCache.set(id, art);
             paintArtwork(id, art);
             settleArtwork(id, art);
@@ -1075,10 +1076,15 @@ function queueArtwork(id) {
     artworkFlush ||= setTimeout(flushArtworkQueue, 50);
 }
 
+// a batch is several full images when posts lack thumbnails; too many in one
+// response and the whole request times out, blanking every card in it
+const ARTWORK_BATCH = 12;
+
 async function flushArtworkQueue() {
     artworkFlush = null;
-    const ids: string[] = [...artworkQueue];
-    artworkQueue.clear();
+    const ids: string[] = [...artworkQueue].slice(0, ARTWORK_BATCH);
+    ids.forEach(id => artworkQueue.delete(id));
+    if (artworkQueue.size) artworkFlush = setTimeout(flushArtworkQueue, 0);
     if (!ids.length) return;
     try {
         const client = await api.getClient();
@@ -1103,7 +1109,8 @@ async function flushArtworkQueue() {
         }
         // Anything the query did not return still gets a cache entry, so a
         // deleted or unreadable row is not re-requested on every scroll.
-        for (const id of ids) if (!artworkCache.has(id)) { artworkCache.set(id, ''); putCachedArt(id, ''); }
+        // memory only: on disk it would outlive a row that gets its artwork later
+        for (const id of ids) if (!artworkCache.has(id)) artworkCache.set(id, '');
         for (const id of ids) settleArtwork(id, artworkCache.get(id) || '');
     } catch (e: any) {
         log.warn('COMMUNITY', 'Card artwork failed to load', e);
@@ -1377,7 +1384,7 @@ export {
     openCommunityHub, closeCommunityHub, renderCommunityGrid, filterCommunity, changeCommunitySort, openCommunityRulesModal, closeCommunityRulesModal,
     hasAcceptedCommunityRules, markCommunityRulesAccepted,
     openMonDetail, openPublishedMonById, closeMonDetail, handleCommunityRoute, exitCommunityRoute, copyCommunityShareLink, copyOpenCommunityShareLink,
-    toggleCommunityLike, openCommunityUpdateModal, closeCommunityUpdateModal,
+    openCommunityUpdateModal, closeCommunityUpdateModal,
     renderCommunityGridSkeleton,
     switchCommunityPreviewMon, toggleCommunityLayout, applyCommunityLayoutUI, communityLayoutMode, getCommunityPrefs,
     requestCardArtwork,

@@ -39,6 +39,7 @@ export default {
         const url = new URL(request.url);
         if (url.pathname === PREFIX || url.pathname.startsWith(PREFIX + '/')) return proxy(request, env, url);
         if (url.pathname.startsWith('/og-image/')) return ogImage(url);
+        if (url.pathname === '/turn-credentials') return turnCredentials(request, env);
         if (request.method === 'GET' || request.method === 'HEAD') {
             const preview = await withLinkPreview(request, env, url).catch(() => null);
             if (preview) return preview;
@@ -204,6 +205,13 @@ async function withLinkPreview(request, env, url) {
     res.headers.delete('etag');
     // a renamed Fakemon should show its new name soon, but crawlers hammer links
     res.headers.set('cache-control', 'public, max-age=300');
+    // built here, so public/_headers may not reach it: the same protections by hand
+    // (no framing = no clickjacking; nosniff; no full URLs leaking to other sites)
+    res.headers.set('x-frame-options', 'DENY');
+    res.headers.set('content-security-policy', "frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
+    res.headers.set('x-content-type-options', 'nosniff');
+    res.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+    res.headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains; preload');
     return res;
 }
 
@@ -217,4 +225,42 @@ async function ogImage(url) {
     if (!m) return Response.redirect(new URL(DEFAULT_IMAGE, url.origin).toString(), 302);
     const bytes = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
     return new Response(bytes, { headers: { 'content-type': m[1], 'cache-control': 'public, max-age=3600' } });
+}
+
+// ==================== TURN relay credentials ====================
+// Short-lived Cloudflare TURN credentials for a battle, minted with the
+// TURN_KEY_ID / TURN_API_TOKEN worker secrets (wrangler secret put; never in
+// this repo, never sent to the browser). Signed-in players only, and only a
+// few a minute each (TURN_LIMITER in wrangler.jsonc).
+const TURN_TTL_SECONDS = 4 * 3600;
+
+async function turnCredentials(request, env) {
+    const json = (body, status = 200) => new Response(JSON.stringify(body), {
+        status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+    });
+    if (request.method !== 'POST') return json({ iceServers: [] }, 405);
+    if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return json({ iceServers: [], warning: 'TURN secrets not set' }, 503);
+
+    // who is asking: Supabase checks the token, so a forged one gets nothing
+    const auth = request.headers.get('authorization') || '';
+    if (!/^Bearer \S+$/.test(auth)) return json({ iceServers: [] }, 401);
+    const who = await fetch(`${SUPABASE_ORIGIN}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, authorization: auth } });
+    const user = who.ok ? await who.json().catch(() => null) : null;
+    if (!user?.id) return json({ iceServers: [] }, 401);
+    if (env.TURN_LIMITER && !(await env.TURN_LIMITER.limit({ key: user.id })).success) {
+        return json({ iceServers: [], warning: 'Too many relay requests; try again in a minute.' }, 429);
+    }
+
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${env.TURN_API_TOKEN}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ ttl: TURN_TTL_SECONDS })
+    });
+    if (!res.ok) return json({ iceServers: [], warning: `TURN service answered ${res.status}` }, 502);
+    const data = await res.json();
+    // port 53 is blocked by browsers and only adds a timeout (Cloudflare's own advice)
+    const iceServers = (data.iceServers || []).map(s => ({
+        ...s, urls: [].concat(s.urls || []).filter(u => !/:53(\?|$)/.test(u))
+    })).filter(s => s.urls.length);
+    return json({ iceServers });
 }

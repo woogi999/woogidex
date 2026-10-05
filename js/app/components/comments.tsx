@@ -14,6 +14,8 @@ import { Avatar } from './Avatar.tsx';
 import { BadgeRow } from './Badge.tsx';
 import { Icon } from './Icon.tsx';
 import { EmojiButton, EmojiGlyph, EmojiInput, QUICK_REACTIONS, RichText } from './EmojiInput.tsx';
+import { Modal } from './Modal.tsx';
+import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
 
 export function timeAgo(iso: string): string {
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -60,6 +62,88 @@ export function ReactionBar({ counts, mine, onToggle, always = [], small = false
         </div>
     );
 }
+
+/** Draws a reaction key this copy of the site knows (see ReactionChip). */
+const knownReaction = (k: string) => k === 'heart' || isUnicodeKey(k) || !!emojiByName(k);
+
+/**
+ * Facebook's way: the three most-used reactions and a total, which opens
+ * everyone's reactions; then one React button that toggles yours.
+ * `kind` and `id` say which reaction table the full list reads.
+ */
+export function ReactionSummary({ kind, id, counts, mine, onToggle }: {
+    kind: 'mon' | 'post'; id: string; counts: Record<string, number>; mine: string[]; onToggle: (emoji: string) => void;
+}) {
+    const keys = Object.keys(counts).filter(k => counts[k] > 0 && knownReaction(k)).sort((a, b) => counts[b] - counts[a]);
+    const total = keys.reduce((n, k) => n + counts[k], 0);
+    return (
+        <div className="reaction-summary">
+            {state.user && (
+                <EmojiButton className="reaction-react" buttonClassName={mine.length ? 'is-on' : ''} title="React" onPick={onToggle} quick={QUICK_REACTIONS}>
+                    {mine.length ? <EmojiGlyph code={mine[0]} size={18} /> : <Icon name="face-smile" size={18} />}
+                    <span className="reaction-react-label">{mine.length ? 'Reacted' : 'React'}</span>
+                </EmojiButton>
+            )}
+            {total > 0 && (
+                <button type="button" className="reaction-top" title="See all reactions" onClick={() => openDialog('reaction-list', { kind, id })}>
+                    <span className="reaction-top-icons">{keys.slice(0, 3).map(k => <span key={k} className="reaction-top-icon"><EmojiGlyph code={k} size={16} /></span>)}</span>
+                    <span>{total}</span>
+                </button>
+            )}
+        </div>
+    );
+}
+
+/** Everyone who reacted, with a tab per emoji. */
+function ReactionListDialog({ close, kind, id }: DialogProps<{ kind: 'mon' | 'post'; id: string }>) {
+    const [rows, setRows] = useState<Array<{ emoji: string; user: any }> | null>(null);
+    const [tab, setTab] = useState('');
+    useEffect(() => {
+        let live = true;
+        (async () => {
+            try {
+                const client = await api.getClient();
+                // ponytail: first 500 reactions only; page it if a post ever gets more
+                const { data, error } = await client.from(kind === 'mon' ? 'mon_reactions' : 'post_reactions')
+                    .select('user_id, emoji').eq(kind === 'mon' ? 'mon_id' : 'post_id', id).order('created_at', { ascending: false }).limit(500);
+                if (error) throw error;
+                const ids = [...new Set((data || []).map((r: any) => r.user_id))];
+                const { data: people } = ids.length
+                    ? await client.from('profiles').select('id, username, display_name, avatar_url').in('id', ids)
+                    : { data: [] as any[] };
+                const byId = new Map((people || []).map((p: any) => [p.id, p]));
+                if (live) setRows((data || []).filter((r: any) => knownReaction(r.emoji)).map((r: any) => ({ emoji: r.emoji, user: byId.get(r.user_id) || { id: r.user_id } })));
+            } catch { if (live) setRows([]); }
+        })();
+        return () => { live = false; };
+    }, [kind, id]);
+    const counts = new Map<string, number>();
+    for (const r of rows || []) counts.set(r.emoji, (counts.get(r.emoji) || 0) + 1);
+    const tabs = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const list = (rows || []).filter(r => !tab || r.emoji === tab);
+    return (
+        <Modal onClose={close} title="Reactions" className="reaction-list-modal">
+            <div className="reaction-list-tabs" role="tablist">
+                <button type="button" role="tab" aria-selected={!tab} className={!tab ? 'active' : ''} onClick={() => setTab('')}>All {rows?.length ?? ''}</button>
+                {tabs.map(([k, n]) => (
+                    <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}><EmojiGlyph code={k} size={16} /> {n}</button>
+                ))}
+            </div>
+            <div className="reaction-list">
+                {rows === null ? <p className="comment-empty">Loading…</p>
+                    : !list.length ? <p className="comment-empty">No reactions yet.</p>
+                    : list.map((r, i) => (
+                        <button type="button" key={`${r.user.id}-${r.emoji}-${i}`} className="reaction-list-row" onClick={() => { close(); api.showUserProfile(r.user.id); }}>
+                            <Avatar userId={r.user.id} url={r.user.avatar_url} name={r.user.display_name || r.user.username} className="feed-avatar feed-avatar-sm" />
+                            <span className="reaction-list-name">{r.user.display_name || r.user.username || 'Someone'}</span>
+                            <EmojiGlyph code={r.emoji} size={18} />
+                        </button>
+                    ))}
+            </div>
+        </Modal>
+    );
+}
+registerDialog('reaction-list', ReactionListDialog);
 
 // ==================== writing ====================
 

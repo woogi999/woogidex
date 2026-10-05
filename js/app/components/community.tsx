@@ -6,6 +6,7 @@ import { api } from '../../core/app.ts';
 import { emptyFeedMessage, evoBadgeLabel, prepareCommunityFeed } from '../../features/community-feed-model.ts';
 import { Avatar } from './Avatar.tsx';
 import { BadgeRow } from './Badge.tsx';
+import { ReactionSummary } from './comments.tsx';
 import { Icon } from './Icon.tsx';
 import { ShieldedArt } from './ShieldedArt.tsx';
 import { TypeBadges } from './profile.tsx';
@@ -94,12 +95,14 @@ export function AuthorLine({ row, className = 'community-card-author', prefix = 
     );
 }
 
-export function LikeButton({ row, className = 'community-stat-btn community-like-btn' }: { row: FeedRow; className?: string }) {
+/** A Fakémon's top reactions and the React button; clicks stay out of the card under it. */
+export function MonReactions({ row, className = 'community-reactions' }: { row: FeedRow; className?: string }) {
+    const mine: string[] = row.my_reactions || [];
     return (
-        <button type="button" className={`${className}${row.liked_by_me ? ' liked' : ''}`} title={row.liked_by_me ? 'Unlike' : 'Like'}
-            onClick={e => { e.stopPropagation(); api.toggleCommunityLike(row.id); }}>
-            <Icon name="heart" /><span>{Number(row.like_count || 0)}</span>
-        </button>
+        <div className={className} onClick={e => e.stopPropagation()}>
+            <ReactionSummary kind="mon" id={row.id} counts={row.reactions || {}} mine={mine}
+                onToggle={emoji => api.toggleReaction({ ...row, kind: 'mon', my_reactions: mine }, emoji)} />
+        </div>
     );
 }
 
@@ -121,7 +124,7 @@ function CommunityCard({ row, isMine, canDelete }: { row: FeedRow; isMine: boole
                 <div className="card-name" title={mon.name}>{mon.name}</div>
                 <TypeBadges type1={mon.type1} type2={mon.type2} />
                 <div className="community-card-stats" aria-label="Community activity">
-                    <LikeButton row={row} />
+                    <MonReactions row={row} />
                     <button type="button" className="community-stat-btn" title="Comments" onClick={e => { e.stopPropagation(); open(); }}>
                         <Icon name="message-circle" /><span>{row.comment_count || 0}</span>
                     </button>

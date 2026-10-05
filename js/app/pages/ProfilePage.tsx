@@ -6,7 +6,8 @@
 // tints the page. On your own profile, Edit Profile swaps in the forms for
 // your name, bio, pictures, look, username, badges, email and connected accounts.
 
-import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { frameCount } from '../../core/art-shield.ts';
 import { api, state } from '../../core/app.ts';
 import { Avatar } from '../components/Avatar.tsx';
 import { BadgeRow } from '../components/Badge.tsx';
@@ -36,6 +37,18 @@ export const BANNER_PRESETS: Record<string, string> = {
     stellar: 'linear-gradient(100deg, #f06a8e, #f5a55a 28%, #e8d35a 48%, #6cc8a0 68%, #5d8fe8 88%, #9a6cf0)'
 };
 export const ACCENTS = ['#7c5cff', '#e07a5f', '#2bb3a8', '#e6a23c', '#3b82f6', '#c056d8', '#5aa469', '#d64f7a', '#1d2433'];
+
+// who sees what (the profiles.privacy column); the server enforces the same for
+// the timeline and follower lists (profile_part_visible)
+export const PRIVACY_PARTS: Array<[string, string]> = [
+    ['profile', 'Whole profile'], ['details', 'Bio & details'], ['posts', 'Posts & wall'], ['fakemon', 'Fakémon gallery'], ['follows', 'Followers & following']
+];
+function canSee(profile: any, part: string, isOwn: boolean, following: boolean): boolean {
+    if (isOwn || api.isStaff?.()) return true;
+    const levels = [profile.privacy?.profile, profile.privacy?.[part]];
+    if (levels.includes('only_me')) return false;
+    return !levels.includes('followers') || following;
+}
 
 function bannerBackground(p: any): string {
     const c = String(p?.banner_color || '');
@@ -132,7 +145,8 @@ function PublicProfile({ profile, isOwn }: { profile: any; isOwn: boolean }) {
         ['posts', 'Posts', null], ['fakemon', 'Fakémon', Number(stats.mons ?? (profile.mons || []).length)]
     ];
     // followers and following open as a pop-up list, like Instagram
-    const showFollows = (which: 'followers' | 'following') => openDialog('follow-list', { userId: profile.id, which, isOwn, name: displayName });
+    const see = (part: string) => canSee(profile, part, isOwn, following);
+    const showFollows = (which: 'followers' | 'following') => { if (see('follows')) openDialog('follow-list', { userId: profile.id, which, isOwn, name: displayName }); };
 
     return (
         <div className="profile2" style={accent ? ({ '--profile-accent': accent } as any) : undefined}>
@@ -147,7 +161,7 @@ function PublicProfile({ profile, isOwn }: { profile: any; isOwn: boolean }) {
                     <h1>{displayName}<BadgeRow badgeKeys={Array.isArray(profile.display_badges) ? profile.display_badges : []} size={18} /></h1>
                     <div className="profile2-handle">
                         {profile.username && <span>@{profile.username}</span>}
-                        {profile.pronouns && <span className="profile2-pronouns">{profile.pronouns}</span>}
+                        {profile.pronouns && see('details') && <span className="profile2-pronouns">{profile.pronouns}</span>}
                         {stats.follows_me && !isOwn && <span className="profile2-follows-you">Follows you</span>}
                     </div>
                     <div className="profile2-numbers">
@@ -179,11 +193,13 @@ function PublicProfile({ profile, isOwn }: { profile: any; isOwn: boolean }) {
 
             {blocked ? (
                 <div className="feed-empty"><Icon name="no-symbol" size={24} /><p>You blocked {displayName}. Unblock them from the ⋯ menu to see their profile.</p></div>
+            ) : !see('profile') ? (
+                <div className="feed-empty"><Icon name="lock-closed" size={24} /><p>{profile.privacy?.profile === 'followers' ? `${displayName}'s profile is for followers only.` : `${displayName}'s profile is private.`}</p></div>
             ) : (
                 <div className="profile2-body">
                     <div className="profile2-side">
-                        <Intro profile={profile} isOwn={isOwn} />
-                        <GalleryPeek profile={profile} onAll={() => setTab('fakemon')} />
+                        <Intro profile={profile} isOwn={isOwn} details={see('details')} />
+                        {see('fakemon') && <GalleryPeek profile={profile} onAll={() => setTab('fakemon')} />}
                     </div>
                     <div className="profile2-main">
                         <div className="profile2-tabs" role="tablist">
@@ -193,13 +209,17 @@ function PublicProfile({ profile, isOwn }: { profile: any; isOwn: boolean }) {
                                 </button>
                             ))}
                         </div>
-                        {tab === 'posts' && <Timeline profile={profile} isOwn={isOwn} />}
-                        {tab === 'fakemon' && <div className="profile-mons-grid"><ProfileMons mons={profile.mons || []} /></div>}
+                        {tab === 'posts' && (see('posts') ? <Timeline profile={profile} isOwn={isOwn} /> : <PrivatePart />)}
+                        {tab === 'fakemon' && (see('fakemon') ? <div className="profile-mons-grid"><ProfileMons mons={profile.mons || []} /></div> : <PrivatePart />)}
                     </div>
                 </div>
             )}
         </div>
     );
+}
+
+function PrivatePart() {
+    return <div className="feed-empty"><Icon name="lock-closed" size={24} /><p>This part of the profile is private.</p></div>;
 }
 
 function ProfileMenu({ profile, isOwn, blocked }: { profile: any; isOwn: boolean; blocked: boolean }) {
@@ -226,16 +246,16 @@ function ProfileMenu({ profile, isOwn, blocked }: { profile: any; isOwn: boolean
     );
 }
 
-function Intro({ profile, isOwn }: { profile: any; isOwn: boolean }) {
+function Intro({ profile, isOwn, details = true }: { profile: any; isOwn: boolean; details?: boolean }) {
     const site = String(profile.website || '');
     const siteLabel = site.replace(/^https?:\/\//i, '').replace(/\/$/, '');
     return (
         <section className="panel profile2-card">
             <h3>Intro</h3>
-            {profile.bio ? <p className="profile2-bio">{profile.bio}</p> : <p className="profile2-bio is-empty">{isOwn ? 'Add a bio so people know what you make.' : 'No bio yet.'}</p>}
+            {!details ? <p className="profile2-bio is-empty">Details are private.</p> : profile.bio ? <p className="profile2-bio">{profile.bio}</p> : <p className="profile2-bio is-empty">{isOwn ? 'Add a bio so people know what you make.' : 'No bio yet.'}</p>}
             <ul className="profile2-facts">
-                {profile.location && <li><Icon name="map-pin" size={16} /> {profile.location}</li>}
-                {site && <li><Icon name="link" size={16} /> <a href={/^https?:\/\//i.test(site) ? site : '#'} target="_blank" rel="noopener noreferrer nofollow ugc">{siteLabel}</a></li>}
+                {details && profile.location && <li><Icon name="map-pin" size={16} /> {profile.location}</li>}
+                {details && site && <li><Icon name="link" size={16} /> <a href={/^https?:\/\//i.test(site) ? site : '#'} target="_blank" rel="noopener noreferrer nofollow ugc">{siteLabel}</a></li>}
                 {profile.created_at && <li><Icon name="calendar" size={16} /> Joined {new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}</li>}
             </ul>
             {isOwn && <ConnectedBadges />}
@@ -392,9 +412,13 @@ function EditProfile({ profile }: { profile: any }) {
     const [look, setLook] = useState(() => ({
         pronouns: profile.pronouns || '', location: profile.location || '', website: profile.website || '',
         bannerColor: profile.banner_color || '', accentColor: profile.accent_color || '', dmPrivacy: profile.dm_privacy || 'everyone',
-        bannerFile: null as File | null, removeBanner: false
+        bannerFile: null as File | null, removeBanner: false,
+        privacy: { ...(profile.privacy || {}) } as Record<string, string>
     }));
     const [bannerPreview, setBannerPreview] = useState<string>(profile.banner_url || '');
+    // the uncropped pick, so "Adjust crop" starts from the whole picture again
+    const [avatarSource, setAvatarSource] = useState<File | null>(null);
+    const [bannerSource, setBannerSource] = useState<File | null>(null);
     const patchLook = (patch: Partial<typeof look>) => setLook(l => ({ ...l, ...patch }));
 
     function chooseBanner(event: ChangeEvent<HTMLInputElement>) {
@@ -403,8 +427,29 @@ function EditProfile({ profile }: { profile: any }) {
         if (!chosen) return;
         const problem: string = api.bannerFileProblem(chosen);
         if (problem) { setDetailsMsg({ text: problem }); event.target.value = ''; return; }
-        patchLook({ bannerFile: chosen, removeBanner: false });
-        setBannerPreview(URL.createObjectURL(chosen));
+        event.target.value = '';
+        setBannerSource(chosen);
+        cropBanner(chosen);
+    }
+    const cropBanner = (source: File) => cropThen(source, COVER_ASPECT, cropped => {
+        patchLook({ bannerFile: cropped, removeBanner: false });
+        setBannerPreview(URL.createObjectURL(cropped));
+    });
+    const cropAvatar = (source: File) => cropThen(source, 1, cropped => {
+        setFile(cropped);
+        setPreview(URL.createObjectURL(cropped));
+    });
+    /** Re-crops the picture you just chose, or the one already saved. */
+    async function adjust(which: 'avatar' | 'banner') {
+        let source = which === 'avatar' ? avatarSource : bannerSource;
+        if (!source) {
+            const url = which === 'avatar' ? user.avatarUrl : profile.banner_url;
+            try {
+                const blob = await (await fetch(url)).blob();
+                source = new File([blob], which, { type: blob.type });
+            } catch { setDetailsMsg({ text: 'Couldn\u2019t load that picture to crop. Choose it again instead.' }); return; }
+        }
+        (which === 'avatar' ? cropAvatar : cropBanner)(source);
     }
 
     function chooseAvatar(event: ChangeEvent<HTMLInputElement>) {
@@ -413,10 +458,9 @@ function EditProfile({ profile }: { profile: any }) {
         if (!chosen) return;
         const problem: string = api.avatarFileProblem(chosen);
         if (problem) { setDetailsMsg({ text: problem }); event.target.value = ''; return; }
-        setFile(chosen);
-        const reader = new FileReader();
-        reader.onload = () => setPreview(String(reader.result || ''));
-        reader.readAsDataURL(chosen);
+        event.target.value = '';
+        setAvatarSource(chosen);
+        cropAvatar(chosen);
     }
 
     async function saveDetails() {
@@ -457,7 +501,8 @@ function EditProfile({ profile }: { profile: any }) {
                     <label className="btn btn-secondary btn-sm"><Icon name="camera" size={14} /> {bannerPreview ? 'Change cover photo' : 'Add cover photo'}
                         <input type="file" accept="image/*" style={{ display: 'none' }} onChange={chooseBanner} />
                     </label>
-                    {bannerPreview && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setBannerPreview(''); patchLook({ bannerFile: null, removeBanner: true }); }}>Remove</button>}
+                    {bannerPreview && <button type="button" className="btn btn-secondary btn-sm" onClick={() => adjust('banner')}><Icon name="arrows-pointing-out" size={14} /> Adjust crop</button>}
+                    {bannerPreview && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setBannerPreview(''); setBannerSource(null); patchLook({ bannerFile: null, removeBanner: true }); }}>Remove</button>}
                 </div>
             </div>
             <div className="profile2-head">
@@ -474,6 +519,7 @@ function EditProfile({ profile }: { profile: any }) {
                         {profile.username && <span>@{profile.username}</span>}
                         {look.pronouns.trim() && <span className="profile2-pronouns">{look.pronouns.trim()}</span>}
                     </div>
+                    {preview && <button type="button" className="btn btn-secondary btn-sm" onClick={() => adjust('avatar')}><Icon name="arrows-pointing-out" size={14} /> Adjust picture crop</button>}
                     <p className="profile-field-hint">Picture: JPG, PNG or GIF up to 2MB. Cover: wide works best (about 1500 × 500), up to 2MB.</p>
                 </div>
             </div>
@@ -514,6 +560,18 @@ function EditProfile({ profile }: { profile: any }) {
                             </select>
                             <div className="profile-field-hint">Chats you already have keep working. Blocking someone always stops them.</div>
                         </div>
+                        {PRIVACY_PARTS.map(([part, label]) => (
+                            <div className="form-group" key={part}>
+                                <label htmlFor={`profile-privacy-${part}`}>{label}</label>
+                                <select id={`profile-privacy-${part}`} value={look.privacy[part] || 'everyone'}
+                                    onChange={e => patchLook({ privacy: { ...look.privacy, [part]: e.target.value } })}>
+                                    <option value="everyone">Everyone</option>
+                                    <option value="followers">Followers only</option>
+                                    <option value="only_me">Only me</option>
+                                </select>
+                            </div>
+                        ))}
+                        <div className="profile-field-hint">“Whole profile” limits every part below it. Your name and picture always show, and Fakémon you publish stay on the hub.</div>
                     </section>
                 </div>
 
@@ -668,3 +726,100 @@ function EmailCard() {
         </section>
     );
 }
+
+// ==================== cropping a picture ====================
+// Drag to move, slider or wheel to zoom; the crop is baked into the file
+// before upload, at the source's own pixels (no resampling, so pixel art stays
+// crisp). Animated images skip it: a canvas keeps one frame.
+
+const COVER_ASPECT = 3;                  // the "about 1500 × 500" the hint asks for
+const CROP_MAX_SIDE = 2048;              // only ever scales down past this
+
+/** Opens the cropper for `file`, or hands an animated one straight back. */
+async function cropThen(file: File, aspect: number, onDone: (cropped: File) => void) {
+    const url = URL.createObjectURL(file);
+    const animated = (await frameCount(url).catch(() => 1)) > 1;
+    URL.revokeObjectURL(url);
+    if (animated) { api.showToast?.('Animated pictures can’t be cropped; it’s used as it is.', 'info'); onDone(file); return; }
+    openDialog('crop-image', { file, aspect, onDone });
+}
+
+function CropDialog({ close, file, aspect, onDone }: DialogProps<{ file: File; aspect: number; onDone: (f: File) => void }>) {
+    const [src] = useState(() => URL.createObjectURL(file));
+    const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+    const [zoom, setZoom] = useState(1);
+    const [pos, setPos] = useState({ x: 0, y: 0 });
+    const [busy, setBusy] = useState(false);
+    const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
+    const imgRef = useRef<HTMLImageElement>(null);
+    useEffect(() => () => URL.revokeObjectURL(src), [src]);
+
+    const frameW = Math.min(480, window.innerWidth - 64);
+    const frameH = frameW / aspect;
+    const base = natural ? Math.max(frameW / natural.w, frameH / natural.h) : 1;
+    const scale = base * zoom;
+    // keeps the picture covering the frame: no empty edge can be cropped in
+    const clamp = (p: { x: number; y: number }, s = scale) => natural ? {
+        x: Math.min(0, Math.max(frameW - natural.w * s, p.x)),
+        y: Math.min(0, Math.max(frameH - natural.h * s, p.y))
+    } : p;
+
+    function loaded() {
+        const img = imgRef.current!;
+        const n = { w: img.naturalWidth, h: img.naturalHeight };
+        const s = Math.max(frameW / n.w, frameH / n.h);
+        setNatural(n);
+        setPos({ x: (frameW - n.w * s) / 2, y: (frameH - n.h * s) / 2 });
+    }
+    function zoomTo(next: number) {
+        next = Math.min(6, Math.max(1, next));
+        const k = next / zoom;
+        // zoom about the frame's centre, not its corner
+        setPos(clamp({ x: frameW / 2 - (frameW / 2 - pos.x) * k, y: frameH / 2 - (frameH / 2 - pos.y) * k }, base * next));
+        setZoom(next);
+    }
+    const down = (e: ReactPointerEvent) => { (e.currentTarget as Element).setPointerCapture(e.pointerId); drag.current = { px: e.clientX, py: e.clientY, ...pos }; };
+    const move = (e: ReactPointerEvent) => { const d = drag.current; if (d) setPos(clamp({ x: d.x + e.clientX - d.px, y: d.y + e.clientY - d.py })); };
+
+    async function save() {
+        if (!natural || busy) return;
+        setBusy(true);
+        const sw = frameW / scale, sh = frameH / scale;
+        const out = Math.min(1, CROP_MAX_SIDE / Math.max(sw, sh));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(sw * out));
+        canvas.height = Math.max(1, Math.round(sh * out));
+        const ctx = canvas.getContext('2d')!;
+        ctx.imageSmoothingEnabled = out < 1;      // only a big photo being shrunk gets smoothed
+        ctx.drawImage(imgRef.current!, -pos.x / scale, -pos.y / scale, sw, sh, 0, 0, canvas.width, canvas.height);
+        const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+        let blob = await new Promise<Blob | null>(r => canvas.toBlob(r, type, 0.92));
+        // a large PNG crop can pass the 2MB cap; webp keeps it under without visible loss
+        if (blob && blob.size > 2 * 1024 * 1024) blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/webp', 0.9));
+        setBusy(false);
+        if (!blob) { api.showToast?.('Couldn’t crop that picture.', 'error'); return; }
+        const ext = blob.type.split('/')[1] || 'png';
+        onDone(new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'image'}.${ext}`, { type: blob.type }));
+        close();
+    }
+
+    return (
+        <Modal onClose={close} title={aspect === 1 ? 'Crop your picture' : 'Crop your cover photo'} className="crop-modal">
+            <div className={`crop-frame${aspect === 1 ? ' is-round' : ''}`} style={{ width: frameW, height: frameH }}
+                onPointerDown={down} onPointerMove={move} onPointerUp={() => { drag.current = null; }}
+                onWheel={e => zoomTo(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1))}>
+                <img ref={imgRef} src={src} alt="" draggable={false} onLoad={loaded}
+                    style={natural ? { width: natural.w * scale, height: natural.h * scale, left: pos.x, top: pos.y } : { opacity: 0 }} />
+            </div>
+            <label className="crop-zoom"><Icon name="magnifying-glass-minus" size={16} />
+                <input type="range" min={1} max={6} step={0.01} value={zoom} onChange={e => zoomTo(Number(e.target.value))} aria-label="Zoom" />
+                <Icon name="magnifying-glass-plus" size={16} /></label>
+            <p className="profile-field-hint">Drag to move it, zoom to fit.</p>
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+                <button type="button" className="btn btn-primary" disabled={!natural || busy} onClick={save}>{busy ? 'Cropping…' : 'Use this'}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('crop-image', CropDialog);

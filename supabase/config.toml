@@ -393,10 +393,6 @@ verify_jwt = true
 # leave open.
 verify_jwt = true
 
-[functions.metered-ice]
-# only a signed-in user should receive TURN credentials.
-verify_jwt = true
-
 [functions.record-auth-event]
 # only a signed-in user should be able to log an event for themselves.
 verify_jwt = true

@@ -403,11 +403,6 @@ export async function toggleReaction(item: any, emoji: string) {
     notify();
 }
 
-/** The heart on a Fakémon (what used to be its like). */
-export function toggleFeedMonLike(row: any) {
-    return toggleReaction({ ...row, kind: 'mon', my_reactions: row.my_reactions || (row.liked_by_me ? ['heart'] : []) }, 'heart');
-}
-
 // ==================== reposts ====================
 // A repost is a community post pointing at a Fakémon or another post, like
 // Threads' Repost and Facebook's Share. With no words of its own it's a plain

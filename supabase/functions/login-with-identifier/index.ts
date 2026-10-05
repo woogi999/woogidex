@@ -58,6 +58,14 @@ Deno.serve(async (req) => {
         if (profile) {
             const { data: userData } = await serviceClient.auth.admin.getUserById(profile.id);
             email = userData?.user?.email ?? null;
+            // adding a real email clears the placeholder until the new address
+            // is confirmed (repair_my_invalid_email); signing in meanwhile puts
+            // it back, so an unclicked or mistyped link never locks anyone out
+            const placeholder = userData?.user?.app_metadata?.placeholder_email;
+            if (!email && placeholder) {
+                const { error } = await serviceClient.auth.admin.updateUserById(profile.id, { email: placeholder, email_confirm: true });
+                if (!error) email = placeholder;
+            }
         }
     }
 
