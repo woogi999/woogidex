@@ -35,7 +35,7 @@
    :where() keeps these at zero specificity, so any component's own class
    still wins without !important */
 :where(input[type="text"], input[type="number"], input[type="email"], input[type="password"],
-       input[type="search"], input[type="url"], input[type="datetime-local"], input[type="date"], input:not([type]), select, textarea) {
+       input[type="search"], input[type="url"], input[type="datetime-local"], input[type="date"], input[type="time"], input:not([type]), select, textarea) {
     font-family: 'Exo 2', sans-serif;
     font-size: 13px;
     color: var(--text-primary);
@@ -44,7 +44,7 @@
     border-radius: var(--ctl-r);
 }
 :where(input[type="text"], input[type="number"], input[type="email"], input[type="password"],
-       input[type="search"], input[type="url"], input[type="datetime-local"], input[type="date"], input:not([type]), select) {
+       input[type="search"], input[type="url"], input[type="datetime-local"], input[type="date"], input[type="time"], input:not([type]), select) {
     height: var(--ctl-h);
     padding: 0 var(--sp-3);
 }

@@ -11,6 +11,7 @@ import './dialogs/feedback.tsx';
 import './dialogs/roll.tsx';
 import './dialogs/confirm.tsx';
 import './dialogs/battlePaused.tsx';
+import './dialogs/cropImage.tsx';
 import { NotFoundPage } from './pages/NotFoundPage.tsx';
 import { LegalPage } from './pages/LegalPage.tsx';
 import { UpdatesPage } from './pages/UpdatesPage.tsx';

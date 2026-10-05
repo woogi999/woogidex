@@ -14,10 +14,21 @@ import { routeUrl } from '../core/router.ts';
 import { confirmDialog } from '../core/confirm-dialog.ts';
 import { myIdentities } from './oauth.ts';
 import { notify } from '../app/store.ts';
+import { ALL_VANILLA_TYPES } from './custom-types.ts';
 
 export type Phase = 'draft' | 'open' | 'voting' | 'ended';
 export type FieldType = 'short' | 'long' | 'url' | 'email' | 'discord' | 'choice' | 'dropdown' | 'checkboxes' | 'number' | 'date' | 'scale'
-    | 'image' | 'fakemon' | 'agree' | 'section';
+    | 'image' | 'fakemon' | 'library' | 'agree' | 'section';
+/** What a 'library' question takes: one of the entrant's moves, abilities, items or types. */
+export type LibKind = 'move' | 'ability' | 'item' | 'type';
+/** Parts a Fakémon question can insist on. */
+export type MonPart = 'artwork' | 'shiny' | 'abilities' | 'dex' | 'moves' | 'sets';
+/** A Fakémon question's rules (event_fakemon_problem in the database enforces the same). */
+export interface MonRules {
+    require?: MonPart[]; noCustomTypes?: boolean; noCustomAbilities?: boolean; noCustomMoves?: boolean;
+    /** must have at least one of these types */
+    types?: string[]; minBst?: number | null; maxBst?: number | null;
+}
 export type Voting = 'none' | 'community' | 'judges' | 'ballot';
 /** Where an event is right now; the dates move it along (see effectivePhase). */
 export type Stage = 'draft' | 'upcoming' | 'open' | 'closed' | 'voting' | 'tallying' | 'ended';
@@ -27,7 +38,13 @@ export interface Criterion { name: string; help?: string; max: number; }
 export type Remarks = 'off' | 'optional' | 'required';
 
 /** A question. 'section' is a page break: its label and help head the next page. min/max: number bounds, or a scale's top. */
-export interface Field { id: string; type: FieldType; label: string; help?: string; required?: boolean; private?: boolean; options?: string[]; min?: number | null; max?: number | null; }
+export interface Field {
+    id: string; type: FieldType; label: string; help?: string; required?: boolean; private?: boolean; options?: string[]; min?: number | null; max?: number | null;
+    /** a 'library' question: which kinds it takes */
+    kinds?: LibKind[];
+    /** a 'fakemon' question's rules */
+    rules?: MonRules;
+}
 export interface EventRow {
     id: string; owner_id: string; title: string; tagline: string; description: string; category: string;
     accent: string; cover_image: string | null; phase: Phase;
@@ -89,6 +106,7 @@ export const FIELD_TYPES: Array<[FieldType, string, string]> = [
     ['date', 'Date', 'calendar'],
     ['image', 'Image upload', 'photo'],
     ['fakemon', 'Fakémon', 'sparkles'],
+    ['library', 'Move, ability, item or type', 'puzzle-piece'],
     ['url', 'Link', 'link'],
     ['email', 'Email', 'envelope'],
     ['discord', 'Discord username', 'chat-bubble-left-right'],
@@ -114,7 +132,9 @@ export function formPages(form: Field[]): Array<{ head: Field | null; fields: Fi
 
 /** Whether a question has an answer (what "required" checks). */
 export const answered = (v: any) => !(v == null || v === '' || v === false || (Array.isArray(v) && !v.length));
-export const ALWAYS_PRIVATE: FieldType[] = ['email', 'discord'];
+/** Hidden from everyone but the entrant and the team with Entries access.
+ *  Email always is; Discord is unless the organizer unticks it (same rule as event_store_entry). */
+export const isPrivateField = (f: Field) => f.type === 'email' || (f.private ?? f.type === 'discord');
 export const CATEGORIES = ['PoA contest', 'Fakémon contest', 'Art contest', 'Poster competition', 'Mascot contest', 'Writing contest', 'Tournament', 'Sign-ups', 'Community event'];
 export const DEFAULT_CRITERIA: Criterion[] = [{ name: 'Competitive', max: 10 }, { name: 'Design', max: 10 }];
 
@@ -197,7 +217,34 @@ export function entryAllowance(ev: EventRow, limits: EntryLimit[] = events.detai
     return limits.find(l => l.event_id === ev.id && l.user_id === me())?.max_entries ?? ev.max_entries_per_user;
 }
 
-export const fmtDate = (v?: string | null) => v ? new Date(v).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+/** A moment in the viewer's own time zone, named ("Oct 9, 2026, 8:00 PM GMT+8"). */
+export const fmtDate = (v?: string | null, timeZone?: string) => v ? new Date(v).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone }) : '';
+
+// ---- time zones ----
+// Dates are stored as moments (UTC). The organizer picks a wall-clock time in
+// a zone of their choosing; everyone else reads it in their own zone.
+
+export const myTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+export const timeZones = (): string[] => (Intl as any).supportedValuesOf?.('timeZone') || [myTimeZone(), 'UTC'];
+
+/** The wall-clock parts of a moment in a zone (month 0-based). */
+export function zonedParts(t: number, timeZone: string) {
+    const p: Record<string, number> = {};
+    for (const x of new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(t)) {
+        if (x.type !== 'literal') p[x.type] = Number(x.value);
+    }
+    return { y: p.year, mo: p.month - 1, d: p.day, h: p.hour % 24, mi: p.minute, s: p.second };
+}
+
+/** The moment a wall-clock time in a zone names (a time skipped by a DST change rounds forward). */
+export function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, timeZone: string): Date {
+    const wall = Date.UTC(y, mo, d, h, mi);
+    const offset = (t: number) => { const p = zonedParts(t, timeZone); return Date.UTC(p.y, p.mo, p.d, p.h, p.mi, p.s) - t; };
+    let t = wall - offset(wall);
+    const again = wall - offset(t);
+    if (again !== t) t = Math.max(t, again);
+    return new Date(t);
+}
 export function relTime(v?: string | null): string {
     if (!v) return '';
     const diff = new Date(v).getTime() - Date.now();
@@ -213,7 +260,7 @@ export function entryTitle(ev: EventRow, en: Entry, people: Record<string, Perso
     for (const f of ev.form) {
         const v = en.answers[f.id];
         if (f.type === 'short' && typeof v === 'string' && v) return v;
-        if (f.type === 'fakemon' && v?.name) return v.name;
+        if ((f.type === 'fakemon' || f.type === 'library') && v?.name) return v.name;
     }
     const p = people[en.user_id || ""];
     return p ? `Entry by ${p.display_name || p.username}` : 'Entry';
@@ -224,7 +271,7 @@ export function entryImage(ev: EventRow, en: Entry): string {
     for (const f of ev.form) {
         const v = en.answers[f.id];
         if (f.type === 'image' && typeof v === 'string' && v.startsWith('data:image/')) return v;
-        if (f.type === 'fakemon' && typeof v?.artwork === 'string' && v.artwork.startsWith('data:image/')) return v.artwork;
+        if ((f.type === 'fakemon' || f.type === 'library') && typeof v?.artwork === 'string' && v.artwork.startsWith('data:image/')) return v.artwork;
     }
     return '';
 }
@@ -665,6 +712,38 @@ export async function submitEntry(eventId: string, answers: Record<string, any>,
     } catch (e) { fail(e); return false; }
 }
 
+/** Changes your own entry while entries are open (update_event_entry checks it's yours). */
+export async function updateEntry(en: Entry, answers: Record<string, any>): Promise<boolean> {
+    try {
+        const { error } = await (await client()).rpc('update_event_entry', { p_entry: en.id, p_answers: answers });
+        if (error) throw error;
+        toast('Your entry was updated.', 'success');
+        await loadEvent(en.event_id);
+        return true;
+    } catch (e) { fail(e); return false; }
+}
+
+// ---- unsent entry answers ----
+// What you've filled in stays on this device until you send it, so leaving the
+// form (or the tab crashing) loses nothing. Per account (or guest), event and entry.
+
+const answersKey = (eventId: string, entryId = 'new') => `woogidex.eventEntry.${me() || 'guest'}.${eventId}.${entryId}`;
+
+export function readEntryDraft(eventId: string, entryId?: string): Record<string, any> | null {
+    try { return JSON.parse(localStorage.getItem(answersKey(eventId, entryId)) || 'null'); } catch { return null; }
+}
+export function writeEntryDraft(eventId: string, answers: Record<string, any>, entryId?: string) {
+    try { localStorage.setItem(answersKey(eventId, entryId), JSON.stringify(answers)); }
+    catch {
+        // images and Fakémon can overflow storage; keep the typed answers at least
+        const light = Object.fromEntries(Object.entries(answers).filter(([, v]) => JSON.stringify(v ?? '').length < 20_000));
+        try { localStorage.setItem(answersKey(eventId, entryId), JSON.stringify(light)); } catch { /* full or private mode */ }
+    }
+}
+export function clearEntryDraft(eventId: string, entryId?: string) {
+    try { localStorage.removeItem(answersKey(eventId, entryId)); } catch { /* private mode */ }
+}
+
 /** The team's results announcement. Readers see it once the results are out. */
 export async function saveResultsPost(eventId: string, body: string): Promise<boolean> {
     try {
@@ -854,13 +933,14 @@ export async function fakemonForEntry(mon: any): Promise<any> {
 export async function fakemonFromFile(file: File): Promise<any[]> {
     const text = await file.text();
     let parsed: any;
-    try { parsed = JSON.parse(text); } catch { parsed = api.parsePlainTextFakemon?.(text); }
+    try { parsed = JSON.parse(text); } catch { try { parsed = api.parsePlainTextFakemon?.(text); } catch { parsed = null; } }
     const list = Array.isArray(parsed) ? parsed
         : Array.isArray(parsed?.fakemons) ? parsed.fakemons
         : Array.isArray(parsed?.fakemonDB) ? parsed.fakemonDB
         : Array.isArray(parsed?.collection) ? parsed.collection
         : parsed?.fakemon ? [parsed.fakemon] : [parsed];
-    const mons = list.filter((m: any) => m && typeof m === 'object' && m.name);
+    // a text export can be missing its name; the details dialog asks for it
+    const mons = list.filter((m: any) => m && typeof m === 'object' && (m.name || m.species || m.type1));
     if (!mons.length) throw new Error('No Fakémon found in that file. Use a Woogidex export (.json or .txt).');
     return mons;
 }
@@ -877,6 +957,89 @@ export function previewEventFakemon(mon: any) {
     api.setVisitingTypes?.(mon?.customTypes || []);
     api.loadFakemonIntoEditor({ ...mon });
     notify();
+}
+
+// ---- Fakémon rules ----
+
+export const MON_PARTS: Array<[MonPart, string]> = [['artwork', 'artwork'], ['shiny', 'shiny artwork'], ['abilities', 'abilities'], ['dex', 'a Pokédex entry'], ['moves', 'a learnset'], ['sets', 'sample sets']];
+const isCustomType = (t?: string) => !!t && !ALL_VANILLA_TYPES.includes(t);
+const isCustom = (x: any) => x?.custom === true || x?.source === 'custom';
+export const monBst = (m: any) => ['hp', 'atk', 'def', 'spa', 'spd', 'spe'].reduce((n, k) => n + (Number(m?.stats?.[k]) || 0), 0);
+
+/** What a Fakémon breaks of a question's rules, in words ([] when it's fine). */
+export function monRuleProblems(m: any, r?: MonRules): string[] {
+    if (!m || !r) return [];
+    const out: string[] = [];
+    const has: Record<MonPart, boolean> = {
+        artwork: !!m.artwork, shiny: !!m.shinyArtwork, abilities: (m.abilities || []).some((a: any) => String(a?.name || '').trim()),
+        dex: !!String(m.dexEntry1 || '').trim(), moves: (m.learnset || []).length > 0, sets: (m.sampleSets || []).length > 0
+    };
+    for (const [part, words] of MON_PARTS) if (r.require?.includes(part) && !has[part]) out.push(`needs ${words}`);
+    if (r.noCustomTypes && (isCustomType(m.type1) || isCustomType(m.type2))) out.push("can't have a custom type");
+    if (r.noCustomAbilities && (m.abilities || []).some(isCustom)) out.push("can't have a custom ability");
+    if (r.noCustomMoves && ((m.learnset || []).some(isCustom) || (m.customMoves || []).length)) out.push("can't have custom moves");
+    if (r.types?.length && !r.types.includes(m.type1) && !r.types.includes(m.type2)) out.push(`must be ${r.types.join(' or ')} type`);
+    const bst = monBst(m);
+    if (r.minBst && bst < r.minBst) out.push(`needs a BST of at least ${r.minBst}`);
+    if (r.maxBst && bst > r.maxBst) out.push(`needs a BST of at most ${r.maxBst}`);
+    return out;
+}
+
+/** The rules in words, for entrants. */
+export function describeMonRules(r?: MonRules): string[] {
+    if (!r) return [];
+    const out: string[] = [];
+    const parts = MON_PARTS.filter(([p]) => r.require?.includes(p)).map(([, w]) => w);
+    if (parts.length) out.push(`Must have ${parts.join(', ')}`);
+    if (r.types?.length) out.push(`Must be ${r.types.join(' or ')} type`);
+    if (r.minBst && r.maxBst) out.push(`BST between ${r.minBst} and ${r.maxBst}`);
+    else if (r.minBst) out.push(`BST of at least ${r.minBst}`);
+    else if (r.maxBst) out.push(`BST of at most ${r.maxBst}`);
+    if (r.noCustomTypes) out.push('No custom types');
+    if (r.noCustomAbilities) out.push('No custom abilities');
+    if (r.noCustomMoves) out.push('No custom moves');
+    return out;
+}
+
+// ---- moves, abilities, items and types as answers ----
+
+export const LIB_KINDS: Array<[LibKind, string, string]> = [['move', 'Move', 'bolt'], ['ability', 'Ability', 'sparkles'], ['item', 'Item', 'shopping-bag'], ['type', 'Type', 'swatch']];
+export const libLabel = (k: LibKind) => LIB_KINDS.find(x => x[0] === k)?.[1] || 'Entry';
+
+/** Your own moves, abilities, items and types, of the kinds a question takes. */
+export function myLibrary(kinds: LibKind[]): any[] {
+    const from = (kind: LibKind, list: any[]) => kinds.includes(kind) ? (list || []).map(x => ({ ...x, kind })) : [];
+    return [
+        ...from('move', state.customMoves), ...from('ability', state.customAbilities),
+        ...from('item', state.customItems), ...from('type', api.getCustomTypes?.() || [])
+    ];
+}
+
+/** One ready to go in an entry: no collection bookkeeping, its picture small (the database caps it at 600 KB). */
+export async function libraryForEntry(item: any): Promise<any> {
+    const copy = JSON.parse(JSON.stringify(item));
+    for (const k of ['id', 'createdAt', 'updatedAt', 'regionIds', 'folderId', 'pinned', 'vanillaOf', 'customId']) delete copy[k];
+    copy.name = String(copy.name || '').trim();
+    if (typeof copy.artwork === 'string' && copy.artwork.startsWith('data:image/')) copy.artwork = await shrinkImage(copy.artwork, 512, 380_000).catch(() => '');
+    if (!copy.artwork) delete copy.artwork;
+    if (JSON.stringify(copy).length > 550_000) throw new Error('That one is too large to enter.');
+    return copy;
+}
+
+/** The moves, abilities, items and types in a Woogidex file: one exported entry, or a whole collection. */
+export async function libraryFromFile(file: File, kinds: LibKind[]): Promise<any[]> {
+    let parsed: any;
+    try { parsed = JSON.parse(await file.text()); } catch { throw new Error("That file isn't a Woogidex export (.json)."); }
+    const one: Record<string, LibKind> = { 'woogidex-custom-move': 'move', 'woogidex-custom-ability': 'ability', 'woogidex-custom-item': 'item' };
+    const found: any[] = [];
+    if (one[parsed?.format] && parsed.item) found.push({ ...parsed.item, kind: one[parsed.format] });
+    for (const [key, kind] of [['customMoves', 'move'], ['customAbilities', 'ability'], ['customItems', 'item'], ['customTypes', 'type']] as Array<[string, LibKind]>) {
+        if (Array.isArray(parsed?.[key])) found.push(...parsed[key].map((x: any) => ({ ...x, kind })));
+    }
+    if (!found.length && parsed?.type === 'custom-type') found.push({ ...parsed, kind: 'type' });
+    const usable = found.filter(x => x && typeof x === 'object' && x.name && kinds.includes(x.kind));
+    if (!usable.length) throw new Error(`No ${kinds.map(k => libLabel(k).toLowerCase()).join(', ')} found in that file.`);
+    return usable;
 }
 
 // ---- unsaved event drafts ----

@@ -7,6 +7,7 @@ import {
     POOL_ICON, POOL_KINDS, POOL_LABEL, REGION_COLORS, poolOf, poolSummary, regionDetailsStatus
 } from '../../../features/regions.ts';
 import { Icon } from '../Icon.tsx';
+import { cropThen } from '../../dialogs/cropImage.tsx';
 import type { Region } from '../../types.ts';
 
 export function ColorSwatches({ colors, selected, onPick }: { colors: string[]; selected: string | null; onPick: (hex: string) => void }) {
@@ -43,7 +44,7 @@ export function RegionDetails({ region }: { region: Region }) {
                 <div className="region-details-banner-actions">
                     <label className="btn btn-secondary btn-sm">
                         <Icon name="image-up" /><span>{region.banner ? 'Change banner' : 'Add banner'}</span>
-                        <input type="file" accept="image/*" hidden onChange={e => api.uploadRegionBanner(e)} />
+                        <input type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f?.type.startsWith('image/')) cropThen(f, 4, api.uploadRegionBanner); }} />
                     </label>
                     {region.banner && <button type="button" className="btn btn-secondary btn-sm" onClick={() => api.removeRegionBanner()}><Icon name="x" /><span>Remove</span></button>}
                 </div>

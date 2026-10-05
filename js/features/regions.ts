@@ -663,9 +663,8 @@ export function setRegionPoolMode(kind, mode) {
 
 // banners are downscaled on the way in: a phone photo would otherwise be
 // megabytes in every save and backup
-export function uploadRegionBanner(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
+/** Takes the already-cropped banner (RegionDetails crops it first). */
+export function uploadRegionBanner(file: File) {
     const region = getActiveRegion();
     if (!file || !region) return;
     if (!file.type.startsWith('image/')) { api.showToast?.('Pick an image file for the banner.', 'error'); return; }

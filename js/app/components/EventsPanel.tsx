@@ -7,14 +7,19 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, state } from '../../core/app.ts';
 import { routeUrl } from '../../core/router.ts';
+import { confirmDialog } from '../../core/confirm-dialog.ts';
+import { SELECTABLE_TYPES } from '../../core/data.ts';
 import {
-    ALWAYS_PRIVATE, CATEGORIES, DEFAULT_CRITERIA, FIELD_TYPES, SLUG_PATTERN, VOTE_FIELD_TYPES, answered, criteriaOf, detailFor, formPages, hasOptions, voteAnswersOk, isGuestView, remarksOk, saveResultsPost, standingsMarkdown, toggleEventRepost, PHASES, STAGE_LABEL, addHelper, autofillFor, ballotEntries,
+    isPrivateField, CATEGORIES, DEFAULT_CRITERIA, FIELD_TYPES, SLUG_PATTERN, VOTE_FIELD_TYPES, answered, criteriaOf, detailFor, formPages, hasOptions, voteAnswersOk, isGuestView, remarksOk, saveResultsPost, standingsMarkdown, toggleEventRepost, PHASES, STAGE_LABEL, addHelper, autofillFor, ballotEntries,
     canCreateEvents, castVote, clearEventDraft, closeBallot, computeWinners, copyLink, createEvent, dashboardLink, deleteEvent,
     describeWinnerRules, effectivePhase, entryAllowance, entryImage, entryTitle, events, exportEntriesCsv, exportVotesJson,
     fakemonForEntry, fakemonFromFile, fmtDate, hasSubmittedBallot, isLive, isPast, loadEvent, loadEventsList, permsFor,
     previewEventFakemon, ranked, readEventDraft, relTime, removeEntry, removeEntryLimit, removeHelper, saveEvent, scoresComplete,
     setEntryLimit, setPhase, setPlacement, shareLink, showEventView, shrinkImage, startBallot, submitBallot, submitEntry,
-    takingEntries, updateBallot, updateHelper, votingOpen, writeEventDraft,
+    takingEntries, updateBallot, updateEntry, updateHelper, votingOpen, writeEventDraft, readEntryDraft, writeEntryDraft, clearEntryDraft,
+    myTimeZone, timeZones, zonedParts, zonedToUtc,
+    LIB_KINDS, MON_PARTS, describeMonRules, libLabel, libraryForEntry, libraryFromFile, monRuleProblems, myLibrary,
+    type LibKind, type MonRules,
     type DashTab, type Detail, type Entry, type EventRow, type Field, type FieldType, type Helper, type Person, type Phase,
     createEventCode, deleteEventCode, randomCode, redeemEventCode, voteDisplay,
     type Criterion, type EventCode, type EventTab, type Remarks, type Stage, type Voting, type WinnerRules
@@ -25,6 +30,7 @@ import { Icon } from './Icon.tsx';
 import { Modal } from './Modal.tsx';
 import { PokedexBoard } from './board/PokedexBoard.tsx';
 import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
+import { cropThen } from '../dialogs/cropImage.tsx';
 import { useStore } from '../store.ts';
 
 export function EventsPanel() {
@@ -54,7 +60,7 @@ function PhasePill({ ev }: { ev: EventRow }) {
 }
 
 function BackLink({ to, children }: { to: Parameters<typeof showEventView>[0]; children: ReactNode }) {
-    return <button type="button" className="ev-back" onClick={() => showEventView(to)}><Icon name="arrow-left" size={14} />{children}</button>;
+    return <button type="button" className="ev-back" data-leave-guard onClick={() => showEventView(to)}><Icon name="arrow-left" size={14} />{children}</button>;
 }
 
 // ==================== the list: every event a ticket ====================
@@ -261,24 +267,52 @@ const emptyDetail = (ev: EventRow): Detail => ({
 });
 
 /**
- * The event as entrants see it, in tabs: About (what it is, the next step),
- * Enter, Vote, and Results. In preview: the organizer's unsaved version, with
- * nothing submittable.
+ * The event as entrants see it. Its page is the About: what it is and the one
+ * thing to do next. Entering, voting and results each open as a page of their
+ * own with nothing but the form (or the entries) on it. In preview: the
+ * organizer's unsaved version, with nothing submittable.
  */
 function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: Detail; tab: EventTab; onTab: (t: EventTab) => void; preview?: boolean }) {
     const perms = preview ? permsFor(null) : permsFor(ev, d.helpers);
     const guest = !preview && isGuestView();
-    const stage = effectivePhase(ev);
     const mine = state.user ? d.entries.filter(e => e.user_id === state.user!.id) : [];
     const allowance = entryAllowance(ev, d.limits);
     const organizer = d.people[ev.owner_id];
-    const tabs: Array<[EventTab, string, string]> = [
-        ['about', 'About', 'information-circle'],
-        ['enter', mine.length ? 'Your entries' : 'Enter', 'paper-airplane'],
-        ...(ev.voting !== 'none' ? [['vote', 'Vote', 'star'] as [EventTab, string, string]] : []),
-        ['results', ev.voting === 'none' ? 'Entries & results' : 'Results', 'trophy']
-    ];
-    const current = tabs.some(t => t[0] === tab) ? tab : 'about';
+    const current: EventTab = tab === 'vote' && ev.voting === 'none' ? 'about' : tab;
+    const footer = guest && (
+        <footer className="ev-guest-footer">
+            <span>© {new Date().getFullYear()} Woogidex. All rights reserved.</span>
+            <button type="button" onClick={() => api.openTermsPage?.()}>Terms of Service</button>
+            <button type="button" onClick={() => api.openPrivacyPage?.()}>Privacy Policy</button>
+        </footer>
+    );
+    useEffect(() => { if (!preview) window.scrollTo({ top: 0 }); }, [current]);
+    // signing in on a guest page brings the hub's sidebar back
+    useEffect(() => { if (state.user) document.body.classList.remove('event-guest'); }, [state.user]);
+
+    if (current !== 'about') {
+        const kicker = current === 'enter' ? (mine.length && !takingEntries(ev) ? 'Your entries' : 'Entry form')
+            : current === 'vote' ? 'Voting' : ev.voting === 'none' ? 'Entries' : 'Results';
+        return (
+            <article className="ev-page ev-focus">
+                <button type="button" className="ev-back" data-leave-guard={preview ? undefined : true} onClick={() => onTab('about')}><Icon name="chevron-left" size={15} />About this event</button>
+                <header className="ev-focus-head">
+                    {ev.cover_image && <div className="ev-focus-cover ev-cover"><img src={ev.cover_image} alt="" draggable={false} /></div>}
+                    <div className="ev-focus-title">
+                        <span className="ev-focus-kicker">{kicker}</span>
+                        <h2>{ev.title || 'Untitled event'}</h2>
+                        {current === 'enter' && ev.submissions_close_at && takingEntries(ev) && <p className="ev-hint">Entries close {fmtDate(ev.submissions_close_at)} ({relTime(ev.submissions_close_at)}).</p>}
+                        {current === 'vote' && ev.voting_close_at && votingOpen(ev) && <p className="ev-hint">Voting closes {fmtDate(ev.voting_close_at)} ({relTime(ev.voting_close_at)}).</p>}
+                    </div>
+                </header>
+                {current === 'enter' && <EnterTab ev={ev} d={d} preview={preview} mine={mine} allowance={allowance} />}
+                {current === 'vote' && <VoteTab ev={ev} d={d} preview={preview} />}
+                {current === 'results' && <ResultsView ev={ev} d={d} perms={perms} />}
+                {footer}
+            </article>
+        );
+    }
+
     return (
         <article className="ev-page">
             {!preview && !guest && <BackLink to={{ kind: 'list' }}>All events</BackLink>}
@@ -301,20 +335,9 @@ function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: De
             </header>
             {ev.phase === 'draft' && !preview && <p className="ev-notice"><Icon name="eye-slash" size={15} />This is a draft. Only you and your team can see it until it opens.</p>}
 
-            <nav className="ev-tabs ev-event-tabs" role="tablist" aria-label="Event">
-                {tabs.map(([key, label, icon]) => (
-                    <button key={key} type="button" role="tab" aria-selected={current === key} className={`ev-tab${current === key ? ' active' : ''}`} onClick={() => onTab(key)}>
-                        <Icon name={icon} size={15} />{label}
-                    </button>
-                ))}
-            </nav>
-
             <div className="ev-page-grid">
                 <div className="ev-page-main">
-                    {current === 'about' && <AboutTab ev={ev} d={d} preview={preview} onTab={onTab} />}
-                    {current === 'enter' && <EnterTab ev={ev} d={d} preview={preview} mine={mine} allowance={allowance} />}
-                    {current === 'vote' && <VoteTab ev={ev} d={d} preview={preview} />}
-                    {current === 'results' && <ResultsView ev={ev} d={d} perms={perms} />}
+                    <AboutTab ev={ev} d={d} preview={preview} mine={mine} perms={perms} onTab={onTab} />
                 </div>
                 <aside className="ev-facts" aria-label="Event details">
                     <Timeline ev={ev} />
@@ -329,29 +352,30 @@ function EventView({ ev, d, tab, onTab, preview = false }: { ev: EventRow; d: De
                         {ev.voting !== 'none' && <div><dt>Who wins</dt><dd>{describeWinnerRules(ev.winner_criteria)}</dd></div>}
                         <div><dt>Results</dt><dd>{ev.live_results && ev.voting !== 'none' ? 'Live while voting' : ev.results_at ? `Out ${fmtDate(ev.results_at)}` : 'Shown when it ends'}</dd></div>
                     </dl>
+                    <p className="ev-tz-note"><Icon name="globe-alt" size={13} />Times are in your time zone.</p>
                 </aside>
             </div>
-            {guest && (
-                <footer className="ev-guest-footer">
-                    <span>Made with <strong>Woogidex</strong>, the Fakémon maker.</span>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => api.openAuthModal?.('signin')}>Sign in</button>
-                </footer>
-            )}
+            {footer}
         </article>
     );
 }
 
-/** About: what the event is, and the one thing to do next. */
-function AboutTab({ ev, d, preview, onTab }: { ev: EventRow; d: Detail; preview: boolean; onTab: (t: EventTab) => void }) {
+/** About: what the event is, the one thing to do next, and the ways in to the rest. */
+function AboutTab({ ev, d, preview, mine, perms, onTab }: { ev: EventRow; d: Detail; preview: boolean; mine: Entry[]; perms: ReturnType<typeof permsFor>; onTab: (t: EventTab) => void }) {
     const stage = effectivePhase(ev);
     const next: [EventTab, string, string, string] | null =
         stage === 'upcoming' ? ['enter', 'Entries open soon', `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).`, 'See the form']
-        : stage === 'open' || preview ? ['enter', 'Taking entries', ev.submissions_close_at ? `Entries close ${fmtDate(ev.submissions_close_at)} (${relTime(ev.submissions_close_at)}).` : 'Send yours in while entries are open.', 'Enter now']
+        : stage === 'open' || preview ? ['enter', 'Taking entries', ev.submissions_close_at ? `Entries close ${fmtDate(ev.submissions_close_at)} (${relTime(ev.submissions_close_at)}).` : 'Send yours in while entries are open.', mine.length ? 'Your entries' : 'Enter now']
         : stage === 'voting' ? ['vote', 'Voting is open', ev.voting_close_at ? `Voting closes ${fmtDate(ev.voting_close_at)} (${relTime(ev.voting_close_at)}).` : 'Have your say on the entries.', 'Vote now']
         : stage === 'tallying' ? ['results', 'Results soon', `Results come out ${fmtDate(ev.results_at)} (${relTime(ev.results_at)}).`, 'See the entries']
         : stage === 'ended' ? ['results', 'The results are in', 'See who won and every entry.', 'See the results']
         : stage === 'closed' ? [ev.voting === 'none' ? 'results' : 'vote', 'Entries are closed', ev.voting_open_at && !isPast(ev.voting_open_at) ? `Voting opens ${fmtDate(ev.voting_open_at)} (${relTime(ev.voting_open_at)}).` : 'Nothing more to send in.', 'See the entries']
         : null;
+    // the other pages, when there's something on them
+    const entriesVisible = ev.show_entries || ['closed', 'voting', 'tallying', 'ended'].includes(stage) || perms.entries || perms.judge || perms.results;
+    const more: Array<[EventTab, string, string]> = [];
+    if (mine.length && next?.[0] !== 'enter') more.push(['enter', `Your ${mine.length === 1 ? 'entry' : 'entries'}`, 'paper-airplane']);
+    if (!preview && entriesVisible && d.entries.length && next?.[0] !== 'results') more.push(['results', 'See the entries', 'squares-2x2']);
     return (
         <>
             {next && (
@@ -360,6 +384,11 @@ function AboutTab({ ev, d, preview, onTab }: { ev: EventRow; d: Detail; preview:
                     <button className="btn btn-primary" type="button" onClick={() => onTab(next[0])}>{next[3]}<Icon name="arrow-right" size={15} /></button>
                 </section>
             )}
+            {more.length > 0 && (
+                <div className="ev-more">
+                    {more.map(([key, label, icon]) => <button key={key} type="button" className="ev-link" onClick={() => onTab(key)}><Icon name={icon} size={14} />{label}</button>)}
+                </div>
+            )}
             {ev.description
                 ? <section className="ev-block"><h3>About</h3><RichText text={ev.description} className="ev-rich" /></section>
                 : <p className="ev-hint">The organizers haven't written a description.</p>}
@@ -367,19 +396,57 @@ function AboutTab({ ev, d, preview, onTab }: { ev: EventRow; d: Detail; preview:
     );
 }
 
-/** Enter: the form, your entries, and a code box for people given extra entries. */
+/**
+ * While `dirty`: closing or reloading the tab gets the browser's "Leave site?",
+ * and the site's own ways out (the header, the hub's menu, a [data-leave-guard]
+ * button) ask first.
+ * ponytail: the browser's Back button isn't asked about; the autosave keeps the work.
+ */
+const LEAVING = '.logo-button, .header-nav-btn, .header-messages-btn, .notification-item, .header-profile-popover-identity, '
+    + 'button.header-profile-popover-item, .header-profile-popover-legal button, .hub-nav button, [data-leave-guard]';
+function useLeaveGuard(dirty: boolean, message: string) {
+    useEffect(() => {
+        if (!dirty) return;
+        let passing = false;
+        const unload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+        const click = (e: MouseEvent) => {
+            const el = (e.target as Element | null)?.closest?.(LEAVING) as HTMLElement | null;
+            if (passing || !el || el.closest('.modal-overlay, #react-dialogs')) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            confirmDialog({ title: 'Leave without finishing?', message, confirmLabel: 'Leave', cancelLabel: 'Keep going', danger: false }).then(yes => {
+                if (!yes) return;
+                passing = true;
+                el.click();
+                passing = false;
+            });
+        };
+        window.addEventListener('beforeunload', unload);
+        document.addEventListener('click', click, true);
+        return () => { window.removeEventListener('beforeunload', unload); document.removeEventListener('click', click, true); };
+    }, [dirty, message]);
+}
+
+/** Two sets of answers differ in anything actually answered. */
+const answersDiffer = (a: Record<string, any>, b: Record<string, any>) =>
+    [...new Set([...Object.keys(a), ...Object.keys(b)])].some(k => (answered(a[k]) || answered(b[k])) && JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null));
+
+/** Enter: your entries (changeable until entries close), the form, and a code box for extra entries. */
 function EnterTab({ ev, d, preview, mine, allowance }: { ev: EventRow; d: Detail; preview: boolean; mine: Entry[]; allowance: number }) {
     const stage = effectivePhase(ev);
+    const [editing, setEditing] = useState<Entry | null>(null);
     const canEnter = preview || (takingEntries(ev) && (state.user ? mine.length < allowance : ev.public_access));
+    if (editing && takingEntries(ev)) return <EntryForm key={editing.id} ev={ev} d={d} left={0} preview={false} editing={editing} onDone={() => setEditing(null)} />;
     return (
         <>
             {mine.length > 0 && (
                 <section className="ev-block">
                     <h3>Your {mine.length === 1 ? 'entry' : 'entries'}</h3>
-                    <div className="ev-gallery">{mine.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own />)}</div>
+                    {takingEntries(ev) && <p className="ev-hint">You can change or withdraw {mine.length === 1 ? 'it' : 'them'} until entries close.</p>}
+                    <div className="ev-gallery">{mine.map(en => <EntryCard key={en.id} ev={ev} d={d} entry={en} own onEdit={takingEntries(ev) ? () => setEditing(en) : undefined} />)}</div>
                 </section>
             )}
-            {canEnter && <EntryForm ev={ev} again={mine.length > 0} left={allowance - mine.length} preview={preview} />}
+            {canEnter && <EntryForm ev={ev} d={d} left={allowance - mine.length} preview={preview} />}
             {!preview && takingEntries(ev) && !canEnter && <p className="ev-notice"><Icon name="check-circle" size={15} />You've used all {plural(allowance, 'entry', 'entries')}. Withdraw one to enter something else.</p>}
             {!preview && !takingEntries(ev) && (
                 <p className="ev-notice"><Icon name="clock" size={15} />{stage === 'upcoming' ? `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).` : stage === 'draft' ? 'Entries open when the organizer publishes this event.' : 'Entries are closed.'}</p>
@@ -526,7 +593,7 @@ function BallotCall({ ev, d }: { ev: EventRow; d: Detail }) {
     );
 }
 
-function EntryCard({ ev, d, entry: en, own = false, winner = false }: { ev: EventRow; d: Detail; entry: Entry; own?: boolean; winner?: boolean }) {
+function EntryCard({ ev, d, entry: en, own = false, winner = false, onEdit }: { ev: EventRow; d: Detail; entry: Entry; own?: boolean; winner?: boolean; onEdit?: () => void }) {
     const perms = permsFor(ev, d.helpers);
     const img = entryImage(ev, en);
     const author = authorOf(d, en);
@@ -559,6 +626,7 @@ function EntryCard({ ev, d, entry: en, own = false, winner = false }: { ev: Even
                         <Icon name="star" size={15} />{myVote ? `Scored ${myVote.score}` : 'Score'}
                     </button>
                 )}
+                {onEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={onEdit}><Icon name="pencil" size={13} />Edit</button>}
                 {own && takingEntries(ev) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => removeEntry(en, true)}>Withdraw</button>}
             </div>
             {open && <EntryDialog ev={ev} d={d} entry={en} close={() => setOpen(false)} />}
@@ -607,6 +675,7 @@ function Answer({ field: f, value }: { field: Field; value: any }) {
             </span>
         );
     }
+    if (f.type === 'library' && typeof value === 'object') return <LibCard v={value} />;
     if (f.type === 'url' && /^https?:\/\//i.test(value)) return <a href={value} target="_blank" rel="noopener noreferrer nofollow ugc">{value}</a>;
     if (f.type === 'agree') return <span><Icon name="check" size={13} /> Yes</span>;
     if (f.type === 'checkboxes' && Array.isArray(value)) return <span className="ev-prose">{value.join(', ')}</span>;
@@ -620,7 +689,7 @@ function EntryAnswers({ ev, d, entry: en }: { ev: EventRow; d: Detail; entry: En
     return (
         <dl className="ev-answers">
             {ev.form.map(f => {
-                const isPrivate = ALWAYS_PRIVATE.includes(f.type) || f.private;
+                const isPrivate = isPrivateField(f);
                 if (f.type === 'section' || (isPrivate && !(f.id in priv))) return null;
                 return (
                     <div key={f.id}>
@@ -881,8 +950,17 @@ function Turnstile({ onToken, resetKey }: { onToken: (t: string) => void; resetK
     return failed ? <p className="ev-error">The anti-spam check could not load. Check your connection and reload the page.</p> : <div className="ev-turnstile" ref={box} />;
 }
 
-function EntryForm({ ev, again, left, preview }: { ev: EventRow; again: boolean; left: number; preview: boolean }) {
-    const [answers, setAnswers] = useState<Record<string, any>>({});
+/**
+ * The entry form, Google Forms style: one card per question, page by page.
+ * What you fill in is kept on this device as you go (until it's sent), and
+ * leaving with unsent answers asks first. With `editing`: your own entry,
+ * changed in place while entries are open.
+ */
+function EntryForm({ ev, d, left, preview, editing, onDone }: { ev: EventRow; d: Detail; left: number; preview: boolean; editing?: Entry; onDone?: () => void }) {
+    const original = useMemo(() => editing ? { ...editing.answers, ...(d.privateAnswers[editing.id] || {}) } : {}, [editing?.id]);
+    const [draft] = useState(() => preview ? null : readEntryDraft(ev.id, editing?.id));
+    const [answers, setAnswers] = useState<Record<string, any>>(() => draft || original);
+    const [restored, setRestored] = useState(!!draft);
     const [filled, setFilled] = useState<Record<string, string>>({});
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
@@ -897,7 +975,12 @@ function EntryForm({ ev, again, left, preview }: { ev: EventRow; again: boolean;
     const at = Math.min(page, pages.length - 1);
     const current = pages[at];
     const last = at === pages.length - 1;
+    const base = editing ? original : filled;
+    const dirty = !preview && !sent && answersDiffer(answers, base);
+    useLeaveGuard(dirty, 'Your answers stay saved on this device, so you can come back and finish.');
+
     useEffect(() => {
+        if (editing) return;
         let live = true;
         autofillFor(ev.form).then(found => {
             if (!live) return;
@@ -907,13 +990,36 @@ function EntryForm({ ev, again, left, preview }: { ev: EventRow; again: boolean;
         return () => { live = false; };
     }, [ev.id, formKey]);
     useEffect(() => { setPage(0); }, [formKey]);
+    // autosave, a moment after the last change
+    useEffect(() => {
+        if (preview || sent) return;
+        const t = setTimeout(() => dirty ? writeEntryDraft(ev.id, answers, editing?.id) : clearEntryDraft(ev.id, editing?.id), 500);
+        return () => clearTimeout(t);
+    }, [answers, dirty]);
+
     const set = (id: string, v: any) => setAnswers(a => ({ ...a, [id]: v }));
     const missing = (fields: Field[]) => fields.find(f => f.required && !answered(answers[f.id]));
+    // what's wrong on a page: a required answer missing, or a Fakémon breaking the question's rules
+    const issue = (fields: Field[]) => {
+        const m = missing(fields);
+        if (m) return `"${m.label}" is required.`;
+        for (const f of fields) {
+            const broken = f.type === 'fakemon' && answered(answers[f.id]) ? monRuleProblems(answers[f.id], f.rules) : [];
+            if (broken.length) return `Your Fakémon ${broken.join(', ')} ("${f.label}").`;
+        }
+        return '';
+    };
     const goTo = (i: number) => { setPage(i); setError(''); top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+    function startOver() {
+        clearEntryDraft(ev.id, editing?.id);
+        setAnswers({ ...base });
+        setRestored(false);
+        goTo(0);
+    }
 
     function next() {
-        const m = missing(current.fields);
-        if (m) { setError(`"${m.label}" is required.`); return; }
+        const problem = issue(current.fields);
+        if (problem) { setError(problem); return; }
         goTo(at + 1);
     }
 
@@ -921,36 +1027,49 @@ function EntryForm({ ev, again, left, preview }: { ev: EventRow; again: boolean;
         e.preventDefault();
         if (preview) return;
         if (!last) { next(); return; }
-        const gap = pages.findIndex(p => missing(p.fields));
-        if (gap !== -1) { goTo(gap); setError(`"${missing(pages[gap].fields)!.label}" is required.`); return; }
+        const gap = pages.findIndex(p => issue(p.fields));
+        if (gap !== -1) { const problem = issue(pages[gap].fields); goTo(gap); setError(problem); return; }
         if (guest && !token) { setError('Complete the anti-spam check below first.'); return; }
         setBusy(true);
         setError('');
-        const ok = await submitEntry(ev.id, answers, token);
+        const ok = editing ? await updateEntry(editing, answers) : await submitEntry(ev.id, answers, token);
         setBusy(false);
         // a token is spent either way
         if (guest) setTries(n => n + 1);
-        if (ok) { setAnswers({ ...filled }); setPage(0); if (!state.user) setSent(true); }
+        if (!ok) return;
+        clearEntryDraft(ev.id, editing?.id);
+        setRestored(false);
+        if (editing) { onDone?.(); return; }
+        setAnswers({ ...filled });
+        setPage(0);
+        setSent(true);
     }
 
     if (sent) {
         return (
-            <section className="ev-block ev-form ev-sent">
+            <section className="ev-block ev-sent">
                 <Icon name="check-circle" size={28} />
-                <h3>Your response was recorded</h3>
-                <p className="ev-hint">Thanks for taking part. The organizers will take it from here.</p>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSent(false)}>Send another response</button>
+                <h3>{state.user ? 'You\'re in!' : 'Your response was recorded'}</h3>
+                <p className="ev-hint">{state.user ? 'Your entry is above. You can change it until entries close.' : 'Thanks for taking part. The organizers will take it from here.'}</p>
+                {(!state.user || left > 1) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSent(false)}>{state.user ? 'Enter again' : 'Send another response'}</button>}
             </section>
         );
     }
 
+    const anyRequired = ev.form.some(f => f.required);
     return (
-        <form className="ev-block ev-form" onSubmit={submit} noValidate ref={top}>
-            <div className="ev-block-head">
-                <h3>{again ? 'Enter again' : 'Enter this event'}</h3>
-                {!preview && left > 1 && state.user && <span className="ev-budget">{plural(left, 'entry', 'entries')} left</span>}
-            </div>
-            {ev.submissions_close_at && at === 0 && <p className="ev-hint">Entries close {fmtDate(ev.submissions_close_at)} ({relTime(ev.submissions_close_at)}).</p>}
+        <form className="ev-form" onSubmit={submit} noValidate ref={top}>
+            {(editing || restored || anyRequired || (!preview && left > 1 && state.user)) && (
+                <div className="ev-form-status">
+                    {editing ? <span className="ev-form-editing"><Icon name="pencil" size={13} />Editing your entry</span>
+                        : restored ? <span><Icon name="arrow-uturn-left" size={13} />Picked up where you left off. <button type="button" className="ev-link" onClick={startOver}>Start over</button></span>
+                        : <span />}
+                    <span className="ev-form-status-end">
+                        {!editing && !preview && left > 1 && state.user && <span className="ev-budget">{plural(left, 'entry', 'entries')} left</span>}
+                        {anyRequired && <span className="ev-req-note"><span className="ev-req" aria-hidden="true">*</span> Required</span>}
+                    </span>
+                </div>
+            )}
             {pages.length > 1 && (
                 <div className="ev-pages" aria-label={`Page ${at + 1} of ${pages.length}`}>
                     <span>Page {at + 1} of {pages.length}</span>
@@ -959,22 +1078,24 @@ function EntryForm({ ev, again, left, preview }: { ev: EventRow; again: boolean;
             )}
             {current.head && (
                 <div className="ev-page-intro">
-                    <h4>{current.head.label}</h4>
+                    <h3>{current.head.label}</h3>
                     {current.head.help && <p className="ev-hint">{current.head.help}</p>}
                 </div>
             )}
             {current.fields.map(f => <FieldInput key={f.id} field={f} value={answers[f.id]} autofilled={filled[f.id] !== undefined && filled[f.id] === answers[f.id]} onChange={v => set(f.id, v)} />)}
-            {!ev.form.length && <p className="ev-hint">This event asks for nothing more. Submit to sign up.</p>}
+            {!ev.form.length && <div className="ev-field"><p className="ev-hint">This event asks for nothing more. Submit to sign up.</p></div>}
             {guest && last && (TURNSTILE_SITE_KEY
                 ? <Turnstile onToken={setToken} resetKey={tries} />
                 : <p className="ev-error">Entries without an account aren't switched on for this site yet. Sign in to enter.</p>)}
             {error && <p className="ev-error" role="alert">{error}</p>}
             <div className="ev-form-actions">
                 {preview && <span className="ev-hint ev-inline-hint">Preview: submitting is off.</span>}
+                {editing && <button className="btn btn-secondary" type="button" onClick={() => { clearEntryDraft(ev.id, editing.id); onDone?.(); }}>Cancel</button>}
                 {at > 0 && <button className="btn btn-secondary" type="button" onClick={() => goTo(at - 1)}><Icon name="chevron-left" size={15} />Back</button>}
                 {last
-                    ? <button className="btn btn-primary" type="submit" disabled={busy || preview || (guest && !TURNSTILE_SITE_KEY)}>{busy ? 'Submitting…' : 'Submit entry'}</button>
-                    : <button className="btn btn-primary" type="button" onClick={next}>Next<Icon name="chevron-right" size={15} /></button>}
+                    // keyed apart: reusing the Next button as Submit would submit on the click that turned the page
+                    ? <button key="submit" className="btn btn-primary" type="submit" disabled={busy || preview || (guest && !TURNSTILE_SITE_KEY)}>{busy ? (editing ? 'Saving…' : 'Submitting…') : editing ? 'Save changes' : 'Submit'}</button>
+                    : <button key="next" className="btn btn-primary" type="button" onClick={next}>Next<Icon name="chevron-right" size={15} /></button>}
             </div>
         </form>
     );
@@ -983,7 +1104,7 @@ function EntryForm({ ev, again, left, preview }: { ev: EventRow; again: boolean;
 function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; value: any; autofilled: boolean; onChange: (v: any) => void }) {
     const id = `ev-f-${f.id}`;
     const [busy, setBusy] = useState(false);
-    const isPrivate = ALWAYS_PRIVATE.includes(f.type) || f.private;
+    const isPrivate = isPrivateField(f);
     const label = (
         <label htmlFor={id} className="ev-field-label">
             {f.label}{f.required ? <span className="ev-req" aria-hidden="true"> *</span> : <span className="ev-optional"> (optional)</span>}
@@ -993,16 +1114,29 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
     const help = (f.help || autofilled) && (
         <small className="ev-field-help">{f.help}{autofilled && <span className="ev-autofill"><Icon name="check-circle" size={12} />Filled in from your account</span>}</small>
     );
+    const ruleList = f.type === 'fakemon' ? describeMonRules(f.rules) : [];
+    const broken = f.type === 'fakemon' && value ? monRuleProblems(value, f.rules) : [];
     async function run(task: () => Promise<void>) {
         setBusy(true);
         try { await task(); } catch (e: any) { api.showToast?.(e?.message || 'That file could not be used.', 'error'); } finally { setBusy(false); }
     }
     const pickImage = (file?: File | null) => file && run(async () => onChange(await shrinkImage(file, 1800, MAX_IMAGE_CHARS)));
+    // from your collection it goes straight in; from a file it's checked over first
     const pickMon = (mon: any) => run(async () => onChange(await fakemonForEntry(mon)));
+    const checkMon = (mon: any) => run(async () => openDialog('event-fakemon-details', { mon: await fakemonForEntry(mon), imported: true, rules: f.rules, onSave: onChange }));
+    const kinds = kindsOf(f);
+    const nouns = kinds.map(k => libLabel(k).toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' or $1');
+    const pickLib = (x: any) => run(async () => onChange(await libraryForEntry(x)));
+    const checkLib = (x: any) => openDialog('event-library-edit', { kinds, item: x, imported: true, onSave: onChange });
+    const uploadLib = (file?: File | null) => file && run(async () => {
+        const found = await libraryFromFile(file, kinds);
+        if (found.length === 1) checkLib(found[0]);
+        else openDialog('event-library-picker', { items: found, onPick: checkLib, title: 'Which one from that file?' });
+    });
     const uploadMon = (file?: File | null) => file && run(async () => {
         const mons = await fakemonFromFile(file);
-        if (mons.length === 1) onChange(await fakemonForEntry(mons[0]));
-        else openDialog('event-fakemon-picker', { mons, onPick: pickMon });
+        if (mons.length === 1) checkMon(mons[0]);
+        else openDialog('event-fakemon-picker', { mons, onPick: checkMon });
     });
     let input: ReactNode;
     switch (f.type) {
@@ -1041,20 +1175,42 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
                 </div>
             );
             break;
-        case 'fakemon':
+        case 'fakemon': {
+            const gaps = value ? monGaps(value) : [];
             input = (
-                <div className="ev-upload">
+                <div className="ev-upload ev-mon-pick">
                     {value?.artwork ? <img src={value.artwork} alt="" /> : <Icon name="sparkles" size={26} />}
                     <span>
-                        {value?.name && <strong>{value.name}{value.type1 && <small> · {[value.type1, value.type2].filter(Boolean).join(' / ')}</small>}</strong>}
-                        {busy ? <span className="ev-hint ev-inline-hint">Preparing…</span> : <>
+                        {value && <strong>{value.name || 'Unnamed Fakémon'}{value.type1 && <small> · {[value.type1, value.type2].filter(Boolean).join(' / ')}</small>}</strong>}
+                        {broken.length > 0 && <small className="ev-mon-gaps is-problem"><Icon name="shield-exclamation" size={12} />For this event it {broken.join(', ')}</small>}
+                        {gaps.length > 0 && <small className="ev-mon-gaps"><Icon name="exclamation-circle" size={12} />No {gaps.join(', ')} yet</small>}
+                        {busy ? <span className="ev-hint ev-inline-hint">Preparing…</span> : value ? <span className="ev-mon-actions">
+                            <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-details', { mon: value, rules: f.rules, onSave: onChange })}><Icon name="pencil" size={14} />Edit details</button>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-board', { mon: value })}><Icon name="book-open" size={14} />Preview</button>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(null)}>Remove</button>
+                        </span> : <span className="ev-mon-actions">
                             <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-picker', { onPick: pickMon })}><Icon name="squares-2x2" size={14} />From my collection</button>
-                            <label className="btn btn-secondary btn-sm" htmlFor={`${id}-file`}><Icon name="arrow-up-tray" size={14} />Upload a file</label>
-                            {value && <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-board', { mon: value })}>Preview</button>}
-                            {value && <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(null)}>Remove</button>}
-                        </>}
+                            <label className="btn btn-secondary btn-sm" htmlFor={`${id}-file`}><Icon name="arrow-up-tray" size={14} />Import a file</label>
+                        </span>}
                     </span>
                     <input id={`${id}-file`} className="ev-sr" type="file" accept=".json,.txt,application/json,text/plain" onChange={e => { uploadMon(e.target.files?.[0]); e.target.value = ''; }} />
+                </div>
+            );
+            break;
+        }
+        case 'library':
+            input = (
+                <div className={`ev-lib-pick${value ? ' has-value' : ''}`}>
+                    {value && <LibCard v={value} />}
+                    {busy ? <span className="ev-hint ev-inline-hint">Preparing…</span> : value ? <span className="ev-mon-actions">
+                        <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-library-edit', { kinds, item: value, onSave: onChange })}><Icon name="pencil" size={14} />Edit</button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(null)}>Remove</button>
+                    </span> : <span className="ev-mon-actions">
+                        <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-library-picker', { items: myLibrary(kinds), onPick: pickLib, title: `Choose your ${nouns}` })}><Icon name="squares-2x2" size={14} />From my collection</button>
+                        <label className="btn btn-secondary btn-sm" htmlFor={`${id}-file`}><Icon name="arrow-up-tray" size={14} />Import a file</label>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-library-edit', { kinds, onSave: onChange })}><Icon name="plus" size={14} />Make one</button>
+                    </span>}
+                    <input id={`${id}-file`} className="ev-sr" type="file" accept=".json,application/json" onChange={e => { uploadLib(e.target.files?.[0]); e.target.value = ''; }} />
                 </div>
             );
             break;
@@ -1097,7 +1253,9 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
     }
     return (
         <div className="ev-field">{label}{input}{help}
-            {f.type === 'fakemon' && <small className="ev-field-help">The whole Fakémon goes in with your entry: stats, abilities and moves. It doesn't count toward your Community uploads or cloud storage.</small>}
+            {ruleList.length > 0 && <ul className="ev-mon-rules" aria-label="Rules">{ruleList.map(r => <li key={r}><Icon name="shield-check" size={12} />{r}</li>)}</ul>}
+            {f.type === 'library' && <small className="ev-field-help">Takes a {nouns}. Pick one you've made, import a Woogidex export (.json), or make one right here.</small>}
+            {f.type === 'fakemon' && <small className="ev-field-help">Import a Woogidex export (.json) or a text export (.txt); you'll be asked for anything it's missing. The whole Fakémon goes in with your entry, and it doesn't count toward your Community uploads or cloud storage.</small>}
         </div>
     );
 }
@@ -1125,6 +1283,301 @@ function FakemonPickerDialog({ close, onPick, mons }: DialogProps<{ onPick: (v: 
     );
 }
 registerDialog('event-fakemon-picker', FakemonPickerDialog);
+
+// ---- a Fakémon answer's details ----
+// An imported file (a text export especially) can leave things out; this asks
+// for them, and lets an entrant fix anything before it goes in.
+
+const MON_STATS: Array<[string, string]> = [['hp', 'HP'], ['atk', 'Attack'], ['def', 'Defense'], ['spa', 'Sp. Atk'], ['spd', 'Sp. Def'], ['spe', 'Speed']];
+/** What a Fakémon answer is missing that a judge would look for. */
+const monGaps = (m: any): string[] => [
+    !String(m?.name || '').trim() && 'name',
+    !m?.type1 && 'type',
+    !m?.artwork && 'artwork',
+    !(m?.abilities || []).some((a: any) => a?.name) && 'abilities',
+    !String(m?.dexEntry1 || '').trim() && 'Pokédex entry'
+].filter(Boolean) as string[];
+
+function FakemonDetailsDialog({ close, mon, imported = false, rules, onSave }: DialogProps<{ mon: any; imported?: boolean; rules?: MonRules; onSave: (m: any) => void }>) {
+    const [m, setM] = useState<any>(() => ({
+        ...mon,
+        stats: Object.fromEntries(MON_STATS.map(([k]) => [k, Number(mon?.stats?.[k]) || 60])),
+        abilities: [0, 1, 2].map(i => mon?.abilities?.[i] || { name: '', source: 'custom', custom: true, desc: '' })
+    }));
+    const [busy, setBusy] = useState(false);
+    const set = (patch: any) => setM((x: any) => ({ ...x, ...patch }));
+    const gaps = monGaps(m);
+    const bst = MON_STATS.reduce((n, [k]) => n + (Number(m.stats[k]) || 0), 0);
+    const cleaned = () => ({ ...m, name: String(m.name || '').trim(), abilities: m.abilities.filter((a: any) => a.name.trim()) });
+    const missingClass = (gap: string) => gaps.includes(gap) ? ' is-missing' : '';
+
+    async function pickArt(file?: File | null) {
+        if (!file) return;
+        setBusy(true);
+        try { set({ artwork: await shrinkImage(file, 1200, MAX_IMAGE_CHARS) }); }
+        catch (e: any) { api.showToast?.(e?.message || 'That image could not be used.', 'error'); }
+        setBusy(false);
+    }
+    async function save() {
+        if (!String(m.name || '').trim()) { api.showToast?.('Give your Fakémon a name.', 'warning'); return; }
+        if (!m.type1) { api.showToast?.('Give your Fakémon a type.', 'warning'); return; }
+        setBusy(true);
+        try { onSave(await fakemonForEntry(cleaned())); close(); }
+        catch (e: any) { api.showToast?.(e?.message || 'That Fakémon could not be used.', 'error'); }
+        setBusy(false);
+    }
+
+    return (
+        <Modal onClose={close} className="modal-wide ev-mon-modal" title={imported ? 'Check your Fakémon' : 'Edit your Fakémon'} dismissible={!busy}>
+            {imported && (gaps.length
+                ? <p className="ev-notice"><Icon name="exclamation-circle" size={15} /><span>The file didn't include its <strong>{gaps.join(', ')}</strong>. Fill in what you can; only the name and type are needed.</span></p>
+                : <p className="ev-notice is-done"><Icon name="check-circle" size={15} />Everything came through. Look it over, then use it.</p>)}
+            {monRuleProblems(m, rules).length > 0 && (
+                <p className="ev-notice is-problem"><Icon name="shield-exclamation" size={15} /><span>For this event, your Fakémon {monRuleProblems(m, rules).join(', ')}.</span></p>
+            )}
+            <div className="ev-mon-edit">
+                <div className={`ev-mon-art${missingClass('artwork')}`}>
+                    {m.artwork ? <img src={m.artwork} alt="" /> : <Icon name="photo" size={30} />}
+                    <span>
+                        <label className="btn btn-secondary btn-sm" htmlFor="ev-mon-art">{m.artwork ? 'Replace art' : 'Add artwork'}</label>
+                        {m.artwork && <button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ artwork: '' })}>Remove</button>}
+                    </span>
+                    <input id="ev-mon-art" className="ev-sr" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => { pickArt(e.target.files?.[0]); e.target.value = ''; }} />
+                </div>
+                <div className="ev-mon-fields">
+                    <div className="ev-two">
+                        <div className={`ev-field${missingClass('name')}`}><label className="ev-field-label" htmlFor="ev-mon-name">Name<span className="ev-req" aria-hidden="true"> *</span></label>
+                            <input id="ev-mon-name" maxLength={40} value={m.name || ''} onChange={e => set({ name: e.target.value })} /></div>
+                        <div className="ev-field"><label className="ev-field-label" htmlFor="ev-mon-species">Species</label>
+                            <input id="ev-mon-species" maxLength={40} value={m.species || ''} onChange={e => set({ species: e.target.value })} placeholder="Seed Pokémon" /></div>
+                    </div>
+                    <div className="ev-two">
+                        <div className={`ev-field${missingClass('type')}`}><label className="ev-field-label" htmlFor="ev-mon-t1">Type<span className="ev-req" aria-hidden="true"> *</span></label>
+                            <input id="ev-mon-t1" list="ev-mon-types" maxLength={24} value={m.type1 || ''} onChange={e => set({ type1: e.target.value })} placeholder="Grass" /></div>
+                        <div className="ev-field"><label className="ev-field-label" htmlFor="ev-mon-t2">Second type</label>
+                            <input id="ev-mon-t2" list="ev-mon-types" maxLength={24} value={m.type2 || ''} onChange={e => set({ type2: e.target.value })} placeholder="None" /></div>
+                        <datalist id="ev-mon-types">{SELECTABLE_TYPES.map((t: string) => <option key={t} value={t} />)}</datalist>
+                    </div>
+                </div>
+            </div>
+            <fieldset className="ev-mon-stats">
+                <legend className="ev-field-label">Base stats <span className="ev-budget">BST {bst}</span></legend>
+                {MON_STATS.map(([k, label]) => (
+                    <label key={k}><span>{label}</span>
+                        <input type="number" min={1} max={255} value={m.stats[k]} onChange={e => set({ stats: { ...m.stats, [k]: Math.min(255, Math.max(0, Number(e.target.value) || 0)) } })} /></label>
+                ))}
+            </fieldset>
+            <div className={`ev-field${missingClass('abilities')}`}>
+                <span className="ev-field-label">Abilities</span>
+                <div className="ev-mon-abilities">
+                    {m.abilities.map((a: any, i: number) => (
+                        <input key={i} maxLength={40} value={a.name} aria-label={`Ability ${i + 1}`} placeholder={i === 2 ? 'Hidden ability' : `Ability ${i + 1}`}
+                            onChange={e => set({ abilities: m.abilities.map((x: any, j: number) => j === i ? { ...x, name: e.target.value } : x) })} />
+                    ))}
+                </div>
+            </div>
+            <div className={`ev-field${missingClass('Pokédex entry')}`}><label className="ev-field-label" htmlFor="ev-mon-dex">Pokédex entry</label>
+                <textarea id="ev-mon-dex" rows={3} maxLength={600} value={m.dexEntry1 || ''} onChange={e => set({ dexEntry1: e.target.value })} /></div>
+            <div className="ev-two">
+                <div className="ev-field"><label className="ev-field-label" htmlFor="ev-mon-h">Height</label>
+                    <input id="ev-mon-h" maxLength={20} value={m.height || ''} onChange={e => set({ height: e.target.value })} placeholder="0.7 m" /></div>
+                <div className="ev-field"><label className="ev-field-label" htmlFor="ev-mon-w">Weight</label>
+                    <input id="ev-mon-w" maxLength={20} value={m.weight || ''} onChange={e => set({ weight: e.target.value })} placeholder="6.9 kg" /></div>
+            </div>
+            <p className="ev-hint">Moves, sets and everything else come along from the file as they are. To change those, edit it in Woogidex and import it again.</p>
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => openDialog('event-fakemon-board', { mon: cleaned() })}><Icon name="book-open" size={15} />Preview</button>
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Preparing…' : 'Use this Fakémon'}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-fakemon-details', FakemonDetailsDialog);
+
+// ---- moves, abilities, items and types as answers ----
+
+const ALL_LIB_KINDS: LibKind[] = ['move', 'ability', 'item', 'type'];
+const kindsOf = (f: Field): LibKind[] => f.kinds?.length ? f.kinds : ALL_LIB_KINDS;
+const kindIcon = (k: LibKind) => LIB_KINDS.find(x => x[0] === k)?.[2] || 'puzzle-piece';
+const typeClass = (t: string) => `type-badge type-${String(t).toLowerCase()}`;
+const swatch = (v: any) => v.gradient?.stops?.length
+    ? `linear-gradient(${v.gradient.angle ?? 90}deg, ${v.gradient.stops.map((s: any) => `${s.color} ${s.pos}%`).join(', ')})`
+    : v.color || 'var(--text-muted)';
+
+/** A move, ability, item or type, the way an entrant or a voter sees it. */
+function LibCard({ v }: { v: any }) {
+    const acc = v.accuracy === true || v.accuracy === '' || v.accuracy == null ? '—' : `${v.accuracy}%`;
+    return (
+        <div className="ev-lib-card">
+            {v.kind === 'item' && v.artwork ? <img className="ev-lib-art" src={v.artwork} alt="" />
+                : v.kind === 'type' ? <span className="ev-lib-art ev-lib-swatch" style={{ background: swatch(v) }} aria-hidden="true" />
+                : <span className="ev-lib-art"><Icon name={kindIcon(v.kind)} size={22} /></span>}
+            <div className="ev-lib-body">
+                <span className="ev-lib-kind">{libLabel(v.kind)}</span>
+                <strong>{v.name || 'Unnamed'}</strong>
+                {v.kind === 'move' && (
+                    <span className="ev-lib-meta">
+                        {v.type && <span className={typeClass(v.type)}>{v.type}</span>}
+                        <span>{[v.category, `Power ${v.basePower || '—'}`, `Accuracy ${acc}`, v.pp && `PP ${v.pp}`, Number(v.priority) ? `Priority ${Number(v.priority) > 0 ? '+' : ''}${v.priority}` : '']
+                            .filter(Boolean).join(' · ')}</span>
+                    </span>
+                )}
+                {v.desc && <p className="ev-prose">{v.desc}</p>}
+            </div>
+        </div>
+    );
+}
+
+/** Pick one of your own, or one from a file. */
+function LibraryPickerDialog({ close, items, onPick, title }: DialogProps<{ items: any[]; onPick: (v: any) => void; title: string }>) {
+    const [query, setQuery] = useState('');
+    const q = query.trim().toLowerCase();
+    const shown = items.filter(x => !q || [x.name, x.type, x.desc].some(s => String(s || '').toLowerCase().includes(q)));
+    return (
+        <Modal onClose={close} title={title} className="ev-lib-picker">
+            <div className="search-bar"><input type="search" placeholder="Search…" value={query} onChange={e => setQuery(e.target.value)} autoFocus aria-label="Search" /></div>
+            {shown.length ? (
+                <ul className="ev-lib-list">
+                    {shown.map((x, i) => (
+                        <li key={`${x.kind}-${x.id || i}`}>
+                            <button type="button" onClick={() => { close(); onPick(x); }}><LibCard v={x} /></button>
+                        </li>
+                    ))}
+                </ul>
+            ) : <div className="ev-empty"><p>{items.length ? 'Nothing matches your search.' : 'You haven\'t made any yet. Close this and choose "Make one".'}</p></div>}
+        </Modal>
+    );
+}
+registerDialog('event-library-picker', LibraryPickerDialog);
+
+const MOVE_CATEGORIES = ['Physical', 'Special', 'Status'];
+
+/** Make one on the spot, or check one from a file or your collection before it goes in. */
+function LibraryEditDialog({ close, kinds, item, imported = false, onSave }: DialogProps<{ kinds: LibKind[]; item?: any; imported?: boolean; onSave: (v: any) => void }>) {
+    const [v, setV] = useState<any>(() => item ? { ...item } : { kind: kinds[0], name: '', desc: '', category: 'Physical', color: '#7c5cff' });
+    const [busy, setBusy] = useState(false);
+    const set = (patch: any) => setV((x: any) => ({ ...x, ...patch }));
+    const num = (s: string) => s === '' ? '' : Math.max(0, Math.min(999, Number(s) || 0));
+
+    async function pickArt(file?: File | null) {
+        if (!file) return;
+        setBusy(true);
+        try { set({ artwork: await shrinkImage(file, 512, 380_000) }); }
+        catch (e: any) { api.showToast?.(e?.message || 'That image could not be used.', 'error'); }
+        setBusy(false);
+    }
+    async function save() {
+        if (!String(v.name || '').trim()) { api.showToast?.('Give it a name.', 'warning'); return; }
+        setBusy(true);
+        try { onSave(await libraryForEntry(v)); close(); }
+        catch (e: any) { api.showToast?.(e?.message || 'That could not be used.', 'error'); }
+        setBusy(false);
+    }
+
+    const noun = libLabel(v.kind).toLowerCase();
+    return (
+        <Modal onClose={close} className="ev-lib-modal" dismissible={!busy}
+            title={item ? (imported ? `Check your ${noun}` : `Edit your ${noun}`) : 'Make one for this entry'}>
+            {!item && kinds.length > 1 && (
+                <div className="ev-segmented ev-lib-kinds" role="radiogroup" aria-label="What it is">
+                    {kinds.map(k => (
+                        <button key={k} type="button" role="radio" aria-checked={v.kind === k} className={v.kind === k ? 'active' : ''} onClick={() => set({ kind: k })}>
+                            <Icon name={kindIcon(k)} size={14} />{libLabel(k)}
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div className="ev-field"><label className="ev-field-label" htmlFor="ev-lib-name">Name<span className="ev-req" aria-hidden="true"> *</span></label>
+                <input id="ev-lib-name" maxLength={v.kind === 'type' ? 16 : 40} value={v.name || ''} onChange={e => set({ name: e.target.value })} autoFocus /></div>
+            {v.kind === 'move' && <>
+                <div className="ev-two">
+                    <div className="ev-field"><label className="ev-field-label" htmlFor="ev-lib-type">Type</label>
+                        <input id="ev-lib-type" list="ev-lib-types" maxLength={24} value={v.type || ''} onChange={e => set({ type: e.target.value })} placeholder="Fire" />
+                        <datalist id="ev-lib-types">{SELECTABLE_TYPES.map((t: string) => <option key={t} value={t} />)}</datalist></div>
+                    <div className="ev-field"><label className="ev-field-label" htmlFor="ev-lib-cat">Category</label>
+                        <select id="ev-lib-cat" value={v.category || 'Physical'} onChange={e => set({ category: e.target.value })}>
+                            {MOVE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select></div>
+                </div>
+                <div className="ev-lib-nums">
+                    <label><span>Power</span><input type="number" min={0} max={999} value={v.basePower ?? ''} onChange={e => set({ basePower: num(e.target.value) })} placeholder="—" /></label>
+                    <label><span>Accuracy</span><input type="number" min={0} max={100} value={v.accuracy === true ? '' : v.accuracy ?? ''} onChange={e => set({ accuracy: e.target.value === '' ? true : num(e.target.value) })} placeholder="Always hits" /></label>
+                    <label><span>PP</span><input type="number" min={1} max={64} value={v.pp ?? ''} onChange={e => set({ pp: num(e.target.value) })} /></label>
+                    <label><span>Priority</span><input type="number" min={-7} max={5} value={v.priority ?? 0} onChange={e => set({ priority: Math.max(-7, Math.min(5, Number(e.target.value) || 0)) })} /></label>
+                </div>
+            </>}
+            {v.kind === 'type' && (
+                <div className="ev-field"><label className="ev-field-label" htmlFor="ev-lib-color">Colour</label>
+                    <input id="ev-lib-color" type="color" value={/^#[0-9a-f]{6}$/i.test(v.color || '') ? v.color : '#7c5cff'} onChange={e => set({ color: e.target.value, gradient: null })} /></div>
+            )}
+            {v.kind === 'item' && (
+                <div className="ev-field"><span className="ev-field-label">Picture <span className="ev-optional">(optional)</span></span>
+                    <div className="ev-upload">
+                        {v.artwork ? <img src={v.artwork} alt="" /> : <Icon name="photo" size={26} />}
+                        <span>
+                            <label className="btn btn-secondary btn-sm" htmlFor="ev-lib-art">{v.artwork ? 'Replace' : 'Upload'}</label>
+                            {v.artwork && <button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ artwork: '' })}>Remove</button>}
+                        </span>
+                        <input id="ev-lib-art" className="ev-sr" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => { pickArt(e.target.files?.[0]); e.target.value = ''; }} />
+                    </div></div>
+            )}
+            <div className="ev-field"><label className="ev-field-label" htmlFor="ev-lib-desc">What it does</label>
+                <textarea id="ev-lib-desc" rows={3} maxLength={600} value={v.desc || ''} onChange={e => set({ desc: e.target.value })}
+                    placeholder={v.kind === 'move' ? 'Has a 30% chance to burn the target.' : v.kind === 'type' ? 'Strong against Fairy, weak to Steel…' : v.kind === 'item' ? 'Holder’s Fire moves have 1.2x power.' : 'Boosts the user’s Speed in the rain.'} /></div>
+            {item && <p className="ev-hint">Anything else it has (battle code, matchups) comes along as it is.</p>}
+            <div className="ev-lib-preview"><span className="ev-field-label">Preview</span><LibCard v={v} /></div>
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Preparing…' : `Use this ${noun}`}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-library-edit', LibraryEditDialog);
+
+/** A Fakémon question's rules, in the form builder. */
+function MonRulesEditor({ rules = {}, onChange }: { rules?: MonRules; onChange: (r: MonRules | undefined) => void }) {
+    const update = (patch: Partial<MonRules>) => {
+        const next: MonRules = { ...rules, ...patch };
+        // nothing set: no rules object at all
+        const empty = !next.require?.length && !next.types?.length && !next.noCustomTypes && !next.noCustomAbilities && !next.noCustomMoves && !next.minBst && !next.maxBst;
+        onChange(empty ? undefined : next);
+    };
+    const toggle = <T,>(list: T[] | undefined, x: T) => list?.includes(x) ? list.filter(y => y !== x) : [...(list || []), x];
+    const count = describeMonRules(rules).length;
+    return (
+        <details className="ev-q-rules" open={count > 0 || undefined}>
+            <summary><Icon name="shield-check" size={14} />Rules{count > 0 && <span className="ev-budget">{count}</span>}</summary>
+            <div className="ev-q-rules-body">
+                <div className="ev-q-rule-row"><span className="ev-q-sub">Must have</span>
+                    <div className="ev-chips">
+                        {MON_PARTS.map(([p, words]) => {
+                            const on = !!rules.require?.includes(p);
+                            return <button key={p} type="button" className={`ev-chip${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => update({ require: toggle(rules.require, p) })}>{words.replace(/^an? /, '')}</button>;
+                        })}
+                    </div></div>
+                <div className="ev-q-rule-row"><span className="ev-q-sub">Not allowed</span>
+                    <div className="ev-q-flags">
+                        <label><input type="checkbox" checked={!!rules.noCustomTypes} onChange={e => update({ noCustomTypes: e.target.checked || undefined })} />Custom types</label>
+                        <label><input type="checkbox" checked={!!rules.noCustomAbilities} onChange={e => update({ noCustomAbilities: e.target.checked || undefined })} />Custom abilities</label>
+                        <label><input type="checkbox" checked={!!rules.noCustomMoves} onChange={e => update({ noCustomMoves: e.target.checked || undefined })} />Custom moves</label>
+                    </div></div>
+                <div className="ev-q-rule-row"><span className="ev-q-sub">Base stat total</span>
+                    <div className="ev-criterion-row">
+                        <label className="ev-inline-select">At least <input type="number" className="ev-num" min={1} max={1530} value={rules.minBst ?? ''} onChange={e => update({ minBst: e.target.value === '' ? undefined : Math.min(1530, Math.max(1, Number(e.target.value) || 1)) })} /></label>
+                        <label className="ev-inline-select">At most <input type="number" className="ev-num" min={1} max={1530} value={rules.maxBst ?? ''} onChange={e => update({ maxBst: e.target.value === '' ? undefined : Math.min(1530, Math.max(1, Number(e.target.value) || 1)) })} /></label>
+                    </div></div>
+                <div className="ev-q-rule-row"><span className="ev-q-sub">Must be one of these types <span className="ev-optional">(none picked: any)</span></span>
+                    <div className="ev-chips">
+                        {SELECTABLE_TYPES.map((t: string) => {
+                            const on = !!rules.types?.includes(t);
+                            return <button key={t} type="button" className={`ev-chip${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => update({ types: toggle(rules.types, t) })}>{t}</button>;
+                        })}
+                    </div></div>
+            </div>
+        </details>
+    );
+}
 
 // ==================== the dashboard ====================
 
@@ -1607,9 +2060,114 @@ const VOTING_OPTIONS: Array<[VotingMode, string, string]> = [
 ];
 const REMARKS: Array<[Remarks, string]> = [['optional', 'Optional'], ['required', 'Required'], ['off', 'Off']];
 
-const toLocal = (v: string | null) => v ? new Date(new Date(v).getTime() - new Date(v).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
-const fromLocal = (v: string) => v ? new Date(v).toISOString() : null;
+// schedule values are ISO moments ('' when unset); older drafts held local "2026-10-09T20:00", which parses the same
+const iso = (v: string) => v ? new Date(v).toISOString() : null;
 const newFieldId = (form: Field[], prefix = 'q') => { let i = form.length + 1; while (form.some(f => f.id === `${prefix}${i}`)) i++; return `${prefix}${i}`; };
+
+// ---- picking a date and time ----
+// The organizer picks a day and a time in the time zone of their choosing; it's
+// stored as a moment, and everyone sees it in their own time zone.
+
+const TZ_KEY = 'woogidex.eventTimeZone';
+function savedTimeZone() {
+    try { const z = localStorage.getItem(TZ_KEY); if (z && timeZones().includes(z)) return z; } catch { /* private mode */ }
+    return myTimeZone();
+}
+const zoneLabel = (timeZone: string, at = Date.now()) =>
+    new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' }).formatToParts(at).find(p => p.type === 'timeZoneName')?.value || timeZone;
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const pad = (n: number) => String(n).padStart(2, '0');
+
+function DatePickerDialog({ close, title, value, timeZone, min, onPick }: DialogProps<{ title: string; value: string; timeZone: string; min?: string; onPick: (iso: string, timeZone: string) => void }>) {
+    const [zone, setZone] = useState(timeZone);
+    const start = zonedParts(value ? Date.parse(value) : Date.now() + 86_400_000, zone);
+    const [day, setDay] = useState<{ y: number; mo: number; d: number } | null>(value ? { y: start.y, mo: start.mo, d: start.d } : null);
+    const [time, setTime] = useState(value ? `${pad(start.h)}:${pad(start.mi)}` : '12:00');
+    const [month, setMonth] = useState({ y: start.y, mo: start.mo });
+    const today = zonedParts(Date.now(), zone);
+    const first = new Date(Date.UTC(month.y, month.mo, 1)).getUTCDay();
+    const days = new Date(Date.UTC(month.y, month.mo + 1, 0)).getUTCDate();
+    const shift = (by: number) => setMonth(m => { const t = new Date(Date.UTC(m.y, m.mo + by, 1)); return { y: t.getUTCFullYear(), mo: t.getUTCMonth() }; });
+    const picked = day && /^\d{2}:\d{2}$/.test(time) ? zonedToUtc(day.y, day.mo, day.d, Number(time.slice(0, 2)), Number(time.slice(3)), zone) : null;
+    const tooEarly = picked && min ? picked.getTime() < Date.parse(min) : false;
+    // switching zones keeps the moment and shows it in the new zone's clock
+    function changeZone(z: string) {
+        if (picked) {
+            const p = zonedParts(picked.getTime(), z);
+            setDay({ y: p.y, mo: p.mo, d: p.d });
+            setTime(`${pad(p.h)}:${pad(p.mi)}`);
+            setMonth({ y: p.y, mo: p.mo });
+        }
+        setZone(z);
+    }
+    function use() {
+        if (!picked) return;
+        try { localStorage.setItem(TZ_KEY, zone); } catch { /* private mode */ }
+        onPick(picked.toISOString(), zone);
+        close();
+    }
+    return (
+        <Modal onClose={close} title={title} className="ev-date-modal">
+            <div className="ev-cal">
+                <div className="ev-cal-head">
+                    <button type="button" className="ev-icon-btn" onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chevron-left" size={16} /></button>
+                    <strong>{new Date(Date.UTC(month.y, month.mo, 1)).toLocaleDateString([], { month: 'long', year: 'numeric', timeZone: 'UTC' })}</strong>
+                    <button type="button" className="ev-icon-btn" onClick={() => shift(1)} aria-label="Next month"><Icon name="chevron-right" size={16} /></button>
+                </div>
+                <div className="ev-cal-grid" role="grid">
+                    {WEEKDAYS.map(w => <span key={w} className="ev-cal-wd" aria-hidden="true">{w}</span>)}
+                    {Array.from({ length: first }, (_, i) => <span key={`b${i}`} />)}
+                    {Array.from({ length: days }, (_, i) => {
+                        const d = i + 1;
+                        const on = day?.y === month.y && day.mo === month.mo && day.d === d;
+                        const isToday = today.y === month.y && today.mo === month.mo && today.d === d;
+                        return (
+                            <button key={d} type="button" className={`ev-cal-day${on ? ' is-on' : ''}${isToday ? ' is-today' : ''}`} aria-pressed={on}
+                                aria-label={new Date(Date.UTC(month.y, month.mo, d)).toLocaleDateString([], { dateStyle: 'full', timeZone: 'UTC' })}
+                                onClick={() => setDay({ y: month.y, mo: month.mo, d })}>{d}</button>
+                        );
+                    })}
+                </div>
+            </div>
+            <div className="ev-two ev-date-row">
+                <div className="ev-field"><label className="ev-field-label" htmlFor="ev-date-time">Time</label>
+                    <input id="ev-date-time" type="time" value={time} onChange={e => setTime(e.target.value)} /></div>
+                <div className="ev-field"><label className="ev-field-label" htmlFor="ev-date-zone">Time zone</label>
+                    <select id="ev-date-zone" value={zone} onChange={e => changeZone(e.target.value)}>
+                        {timeZones().map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')} ({zoneLabel(z)})</option>)}
+                    </select></div>
+            </div>
+            <p className={tooEarly ? 'ev-error' : 'ev-hint'}>
+                {!picked ? 'Pick a day.' : tooEarly ? `That's before ${fmtDate(min)}, the step before it.` : <>Everyone sees this in their own time zone. For you: <strong>{fmtDate(picked.toISOString())}</strong>.</>}
+            </p>
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+                <button type="button" className="btn btn-primary" disabled={!picked} onClick={use}>Set date</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-date-picker', DatePickerDialog);
+
+/** A schedule date: a button that opens the picker, shown in the organizer's chosen zone. */
+function DateField({ id, label, value, onChange, timeZone, onTimeZone, min, children }: {
+    id: string; label: string; value: string; onChange: (iso: string) => void; timeZone: string; onTimeZone: (z: string) => void; min?: string; children?: ReactNode;
+}) {
+    const open = () => openDialog('event-date-picker', { title: label, value, timeZone, min, onPick: (iso: string, z: string) => { onChange(iso); onTimeZone(z); } });
+    return (
+        <div className="ev-field">
+            <label className="ev-field-label" htmlFor={id}>{label}</label>
+            <div className="ev-date-field">
+                <button id={id} type="button" className="ev-date-btn" onClick={open}>
+                    <Icon name="calendar-days" size={16} />
+                    {value ? <span>{fmtDate(value, timeZone)}</span> : <span className="ev-muted">Not set</span>}
+                </button>
+                {value && <button type="button" className="ev-icon-btn" onClick={() => onChange('')} aria-label={`Clear ${label}`}><Icon name="x-mark" size={15} /></button>}
+            </div>
+            {children}
+        </div>
+    );
+}
 
 /** Questions in order, Google Forms style: add, edit, reorder, page breaks. */
 function FormBuilder({ form, onChange, types, prefix = 'q', personal = true }: { form: Field[]; onChange: (f: Field[]) => void; types: FieldType[]; prefix?: string; personal?: boolean }) {
@@ -1620,14 +2178,15 @@ function FormBuilder({ form, onChange, types, prefix = 'q', personal = true }: {
         const pageNo = form.filter(x => x.type === 'section').length + 2;
         onChange([...form, {
             id: newFieldId(form, prefix), type, label: type === 'section' ? `Page ${pageNo}` : meta(type)[1], required: type === 'agree',
-            ...(hasOptions(type) ? { options: ['Option 1', 'Option 2'] } : {}), ...(type === 'scale' ? { max: 5 } : {})
+            ...(hasOptions(type) ? { options: ['Option 1', 'Option 2'] } : {}), ...(type === 'scale' ? { max: 5 } : {}),
+            ...(type === 'library' ? { kinds: [...ALL_LIB_KINDS] } : {})
         }]);
     }
     return (
         <>
             <ol className="ev-builder">
                 {form.map((field, i) => {
-                    const lockedPrivate = ALWAYS_PRIVATE.includes(field.type);
+                    const lockedPrivate = field.type === 'email';
                     const section = field.type === 'section';
                     return (
                         <li key={field.id} className={`ev-q${section ? ' is-section' : ''}`}>
@@ -1657,10 +2216,25 @@ function FormBuilder({ form, onChange, types, prefix = 'q', personal = true }: {
                                     <label className="ev-inline-select">At most <input type="number" className="ev-num" value={field.max ?? ''} onChange={e => setField(i, { max: e.target.value === '' ? null : Number(e.target.value) })} /></label>
                                 </div>
                             )}
+                            {field.type === 'library' && (
+                                <div className="ev-q-rule-row"><span className="ev-q-sub">Takes</span>
+                                    <div className="ev-chips">
+                                        {LIB_KINDS.map(([k, label, icon]) => {
+                                            const on = kindsOf(field).includes(k);
+                                            return (
+                                                <button key={k} type="button" className={`ev-chip${on ? ' is-on' : ''}`} aria-pressed={on} disabled={on && kindsOf(field).length === 1}
+                                                    onClick={() => setField(i, { kinds: on ? kindsOf(field).filter(x => x !== k) : ALL_LIB_KINDS.filter(x => x === k || kindsOf(field).includes(x)) })}>
+                                                    <Icon name={icon} size={13} />{label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div></div>
+                            )}
+                            {field.type === 'fakemon' && <MonRulesEditor rules={field.rules} onChange={rules => setField(i, { rules })} />}
                             {!section && (
                                 <div className="ev-q-flags">
                                     <label><input type="checkbox" checked={!!field.required} onChange={e => setField(i, { required: e.target.checked })} />Required</label>
-                                    {personal && <label title={lockedPrivate ? 'Always private' : undefined}><input type="checkbox" checked={lockedPrivate || !!field.private} disabled={lockedPrivate} onChange={e => setField(i, { private: e.target.checked })} />Private to the team</label>}
+                                    {personal && <label title={lockedPrivate ? 'Email is always private' : 'Only you and helpers with Entries access see the answer'}><input type="checkbox" checked={isPrivateField(field)} disabled={lockedPrivate} onChange={e => setField(i, { private: e.target.checked })} />Only organizers see answers</label>}
                                 </div>
                             )}
                         </li>
@@ -1690,8 +2264,8 @@ function valuesFrom(event: EventRow | null): EditorValues {
     return {
         title: event?.title || '', tagline: event?.tagline || '', description: event?.description || '', category: event?.category || '',
         cover_image: event?.cover_image || null,
-        submissions_open_at: toLocal(event?.submissions_open_at || null), submissions_close_at: toLocal(event?.submissions_close_at || null),
-        voting_open_at: toLocal(event?.voting_open_at || null), voting_close_at: toLocal(event?.voting_close_at || null), results_at: toLocal(event?.results_at || null),
+        submissions_open_at: event?.submissions_open_at || '', submissions_close_at: event?.submissions_close_at || '',
+        voting_open_at: event?.voting_open_at || '', voting_close_at: event?.voting_close_at || '', results_at: event?.results_at || '',
         form: event?.form || PRESETS[0][2], votingOn: (event?.voting || PRESETS[0][3]) !== 'none',
         mode: (event && event.voting !== 'none' ? event.voting : 'ballot') as VotingMode, votes_per_user: event?.votes_per_user || 3,
         max_entries_per_user: event?.max_entries_per_user || 1, live_results: event?.live_results || false, show_entries: event?.show_entries ?? true,
@@ -1715,9 +2289,9 @@ function rowFrom(f: EditorValues): Partial<EventRow> {
     return {
         title: f.title.trim(), tagline: f.tagline.trim(), description: f.description.trim(), category: f.category.trim(),
         cover_image: f.cover_image,
-        submissions_open_at: fromLocal(f.submissions_open_at), submissions_close_at: fromLocal(f.submissions_close_at),
-        voting_open_at: votingOn ? fromLocal(f.voting_open_at) : null, voting_close_at: votingOn ? fromLocal(f.voting_close_at) : null,
-        results_at: fromLocal(f.results_at), public_access: f.public_access, voter_remarks: f.voter_remarks,
+        submissions_open_at: iso(f.submissions_open_at), submissions_close_at: iso(f.submissions_close_at),
+        voting_open_at: votingOn ? iso(f.voting_open_at) : null, voting_close_at: votingOn ? iso(f.voting_close_at) : null,
+        results_at: iso(f.results_at), public_access: f.public_access, voter_remarks: f.voter_remarks,
         slug: f.slug.trim() || null,
         vote_display: { fields: f.vote_display.fields ? f.vote_display.fields.filter(id => f.form.some(q => q.id === id)) : null, author: f.vote_display.author },
         vote_form: f.vote_form.map(x => ({ ...x, label: x.label.trim(), help: (x.help || '').trim(), options: hasOptions(x.type) ? (x.options || []).map(o => o.trim()).filter(Boolean) : undefined })),
@@ -1745,7 +2319,8 @@ function EventEditor({ event }: { event: EventRow | null }) {
     const scored = f.votingOn && (f.mode === 'ballot' || f.mode === 'judges');
     const setCriterion = (i: number, patch: Partial<Criterion>) => set({ criteria: f.criteria.map((c, j) => j === i ? { ...c, ...patch } : c) });
     const moveCriterion = (i: number, by: number) => { const c = [...f.criteria]; const [x] = c.splice(i, 1); c.splice(i + by, 0, x); set({ criteria: c }); };
-    const [previewTab, setPreviewTab] = useState<EventTab>('enter');
+    const [previewTab, setPreviewTab] = useState<EventTab>('about');
+    const [tz, setTz] = useState(savedTimeZone);
     const [sample, setSample] = useState<{ scores: Record<string, number>; remarks: string; answers: Record<string, any> }>({ scores: {}, remarks: '', answers: {} });
 
     // autosave: what you've typed stays on this device until it's saved, like a post draft
@@ -1759,6 +2334,8 @@ function EventEditor({ event }: { event: EventRow | null }) {
         return () => clearTimeout(t);
     }, [f]);
 
+    useLeaveGuard(!busy && JSON.stringify(f) !== pristine.current, 'Your changes are kept as a draft on this device until you save them.');
+
     function discardDraft() {
         clearEventDraft(eventId);
         setF(valuesFrom(event));
@@ -1766,10 +2343,13 @@ function EventEditor({ event }: { event: EventRow | null }) {
         setSavedAt(null);
     }
 
-    async function pickCover(file?: File | null) {
+    // cropped to the banner's 3.2:1 first (the tickets crop the middle of that)
+    function pickCover(file?: File | null) {
         if (!file) return;
-        try { set({ cover_image: await shrinkImage(file, 1600, 580_000) }); }
-        catch (e: any) { api.showToast?.(e?.message || 'That image could not be used.', 'error'); }
+        cropThen(file, 3.2, async cropped => {
+            try { set({ cover_image: await shrinkImage(cropped, 1600, 580_000) }); }
+            catch (e: any) { api.showToast?.(e?.message || 'That image could not be used.', 'error'); }
+        });
     }
 
     async function save() {
@@ -1884,31 +2464,29 @@ function EventEditor({ event }: { event: EventRow | null }) {
                             </label>
                         )}
                     </div>
-                    <p className="ev-hint">Email and Discord answers are always private, and fill in by themselves for people who have them on their account. A Fakémon question takes the whole Fakémon, from the entrant's collection or a file they upload.</p>
+                    <p className="ev-hint">Email answers are always private and Discord ones are private unless you untick it. Both fill in by themselves for people who have them on their account. A Fakémon question takes the whole Fakémon, from the entrant's collection or a file they upload.</p>
                     <FormBuilder form={f.form} onChange={form => set({ form })} types={FIELD_TYPES.map(t => t[0])} />
                 </section>
 
                 <section className="ev-block">
                     <h3>Schedule</h3>
                     <p className="ev-hint">All optional. With dates set, the event opens entries, closes them and opens voting by itself. Leave "Voting opens" empty and voting starts the moment entries close.</p>
+                    <p className="ev-tz-note"><Icon name="globe-alt" size={13} />Shown in {tz.replace(/_/g, ' ')} ({zoneLabel(tz)}). Change it in any date's picker; everyone else sees the times in their own zone.</p>
                     <div className="ev-two">
-                        <div className="ev-field"><label className="ev-field-label" htmlFor="ev-sopen">Entries open</label>
-                            <input id="ev-sopen" type="datetime-local" value={f.submissions_open_at} onChange={e => set({ submissions_open_at: e.target.value })} /></div>
-                        <div className="ev-field"><label className="ev-field-label" htmlFor="ev-sclose">Entries close</label>
-                            <input id="ev-sclose" type="datetime-local" value={f.submissions_close_at} onChange={e => set({ submissions_close_at: e.target.value })} /></div>
+                        <DateField id="ev-sopen" label="Entries open" value={f.submissions_open_at} onChange={v => set({ submissions_open_at: v })} timeZone={tz} onTimeZone={setTz} />
+                        <DateField id="ev-sclose" label="Entries close" value={f.submissions_close_at} onChange={v => set({ submissions_close_at: v })} timeZone={tz} onTimeZone={setTz} min={f.submissions_open_at} />
                     </div>
                     {f.votingOn && (
                         <div className="ev-two">
-                            <div className="ev-field"><label className="ev-field-label" htmlFor="ev-vopen">Voting opens</label>
-                                <input id="ev-vopen" type="datetime-local" value={f.voting_open_at} onChange={e => set({ voting_open_at: e.target.value })} />
+                            <DateField id="ev-vopen" label="Voting opens" value={f.voting_open_at} onChange={v => set({ voting_open_at: v })} timeZone={tz} onTimeZone={setTz} min={f.submissions_close_at}>
                                 <button type="button" className="ev-link" disabled={!f.submissions_close_at} title={f.submissions_close_at ? undefined : 'Set when entries close first'}
-                                    onClick={() => set({ voting_open_at: f.submissions_close_at })}><Icon name="arrow-turn-down-right" size={13} />Start right when entries close</button></div>
-                            <div className="ev-field"><label className="ev-field-label" htmlFor="ev-vclose">Voting closes</label>
-                                <input id="ev-vclose" type="datetime-local" value={f.voting_close_at} onChange={e => set({ voting_close_at: e.target.value })} /></div>
+                                    onClick={() => set({ voting_open_at: f.submissions_close_at })}><Icon name="arrow-turn-down-right" size={13} />Start right when entries close</button>
+                            </DateField>
+                            <DateField id="ev-vclose" label="Voting closes" value={f.voting_close_at} onChange={v => set({ voting_close_at: v })} timeZone={tz} onTimeZone={setTz} min={f.voting_open_at || f.submissions_close_at} />
                         </div>
                     )}
-                    <div className="ev-field ev-field-half"><label className="ev-field-label" htmlFor="ev-results">Results come out</label>
-                        <input id="ev-results" type="datetime-local" value={f.results_at} onChange={e => set({ results_at: e.target.value })} />
+                    <div className="ev-field-half">
+                        <DateField id="ev-results" label="Results come out" value={f.results_at} onChange={v => set({ results_at: v })} timeZone={tz} onTimeZone={setTz} min={f.votingOn ? f.voting_close_at : f.submissions_close_at}>
                         {(() => {
                             const after = f.votingOn ? f.voting_close_at : f.submissions_close_at;
                             return (
@@ -1917,6 +2495,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
                             );
                         })()}
                         <small className="ev-field-help">{f.votingOn ? 'Empty: the moment voting closes.' : 'Empty: when you end the event from the dashboard.'} Your results post goes up at the same time.</small>
+                        </DateField>
                     </div>
                 </section>
 
@@ -1988,7 +2567,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
                         </div>
                     )}
                     {f.votingOn && (() => {
-                        const shown = f.form.filter(q => q.type !== 'section' && !ALWAYS_PRIVATE.includes(q.type) && !q.private);
+                        const shown = f.form.filter(q => q.type !== 'section' && !isPrivateField(q));
                         const fields = f.vote_display.fields;
                         const toggle = (id: string, on: boolean) => {
                             const now = fields ?? shown.map(q => q.id);

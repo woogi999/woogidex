@@ -463,17 +463,16 @@
 .ev-answer-mon > span .btn { align-self: flex-start; margin-top: 6px; }
 .ev-upload > span strong small { font-weight: 600; color: var(--text-muted); }
 
-/* ---- a public event, opened without an account: the event alone ---- */
-body.event-guest .header,
-body.event-guest .hub-nav,
-body.event-guest .mobile-nav,
-body.event-guest .bottom-nav { display: none !important; }
-body.event-guest #main-content { padding-top: var(--sp-6); }
+/* ---- a public event, opened without an account: the header stays, the hub's sidebar goes ---- */
+body.event-guest .hub-nav { display: none !important; }
 body.event-guest .hub { display: block; max-width: 1080px; margin: 0 auto; }
 .ev-guest-footer {
-    display: flex; align-items: center; justify-content: center; gap: var(--sp-4); flex-wrap: wrap;
-    margin-top: var(--sp-7); padding: var(--sp-5) 0; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-2) var(--sp-5); flex-wrap: wrap;
+    margin-top: var(--sp-7); padding: var(--sp-5) 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
 }
+.ev-guest-footer button { border: 0; background: none; padding: 0; font: inherit; color: var(--text-secondary); cursor: pointer; }
+.ev-guest-footer button:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.ev-guest-footer button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .ev-sent { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); text-align: center; padding: var(--sp-7) var(--sp-5); }
 .ev-sent > svg { color: var(--success); }
 .ev-sent h3 { margin: 0; }
@@ -579,6 +578,130 @@ body.event-guest .hub { display: block; max-width: 1080px; margin: 0 auto; }
 .ev-code-form input[type="number"] { height: var(--ctl-h-sm); }
 .ev-vote-sheet .ev-vote-entry { margin-bottom: var(--sp-2); }
 
+/* ---- the focused pages: entering, voting, results (Google Forms-like) ---- */
+.ev-focus { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-4); }
+.ev-focus > .ev-back { align-self: flex-start; margin-bottom: 0; }
+.ev-focus-head { background: var(--bg-card); border: 1px solid var(--border); border-top: 8px solid var(--ev); border-radius: var(--panel-r); overflow: hidden; }
+.ev-focus-cover { aspect-ratio: 5 / 1; }
+.ev-focus-title { padding: var(--sp-5) var(--sp-6) var(--sp-5); display: flex; flex-direction: column; gap: 6px; }
+.ev-focus-title h2 { margin: 0; font-size: 26px; line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; text-wrap: balance; }
+.ev-focus-title .ev-hint { margin: 0; }
+.ev-focus-kicker { font-size: 12px; font-weight: 800; color: var(--ev-ink); }
+.ev-form { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ev-form > .ev-field, .ev-form > .ev-page-intro {
+    margin: 0; padding: var(--sp-5) var(--sp-6); background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: var(--panel-r);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ev-form > .ev-field:focus-within { border-color: color-mix(in srgb, var(--ev) 55%, var(--border)); box-shadow: inset 4px 0 0 var(--ev); }
+.ev-form > .ev-field .ev-field-label { font-size: 15px; font-weight: 600; }
+.ev-form > .ev-page-intro { border-left: 4px solid var(--ev); }
+.ev-form > .ev-page-intro h3 { font-size: 18px; margin: 0 0 4px; }
+.ev-form > .ev-page-intro .ev-hint { margin: 0; }
+.ev-form > .ev-pages { margin: var(--sp-1) 0; }
+.ev-form > .ev-turnstile { margin: 0; }
+.ev-form > .ev-error { margin: 0; }
+.ev-form-status { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); }
+.ev-form-status > span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ev-form-status-end { margin-left: auto; gap: var(--sp-4) !important; }
+.ev-form-editing { font-weight: 700; color: var(--ev-ink); }
+.ev-req-note { font-size: 12px; color: var(--danger); }
+.ev-form .ev-form-actions { margin-top: var(--sp-2); }
+.ev-focus .ev-sent, .ev-focus > .ev-block { border-radius: var(--panel-r); }
+.ev-more { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); margin-top: calc(-1 * var(--sp-2)); }
+.ev-tz-note { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--text-muted); }
+.ev-block .ev-tz-note { margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
+
+/* ---- a Fakémon answer, and its details dialog ---- */
+.ev-mon-pick > span { flex: 1 1 auto; }
+.ev-mon-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ev-mon-gaps { display: inline-flex; align-items: center; gap: 4px; width: 100%; font-size: 12px; font-weight: 600; color: var(--warning, var(--danger)); }
+.ev-mon-modal { max-width: 640px; }
+.ev-mon-modal .ev-notice { margin-bottom: var(--sp-4); }
+.ev-mon-edit { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
+.ev-mon-art { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-3); border: 1px dashed var(--border-strong); border-radius: var(--card-r); }
+.ev-mon-art > img, .ev-mon-art > svg { width: 120px; height: 120px; object-fit: contain; border-radius: 8px; background: var(--bg-panel); color: var(--text-muted); }
+.ev-mon-art > svg { padding: 42px; }
+.ev-mon-art > span { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.ev-mon-art.is-missing { border-color: color-mix(in srgb, var(--warning, var(--danger)) 60%, var(--border)); }
+.ev-mon-modal .ev-field.is-missing input, .ev-mon-modal .ev-field.is-missing textarea { border-color: color-mix(in srgb, var(--warning, var(--danger)) 70%, var(--border)); }
+.ev-mon-stats { border: 0; padding: 0; margin: var(--sp-5) 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--sp-2); }
+.ev-mon-stats legend { display: flex; gap: var(--sp-3); align-items: center; margin-bottom: 6px; padding: 0; }
+.ev-mon-stats label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.ev-mon-stats input { width: 100%; text-align: center; font-variant-numeric: tabular-nums; }
+.ev-mon-abilities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+
+/* ---- moves, abilities, items and types as answers ---- */
+.ev-lib-card { display: flex; align-items: flex-start; gap: var(--sp-3); min-width: 0; text-align: left; }
+.ev-lib-art {
+    width: 48px; height: 48px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    border-radius: 10px; background: var(--accent-soft); color: var(--accent); object-fit: contain;
+}
+img.ev-lib-art { background: var(--bg-panel); }
+.ev-lib-swatch { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+.ev-lib-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ev-lib-body strong { font-size: 15px; color: var(--text-primary); overflow-wrap: anywhere; }
+.ev-lib-body .ev-prose { font-size: 13px; }
+.ev-lib-kind { font-size: 11px; font-weight: 800; color: var(--accent); }
+.ev-lib-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ev-lib-pick { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); border: 1px dashed var(--border-strong); border-radius: var(--card-r); }
+.ev-lib-pick.has-value { border-style: solid; }
+.ev-lib-picker { max-width: 560px; }
+.ev-lib-list { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 60vh; overflow-y: auto; }
+.ev-lib-list button { width: 100%; padding: var(--sp-3); border: 1px solid transparent; border-radius: var(--card-r); background: none; font: inherit; cursor: pointer; }
+.ev-lib-list button:hover { background: var(--bg-panel); border-color: var(--border); }
+.ev-lib-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ev-lib-modal { max-width: 560px; }
+.ev-lib-kinds { margin-bottom: var(--sp-4); display: flex; }
+.ev-lib-kinds button { flex: 1 1 0; justify-content: center; }
+.ev-lib-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); margin-bottom: var(--sp-5); }
+.ev-lib-nums label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.ev-lib-nums input { width: 100%; font-variant-numeric: tabular-nums; }
+.ev-lib-preview { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); border-radius: var(--card-r); background: var(--bg-panel); }
+
+/* ---- a Fakémon question's rules ---- */
+.ev-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-q-sub { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.ev-q-rule-row { display: flex; flex-direction: column; gap: 6px; }
+.ev-q-rules { border-top: 1px solid var(--border-light); padding-top: var(--sp-2); }
+.ev-q-rules > summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; font-weight: 700; color: var(--text-secondary); list-style: none; }
+.ev-q-rules > summary::-webkit-details-marker { display: none; }
+.ev-q-rules > summary:hover { color: var(--text-primary); }
+.ev-q-rules-body { display: flex; flex-direction: column; gap: var(--sp-4); padding-top: var(--sp-3); }
+.ev-mon-rules { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-mon-rules li { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: var(--bg-panel); font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.ev-mon-rules li svg { color: var(--accent); }
+.ev-mon-gaps.is-problem { color: var(--danger); }
+.ev-notice.is-problem { background: color-mix(in srgb, var(--danger) 10%, var(--bg-card)); color: var(--danger); font-weight: 600; }
+
+/* ---- the date picker ---- */
+.ev-date-field { display: flex; align-items: center; gap: 4px; }
+.ev-date-btn {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; height: var(--ctl-h); padding: 0 12px;
+    border: 1px solid var(--border-strong); border-radius: var(--ctl-r); background: var(--bg-input); color: var(--text-primary);
+    font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+}
+.ev-date-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-date-btn > svg { color: var(--text-muted); flex: 0 0 auto; }
+.ev-date-btn:hover { border-color: var(--accent); }
+.ev-date-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ev-date-modal { max-width: 420px; }
+.ev-cal { margin-bottom: var(--sp-4); }
+.ev-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-2); }
+.ev-cal-head strong { font-size: 15px; }
+.ev-cal-grid { display: grid; grid-template-columns: repeat(7, 38px); justify-content: space-between; gap: 2px; text-align: center; }
+.ev-cal-wd { font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 4px 0; }
+.ev-cal-day {
+    height: 38px; border: 0; border-radius: 50%; background: none; color: var(--text-primary);
+    font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.ev-cal-day:hover { background: var(--bg-panel); }
+.ev-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
+.ev-cal-day.is-on { background: var(--accent); color: #fff; font-weight: 700; }
+.ev-cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ev-date-row .ev-field { margin-bottom: var(--sp-3); }
+.ev-date-modal select { width: 100%; }
+
 /* ---- narrow screens ---- */
 @media (max-width: 960px) {
     .ev-page-grid, .ev-dash-grid { grid-template-columns: 1fr; }
@@ -621,4 +744,10 @@ body.event-guest .hub { display: block; max-width: 1080px; margin: 0 auto; }
     .ev-ballot-call { flex-direction: column; align-items: stretch; }
     .ev-star { width: 28px; height: 28px; }
     .ev-criterion-edit input { width: 140px; }
+    .ev-focus-title, .ev-form > .ev-field, .ev-form > .ev-page-intro { padding: var(--sp-4); }
+    .ev-focus-cover { aspect-ratio: 3 / 1; }
+    .ev-mon-edit { grid-template-columns: 1fr; }
+    .ev-mon-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .ev-mon-abilities { grid-template-columns: 1fr; }
+    .ev-lib-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
