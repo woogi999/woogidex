@@ -358,7 +358,9 @@ async function updatePublishedMon(publishedId, selectedSourceId = '') {
     // Same id, new artwork: both the disk cache and the "already fetched in
     // full" flag are now describing the previous version of this post.
     dropCachedArt(publishedId);
+    dropCachedArt(`full:${publishedId}`);
     artworkCache.delete(publishedId);
+    artworkCache.delete(`full:${publishedId}`);
     const staleIdx = ensureCommunityState().mons.findIndex(m => m.id === publishedId);
     if (staleIdx !== -1) delete ensureCommunityState().mons[staleIdx].__full;
 
@@ -1038,10 +1040,16 @@ async function warmArtworkCache(rows) {
 
 // React feed awaits artwork rather than having it patched in later; this just
 // wraps the existing batching in a promise.
-const artworkWaiters = new Map();    // published mon id -> [resolve, ...]
+const artworkWaiters = new Map();    // cache key -> [resolve, ...]
 
-function requestCardArtwork(id) {
-    if (!id) return Promise.resolve('');
+// Keys: the post id for the card thumbnail, "full:<id>" for the original
+// artwork (the feed's big pictures, which a 160px thumbnail would blur).
+// Both are cached on disk, so the original costs egress once per browser.
+const FULL_PREFIX = 'full:';
+
+function requestCardArtwork(postId, full = false) {
+    if (!postId) return Promise.resolve('');
+    const id = full ? FULL_PREFIX + postId : postId;
     const cached = artworkCache.get(id);
     if (cached !== undefined) return Promise.resolve(cached);
     return new Promise(resolve => {
@@ -1079,33 +1087,40 @@ function queueArtwork(id) {
 // a batch is several full images when posts lack thumbnails; too many in one
 // response and the whole request times out, blanking every card in it
 const ARTWORK_BATCH = 12;
+const FULL_ARTWORK_BATCH = 4;
 
 async function flushArtworkQueue() {
     artworkFlush = null;
-    const ids: string[] = [...artworkQueue].slice(0, ARTWORK_BATCH);
+    // one mode per request: the RPC returns thumbnails or originals, not both
+    const full = [...artworkQueue][0]?.startsWith(FULL_PREFIX) || false;
+    const ids: string[] = [...artworkQueue].filter(k => k.startsWith(FULL_PREFIX) === full).slice(0, full ? FULL_ARTWORK_BATCH : ARTWORK_BATCH);
     ids.forEach(id => artworkQueue.delete(id));
     if (artworkQueue.size) artworkFlush = setTimeout(flushArtworkQueue, 0);
     if (!ids.length) return;
+    const keyFor = (monId: string) => (full ? FULL_PREFIX + monId : monId);
     try {
         const client = await api.getClient();
         // Was `select('id, fakemon_data->>artwork')`, which put the whole image
         // in the response as readable base64. The RPC returns it encrypted and
         // picks the stored thumbnail over the full image the way the cards
         // used to themselves.
-        const { data, error } = await client.rpc('community_mon_artwork', { p_ids: ids });
+        const { data, error } = await client.rpc('community_mon_artwork', {
+            p_ids: full ? ids.map(k => k.slice(FULL_PREFIX.length)) : ids, p_full: full
+        });
         if (error) throw error;
         for (const row of data || []) {
             const art = maskedArtwork(row.image);
-            artworkCache.set(row.mon_id, art);
+            const key = keyFor(row.mon_id);
+            artworkCache.set(key, art);
             // Written through to disk so the next visit costs nothing. Not
             // awaited: painting must not wait on storage. The masked form is
             // what gets cached; it decrypts for as long as it is kept.
-            putCachedArt(row.mon_id, art);
-            paintArtwork(row.mon_id, art);
-            settleArtwork(row.mon_id, art);
+            putCachedArt(key, art);
+            if (!full) paintArtwork(row.mon_id, art);
+            settleArtwork(key, art);
             // is_thumb false means the post had no small version and this is
             // the full image, which is exactly when a backfill is worth doing
-            if (!row.is_thumb) backfillThumbnail(row.mon_id, art);
+            if (!full && !row.is_thumb) backfillThumbnail(row.mon_id, art);
         }
         // Anything the query did not return still gets a cache entry, so a
         // deleted or unreadable row is not re-requested on every scroll.

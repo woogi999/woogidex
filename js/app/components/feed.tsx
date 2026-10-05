@@ -141,7 +141,7 @@ export function MonFeedCard({ item }: { item: FeedItem }) {
         <article className="feed-card feed-card-mon" ref={ref as any}>
             <Byline item={item} verb="published a Fakémon" />
             <button type="button" className="feed-mon-art-btn" onClick={open} aria-label={`Open ${mon.name || 'this Fakémon'}`}>
-                <LazyArt row={item as any} className="feed-mon-art">{evo && <span className="community-card-evo-badge">{evo}</span>}</LazyArt>
+                <LazyArt row={item as any} className="feed-mon-art" full>{evo && <span className="community-card-evo-badge">{evo}</span>}</LazyArt>
             </button>
             <FeedActions item={item} comments={comments} onComments={() => setComments(v => !v)} />
             <div className="feed-mon-body">
@@ -175,7 +175,7 @@ export function PostMons({ mons }: { mons: any[] }) {
                 const row = { id: m.id, fakemon_data: { name: m.name, type1: m.type1, type2: m.type2 } };
                 return (
                     <button type="button" key={m.id} className="post-mon" onClick={() => api.openPublishedMonById(m.id)} title={`Open ${m.name || 'this Fakémon'}`}>
-                        <LazyArt row={row as any} className="post-mon-art" />
+                        <LazyArt row={row as any} className="post-mon-art" full />
                         <span className="post-mon-label">
                             <strong>{m.name || 'Unnamed'}</strong>
                             <span className="post-mon-types">

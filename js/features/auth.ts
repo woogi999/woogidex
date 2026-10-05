@@ -538,10 +538,7 @@ async function smallAvatarDataUri(file) {
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(bitmap.width * scale));
         canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-        const ctx = canvas.getContext('2d')!;
-        // ponytail: "small source = pixel art" heuristic; hard edges for those, smoothing only for a big photo being shrunk
-        ctx.imageSmoothingEnabled = Math.max(bitmap.width, bitmap.height) > 512;
-        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         bitmap.close();
         // browsers that cannot encode webp return a png, which at 256px is
         // still comfortably inside the column's size check

@@ -94,5 +94,7 @@ span.avatar-frame { display: inline-block; overflow: hidden; flex-shrink: 0; pad
     border-radius: inherit;
 }
 
-/* Most of what people post is pixel art: scale it with hard edges, never blur. */
-img, canvas { image-rendering: pixelated; }
+/* Fakémon artwork is mostly pixel art: scale it nearest-neighbour (hard
+   edges, no smoothing), like Photoshop's Nearest Neighbor resample. Not
+   avatars, emojis or anything else, which scale smoothly as normal. */
+canvas.shielded-art:not(.avatar-art) { image-rendering: pixelated; }

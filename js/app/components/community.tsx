@@ -36,15 +36,19 @@ export interface FeedRow {
  * A post's artwork, fetched once its slot nears the screen (the feed query
  * carries no images; see requestCardArtwork in js/features/community.ts).
  */
-export function LazyArt({ row, className = 'card-art', children }: { row: FeedRow; className?: string; children?: ReactNode }) {
+export function LazyArt({ row, className = 'card-art', children, full = false }: {
+    row: FeedRow; className?: string; children?: ReactNode;
+    /** the original artwork rather than the card thumbnail, for big pictures */
+    full?: boolean;
+}) {
     const mon = row.fakemon_data || {};
-    const [art, setArt] = useState<string>(mon.thumbnail || mon.artwork || '');
+    const [art, setArt] = useState<string>(full ? '' : mon.thumbnail || mon.artwork || '');
     const ref = useRef<HTMLElement>(null);
 
     useEffect(() => {
         if (art) return;
         let live = true;
-        const fetchIt = () => api.requestCardArtwork?.(row.id).then((url: string) => { if (live && url) setArt(url); }).catch(() => {});
+        const fetchIt = () => api.requestCardArtwork?.(row.id, full).then((url: string) => { if (live && url) setArt(url); }).catch(() => {});
         if (typeof IntersectionObserver === 'undefined') { fetchIt(); return () => { live = false; }; }
         const observer = new IntersectionObserver(entries => {
             if (!entries.some(e => e.isIntersecting)) return;
@@ -53,7 +57,7 @@ export function LazyArt({ row, className = 'card-art', children }: { row: FeedRo
         }, { rootMargin: '300px' });
         if (ref.current) observer.observe(ref.current);
         return () => { live = false; observer.disconnect(); };
-    }, [row.id, art]);
+    }, [row.id, art, full]);
 
     const Tag = className.includes('community-landing-art') || className.includes('community-upload-art') ? 'span' : 'div';
     return (
