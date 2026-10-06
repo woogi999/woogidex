@@ -277,7 +277,7 @@ export function PostFeedCard({ item, full = false }: { item: FeedItem; full?: bo
             </div>
             {editing ? (
                 <div className="post-edit">
-                    <EmojiInput value={draft} onChange={setDraft} maxLength={4000} rows={4} autoFocus />
+                    <EmojiInput value={draft} onChange={setDraft} maxLength={4000} rows={4} autoFocus toolbar />
                     <div className="post-edit-actions">
                         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}>Cancel</button>
                         <button type="button" className="btn btn-primary btn-sm" onClick={async () => { if (await api.editPost(item.id, draft)) setEditing(false); }}>Save</button>
@@ -341,7 +341,7 @@ function QuoteRepostDialog({ close, item, text: initial = '' }: DialogProps<{ it
     }
     return (
         <Modal onClose={close} title="Share with your thoughts" className="quote-repost-modal">
-            <EmojiInput value={text} onChange={setText} maxLength={4000} rows={3} autoFocus placeholder="Say something about it…" ariaLabel="What you want to say" />
+            <EmojiInput value={text} onChange={setText} maxLength={4000} rows={3} autoFocus toolbar placeholder="Say something about it…" ariaLabel="What you want to say" />
             <RepostEmbed item={item} />
             <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
@@ -402,8 +402,8 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
                 <Avatar userId={user.id} url={user.avatarUrl} name={name} className="feed-avatar" />
                 <strong>{name}</strong>
             </div>
-            <EmojiInput value={text} onChange={setText} maxLength={4000} rows={4} autoFocus
-                placeholder="Say something! Use #tags, @mentions, **bold**, and :emojis: (try typing :tatsu)" />
+            <EmojiInput value={text} onChange={setText} maxLength={4000} rows={4} autoFocus toolbar
+                placeholder="Say something! Use #tags, @mentions and :emojis: (try typing :sob or :tatsu)" />
             {poll && <PollEditor value={poll} onChange={setPoll} onRemove={() => setPoll(null)} />}
             {(mons.length > 0 || evs.length > 0) && (
                 <div className="post-composer-mons">

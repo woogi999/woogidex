@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { emojiByName, emojiCategories, isUnicodeKey, loadUnicodeEmoji, searchEmojis, unicodeChar, type Emoji, type UnicodeEmoji } from '../../core/emoji.ts';
+import { appleEmojiUrl, emojiByName, emojiCategories, isUnicodeKey, loadUnicodeEmoji, replaceShortcodes, searchEmojis, searchUnicodeEmojis, unicodeChar, type Emoji, type UnicodeEmoji } from '../../core/emoji.ts';
 import { renderCommentMarkdown } from '../../core/data.ts';
 import { api } from '../../core/app.ts';
 import { Avatar } from './Avatar.tsx';
@@ -45,11 +45,19 @@ export function RichText({ text, className = '' }: { text: string; className?: s
 
 // ==================== the picker ====================
 
-/** One emoji, ours (a picture) or standard (a character), drawn at a size. */
+/** A standard emoji as Apple draws it (js/core/emoji.ts), or the plain character if the picture won't load. */
+export function AppleEmoji({ char, size = 22, title }: { char: string; size?: number; title?: string }) {
+    const [failed, setFailed] = useState(false);
+    useEffect(() => { setFailed(false); }, [char]);
+    if (failed) return <span className="emoji-char" style={{ fontSize: Math.round(size * 0.92) }} role="img" aria-label={char} title={title}>{char}</span>;
+    return <img className="emoji" src={appleEmojiUrl(char)} alt={char} title={title} width={size} height={size} loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />;
+}
+
+/** One emoji, ours or standard (Apple's picture), drawn at a size. */
 export function EmojiGlyph({ code, size = 22 }: { code: string; size?: number }) {
     // the site's own heart: what a like became
     if (code === 'heart') return <Icon name="heart" size={Math.round(size * 0.85)} className="reaction-heart" />;
-    if (isUnicodeKey(code)) return <span className="emoji-char" style={{ fontSize: Math.round(size * 0.92) }} role="img" aria-label={unicodeChar(code)}>{unicodeChar(code)}</span>;
+    if (isUnicodeKey(code)) return <AppleEmoji char={unicodeChar(code)} size={size} />;
     const e = emojiByName(code);
     return e ? <EmojiImg emoji={e} size={size} /> : null;
 }
@@ -75,13 +83,14 @@ export function EmojiPicker({ onPick, onClose, quick }: { onPick: (code: string)
 
     type Cell = { code: string; title: string };
     const ours = (list: Emoji[]): Cell[] => list.map(e => ({ code: e.name, title: `:${e.name}:` }));
-    const theirs = (list: UnicodeEmoji[]): Cell[] => list.map(e => ({ code: e.key, title: e.name }));
-    const q = query.trim().toLowerCase();
+    const theirs = (list: UnicodeEmoji[]): Cell[] => list.map(e => ({ code: e.key, title: `:${e.codes[0]}:` }));
+    const q = query.trim().toLowerCase().replace(/^:|:$/g, '');
     let shown: Cell[];
     if (q) {
+        // by Discord shortcode (sob) or by name (crying)
         const all = standard.flatMap(g => g.emojis);
-        const starts = all.filter(e => e.name.startsWith(q) || e.name.includes(' ' + q));
-        const contains = all.filter(e => !starts.includes(e) && e.name.includes(q));
+        const starts = all.filter(e => e.codes.some(c => c.startsWith(q)) || e.name.startsWith(q) || e.name.includes(' ' + q));
+        const contains = all.filter(e => !starts.includes(e) && (e.name.includes(q) || e.codes.some(c => c.includes(q))));
         shown = [...ours(searchEmojis(q, 80)), ...theirs([...starts, ...contains].slice(0, 120))];
     } else if (tab === 'recent') {
         shown = recentEmojis().filter(c => isUnicodeKey(c) || emojiByName(c)).map(c => ({ code: c, title: isUnicodeKey(c) ? unicodeChar(c) : `:${c}:` }));
@@ -114,7 +123,7 @@ export function EmojiPicker({ onPick, onClose, quick }: { onPick: (code: string)
                     {standard.length > 0 && <span className="emoji-picker-tabs-gap" aria-hidden="true" />}
                     {standard.map(g => (
                         <button key={g.label} type="button" className={tab === `std:${g.label}` ? 'active' : ''} onClick={() => setTab(`std:${g.label}`)} title={g.label}>
-                            <span className="emoji-char" style={{ fontSize: 16 }}>{g.emojis[0]?.char}</span>
+                            {g.emojis[0] && <AppleEmoji char={g.emojis[0].char} size={18} />}
                         </button>
                     ))}
                 </div>
@@ -311,6 +320,17 @@ function pendingCode(text: string, caret: number): { start: number; query: strin
     return { start: caret - m[2].length - 1, query: m[2].toLowerCase() };
 }
 
+/** One ":ta" suggestion: what it's called, the picture, and what picking it types. */
+interface EmojiMatch { code: string; label: string; insert: string; }
+
+/** Ours and the standard ones (by Discord shortcode) for a ":ta", ours first but never crowding the others out. */
+function emojiMatches(query: string, limit = 8): EmojiMatch[] {
+    const ours = searchEmojis(query, limit).map(e => ({ code: e.name, label: e.name, insert: `:${e.name}:` }));
+    const theirs = searchUnicodeEmojis(query, limit).map(({ code, emoji }) => ({ code: emoji.key, label: code, insert: emoji.char }));
+    const keep = Math.max(limit - theirs.length, Math.min(ours.length, limit / 2));
+    return [...ours.slice(0, keep), ...theirs].slice(0, limit);
+}
+
 export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, className = '', autoFocus, disabled, onSubmit, tools, ariaLabel, onPaste, toolbar = false, variables, mentions = true }: EmojiInputProps) {
     const box = useRef<HTMLTextAreaElement>(null);
     const [caret, setCaret] = useState(0);
@@ -318,7 +338,11 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
     const [dismissed, setDismissed] = useState(false);
     const focused = !dismissed && box.current === document.activeElement;
     const pending = focused ? pendingCode(value, caret) : null;
-    const matches = pending ? searchEmojis(pending.query, 8) : [];
+    // the standard emojis' shortcodes load once the box is used
+    const [, setStandardReady] = useState(false);
+    const loadStandard = () => { loadUnicodeEmoji().then(() => setStandardReady(true)).catch(() => {}); };
+    useEffect(() => { if (autoFocus) loadStandard(); }, []);
+    const matches = pending ? emojiMatches(pending.query) : [];
     const mention = focused && mentions && !pending ? pendingMention(value, caret) : null;
     const people = useMentionMatches(mention?.query || null);
     const peopleShown = mention ? people : [];
@@ -337,10 +361,10 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
         });
     }
 
-    function complete(e: Emoji) {
+    function complete(m: EmojiMatch) {
         if (!pending) return;
-        rememberEmoji(e.name);
-        insertAt(pending.start, caret, `:${e.name}: `);
+        rememberEmoji(m.code);
+        insertAt(pending.start, caret, `${m.insert} `);
     }
 
     function completeMention(p: Mentionable) {
@@ -443,18 +467,26 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
                 <div className="emoji-autocomplete" role="listbox" aria-label="Matching emojis">
                     <div className="emoji-autocomplete-head">Emojis matching <strong>:{pending!.query}</strong></div>
                     {matches.map((m, i) => (
-                        <button key={m.name} type="button" role="option" aria-selected={i === active} className={i === active ? 'active' : ''}
+                        <button key={m.code} type="button" role="option" aria-selected={i === active} className={i === active ? 'active' : ''}
                             onMouseDown={e => e.preventDefault()} onClick={() => complete(m)} onMouseEnter={() => setActive(i)}>
-                            <EmojiImg emoji={m} size={22} /><span>:{m.name}:</span>
+                            <EmojiGlyph code={m.code} size={22} /><span>:{m.label}:</span>
                         </button>
                     ))}
                 </div>
             )}
             <textarea ref={box} value={value} rows={rows} placeholder={placeholder} maxLength={maxLength} autoFocus={autoFocus} disabled={disabled}
                 aria-label={ariaLabel || placeholder}
-                onChange={e => { setDismissed(false); onChange(e.target.value); setCaret(e.target.selectionStart); }}
+                onChange={e => {
+                    setDismissed(false);
+                    // a finished :sob: becomes 😭 as it's typed (or pasted), like Discord
+                    const typed = e.target.value;
+                    const done = replaceShortcodes(typed, e.target.selectionStart);
+                    onChange(done.text);
+                    setCaret(done.caret);
+                    if (done.text !== typed) requestAnimationFrame(() => box.current?.setSelectionRange(done.caret, done.caret));
+                }}
                 onKeyDown={onKeyDown} onKeyUp={track} onClick={track} onSelect={track} onPaste={onPaste}
-                onBlur={() => setTimeout(() => setDismissed(true), 120)} onFocus={() => setDismissed(false)} />
+                onBlur={() => setTimeout(() => setDismissed(true), 120)} onFocus={() => { setDismissed(false); loadStandard(); }} />
             <div className="emoji-input-tools">
                 {tools}
                 <EmojiButton onPick={insertFromPicker} />

@@ -434,7 +434,7 @@ function normalizeCollections() {
                 state.editorLoadedId = savedId;
                 normalizeCollections();
                 // now really the region's own: link the rest of its family to it
-                if (committedVanilla) api.persistEvolutionGraph?.();
+                if (committedVanilla) api.persistEvolutionGraph?.(true);
 
                 // a refused write must not be reported as a save; the guards in
                 // saveToStorage() only help if the user finds out it happened

@@ -15,6 +15,7 @@ import { timeAgo } from '../components/feed.tsx';
 import { useStore } from '../store.ts';
 import type { Attachment, ChatMessage, Conversation, ChatMember, Outgoing } from '../../features/messaging.ts';
 import { NAME_MAX } from '../../core/data.ts';
+import { isEmojiOnly } from '../../core/emoji.ts';
 
 export function MessagesPage() {
     useStore();
@@ -277,7 +278,7 @@ function Bubble({ msg, mine, sender, showName, tail, replyTarget, onReply }:
     const [menu, setMenu] = useState(false);
     const deleted = !!msg.deleted_at;
     const time = new Date(msg.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    const onlyEmoji = !!msg.text && !msg.attachments?.length && /^(\s*:[a-z0-9_]+:\s*){1,3}$/.test(msg.text);
+    const onlyEmoji = !!msg.text && !msg.attachments?.length && isEmojiOnly(msg.text, 3);
     return (
         <div className={`chat-msg${mine ? ' is-mine' : ''}${tail ? ' has-tail' : ''}${msg.pending ? ' is-pending' : ''}`}>
             {!mine && <span className="chat-msg-avatar">{tail && <Avatar userId={sender?.id} url={sender?.avatar_url} name={sender?.display_name || sender?.username || '?'} className="chat-avatar-img" />}</span>}

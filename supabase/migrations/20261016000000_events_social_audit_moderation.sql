@@ -834,7 +834,7 @@ begin
         'entries', coalesce((select jsonb_agg(jsonb_build_object('id', en.id, 'user_id', en.user_id, 'created_at', en.created_at, 'thumb', en.thumb,
                 'author', (select coalesce(nullif(pr.display_name,''), pr.username) from public.profiles pr where pr.id = en.user_id),
                 'title', coalesce((select v->>'name' from jsonb_each(en.answers) a(k, v) where jsonb_typeof(v) = 'object' and v ? 'name' limit 1),
-                                  (select v #>> '{}' from jsonb_each(en.answers) a(k, v) where jsonb_typeof(v) = 'string' and v #>> '{}' !~ '^data:' limit 1), 'Entry')))
+                                  (select v #>> '{}' from jsonb_each(en.answers) a(k, v) where jsonb_typeof(v) = 'string' and v #>> '{}' !~ '^data:' limit 1), 'Entry'))
                 order by en.created_at) from public.event_entries en where en.event_id = p_event), '[]'::jsonb));
 end $$;
 

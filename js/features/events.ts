@@ -145,6 +145,8 @@ export interface Detail {
     editRequests: Record<string, EditRequest>;
     /** the Google Sheets link's token (the Entries team) */
     sheet: { token: string; include_private: boolean } | null;
+    /** the votes' own sheet link (team members who see results) */
+    voteSheet: { token: string; include_private: boolean } | null;
     /** entries opened in full (answers with their pictures), by entry id */
     full: Record<string, Record<string, any>>;
     /** feedback the team sent the entrant, by entry id (yours, or every one with Entries access) */
@@ -536,7 +538,7 @@ export async function loadEvent(key: string) {
         privateAnswers: keep?.privateAnswers || {}, myVotes: keep?.myVotes || {}, votes: keep?.votes || [], ballots: keep?.ballots || [],
         limits: keep?.limits || [], results: keep?.results || null, helpers: keep?.helpers || [], people: keep?.people || {},
         resultsPost: keep?.resultsPost ?? null, share: keep?.share || null, codes: keep?.codes || [],
-        announcements: keep?.announcements || [], following: keep?.following || false, editRequests: keep?.editRequests || {}, sheet: keep?.sheet || null,
+        announcements: keep?.announcements || [], following: keep?.following || false, editRequests: keep?.editRequests || {}, sheet: keep?.sheet || null, voteSheet: keep?.voteSheet || null,
         full: keep?.full || {}, feedback: keep?.feedback || {}, reactions: keep?.reactions || {}, myReactions: keep?.myReactions || []
     };
     notify();
@@ -572,8 +574,10 @@ export async function loadEvent(key: string) {
             c.from('event_announcements').select(`${announceCols},show_author`).eq('event_id', id).order('created_at', { ascending: false }).limit(50)
                 .then((r: any) => r.error ? c.from('event_announcements').select(announceCols).eq('event_id', id).order('created_at', { ascending: false }).limit(50) : r),
             me() ? c.from('event_follows').select('event_id').eq('event_id', id).eq('user_id', me()).maybeSingle() : Promise.resolve({ data: null }),
-            // RLS: the team members who see entries
-            me() ? c.from('event_sheet_links').select('token,include_private').eq('event_id', id).maybeSingle() : Promise.resolve({ data: null }),
+            // RLS: the team members who see entries (and, for the votes' link, results);
+            // kind: until the vote sheets migration is in, the one link is the submissions'
+            me() ? c.from('event_sheet_links').select('token,include_private,kind').eq('event_id', id)
+                .then((r: any) => r.error ? c.from('event_sheet_links').select('token,include_private').eq('event_id', id) : r) : none,
             // signed-in readers only; none until the reactions migration is in
             me() ? c.from('event_reactions').select('user_id,emoji').eq('event_id', id).limit(5000) : none
         ]);
@@ -589,7 +593,9 @@ export async function loadEvent(key: string) {
         d.editRequests = Object.fromEntries(((priv as any).data || []).filter((p: any) => p.edit_requested_at).map((p: any) => [p.entry_id, { reason: p.edit_request || '', at: p.edit_requested_at }]));
         d.announcements = (news as any).data || [];
         d.following = !!(follow as any).data;
-        d.sheet = (sheet as any).data || null;
+        const sheets: any[] = (sheet as any).data || [];
+        d.sheet = sheets.find(s => (s.kind || 'entries') === 'entries') || null;
+        d.voteSheet = sheets.find(s => s.kind === 'votes') || null;
         d.results = results;
         d.ballots = (ballots as any).data || [];
         d.limits = (limits as any).data || [];
@@ -1208,20 +1214,23 @@ export function exportVotesCsv() {
 export const sheetUrl = (token: string) => routeUrl(`sheets/${token}.csv`);
 export const sheetFormula = (token: string) => `=IMPORTDATA("${sheetUrl(token)}")`;
 
-/** Makes the link, or a new one (which retires the old). */
-export async function createSheetLink(eventId: string, includePrivate: boolean): Promise<boolean> {
+/** Makes the link for the submissions or the votes, or a new one (which retires the old). */
+export async function createSheetLink(eventId: string, includePrivate: boolean, kind: 'entries' | 'votes' = 'entries'): Promise<boolean> {
     try {
-        const { error } = await (await client()).rpc('create_event_sheet_link', { p_event: eventId, p_private: includePrivate });
+        const { error } = await (await client()).rpc('create_event_sheet_link', kind === 'votes'
+            ? { p_event: eventId, p_private: false, p_kind: 'votes' }
+            : { p_event: eventId, p_private: includePrivate });
         if (error) throw error;
         await loadEvent(eventId);
         return true;
     } catch (e) { fail(e); return false; }
 }
 
-export async function deleteSheetLink(eventId: string) {
+export async function deleteSheetLink(eventId: string, token: string) {
     if (!await confirmDialog({ title: 'Turn off the sheet link?', message: 'Sheets that use it stop updating. You can make a new link later.', confirmLabel: 'Turn off', danger: true })) return;
     try {
-        const { error } = await (await client()).from('event_sheet_links').delete().eq('event_id', eventId);
+        // by token: each event can have two links now (submissions, votes)
+        const { error } = await (await client()).from('event_sheet_links').delete().eq('event_id', eventId).eq('token', token);
         if (error) throw error;
         await loadEvent(eventId);
     } catch (e) { fail(e); }
@@ -1948,4 +1957,37 @@ export function exportEntriesCsv() {
         return [en.id, !en.user_id ? 'Guest' : p ? `@${p.username}` : en.user_id, en.created_at, ...questions.map(f => all[f.id]), r?.votes ?? '', r?.points_percent ?? '', en.placement ?? ''];
     });
     download(new Blob([[header, ...rows].map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }), `${fileSlug(ev.title)}-entries.csv`);
+}
+
+/**
+ * Every entry with every answer (private ones too, when you may see them) as
+ * a JSON download: answers as they're stored, pictures and Fakémon in full,
+ * so nothing is flattened the way a spreadsheet does. Entries not opened yet
+ * are loaded in full first, a few at a time.
+ */
+export async function exportEntriesJson() {
+    const d = events.detail;
+    if (!d?.event) return;
+    const ev = d.event;
+    const results = new Map((d.results || []).map(r => [r.entry_id, r]));
+    const full: Record<string, Record<string, any>> = {};
+    for (let i = 0; i < d.entries.length; i += 6) {
+        await Promise.all(d.entries.slice(i, i + 6).map(async en => { full[en.id] = (await loadFullEntry(en)) || en.answers; }));
+    }
+    const payload = {
+        event_id: ev.id, event_title: ev.title, exported_at: new Date().toISOString(),
+        questions: ev.form.filter(f => f.type !== 'section').map(f => ({ id: f.id, label: f.label, type: f.type })),
+        entries: d.entries.map(en => {
+            const p = d.people[en.user_id || ''];
+            const r = results.get(en.id);
+            return {
+                entry_id: en.id, title: entryTitle(ev, en, d.people),
+                entrant: en.user_id ? { user_id: en.user_id, username: p?.username || null } : null,
+                submitted_at: en.created_at, placement: en.placement ?? null,
+                votes: r?.votes ?? null, points_percent: r?.points_percent ?? null,
+                answers: full[en.id] || en.answers, private_answers: d.privateAnswers[en.id] || null
+            };
+        })
+    };
+    download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `${fileSlug(ev.title)}-entries.json`);
 }

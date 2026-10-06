@@ -12,7 +12,7 @@ import { SELECTABLE_TYPES, NAME_MAX } from '../../core/data.ts';
 import {
     isPrivateField, CATEGORIES, DEFAULT_CRITERIA, FIELD_TYPES, SLUG_PATTERN, VOTE_FIELD_TYPES, answered, criteriaOf, detailFor, formPages, hasOptions, voteAnswersOk, isGuestView, remarksOk, saveResultsPost, standingsMarkdown, toggleEventRepost, PHASES, STAGE_LABEL, addHelper, autofillFor, ballotEntries,
     canCreateEvents, castVote, clearEventDraft, closeBallot, computeWinners, copyLink, createEvent, dashboardLink, deleteEvent,
-    describeWinnerRules, effectivePhase, entryAllowance, entryImage, entryTitle, events, exportEntriesCsv, exportVotesJson,
+    describeWinnerRules, effectivePhase, entryAllowance, entryImage, entryTitle, events, exportEntriesCsv, exportEntriesJson, exportVotesJson,
     fakemonForEntry, fakemonFromFile, fakemonFromText, fmtDate, hasSubmittedBallot, isLive, isPast, loadEvent, loadEventsList, permsFor,
     previewEventFakemon, ranked, readEventDraft, relTime, removeEntry, removeEntryLimit, removeHelper, saveEvent, scoresComplete,
     setEntryLimit, setPhase, setPlacement, shareLink, showEventView, shrinkImage, startBallot, submitBallot, submitEntry,
@@ -380,7 +380,7 @@ function EventPage({ id, tab }: { id: string; tab: EventTab }) {
 
 const emptyDetail = (ev: EventRow): Detail => ({
     id: ev.id, status: 'ready', error: '', event: ev, entries: [], privateAnswers: {}, myVotes: {}, votes: [], ballots: [], limits: [],
-    results: null, helpers: [], people: {}, resultsPost: null, share: null, codes: [], announcements: [], following: false, editRequests: {}, sheet: null,
+    results: null, helpers: [], people: {}, resultsPost: null, share: null, codes: [], announcements: [], following: false, editRequests: {}, sheet: null, voteSheet: null,
     full: {}, feedback: {}, reactions: {}, myReactions: []
 });
 
@@ -2321,6 +2321,7 @@ function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
     const [view, setView] = useState<ResponsesView>('summary');
     const [at, setAt] = useState(0);
     const [qid, setQid] = useState(questions[0]?.id || '');
+    const [jsonBusy, setJsonBusy] = useState(false);
     const open = (entryId: string) => { setAt(Math.max(0, d.entries.findIndex(e => e.id === entryId))); setView('individual'); };
     const voters = new Set(d.votes.map(v => v.voter_id)).size;
     const formSwitch = votesShown && (
@@ -2338,7 +2339,12 @@ function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
             <section className="ev-block ev-responses">
                 <div className="ev-block-head">
                     <h3>{plural(d.entries.length, votesShown ? 'submission' : 'response')}</h3>
-                    <button className="btn btn-secondary btn-sm" type="button" onClick={exportEntriesCsv} disabled={!d.entries.length}><Icon name="arrow-down-tray" size={14} />Download CSV</button>
+                    <span className="ev-head-actions">
+                        <button className="btn btn-secondary btn-sm" type="button" onClick={exportEntriesCsv} disabled={!d.entries.length}><Icon name="arrow-down-tray" size={14} />Download CSV</button>
+                        <button className="btn btn-secondary btn-sm" type="button" disabled={!d.entries.length || jsonBusy} title="Every answer in full: pictures, whole Fakémon, private answers you can see"
+                            onClick={async () => { setJsonBusy(true); try { await exportEntriesJson(); } finally { setJsonBusy(false); } }}>
+                            <Icon name="arrow-down-tray" size={14} />{jsonBusy ? 'Preparing…' : 'JSON'}</button>
+                    </span>
                 </div>
                 <div className="ev-segmented ev-responses-tabs" role="tablist" aria-label="How to look at the responses">
                     {RESPONSE_VIEWS.map(([key, label, icon]) => (
@@ -2545,6 +2551,7 @@ function VoteResponses({ ev, d, perms }: { ev: EventRow; d: Detail; perms: Retur
     const [checked, setChecked] = useCheckedVoters(ev.id);
     const openVoter = (id: string) => { setAt(Math.max(0, voters.findIndex(v => v.id === id))); setView('voters'); };
     return (
+        <>
         <section className="ev-block ev-responses">
             <div className="ev-block-head">
                 <h3>{plural(voters.length, 'voter')} · {plural(d.votes.length, 'vote')}</h3>
@@ -2565,6 +2572,8 @@ function VoteResponses({ ev, d, perms }: { ev: EventRow; d: Detail; perms: Retur
                 ? <VoterFeedback ev={ev} d={d} perms={perms} at={Math.min(entryAt, d.entries.length - 1)} onAt={setEntryAt} />
                 : <p className="ev-hint">No entries to show votes for.</p>)}
         </section>
+        <SheetLink ev={ev} d={d} kind="votes" />
+        </>
     );
 }
 
@@ -2875,18 +2884,25 @@ function RequestEditDialog({ close, entry, title, who, current }: DialogProps<{ 
 }
 registerDialog('event-request-edit', RequestEditDialog);
 
-/** A spreadsheet of the responses that keeps itself up to date (Google Sheets' IMPORTDATA). */
-function SheetLink({ ev, d }: { ev: EventRow; d: Detail }) {
+/**
+ * A spreadsheet of the responses that keeps itself up to date (Google Sheets'
+ * IMPORTDATA): the submissions, or the votes (their own link and token).
+ */
+function SheetLink({ ev, d, kind = 'entries' }: { ev: EventRow; d: Detail; kind?: 'entries' | 'votes' }) {
     const [priv, setPriv] = useState(false);
     const [busy, setBusy] = useState(false);
-    const make = async (includePrivate: boolean) => { setBusy(true); await createSheetLink(ev.id, includePrivate); setBusy(false); };
+    const votes = kind === 'votes';
+    const sheet = votes ? d.voteSheet : d.sheet;
+    const make = async (includePrivate: boolean) => { setBusy(true); await createSheetLink(ev.id, includePrivate, kind); setBusy(false); };
     return (
         <section className="ev-block ev-sheet">
-            <div className="ev-block-head"><h3><Icon name="table-cells" size={16} />Google Sheets</h3></div>
-            {!d.sheet ? (
+            <div className="ev-block-head"><h3><Icon name="table-cells" size={16} />{votes ? 'Votes in Google Sheets' : 'Google Sheets'}</h3></div>
+            {!sheet ? (
                 <>
-                    <p className="ev-hint">Keep the responses in a spreadsheet that updates by itself. You get a private link; Google Sheets pulls in the latest responses about once an hour.</p>
-                    <label className="ev-check"><input type="checkbox" checked={priv} onChange={e => setPriv(e.target.checked)} />Include private answers (emails, Discord names and other questions only organizers see)</label>
+                    <p className="ev-hint">{votes
+                        ? 'Keep every vote (who voted, for which entry, each score, their answers and remarks) in a spreadsheet that updates by itself. You get a private link; Google Sheets pulls in the latest votes about once an hour.'
+                        : 'Keep the responses in a spreadsheet that updates by itself. You get a private link; Google Sheets pulls in the latest responses about once an hour.'}</p>
+                    {!votes && <label className="ev-check"><input type="checkbox" checked={priv} onChange={e => setPriv(e.target.checked)} />Include private answers (emails, Discord names and other questions only organizers see)</label>}
                     <div className="ev-form-actions"><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => make(priv)}><Icon name="link" size={14} />{busy ? 'Making the link…' : 'Link to Google Sheets'}</button></div>
                 </>
             ) : (
@@ -2895,16 +2911,18 @@ function SheetLink({ ev, d }: { ev: EventRow; d: Detail }) {
                         <li><span>Open a new Google Sheet.</span> <a className="btn btn-secondary btn-sm" href="https://sheets.new" target="_blank" rel="noopener noreferrer"><Icon name="arrow-top-right-on-square" size={14} />sheets.new</a></li>
                         <li><span>Paste this into cell A1:</span>
                             <div className="ev-share-field">
-                                <input type="text" readOnly value={sheetFormula(d.sheet.token)} aria-label="Formula for Google Sheets" onFocus={e => e.target.select()} />
-                                <button className="btn btn-secondary btn-sm" type="button" onClick={() => copyLink(sheetFormula(d.sheet!.token), 'Formula')}><Icon name="clipboard" size={14} />Copy</button>
+                                <input type="text" readOnly value={sheetFormula(sheet.token)} aria-label="Formula for Google Sheets" onFocus={e => e.target.select()} />
+                                <button className="btn btn-secondary btn-sm" type="button" onClick={() => copyLink(sheetFormula(sheet.token), 'Formula')}><Icon name="clipboard" size={14} />Copy</button>
                             </div></li>
                     </ol>
                     <p className="ev-notice"><Icon name="shield-exclamation" size={15} />
-                        <span>Anyone with this link can read the responses{d.sheet.include_private ? ', private answers included' : ' (not the private answers)'}. Share the sheet only with your team. A new link stops the old one working.</span></p>
+                        <span>{votes ? 'Anyone with this link can read every vote, with who cast it.' : <>Anyone with this link can read the responses{sheet.include_private ? ', private answers included' : ' (not the private answers)'}.</>} Share the sheet only with your team. A new link stops the old one working.</span></p>
                     <div className="ev-form-actions">
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => copyLink(sheetUrl(d.sheet!.token), 'CSV link')}><Icon name="clipboard" size={14} />Copy the CSV link</button>
-                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => make(!d.sheet!.include_private)}>{d.sheet.include_private ? 'New link without private answers' : 'New link with private answers'}</button>
-                        <button type="button" className="btn btn-danger-ghost btn-sm" onClick={() => deleteSheetLink(ev.id)}>Turn off</button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => copyLink(sheetUrl(sheet.token), 'CSV link')}><Icon name="clipboard" size={14} />Copy the CSV link</button>
+                        {votes
+                            ? <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => make(false)}>New link</button>
+                            : <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => make(!sheet.include_private)}>{sheet.include_private ? 'New link without private answers' : 'New link with private answers'}</button>}
+                        <button type="button" className="btn btn-danger-ghost btn-sm" onClick={() => deleteSheetLink(ev.id, sheet.token)}>Turn off</button>
                     </div>
                 </>
             )}

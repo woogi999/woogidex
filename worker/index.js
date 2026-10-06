@@ -281,10 +281,27 @@ async function eventSheet(url) {
         return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
     };
     const questions = data.questions || [];
-    const rows = [
-        ['Submitted', 'Entrant', 'Placement', ...questions.map(q => q.label)],
-        ...(data.entries || []).map(en => [en.created_at, en.entrant, en.placement ?? '', ...questions.map(q => en.answers?.[q.id])])
-    ];
+    let rows;
+    if (data.kind === 'votes') {
+        // the event's scoring criteria (criteriaOf in js/features/events.ts), or
+        // when it has none set, whatever was scored, in the order first seen
+        const votes = data.votes || [];
+        let criteria = (data.criteria || []).map(c => typeof c === 'string' ? { name: c, max: 10 } : { name: c?.name || '', max: Number(c?.max) || 10 }).filter(c => c.name);
+        if (!criteria.length) {
+            const seen = [];
+            for (const v of votes) for (const k of Object.keys(v.scores || {})) if (!seen.includes(k)) seen.push(k);
+            criteria = seen.map(name => ({ name, max: 10 }));
+        }
+        rows = [
+            ['When', 'Voter', 'Entry', 'Entrant', 'Total', ...criteria.map(c => `${c.name} (of ${c.max})`), ...questions.map(q => q.label), 'Remarks'],
+            ...votes.map(v => [v.created_at, v.voter, v.entry, v.entrant, v.total, ...criteria.map(c => v.scores?.[c.name] ?? ''), ...questions.map(q => v.answers?.[q.id]), v.remarks])
+        ];
+    } else {
+        rows = [
+            ['Submitted', 'Entrant', 'Placement', ...questions.map(q => q.label)],
+            ...(data.entries || []).map(en => [en.created_at, en.entrant, en.placement ?? '', ...questions.map(q => en.answers?.[q.id])])
+        ];
+    }
     return new Response(rows.map(r => r.map(cell).join(',')).join('\r\n'), {
         headers: {
             'content-type': 'text/csv; charset=utf-8',

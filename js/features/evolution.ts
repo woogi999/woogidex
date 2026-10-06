@@ -737,7 +737,8 @@ function previewFormeTabs(): Array<{id: string, kind: string, refId: string, nam
     }));
 }
 
-function persistEvolutionGraph() {
+/** @param afterSave called from a save: redraw only, since another preview update would autosave again (a save loop) */
+function persistEvolutionGraph(afterSave = false) {
     const g=clone(ensureGraph());
     // sync the graph onto every participating Fakemon so the chain/tabs stay consistent when reopened.
     const stages = calculateStages(g);
@@ -753,7 +754,8 @@ function persistEvolutionGraph() {
         if (current) { current.evolutionGraph=clone(g); current.evolutionStage=stages[node?.id] || 1; }
     }
     api.saveToStorage?.();
-    if (document.getElementById('editor-view')?.style.display !== 'none') api.updatePreview?.();
+    if (afterSave) notify();
+    else if (document.getElementById('editor-view')?.style.display !== 'none') api.updatePreview?.();
 }
 
 
@@ -761,10 +763,18 @@ function persistEvolutionGraph() {
 function onFakemonSaved(id) {
     const g=ensureGraph();
     const old=g.nodes.find(n=>n.id==='current:fakemon');
-    if (old) { old.id=`fakemon:${id}`; old.refId=id; old.kind='fakemon'; }
+    const saved=g.nodes.find(n=>n.id===`fakemon:${id}`);
+    if (old && saved) {
+        // the board already drew the saved id (the first save sets editingId
+        // before this runs): fold the placeholder into it instead of renaming
+        // it into a second node with the same id
+        g.edges.forEach(e => { if (e.from === old.id) e.from = saved.id; if (e.to === old.id) e.to = saved.id; });
+        g.edges = g.edges.filter((e, i, all) => e.from !== e.to && all.findIndex(o => o.from === e.from && o.to === e.to) === i);
+        g.nodes = g.nodes.filter(n => n !== old);
+    } else if (old) { old.id=`fakemon:${id}`; old.refId=id; old.kind='fakemon'; }
     const me=g.nodes.find(n=>n.id===`fakemon:${id}`);
     if (me) { me.refId=id; me.name=getFakemon(id)?.name || me.name; }
-    persistEvolutionGraph();
+    persistEvolutionGraph(true);
     renderEvolutionBoard();
 }
 
@@ -772,6 +782,8 @@ function sanitizeEvolutionGraphForCurrent(graph) {
     const g = graph ? clone(graph) : DEFAULT_GRAPH();
     if (!Array.isArray(g.nodes)) g.nodes = [];
     if (!Array.isArray(g.edges)) g.edges = [];
+    // a node in twice (how new Fakemon used to save, see onFakemonSaved) keeps its first copy
+    g.nodes = g.nodes.filter((n, i, all) => all.findIndex(o => o.id === n.id) === i);
     const current = currentNodeId();
     // keep only the connected component of the current Fakemon, so a stale copied graph can't show unrelated species.
     if (g.nodes.some(n => n.id === current)) {

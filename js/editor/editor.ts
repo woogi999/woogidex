@@ -1,4 +1,5 @@
 import { cachedFetch } from '../core/net-cache.ts';
+import { parseJsLiteral } from '../core/js-literal.ts';
 import { SD_MOVE_FIELDS } from '../battle/engine/dex.ts';
 import { log } from '../core/log.ts';
 import { state, api } from '../core/app.ts';
@@ -60,8 +61,25 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
             abilities: 'https://play.pokemonshowdown.com/data/abilities.js',
             items:     'https://play.pokemonshowdown.com/data/items.js',
             pokedex:   'https://play.pokemonshowdown.com/data/pokedex.json',
-            learnsets: 'https://play.pokemonshowdown.com/data/learnsets.json'
+            learnsets: 'https://play.pokemonshowdown.com/data/learnsets.json',
+            // the descriptions: Showdown moved every move, ability and item
+            // description out of the files above and into its English text file
+            text:      'https://play.pokemonshowdown.com/data/text/en.js'
         };
+
+        /** Showdown's English text (descriptions by move, ability and item id), or null if it won't load or parse. */
+        async function loadShowdownText(res: Response | null) {
+            if (!res || !res.ok) return null;
+            try {
+                const src = await res.text();
+                const at = src.indexOf('{', src.search(/BattleText\[["']en["']\]\s*=/));
+                const en = parseJsLiteral(src, at).value;
+                return { Moves: en.Moves || {}, Abilities: en.Abilities || {}, Items: en.Items || {} };
+            } catch (err) {
+                log.warn('SHOWDOWN', 'Could not read Showdown descriptions', err);
+                return null;
+            }
+        }
         // memoised like ensureLearnsets(): boot, the regions page and battle all
         // ask for it, and each used to start its own ~1 MB download and parse
         let showdownDataPromise: Promise<void> | null = null;
@@ -80,12 +98,15 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
             try {
                 // learnsets.json (3.2 of 4.3 MB total) isn't needed on the first
                 // screen, so it's not awaited here -- see ensureLearnsets() below
-                const [movesRes, abilitiesRes, itemsRes, pokedexRes] = await Promise.all([
+                const [movesRes, abilitiesRes, itemsRes, pokedexRes, textRes] = await Promise.all([
                     cachedFetch(SD_DATA.moves),
                     cachedFetch(SD_DATA.abilities),
                     cachedFetch(SD_DATA.items),
-                    cachedFetch(SD_DATA.pokedex)
+                    cachedFetch(SD_DATA.pokedex),
+                    // descriptions are nice to have: the editor still works without them
+                    cachedFetch(SD_DATA.text).catch(() => null)
                 ]);
+                const text = await loadShowdownText(textRes);
 
                 const movesRaw = await movesRes.json();
                 const abilitiesText = await abilitiesRes.text();
@@ -102,7 +123,7 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
                         if (a.isNonstandard === 'Past') continue;
                         state.sdAbilities[key] = {
                             name: a.name || key,
-                            desc: a.shortDesc || a.desc || '',
+                            desc: a.shortDesc || a.desc || text?.Abilities[key]?.shortDesc || text?.Abilities[key]?.desc || '',
                             rating: typeof a.rating === 'number' ? a.rating : null,
                             // CAP abilities are negative; Browse Abilities hides them
                             num: Number(a.num) || 0
@@ -116,7 +137,7 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
                     const itemsRaw = JSON.parse(jsonStr);
                     for (const [key, i] of Object.entries<any>(itemsRaw)) {
                         if (i.isNonstandard === 'Past') continue;
-                        state.sdItems[key] = { name: i.name || key, desc: i.desc || i.shortDesc || '', num: Number(i.num) || 0, nonstandard: i.isNonstandard || '', spritenum: Number.isFinite(Number(i.spritenum)) ? Number(i.spritenum) : null };
+                        state.sdItems[key] = { name: i.name || key, desc: i.desc || i.shortDesc || text?.Items[key]?.desc || text?.Items[key]?.shortDesc || '', num: Number(i.num) || 0, nonstandard: i.isNonstandard || '', spritenum: Number.isFinite(Number(i.spritenum)) ? Number(i.spritenum) : null };
                     }
                 }
 
@@ -129,7 +150,7 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
                     for (const field of SD_MOVE_FIELDS) {
                         if (move[field] === undefined && m[field] !== undefined) move[field] = m[field];
                     }
-                    move.desc = m.desc || m.shortDesc || '';
+                    move.desc = m.desc || m.shortDesc || text?.Moves[key]?.desc || text?.Moves[key]?.shortDesc || '';
                     // what a region's "National Dex" pool leaves out (js/features/regions.ts)
                     if (m.isNonstandard) move.nonstandard = m.isNonstandard;
                     if (m.isZ) move.isZ = true;
@@ -186,6 +207,15 @@ import { abilityRole, prepareLearnset } from './learnset-model.ts';
                     });
                 }
                 // learnsets are loaded separately -- see ensureLearnsets().
+
+                // a Fakemon picked its abilities while Showdown's descriptions
+                // were missing: fill the blanks now that they're here
+                for (const a of state.abilities || []) {
+                    if (a && a.source !== 'custom' && !a.custom && !a.desc) {
+                        const sd = Object.values<any>(state.sdAbilities).find(v => v.name === a.name);
+                        if (sd?.desc) a.desc = sd.desc;
+                    }
+                }
 
                 state.sdLoaded = true;
                 done({ moves: Object.keys(state.sdMoves).length, abilities: Object.keys(state.sdAbilities).length, items: Object.keys(state.sdItems).length, pokedex: Object.keys(state.sdPokedex).length });

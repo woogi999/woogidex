@@ -1,4 +1,5 @@
 // Custom emojis, Discord style: type :tatsuorange: and it shows as the picture.
+// Standard emojis (further down) are drawn as Apple's pictures everywhere.
 //
 // The pictures live in public/emojis and ship with the site; the list of them
 // is built from the file names when the site is built (vite.config.js,
@@ -56,15 +57,17 @@ const SHORTCODE = /:([a-z0-9_]{1,48}):/g;
  * @param jumbo draw them large (a message that is nothing but emojis)
  */
 export function emojifyHtml(escapedHtml: string, jumbo = false): string {
-    return escapedHtml.replace(SHORTCODE, (whole, name) => {
+    // ours first; their pictures' markup holds no emoji characters, so the
+    // standard ones (Apple pictures) can go after
+    return appleifyText(escapedHtml.replace(SHORTCODE, (whole, name) => {
         const e = byName.get(name);
         if (!e) return whole;
         return `<img class="emoji${jumbo ? ' emoji-jumbo' : ''}" src="${e.src}" alt=":${e.name}:" title=":${e.name}:" draggable="false" loading="lazy" decoding="async">`;
-    });
+    }), jumbo);
 }
 
-/** Whether the text is only emojis (and spaces), at most 27 of them, the way Discord enlarges them. */
-export function isEmojiOnly(text: string): boolean {
+/** Whether the text is only emojis (ours or standard, and spaces), at most 27 of them, the way Discord enlarges them. */
+export function isEmojiOnly(text: string, max = 27): boolean {
     const trimmed = String(text || '').trim();
     if (!trimmed) return false;
     let count = 0;
@@ -72,8 +75,8 @@ export function isEmojiOnly(text: string): boolean {
         if (!byName.has(name)) return whole;
         count++;
         return '';
-    });
-    return count > 0 && count <= 27 && !rest.trim();
+    }).replace(UNICODE_EMOJI_RE, () => { count++; return ''; });
+    return count > 0 && count <= max && !rest.trim();
 }
 
 /** Every :name: in a text that is a real emoji (reaction keys, say). */
@@ -86,8 +89,17 @@ export function isEmojiCode(code: string): boolean {
 // go in as the character itself. As a reaction they're stored as "u_" plus
 // their codepoints in hex ("u_1f44d"), which fits the same key format as our
 // names, so posts, Fakémon and comments take them with no schema change.
+//
+// Everyone sees Apple's artwork for them, whatever their phone or computer
+// would draw: the pictures come from emoji-datasource-apple (the image set
+// Slack and many chat apps use) on jsDelivr's npm CDN. The URL is pinned to
+// one version, so it never changes and browsers keep each picture for a
+// year. A picture that fails to load turns back into the plain character.
+// Typing :sob: (Discord's names for them) puts in the character.
 
-export interface UnicodeEmoji { key: string; char: string; name: string; }
+export interface UnicodeEmoji { key: string; char: string; name: string; codes: string[]; }
+
+const APPLE_CDN = 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple@16.0.0/img/apple/64/';
 
 /** Whether a reaction key is a standard emoji rather than one of ours. */
 export function isUnicodeKey(key: string): boolean {
@@ -100,16 +112,118 @@ export function unicodeChar(key: string): string {
     catch { return ''; }
 }
 
-let unicodeGroups: Promise<Array<{ label: string; emojis: UnicodeEmoji[] }>> | null = null;
+const PRESENTS_AS_EMOJI = /\p{Emoji_Presentation}/u;
+const SKIN_TONE = /\p{Emoji_Modifier}/u;
+const PICTOGRAPH = /\p{Extended_Pictographic}|[#*0-9]/u;
 
-/** The standard emojis by group; ~36 KB, so only fetched once a picker opens. */
+/**
+ * The Apple picture for an emoji however it was typed. The files are named
+ * by the fully qualified sequence: an FE0F after every codepoint that would
+ * otherwise draw as text, unless a skin tone follows it (checked against all
+ * 3,783 files in the set).
+ */
+export function appleEmojiUrl(char: string): string {
+    const cps = [...char].map(c => c.codePointAt(0)!).filter(c => c !== 0xfe0f);
+    const out: number[] = [];
+    cps.forEach((c, i) => {
+        out.push(c);
+        const ch = String.fromCodePoint(c);
+        if (c === 0x200d || c === 0x20e3 || (c >= 0xe0020 && c <= 0xe007f) || SKIN_TONE.test(ch) || PRESENTS_AS_EMOJI.test(ch)) return;
+        if (i + 1 < cps.length && SKIN_TONE.test(String.fromCodePoint(cps[i + 1]))) return;
+        if (PICTOGRAPH.test(ch)) out.push(0xfe0f);
+    });
+    return APPLE_CDN + out.map(c => c.toString(16).padStart(4, '0')).join('-') + '.png';
+}
+
+/**
+ * One standard emoji in text: a flag, a keycap, or a pictograph (with its
+ * skin tone, ZWJ family members or tag letters). A symbol that reads as text
+ * by default (© ™ ↔) only counts when it carries FE0F, so plain text stays text.
+ */
+const UNICODE_EMOJI_RE = new RegExp(
+    '\\p{Regional_Indicator}{2}' +
+    '|[#*0-9]\\uFE0F?\\u20E3' +
+    '|(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic}(?:\\uFE0F|(?=\\p{Emoji_Modifier})))\\p{Emoji_Modifier}?[\\u{E0020}-\\u{E007E}]*\\u{E007F}?' +
+    '(?:\\u200D\\p{Extended_Pictographic}\\uFE0F?\\p{Emoji_Modifier}?)*',
+    'gu'
+);
+
+/** Swaps every standard emoji in escaped text (no tags with emojis in them) for its Apple picture. */
+function appleifyText(text: string, jumbo: boolean): string {
+    return text.replace(UNICODE_EMOJI_RE, ch =>
+        `<img class="emoji emoji-apple${jumbo ? ' emoji-jumbo' : ''}" src="${appleEmojiUrl(ch)}" alt="${ch}" draggable="false" loading="lazy" decoding="async">`);
+}
+
+// a picture that won't load (offline, an emoji newer than the set) shows
+// the character instead
+if (typeof document !== 'undefined') {
+    document.addEventListener('error', e => {
+        const img = e.target;
+        if (!(img instanceof HTMLImageElement) || !img.classList.contains('emoji-apple')) return;
+        const span = document.createElement('span');
+        span.className = 'emoji-char';
+        span.textContent = img.alt;
+        img.replaceWith(span);
+    }, true);
+}
+
+let unicodeGroups: Promise<Array<{ label: string; emojis: UnicodeEmoji[] }>> | null = null;
+let byCode: Map<string, UnicodeEmoji> | null = null;
+
+/** The standard emojis by group; ~75 KB, so only fetched once a picker or text box wants them. */
 export function loadUnicodeEmoji() {
-    return unicodeGroups ||= import('./emoji-unicode-data.ts').then(m => m.UNICODE_EMOJI.map(([label, list]) => ({
-        label,
-        emojis: list.split('|').map(entry => {
-            const at = entry.indexOf(' ');
-            const key = 'u_' + entry.slice(0, at);
-            return { key, char: unicodeChar(key), name: entry.slice(at + 1) };
-        })
-    })));
+    return unicodeGroups ||= import('./emoji-unicode-data.ts').then(m => {
+        const groups = m.UNICODE_EMOJI.map(([label, list]) => ({
+            label,
+            emojis: list.split('|').map((entry): UnicodeEmoji => {
+                const [hex, codes, ...name] = entry.split(' ');
+                const key = 'u_' + hex;
+                return { key, char: unicodeChar(key), name: name.join(' '), codes: codes.split(',') };
+            })
+        }));
+        const codes = new Map<string, UnicodeEmoji>();
+        for (const g of groups) for (const e of g.emojis) for (const c of e.codes) if (!codes.has(c)) codes.set(c, e);
+        byCode = codes;
+        return groups;
+    });
+}
+
+/** A standard emoji by its Discord shortcode ("sob"), once loadUnicodeEmoji has finished. */
+export function unicodeByCode(code: string): UnicodeEmoji | null {
+    return byCode?.get(String(code || '').toLowerCase()) || null;
+}
+
+/** Standard emojis whose shortcode starts with (then contains) the query; none until loaded. */
+export function searchUnicodeEmojis(query: string, limit = 50): Array<{ code: string; emoji: UnicodeEmoji }> {
+    const q = String(query || '').toLowerCase().replace(/^:|:$/g, '');
+    if (!byCode || !q) return [];
+    const starts: Array<{ code: string; emoji: UnicodeEmoji }> = [];
+    const contains: Array<{ code: string; emoji: UnicodeEmoji }> = [];
+    const seen = new Set<UnicodeEmoji>();
+    for (const [code, emoji] of byCode) {
+        if (code.startsWith(q) && !seen.has(emoji)) { seen.add(emoji); starts.push({ code, emoji }); }
+    }
+    for (const [code, emoji] of byCode) {
+        if (code.includes(q) && !seen.has(emoji)) { seen.add(emoji); contains.push({ code, emoji }); }
+    }
+    starts.sort((a, b) => a.code.length - b.code.length);
+    return [...starts, ...contains].slice(0, limit);
+}
+
+/**
+ * Turns every complete ":sob:" in a text into its character, the way Discord
+ * does as you type; our own emojis' codes win and stay as they are. The caret
+ * comes back moved by however much the text before it shrank.
+ */
+export function replaceShortcodes(text: string, caret: number): { text: string; caret: number } {
+    if (!byCode || !text.includes(':')) return { text, caret };
+    let shift = 0;
+    const out = text.replace(/:([a-z0-9_+\-]{1,48}):/gi, (whole: string, code: string, at: number) => {
+        if (byName.has(code.toLowerCase())) return whole;
+        const e = unicodeByCode(code);
+        if (!e) return whole;
+        if (at + whole.length <= caret) shift += whole.length - e.char.length;
+        return e.char;
+    });
+    return { text: out, caret: caret - shift };
 }
