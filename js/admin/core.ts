@@ -74,7 +74,7 @@ export async function loadBadges(): Promise<void> {
 // ==================== refreshes across tabs ====================
 // An action in one tab can change what another shows (a mute lands in the mod
 // log); each list reloads when its counter moves.
-export const reloads = { users: 0, log: 0, comments: 0 };
+export const reloads = { users: 0, log: 0, comments: 0, posts: 0, events: 0 };
 export function reload(which: keyof typeof reloads): void {
     reloads[which]++;
     notify();

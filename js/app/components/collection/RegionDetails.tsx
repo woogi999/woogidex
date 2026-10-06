@@ -9,6 +9,7 @@ import {
 import { Icon } from '../Icon.tsx';
 import { cropThen } from '../../dialogs/cropImage.tsx';
 import type { Region } from '../../types.ts';
+import { NAME_MAX } from '../../../core/data.ts';
 
 export function ColorSwatches({ colors, selected, onPick }: { colors: string[]; selected: string | null; onPick: (hex: string) => void }) {
     return (
@@ -60,7 +61,7 @@ export function RegionDetails({ region }: { region: Region }) {
                     <section className="region-details-section" key={region.id}>
                         <header><h3>About</h3><span className="region-details-status">{regionDetailsStatus()}</span></header>
                         <div className="form-group"><label htmlFor="region-details-name">Name</label>
-                            <input type="text" id="region-details-name" maxLength={40} defaultValue={region.name} onChange={e => api.regionDetailsInput('name', e.target.value)} /></div>
+                            <input type="text" id="region-details-name" maxLength={NAME_MAX} defaultValue={region.name} onChange={e => api.regionDetailsInput('name', e.target.value)} /></div>
                         <div className="form-group"><label htmlFor="region-details-tagline">Tagline</label>
                             <input type="text" id="region-details-tagline" maxLength={90} defaultValue={region.tagline || ''} placeholder="One line, like a game's box art" onChange={e => api.regionDetailsInput('tagline', e.target.value)} /></div>
                         <div className="form-group"><label htmlFor="region-details-bio">Bio</label>

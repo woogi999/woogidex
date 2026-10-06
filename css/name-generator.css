@@ -16,7 +16,8 @@
 .name-roll-btn svg { width: 17px; height: 17px; }
 
 .name-roll-popover {
-    z-index: 1200; width: 220px; max-width: calc(100vw - 16px);
+    /* above modals and the editor sheet it opens from */
+    z-index: 12900; width: 220px; max-width: calc(100vw - 16px);
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
     box-shadow: 0 12px 28px rgba(0,0,0,.18); padding: 8px; animation: fadeInUp .18s ease both;
 }

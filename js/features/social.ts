@@ -16,6 +16,8 @@ import { publicName } from '../core/html.ts';
 import { confirmDialog } from '../core/confirm-dialog.ts';
 import { chronological, dailySeed, rankFeed, typeAffinityFrom, type FeedItem } from './feed-algorithm.ts';
 import { createPoll, pollProblem, type PollDraft } from './polls.ts';
+import { applyMyReaction } from './comments.ts';
+import { effectivePhase } from './events.ts';
 
 export type FeedTab = 'foryou' | 'following' | 'latest';
 
@@ -226,6 +228,34 @@ function withEmbeds(rows: any[]): any[] {
     return [...rows, ...rows.map(r => r.repost).filter((r: any) => r && !r.missing)];
 }
 
+/**
+ * The events posts show (event_ids), as the cards repost_embed('event') makes:
+ * the feed's rows don't carry them, so they're looked up once per load. Until
+ * the migration adding event_ids is in, nothing is found and nothing shows.
+ */
+async function attachPostEvents(rows: any[]) {
+    const posts = withEmbeds(rows).filter(r => r?.kind === 'post' && r.id);
+    if (!posts.length) return;
+    try {
+        const client = await api.getClient();
+        const { data: links, error } = await client.from('community_posts').select('id, event_ids').in('id', [...new Set(posts.map(p => p.id))]).neq('event_ids', '{}');
+        if (error || !links?.length) return;
+        const ids = [...new Set(links.flatMap((l: any) => l.event_ids || []))];
+        const { data: evs } = await client.from('events')
+            .select('id, slug, owner_id, title, tagline, category, cover_thumb, phase, voting, submissions_open_at, submissions_close_at, voting_open_at, voting_close_at, results_at, hold_results, results_released_at, created_at')
+            .in('id', ids);
+        const byId = new Map((evs || []).map((e: any) => [e.id, {
+            kind: 'event', id: e.id, slug: e.slug, user_id: e.owner_id, created_at: e.created_at, title: e.title, tagline: e.tagline,
+            category: e.category, cover_image: e.cover_thumb, stage: effectivePhase(e)
+        }]));
+        const byPost = new Map(links.map((l: any) => [l.id, l.event_ids as string[]]));
+        // an event since deleted (or back to a draft you can't see) just drops out
+        for (const p of posts) if (byPost.has(p.id)) { p.event_ids = byPost.get(p.id); p.events = p.event_ids.map((id: string) => byId.get(id)).filter(Boolean); }
+    } catch (e: any) {
+        log.warn('SOCIAL', 'Could not load the events posts show', e);
+    }
+}
+
 export async function fetchFeed(tab: FeedTab = 'foryou', { force = false, older = false }: { force?: boolean; older?: boolean } = {}) {
     if (!state.user) return;
     const t = ss().feed[tab];
@@ -242,7 +272,7 @@ export async function fetchFeed(tab: FeedTab = 'foryou', { force = false, older 
         });
         if (error) throw error;
         const rows = (data || []).map(shapeItem);
-        await api.attachLiveAuthorInfo?.(withEmbeds(rows));
+        await Promise.all([api.attachLiveAuthorInfo?.(withEmbeds(rows)), attachPostEvents(rows)]);
         if (older) {
             const known = new Set(t.items.map(i => `${i.kind}:${i.id}`));
             const fresh = rows.filter(r => !known.has(`${r.kind}:${r.id}`));
@@ -301,17 +331,17 @@ export function tagsIn(text: string): string[] {
     return [...tags].slice(0, 8);
 }
 
-export async function createPost({ body = '', monIds = [] as string[], poll = null as PollDraft | null }): Promise<string | null> {
+export async function createPost({ body = '', monIds = [] as string[], eventIds = [] as string[], poll = null as PollDraft | null }): Promise<string | null> {
     if (!api.requireAccount?.('Sign in to post.')) return null;
     const text = String(body || '').trim();
-    if (!text && !monIds.length && !poll) { api.showToast?.('Write something or add a Fakemon first.', 'warning'); return null; }
+    if (!text && !monIds.length && !eventIds.length && !poll) { api.showToast?.('Write something or add a Fakemon first.', 'warning'); return null; }
     const pollIssue = poll ? pollProblem(poll) : '';
     if (pollIssue) { api.showToast?.(pollIssue, 'warning'); return null; }
     if (text.length > 4000) { api.showToast?.('Posts can be up to 4000 characters.', 'warning'); return null; }
     if (text && !(await api.guardContent?.(text, 'community post') ?? true)) return null;
     const client = await api.getClient();
     const { data, error } = await client.from('community_posts')
-        .insert({ user_id: state.user!.id, body: text, mon_ids: monIds.slice(0, 12), tags: tagsIn(text) })
+        .insert({ user_id: state.user!.id, body: text, mon_ids: monIds.slice(0, 12), tags: tagsIn(text), ...(eventIds.length ? { event_ids: eventIds.slice(0, 4) } : {}) })
         .select('id').single();
     if (error) {
         log.error('SOCIAL', 'Post failed', error);
@@ -388,27 +418,27 @@ function patchPostEverywhere(postId: string, patch: any) {
 }
 
 /**
- * Adds or takes back one emoji reaction on a post or a Fakémon. On a Fakémon,
- * the heart is what used to be its like, so its like numbers move with it.
+ * Your reaction on a post or a Fakémon, one each: the same emoji again takes
+ * it back, another one swaps it (the database drops the old row). On a
+ * Fakémon the heart is what used to be its like, so its like numbers follow.
  */
 export async function toggleReaction(item: any, emoji: string) {
     if (!api.requireAccount?.('Sign in to react.')) return;
     const kind: 'mon' | 'post' = item.kind === 'mon' ? 'mon' : 'post';
-    const had = (item.my_reactions || []).includes(emoji);
+    const mine: string[] = item.my_reactions || [];
+    const had = mine.includes(emoji);
     const client = await api.getClient();
     const table = kind === 'mon' ? 'mon_reactions' : 'post_reactions';
-    const row = { [kind === 'mon' ? 'mon_id' : 'post_id']: item.id, user_id: state.user!.id, emoji };
-    const { error } = had ? await client.from(table).delete().match(row) : await client.from(table).insert(row);
+    const row = { [kind === 'mon' ? 'mon_id' : 'post_id']: item.id, user_id: state.user!.id };
+    const { error } = had ? await client.from(table).delete().match(row) : await client.from(table).insert({ ...row, emoji });
     if (error && error.code !== '23505') { api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Could not react.', 'error'); return; }
     for (const p of itemCopies(kind, item.id)) {
-        const reactions = { ...(p.reactions || {}) };
-        reactions[emoji] = Math.max(0, Number(reactions[emoji] || 0) + (had ? -1 : 1));
-        if (!reactions[emoji]) delete reactions[emoji];
-        p.reactions = reactions;
-        p.my_reactions = had ? (p.my_reactions || []).filter((e: string) => e !== emoji) : [...(p.my_reactions || []), emoji];
+        const before: string[] = p.my_reactions || [];
+        Object.assign(p, applyMyReaction(p.reactions || {}, before, had ? null : emoji));
         if (kind === 'mon') {
-            p.like_count = Math.max(0, Number(p.like_count || 0) + (had ? -1 : 1));
-            if (emoji === 'heart') p.liked_by_me = !had;
+            // like_count counts every reaction: it only moves when you go from none to one or back
+            p.like_count = Math.max(0, Number(p.like_count || 0) + (had ? -1 : before.length ? 0 : 1));
+            p.liked_by_me = !had && emoji === 'heart';
         }
     }
     if (!had) recordInteraction(item.user_id);
@@ -529,7 +559,7 @@ export async function openPost(postId: string, { preserveRoute = false } = {}): 
         }
         const full = shapeItem({ ...row, kind: 'post', mons, repost, comment_count: Number(s.comment_count || 0), reactions: s.reactions || {}, my_reactions: s.my_reactions || [] });
         const rows = [full, ...(comments.data || [])];
-        await api.attachLiveAuthorInfo?.(withEmbeds(rows));
+        await Promise.all([api.attachLiveAuthorInfo?.(withEmbeds(rows)), attachPostEvents([full])]);
         p.row = full;
         p.comments = comments.data || [];
         recordOpened(postId, row.user_id);
@@ -554,14 +584,14 @@ export async function copyPostLink(postId: string) {
     catch { window.prompt('Copy this link:', url); }
 }
 
-export async function commentOnPost(postId: string, body: string, poll: PollDraft | null = null): Promise<boolean> {
+export async function commentOnPost(postId: string, body: string, poll: PollDraft | null = null, replyTo: string | null = null): Promise<boolean> {
     if (!api.requireAccount?.('Sign in to comment.')) return false;
     const text = String(body || '').trim();
     if (!text) return false;
     if (text.length > 1000) { api.showToast?.('Comments are limited to 1000 characters.', 'warning'); return false; }
     if (!(await api.guardContent?.(text, 'post comment') ?? true)) return false;
     const client = await api.getClient();
-    const { data, error } = await client.from('post_comments').insert({ post_id: postId, user_id: state.user!.id, body: text }).select('*').single();
+    const { data, error } = await client.from('post_comments').insert({ post_id: postId, user_id: state.user!.id, body: text, ...(replyTo ? { parent_id: replyTo } : {}) }).select('*').single();
     if (error) { api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Comment failed.', 'error'); return false; }
     if (poll) {
         try { await createPoll('post_comment', data.id, poll); }
@@ -576,7 +606,8 @@ export async function commentOnPost(postId: string, body: string, poll: PollDraf
     if (p.id === postId) p.comments = [...(p.comments || []), data];
     for (const c of postCopies(postId)) c.comment_count = Number(c.comment_count || 0) + 1;
     const owner = postCopies(postId)[0]?.user_id;
-    if (owner) {
+    // a reply's author is told by the database (notify_comment_reply)
+    if (owner && !replyTo) {
         recordInteraction(owner);
         api.createNotification?.({
             userId: owner, actorId: state.user!.id, actorName: publicName(state.user), actorAvatarUrl: state.user!.avatarUrl || null,
@@ -587,13 +618,14 @@ export async function commentOnPost(postId: string, body: string, poll: PollDraf
     return true;
 }
 
-export async function deletePostComment(commentId: string, postId: string) {
+/** `removed`: how many comments go, the replies under it included (they're deleted with it). */
+export async function deletePostComment(commentId: string, postId: string, removed = 1) {
     const client = await api.getClient();
     const { error } = await client.from('post_comments').delete().eq('id', commentId);
     if (error) { api.showToast?.('Could not delete: ' + error.message, 'error'); return; }
     const p = ss().post;
-    if (p.id === postId && p.comments) p.comments = p.comments.filter(c => c.id !== commentId);
-    for (const c of postCopies(postId)) c.comment_count = Math.max(0, Number(c.comment_count || 0) - 1);
+    if (p.id === postId && p.comments) p.comments = p.comments.filter(c => c.id !== commentId && c.parent_id !== commentId);
+    for (const c of postCopies(postId)) c.comment_count = Math.max(0, Number(c.comment_count || 0) - removed);
     notify();
 }
 
@@ -603,7 +635,7 @@ export async function fetchTimeline(userId: string, before: string | null = null
     const { data, error } = await client.rpc('profile_timeline', { p_user: userId, p_before: before, p_limit: 30 });
     if (error) throw error;
     const rows = (data || []).map(shapeItem);
-    await api.attachLiveAuthorInfo?.(withEmbeds(rows));
+    await Promise.all([api.attachLiveAuthorInfo?.(withEmbeds(rows)), attachPostEvents(rows)]);
     return rows;
 }
 

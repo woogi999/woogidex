@@ -673,3 +673,16 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .msg-report-body { font-size: 14px; overflow-wrap: anywhere; }
 .msg-report-body img.emoji { width: 1.375em; height: 1.375em; vertical-align: -0.35em; }
 .msg-report-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ---- posts and events (js/admin/ContentTabs.tsx) ---- */
+.admin-muted { color: var(--text-muted); font-size: 13px; }
+.admin-link-btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: 12.5px; cursor: pointer; }
+.admin-link-btn:hover { color: var(--text-primary); }
+.admin-link-btn svg, .admin-comment-meta a svg { width: 13px; height: 13px; }
+.admin-comment-meta a { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); text-decoration: none; }
+.admin-row-actions { display: flex; align-items: center; gap: var(--sp-2); align-self: center; }
+.admin-event-block { margin-bottom: var(--sp-2); }
+.admin-event-content { margin: 0 0 var(--sp-4) var(--sp-5); padding-left: var(--sp-4); border-left: 2px solid var(--border-light); }
+.admin-event-content h4 { margin: var(--sp-3) 0 var(--sp-2); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.admin-entry-row { align-items: center; }
+.admin-entry-thumb { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 8px; object-fit: cover; display: grid; place-items: center; background: var(--bg-panel); }

@@ -211,6 +211,11 @@ function describeCooldown(seconds) {
 }
 
 async function publishSnapshot(mon, rulesChecked = false) {
+    // the database refuses longer names too (guard_mon_name); say so before the rules dialog
+    if (String(mon?.name || '').trim().length > NAME_MAX) {
+        api.showToast?.(`Names can be up to ${NAME_MAX} characters. Shorten "${String(mon.name).trim()}" in the editor first.`, 'warning');
+        return;
+    }
     // show rules on every upload, even if previously accepted.
     if (!rulesChecked) {
         openCommunityRulesModal({ requireAgreement: true, onAccept: () => publishSnapshot(mon, true) });
@@ -745,6 +750,7 @@ function closeCommunityHub() {
 import { publicName } from '../core/html.ts';
 import { routeUrl, navigateRoute } from '../core/router.ts';
 import { form } from '../editor/draft.ts';
+import { NAME_MAX } from '../core/data.ts';
 
 const COMMUNITY_SORT_KEY = 'woogidex.community.sort.v2';
 const COMMUNITY_LAYOUT_KEY = 'woogidex.community.layout.v1';

@@ -78,7 +78,7 @@
 }
 
 /* ==================== user hover trainer card ==================== */
-.user-hover-card { position:fixed; z-index:10000; width:300px; max-width:calc(100vw - 24px); box-sizing:border-box; padding:14px; border:1px solid var(--border); border-radius:14px; background:linear-gradient(135deg,var(--bg-card),var(--bg-panel)); color:var(--text-primary); box-shadow:0 18px 45px rgba(0,0,0,.22); pointer-events:auto; overflow:hidden; }
+.user-hover-card { position:fixed; z-index:12950; width:300px; max-width:calc(100vw - 24px); box-sizing:border-box; padding:14px; border:1px solid var(--border); border-radius:14px; background:linear-gradient(135deg,var(--bg-card),var(--bg-panel)); color:var(--text-primary); box-shadow:0 18px 45px rgba(0,0,0,.22); pointer-events:auto; overflow:hidden; }
 .user-hover-card-accent { position:absolute; top:0; left:0; right:0; height:3px; background:var(--accent); opacity:.9; }
 .user-hover-card-top { display:flex; align-items:center; gap:12px; }
 .user-hover-card-avatar { width:52px; height:52px; flex:0 0 52px; border-radius:50%; overflow:hidden; border:1px solid var(--border); background:var(--bg-input); display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; color:var(--text-secondary); }

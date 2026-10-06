@@ -284,6 +284,16 @@ const ACTIONS: Record<string, {
         blurb: 'The account can sign in again immediately.',
         rpc: (id, reason) => ['admin_unban_user', { p_user_id: id, p_reason: reason }]
     },
+    reset_name: {
+        title: 'Reset the display name', confirm: 'Reset name', durations: null,
+        blurb: 'Their display name is removed, so they show as @username until they pick a new one. They get a notification with your reason.',
+        rpc: (id, reason) => ['admin_reset_profile_text', { p_user_id: id, p_field: 'display_name', p_reason: reason }]
+    },
+    clear_bio: {
+        title: 'Clear the bio', confirm: 'Clear bio', durations: null,
+        blurb: 'Their profile bio is emptied. They get a notification with your reason and can write a new one.',
+        rpc: (id, reason) => ['admin_reset_profile_text', { p_user_id: id, p_field: 'bio', p_reason: reason }]
+    },
     delete_user: {
         title: 'Delete this account', confirm: 'Delete permanently', durations: null, danger: true,
         dangerText: 'This permanently deletes the account and everything it posted: Fakemon, comments, likes and its saved collection. It cannot be undone.',
@@ -397,7 +407,9 @@ function PurgeDialog({ close, user }: DialogProps<{ user: User }>) {
                         <select id="admin-purge-what" value={what} onChange={e => setWhat(e.target.value)}>
                             <option value="all">Comments (all kinds)</option>
                             <option value="mon">Fakemon comments only</option>
+                            <option value="post">Post comments only</option>
                             <option value="profile">Profile comments only</option>
+                            <option value="event">Event comments only</option>
                             <option value="mons">Published Fakemon</option>
                         </select>
                     </div>

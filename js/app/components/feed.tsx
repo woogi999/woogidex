@@ -20,6 +20,7 @@ import { registerDialog, openDialog, type DialogProps } from '../dialogs.tsx';
 import { PollEditor, PollView } from './polls.tsx';
 import { emptyPoll, type PollDraft } from '../../features/polls.ts';
 import type { FeedItem } from '../../features/feed-algorithm.ts';
+import { STAGE_LABEL, effectivePhase, fetchEvents } from '../../features/events.ts';
 
 // timeAgo lives with the comments now; it's re-exported for the pages that
 // already import it from here
@@ -223,9 +224,15 @@ export function RepostEmbed({ item }: { item: any }) {
 
 const EVENT_STAGE: Record<string, string> = { upcoming: 'Opens soon', open: 'Taking entries', closed: 'Entries closed', voting: 'Voting', tallying: 'Results soon', ended: 'Ended' };
 
+/** The events a post shows, each as a small card that opens it. */
+export function PostEvents({ events }: { events?: any[] }) {
+    if (!events?.length) return null;
+    return <div className="post-events">{events.map(e => <EventEmbed key={e.id} item={e} />)}</div>;
+}
+
 /** A shared event (js/features/events.ts): its cover, name and where it's at; opens the event. */
 function EventEmbed({ item }: { item: any }) {
-    const open = () => api.openEvents?.(item.id);
+    const open = () => api.openEvents?.(item.slug || item.id);
     return (
         <div className="repost-embed is-event" role="link" tabIndex={0} onClick={open} onKeyDown={e => { if (e.key === 'Enter') open(); }}>
             <span className="repost-embed-event-art">{item.cover_image ? <img src={item.cover_image} alt="" loading="lazy" draggable={false} /> : <Icon name="trophy" size={24} />}</span>
@@ -233,7 +240,7 @@ function EventEmbed({ item }: { item: any }) {
                 <span className="repost-embed-event-meta"><Icon name="calendar-days" size={13} />Event{item.category ? ` · ${item.category}` : ''} · {EVENT_STAGE[item.stage] || 'Event'}</span>
                 <strong>{item.title}</strong>
                 {item.tagline && <span className="repost-embed-event-tagline">{item.tagline}</span>}
-                <span className="repost-embed-event-meta">{item.entry_count} {Number(item.entry_count) === 1 ? 'entry' : 'entries'}</span>
+                {item.entry_count != null && <span className="repost-embed-event-meta">{item.entry_count} {Number(item.entry_count) === 1 ? 'entry' : 'entries'}</span>}
             </span>
         </div>
     );
@@ -249,7 +256,8 @@ export function PostFeedCard({ item, full = false }: { item: FeedItem; full?: bo
     // the full post page still has its own link; comments open right here
     const [comments, setComments] = useState(full);
     const open = () => api.openPost(item.id);
-    const verb = item.repost ? 'shared' : (item.mon_ids || []).length ? `shared ${(item.mon_ids || []).length} Fakémon` : '';
+    const verb = item.repost ? 'shared' : (item.mon_ids || []).length ? `shared ${(item.mon_ids || []).length} Fakémon`
+        : (item.events || []).length ? `shared ${(item.events || []).length === 1 ? 'an event' : `${item.events.length} events`}` : '';
     return (
         <article className={`feed-card feed-card-post${full ? ' is-full' : ''}`} ref={ref as any}>
             <div className="feed-card-head">
@@ -282,6 +290,7 @@ export function PostFeedCard({ item, full = false }: { item: FeedItem; full?: bo
                 </div>
             ) : null}
             <PostMons mons={item.mons || []} />
+            <PostEvents events={item.events} />
             <PollView kind="post" parentId={item.id} />
             {item.repost && <div className="repost-embed-wrap"><RepostEmbed item={item.repost} /></div>}
             {(item.tags || []).length > 0 && (
@@ -313,7 +322,7 @@ function RepostedCard({ item }: { item: FeedItem }) {
 
 export function FeedCard({ item }: { item: FeedItem }) {
     if (item.kind === 'mon') return <MonFeedCard item={item} />;
-    const plain = item.repost && !item.repost.missing && !item.body && !(item.mon_ids || []).length;
+    const plain = item.repost && !item.repost.missing && !item.body && !(item.mon_ids || []).length && !(item.events || []).length;
     return plain ? <RepostedCard item={item} /> : <PostFeedCard item={item} />;
 }
 
@@ -363,6 +372,7 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
     const [open, setOpen] = useState(false);
     const [text, setText] = useState('');
     const [mons, setMons] = useState<any[]>([]);
+    const [evs, setEvs] = useState<any[]>([]);
     const [poll, setPoll] = useState<PollDraft | null>(null);
     const [busy, setBusy] = useState(false);
     const user = state.user;
@@ -371,9 +381,9 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
     async function post() {
         if (busy) return;
         setBusy(true);
-        const id = await api.createPost({ body: text, monIds: mons.map(m => m.id), poll });
+        const id = await api.createPost({ body: text, monIds: mons.map(m => m.id), eventIds: evs.map(e => e.id), poll });
         setBusy(false);
-        if (id) { setText(''); setMons([]); setPoll(null); setOpen(false); onPosted?.(); }
+        if (id) { setText(''); setMons([]); setEvs([]); setPoll(null); setOpen(false); onPosted?.(); }
     }
     if (!open) {
         return (
@@ -395,12 +405,18 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
             <EmojiInput value={text} onChange={setText} maxLength={4000} rows={4} autoFocus
                 placeholder="Say something! Use #tags, @mentions, **bold**, and :emojis: (try typing :tatsu)" />
             {poll && <PollEditor value={poll} onChange={setPoll} onRemove={() => setPoll(null)} />}
-            {mons.length > 0 && (
+            {(mons.length > 0 || evs.length > 0) && (
                 <div className="post-composer-mons">
                     {mons.map(m => (
                         <span key={m.id} className="post-composer-mon">
                             {m.name}
                             <button type="button" aria-label={`Remove ${m.name}`} onClick={() => setMons(mons.filter(x => x.id !== m.id))}><Icon name="x" size={12} /></button>
+                        </span>
+                    ))}
+                    {evs.map(e => (
+                        <span key={e.id} className="post-composer-mon is-event">
+                            <Icon name="trophy" size={12} />{e.title}
+                            <button type="button" aria-label={`Remove ${e.title}`} onClick={() => setEvs(evs.filter(x => x.id !== e.id))}><Icon name="x" size={12} /></button>
                         </span>
                     ))}
                 </div>
@@ -409,10 +425,13 @@ export function PostComposer({ onPosted }: { onPosted?: () => void }) {
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('pick-post-mons', { selected: mons, onDone: setMons })}>
                     <Icon name="sparkles" size={14} /> {mons.length ? `Fakémon (${mons.length})` : 'Add Fakémon'}
                 </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('pick-post-events', { selected: evs, onDone: setEvs })}>
+                    <Icon name="trophy" size={14} /> {evs.length ? `Events (${evs.length})` : 'Add event'}
+                </button>
                 {!poll && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPoll(emptyPoll())}><Icon name="chart-bar" size={14} /> Poll</button>}
                 <span className="post-composer-count">{text.length}/4000</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setOpen(false); }}>Cancel</button>
-                <button type="button" className="btn btn-primary btn-sm" disabled={busy || (!text.trim() && !mons.length && !poll)} onClick={post}>{busy ? 'Posting…' : 'Post'}</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy || (!text.trim() && !mons.length && !evs.length && !poll)} onClick={post}>{busy ? 'Posting…' : 'Post'}</button>
             </div>
         </div>
     );
@@ -466,3 +485,50 @@ function PickPostMons({ close, selected, onDone }: DialogProps<{ selected: any[]
     );
 }
 registerDialog('pick-post-mons', PickPostMons);
+
+// ==================== which events go in a post ====================
+
+const POST_EVENTS_MAX = 4;
+
+/** Any live event (not a draft) can go in a post: yours to promote, or one you're entering. */
+function PickPostEvents({ close, selected, onDone }: DialogProps<{ selected: any[]; onDone: (evs: any[]) => void }>) {
+    const [list, setList] = useState<any[] | null>(null);
+    const [picked, setPicked] = useState<Map<string, any>>(() => new Map((selected || []).map(e => [e.id, e])));
+    const [query, setQuery] = useState('');
+    useEffect(() => {
+        let live = true;
+        fetchEvents().then(rows => { if (live) setList(rows.filter(e => e.phase !== 'draft')); }).catch(() => { if (live) setList([]); });
+        return () => { live = false; };
+    }, []);
+    const toggle = (e: any) => {
+        const next = new Map(picked);
+        if (next.has(e.id)) next.delete(e.id);
+        else if (next.size < POST_EVENTS_MAX) next.set(e.id, { id: e.id, title: e.title });
+        else api.showToast?.(`Up to ${POST_EVENTS_MAX} events per post.`, 'warning');
+        setPicked(next);
+    };
+    const q = query.trim().toLowerCase();
+    const shown = (list || []).filter(e => !q || [e.title, e.tagline, e.category].some(x => String(x || '').toLowerCase().includes(q)));
+    return (
+        <Modal onClose={close} title="Link an event" className="pick-post-mons pick-post-events">
+            <p className="field-hint">People can open it straight from your post (up to {POST_EVENTS_MAX}).</p>
+            <input type="search" placeholder="Find one…" value={query} onChange={e => setQuery(e.target.value)} />
+            <div className="pick-post-events-list">
+                {list === null ? <div className="community-empty">Loading…</div>
+                    : !shown.length ? <div className="community-empty">{list.length ? 'Nothing matches.' : 'There are no live events yet.'}</div>
+                    : shown.map(e => (
+                        <button type="button" key={e.id} className={`pick-post-event${picked.has(e.id) ? ' is-picked' : ''}`} onClick={() => toggle(e)} aria-pressed={picked.has(e.id)}>
+                            <span className="pick-post-event-art">{e.cover_thumb ? <img src={e.cover_thumb} alt="" loading="lazy" draggable={false} /> : <Icon name="trophy" size={20} />}</span>
+                            <span className="pick-post-event-text"><strong>{e.title}</strong><small>{[e.category, STAGE_LABEL[effectivePhase(e)]].filter(Boolean).join(' · ')}</small></span>
+                            {picked.has(e.id) && <span className="pick-post-mon-check"><Icon name="check" size={14} /></span>}
+                        </button>
+                    ))}
+            </div>
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={() => { onDone([...picked.values()]); close(); }}>Done ({picked.size})</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('pick-post-events', PickPostEvents);

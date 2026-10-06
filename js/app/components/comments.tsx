@@ -1,6 +1,7 @@
 // A comment thread, the same everywhere it appears: under a feed card (opened
-// in place, like Facebook), on a post's page, on a Fakemon's page, and on a
-// profile's wall. Each comment can be reacted to, and edited or deleted by
+// in place, like Facebook), on a post's page, on a Fakemon's page, on a
+// profile's wall and on an event. Comments nest (Reddit style): each can be
+// replied to, reacted to (one reaction each), and edited or deleted by
 // whoever may. Data and actions: js/features/comments.ts.
 
 import { useEffect, useRef, useState } from 'react';
@@ -74,7 +75,7 @@ const knownReaction = (k: string) => k === 'heart' || isUnicodeKey(k) || !!emoji
  * `kind` and `id` say which reaction table the full list reads.
  */
 export function ReactionSummary({ kind, id, counts, mine, onToggle }: {
-    kind: 'mon' | 'post'; id: string; counts: Record<string, number>; mine: string[]; onToggle: (emoji: string) => void;
+    kind: ReactionKind; id: string; counts: Record<string, number>; mine: string[]; onToggle: (emoji: string) => void;
 }) {
     const keys = Object.keys(counts).filter(k => counts[k] > 0 && knownReaction(k)).sort((a, b) => counts[b] - counts[a]);
     const total = keys.reduce((n, k) => n + counts[k], 0);
@@ -96,8 +97,11 @@ export function ReactionSummary({ kind, id, counts, mine, onToggle }: {
     );
 }
 
+type ReactionKind = 'mon' | 'post' | 'event';
+const REACTION_TABLE: Record<ReactionKind, [string, string]> = { mon: ['mon_reactions', 'mon_id'], post: ['post_reactions', 'post_id'], event: ['event_reactions', 'event_id'] };
+
 /** Everyone who reacted, with a tab per emoji. */
-function ReactionListDialog({ close, kind, id }: DialogProps<{ kind: 'mon' | 'post'; id: string }>) {
+function ReactionListDialog({ close, kind, id }: DialogProps<{ kind: ReactionKind; id: string }>) {
     const [rows, setRows] = useState<Array<{ emoji: string; user: any }> | null>(null);
     const [tab, setTab] = useState('');
     useEffect(() => {
@@ -106,8 +110,8 @@ function ReactionListDialog({ close, kind, id }: DialogProps<{ kind: 'mon' | 'po
             try {
                 const client = await api.getClient();
                 // ponytail: first 500 reactions only; page it if a post ever gets more
-                const { data, error } = await client.from(kind === 'mon' ? 'mon_reactions' : 'post_reactions')
-                    .select('user_id, emoji').eq(kind === 'mon' ? 'mon_id' : 'post_id', id).order('created_at', { ascending: false }).limit(500);
+                const [table, column] = REACTION_TABLE[kind];
+                const { data, error } = await client.from(table).select('user_id, emoji').eq(column, id).order('created_at', { ascending: false }).limit(500);
                 if (error) throw error;
                 const ids = [...new Set((data || []).map((r: any) => r.user_id))];
                 const { data: people } = ids.length
@@ -149,7 +153,13 @@ registerDialog('reaction-list', ReactionListDialog);
 
 // ==================== writing ====================
 
-export function CommentComposer({ onSubmit, placeholder = 'Write a comment…', autoFocus = false }: { onSubmit: (text: string, poll: PollDraft | null) => Promise<boolean>; placeholder?: string; autoFocus?: boolean }) {
+export function CommentComposer({ onSubmit, placeholder = 'Write a comment…', autoFocus = false, polls = true, onCancel }: {
+    onSubmit: (text: string, poll: PollDraft | null) => Promise<boolean>; placeholder?: string; autoFocus?: boolean;
+    /** offer a poll (not on replies, nor on events) */
+    polls?: boolean;
+    /** a reply box: Esc (while empty) and the cancel button close it */
+    onCancel?: () => void;
+}) {
     const [text, setText] = useState('');
     const [poll, setPoll] = useState<PollDraft | null>(null);
     const [busy, setBusy] = useState(false);
@@ -164,12 +174,13 @@ export function CommentComposer({ onSubmit, placeholder = 'Write a comment…', 
         if (ok) { setText(''); setPoll(null); }
     }
     return (
-        <div className="comment-composer-wrap">
+        <div className="comment-composer-wrap" onKeyDown={onCancel ? e => { if (e.key === 'Escape' && !text.trim()) { e.preventDefault(); onCancel(); } } : undefined}>
             <div className="comment-composer">
                 <Avatar userId={state.user.id} url={state.user.avatarUrl} name={state.user.displayName || state.user.username} className="feed-avatar feed-avatar-sm" />
                 <EmojiInput value={text} onChange={setText} maxLength={1000} rows={1} placeholder={placeholder} onSubmit={poll ? undefined : send} autoFocus={autoFocus}
                     tools={<>
-                        {!poll && <button type="button" className="comment-tool" onClick={() => setPoll(emptyPoll())} aria-label="Add a poll" title="Add a poll"><Icon name="chart-bar" size={18} /></button>}
+                        {onCancel && <button type="button" className="comment-tool" onClick={onCancel} aria-label="Cancel reply" title="Cancel"><Icon name="x-mark" size={18} /></button>}
+                        {polls && !poll && <button type="button" className="comment-tool" onClick={() => setPoll(emptyPoll())} aria-label="Add a poll" title="Add a poll"><Icon name="chart-bar" size={18} /></button>}
                         <button type="button" className="comment-send" disabled={busy || !text.trim()} onClick={send} aria-label="Post comment"><Icon name="paper-airplane" size={18} /></button>
                     </>} />
             </div>
@@ -180,13 +191,32 @@ export function CommentComposer({ onSubmit, placeholder = 'Write a comment…', 
 
 // ==================== one comment ====================
 
-function CommentItem({ kind, parentId, parentOwnerId, comment }: { kind: CommentKind; parentId: string; parentOwnerId?: string | null; comment: Comment }) {
+/** Replies indent this many levels; deeper ones line up with the last (Reddit's "continue this thread", without leaving the page). */
+const MAX_DEPTH = 4;
+/** More replies than this start folded ("View 5 replies"). */
+const FOLD_AT = 2;
+
+interface ItemProps {
+    kind: CommentKind; parentId: string; parentOwnerId?: string | null; comment: Comment;
+    /** comments by the one they reply to */
+    replies: Map<string, Comment[]>;
+    depth: number;
+    moderator: boolean;
+    ownerId?: string | null;
+    targetName?: string;
+}
+
+function CommentItem({ kind, parentId, parentOwnerId, comment, replies: tree, depth, moderator, ownerId, targetName }: ItemProps) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(comment.body);
     const [busy, setBusy] = useState(false);
+    const [replying, setReplying] = useState(false);
+    const replies = tree.get(comment.id) || [];
+    const [open, setOpen] = useState(replies.length <= FOLD_AT);
     const mine = !!state.user && comment.user_id === state.user.id;
-    const canDelete = canDeleteComment(kind, comment, parentOwnerId);
+    const canDelete = canDeleteComment(kind, comment, parentOwnerId, moderator);
     const reacted = comment.my_reactions.length > 0;
+    const total = countReplies(comment.id, tree);
 
     async function save() {
         if (busy) return;
@@ -196,12 +226,17 @@ function CommentItem({ kind, parentId, parentOwnerId, comment }: { kind: Comment
         if (ok) setEditing(false);
     }
     async function remove() {
-        if (!window.confirm('Delete this comment?')) return;
+        if (!window.confirm(total ? `Delete this comment and its ${total === 1 ? 'reply' : `${total} replies`}?` : 'Delete this comment?')) return;
         await deleteComment(kind, parentId, comment);
+    }
+    async function reply(text: string) {
+        const ok = await addComment(kind, parentId, text, ownerId ? { id: ownerId, targetName } : undefined, null, comment.id);
+        if (ok) { setReplying(false); setOpen(true); }
+        return ok;
     }
 
     return (
-        <div className="comment">
+        <div className={`comment${depth ? ' is-reply' : ''}`}>
             <button type="button" className="comment-avatar" onClick={() => api.showUserProfile(comment.user_id)} aria-label={`${comment.author_name || 'Someone'}'s profile`}>
                 <Avatar userId={comment.user_id} url={comment.author_avatar_url} name={comment.author_name} className="feed-avatar feed-avatar-sm" />
             </button>
@@ -224,7 +259,7 @@ function CommentItem({ kind, parentId, parentOwnerId, comment }: { kind: Comment
                         <RichText text={comment.body} className="comment-body" />
                     </div>
                 )}
-                {!editing && <PollView kind={commentPollParent(kind)} parentId={comment.id} />}
+                {!editing && kind !== 'event' && <PollView kind={commentPollParent(kind)} parentId={comment.id} />}
                 {!editing && (
                     <div className="comment-meta">
                         <time dateTime={comment.created_at} title={new Date(comment.created_at).toLocaleString()}>{timeAgo(comment.created_at)}</time>
@@ -234,6 +269,7 @@ function CommentItem({ kind, parentId, parentOwnerId, comment }: { kind: Comment
                             <EmojiButton className="comment-act" buttonClassName={reacted ? 'is-on' : ''} title="React to this comment" quick={QUICK_REACTIONS}
                                 onPick={emoji => toggleCommentReaction(kind, comment, emoji)}>{reacted ? 'Reacted' : 'React'}</EmojiButton>
                         )}
+                        {state.user && <button type="button" className="comment-act" onClick={() => setReplying(r => !r)} aria-expanded={replying}>Reply</button>}
                         {mine && <button type="button" className="comment-act" onClick={() => { setDraft(comment.body); setEditing(true); }}>Edit</button>}
                         {canDelete && <button type="button" className="comment-act" onClick={remove}>Delete</button>}
                     </div>
@@ -241,9 +277,32 @@ function CommentItem({ kind, parentId, parentOwnerId, comment }: { kind: Comment
                 {!editing && Object.keys(comment.reactions).length > 0 && (
                     <ReactionBar small picker={false} counts={comment.reactions} mine={comment.my_reactions} onToggle={emoji => toggleCommentReaction(kind, comment, emoji)} />
                 )}
+                {replying && (
+                    <div className="comment-reply-box">
+                        <CommentComposer autoFocus polls={false} placeholder={`Reply to ${comment.author_name || 'them'}…`} onSubmit={reply} onCancel={() => setReplying(false)} />
+                    </div>
+                )}
+                {replies.length > 0 && (open ? (
+                    <div className={`comment-replies${depth + 1 >= MAX_DEPTH ? ' is-flat' : ''}`}>
+                        {replies.length > FOLD_AT && <button type="button" className="comment-fold" onClick={() => setOpen(false)}><Icon name="chevron-up" size={13} />Hide replies</button>}
+                        {replies.map(r => <CommentItem key={r.id} kind={kind} parentId={parentId} parentOwnerId={parentOwnerId} comment={r} replies={tree}
+                            depth={depth + 1} moderator={moderator} ownerId={ownerId} targetName={targetName} />)}
+                    </div>
+                ) : (
+                    <button type="button" className="comment-fold" onClick={() => setOpen(true)}>
+                        <Icon name="arrow-uturn-right" size={13} />View {total === 1 ? '1 reply' : `${total} replies`}
+                    </button>
+                ))}
             </div>
         </div>
     );
+}
+
+/** Every reply under a comment, however deep. */
+function countReplies(id: string, tree: Map<string, Comment[]>): number {
+    let n = 0;
+    for (const c of tree.get(id) || []) n += 1 + countReplies(c.id, tree);
+    return n;
 }
 
 // ==================== the thread ====================
@@ -261,9 +320,11 @@ interface ThreadProps {
     placeholder?: string;
     /** where the box to write one goes */
     composer?: 'top' | 'bottom';
+    /** may delete anyone's comment here (an event's team) */
+    moderator?: boolean;
 }
 
-export function CommentThread({ kind, parentId, ownerId = null, targetName, onCount, autoFocus = false, placeholder, composer = 'bottom' }: ThreadProps) {
+export function CommentThread({ kind, parentId, ownerId = null, targetName, onCount, autoFocus = false, placeholder, composer = 'bottom', moderator = false }: ThreadProps) {
     const thread = getThread(kind, parentId);
     useEffect(() => { loadThread(kind, parentId); }, [kind, parentId]);
     const count = thread?.status === 'ready' ? thread.comments.length : null;
@@ -275,9 +336,20 @@ export function CommentThread({ kind, parentId, ownerId = null, targetName, onCo
     }, [count]);
 
     const box = (
-        <CommentComposer autoFocus={autoFocus} placeholder={placeholder}
+        <CommentComposer autoFocus={autoFocus} placeholder={placeholder} polls={kind !== 'event'}
             onSubmit={(text, poll) => addComment(kind, parentId, text, ownerId ? { id: ownerId, targetName } : undefined, poll)} />
     );
+    // the thread as a tree; a reply whose comment is gone (or hidden) shows at the top
+    const all = thread?.comments || [];
+    const ids = new Set(all.map(c => c.id));
+    const tree = new Map<string, Comment[]>();
+    const top: Comment[] = [];
+    for (const c of all) {
+        if (c.parent_id && ids.has(c.parent_id)) {
+            if (!tree.has(c.parent_id)) tree.set(c.parent_id, []);
+            tree.get(c.parent_id)!.push(c);
+        } else top.push(c);
+    }
     return (
         <div className="comment-thread">
             {composer === 'top' && box}
@@ -294,7 +366,8 @@ export function CommentThread({ kind, parentId, ownerId = null, targetName, onCo
                 <p className="comment-empty">Couldn't load comments. <button type="button" className="link-btn" onClick={() => loadThread(kind, parentId)}>Try again</button></p>
             ) : thread.comments.length ? (
                 <div className="comment-list">
-                    {thread.comments.map(c => <CommentItem key={c.id} kind={kind} parentId={parentId} parentOwnerId={ownerId} comment={c} />)}
+                    {top.map(c => <CommentItem key={c.id} kind={kind} parentId={parentId} parentOwnerId={ownerId} comment={c} replies={tree}
+                        depth={0} moderator={moderator} ownerId={ownerId} targetName={targetName} />)}
                 </div>
             ) : (
                 <p className="comment-empty">No comments yet. Say something!</p>

@@ -9,16 +9,19 @@ import { useStore } from '../app/store.ts';
 import { admin, can, isDark, signIn, signOut, toggleDarkMode } from './core.ts';
 import { UsersTab } from './UsersTab.tsx';
 import { CommentsTab, FilterTab, ModLogTab } from './ModerationTabs.tsx';
+import { EventsTab, PostsTab } from './ContentTabs.tsx';
 import { FeedbackTab, feedbackOpenCount, refreshOpenCount } from './FeedbackTab.tsx';
 import { BadgesTab, LimitsTab } from './SiteTabs.tsx';
 import { MessageReportsTab } from './MessageReportsTab.tsx';
 import { Toast } from './ui.tsx';
 
-type TabKey = 'users' | 'comments' | 'messages' | 'filter' | 'history' | 'feedback' | 'badges' | 'limits';
+type TabKey = 'users' | 'comments' | 'posts' | 'events' | 'messages' | 'filter' | 'history' | 'feedback' | 'badges' | 'limits';
 
 const TABS: Array<{ key: TabKey; label: string; icon: string; group: 'Moderation' | 'Site'; needs?: string; Page: ComponentType }> = [
     { key: 'users', label: 'Users', icon: 'users', group: 'Moderation', Page: UsersTab },
     { key: 'comments', label: 'Comments', icon: 'message-square', group: 'Moderation', Page: CommentsTab },
+    { key: 'posts', label: 'Posts', icon: 'newspaper', group: 'Moderation', Page: PostsTab },
+    { key: 'events', label: 'Events', icon: 'trophy', group: 'Moderation', Page: EventsTab },
     // reported private messages; reading them needs delete_content, same as the server's check
     { key: 'messages', label: 'Reported chats', icon: 'flag', group: 'Moderation', needs: 'delete_content', Page: MessageReportsTab },
     // open to every staff member, for the tester; editing the rules needs manage_filter

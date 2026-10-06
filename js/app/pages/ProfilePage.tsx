@@ -22,6 +22,7 @@ import { ShieldedArt } from '../components/ShieldedArt.tsx';
 import { useStore } from '../store.ts';
 import { Modal } from '../components/Modal.tsx';
 import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
+import { NAME_MAX } from '../../core/data.ts';
 
 type Message = { text: string; ok?: boolean };
 type Tab = 'posts' | 'fakemon';
@@ -577,7 +578,7 @@ function EditProfile({ profile }: { profile: any }) {
                         <h3>Details</h3>
                         <div className="form-group">
                             <label htmlFor="profile-display-name">Display name</label>
-                            <input type="text" id="profile-display-name" maxLength={40} placeholder="e.g., AshK" autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)} />
+                            <input type="text" id="profile-display-name" maxLength={NAME_MAX} placeholder="e.g., AshK" autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)} />
                         </div>
                         <div className="form-group">
                             <label htmlFor="profile-bio">Bio</label>

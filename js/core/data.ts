@@ -11,6 +11,12 @@ const POKEMON_TYPES = [
 // charts and coverage math: both are neutral both ways, so they'd only add
 // a pair of 1x rows everywhere
 const SELECTABLE_TYPES = [...POKEMON_TYPES, '???', 'Stellar'];
+/**
+ * The longest any name can be: a Fakémon, move, ability, item, type, region or set,
+ * an event, a display name or a group chat. The database checks the ones it
+ * stores (guard_name_length, guard_mon_name, event entries).
+ */
+const NAME_MAX = 30;
         const POKEMON_COLORS = [
             {name:'Red',hex:'#ef4444'},{name:'Blue',hex:'#3b82f6'},{name:'Yellow',hex:'#eab308'},
             {name:'Green',hex:'#22c55e'},{name:'Black',hex:'#1f2937'},{name:'Brown',hex:'#92400e'},
@@ -226,5 +232,5 @@ function safeBadgeImage(value) {
     return typeof value === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value) ? value : '';
 }
 
-export { getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, SELECTABLE_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
+export { NAME_MAX, getCategoryIcon, findNatureByBoosts, getNatureOptionLabel, POKEMON_TYPES, SELECTABLE_TYPES, POKEMON_COLORS, NATURE_DATA, NATURES, STAT_NAMES, TYPE_EFFECTIVENESS,
     ROLES, BADGES, roleAtLeast, canDeleteAnyContent, setBadgeDefinitions, renderCommentMarkdown };

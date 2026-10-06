@@ -77,6 +77,8 @@ export function moderationActions(user: Record<string, any> = {}, { perms = {}, 
             ? { key: 'unmute', label: 'Unmute', icon: 'mic', handler: 'adminModAction', arg: 'unmute', disabled: !may('mute') }
             : { key: 'mute', label: 'Mute', icon: 'mic-off', handler: 'adminModAction', arg: 'mute', tone: 'warn', disabled: !may('mute') },
         { key: 'purge', label: 'Purge', icon: 'eraser', handler: 'adminOpenPurge', tone: 'warn', disabled: !may('purge_content') },
+        { key: 'reset_name', label: 'Reset name', icon: 'pencil', handler: 'adminModAction', arg: 'reset_name', tone: 'warn', disabled: !may('delete_content') || !user.display_name },
+        { key: 'clear_bio', label: 'Clear bio', icon: 'eraser', handler: 'adminModAction', arg: 'clear_bio', tone: 'warn', disabled: !may('delete_content') },
         banned
             ? { key: 'unban', label: 'Lift ban', icon: 'undo-2', handler: 'adminModAction', arg: 'unban', disabled: !may('ban') }
             : { key: 'ban', label: 'Suspend', icon: 'ban', handler: 'adminModAction', arg: 'ban', tone: 'danger', disabled: !may('ban') },
@@ -93,7 +95,9 @@ export function moderationActions(user: Record<string, any> = {}, { perms = {}, 
 const LOG_ICONS = {
     warn: ['alert-triangle', 'sev-warn'], mute: ['mic-off', 'sev-warn'], unmute: ['mic', 'sev-good'],
     ban: ['ban', 'sev-bad'], unban: ['undo-2', 'sev-good'], delete_user: ['user-x', 'sev-bad'],
-    delete_comment: ['trash-2', 'sev-warn'], delete_mon: ['trash-2', 'sev-warn'],
+    delete_comment: ['trash-2', 'sev-warn'], delete_mon: ['trash-2', 'sev-warn'], delete_post: ['trash-2', 'sev-warn'],
+    delete_event: ['trash-2', 'sev-bad'], unpublish_event: ['eye-slash', 'sev-warn'], delete_announcement: ['trash-2', 'sev-warn'],
+    delete_event_entry: ['trash-2', 'sev-warn'], reset_display_name: ['pencil', 'sev-warn'], clear_bio: ['eraser', 'sev-warn'],
     purge_comments: ['eraser', 'sev-bad'], purge_mons: ['eraser', 'sev-bad'],
     automod_block: ['shield-x', 'sev-bad'], automod_flag: ['flag', 'sev-warn'],
     badge_change: ['award', ''], badge_upsert: ['award', ''], badge_removed: ['award', 'sev-warn'],
@@ -103,6 +107,9 @@ const LOG_ICONS = {
 const LOG_VERBS = {
     warn: 'warned', mute: 'muted', unmute: 'unmuted', ban: 'suspended', unban: 'lifted the suspension on',
     delete_user: 'deleted the account of', delete_comment: 'deleted a comment by', delete_mon: 'removed a Fakemon by',
+    delete_post: 'deleted a post by', delete_event: 'deleted an event by', unpublish_event: 'took down an event by',
+    delete_announcement: 'deleted an event announcement by', delete_event_entry: 'removed an event entry by',
+    reset_display_name: 'reset the display name of', clear_bio: 'cleared the bio of',
     purge_comments: 'purged comments by', purge_mons: 'purged published Fakemon by',
     automod_block: 'blocked a post by', automod_flag: 'flagged a post by',
     badge_change: 'changed the badges of', badge_upsert: 'saved a badge',
@@ -135,7 +142,10 @@ export function logEntry(a: Record<string, any> = {}): {icon, severity, actor, v
 
 /** Where a comment was posted, phrased for a moderator scanning a list. */
 export function commentLocation(c: Record<string, any> = {}) {
-    return c.kind === 'profile'
-        ? `on ${c.context_name}'s profile`
+    return c.kind === 'profile' ? `on ${c.context_name}'s profile`
+        : c.kind === 'event' ? `on the event ${c.context_name}`
         : `on ${c.context_name}`;
 }
+
+/** What a comment is on, as the stream's little tag. */
+export const commentKindLabel = (kind: string) => ({ profile: 'profile', post: 'post', event: 'event', mon: 'fakemon' } as Record<string, string>)[kind] || 'fakemon';

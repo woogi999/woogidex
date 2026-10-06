@@ -13,6 +13,7 @@ import { RegionAssign } from '../components/RegionAssign.tsx';
 import { ArtField } from '../components/ArtField.tsx';
 import { TypeDropdown, useClickAway } from '../components/editor/fields.tsx';
 import { CategoryIcon } from '../components/editor/lists.tsx';
+import { NAME_MAX } from '../../core/data.ts';
 
 type Kind = 'move' | 'ability' | 'item';
 
@@ -94,7 +95,7 @@ function CustomAbilityDialog({ id, sheet, close }: DialogProps<{ id: string; she
             <Head title={entry ? 'Edit Custom Ability' : 'Create Custom Ability'} regionIds={regionIds} setRegionIds={setRegionIds} close={close} />
             <div className="form-group">
                 <label htmlFor="custom-ability-name">Ability Name</label>
-                <input type="text" id="custom-ability-name" placeholder="e.g., Solar Heart" autoFocus value={name} onChange={e => setName(e.target.value)} />
+                <input type="text" id="custom-ability-name" maxLength={NAME_MAX} placeholder="e.g., Solar Heart" autoFocus value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="form-group">
                 <label>Image <span className="label-optional">(optional, for previews)</span></label>
@@ -149,7 +150,7 @@ function CustomItemDialog({ id, sampleSetTarget, sheet, close }: DialogProps<{ i
             <Head title={entry ? 'Edit Custom Item' : 'Create Custom Item'} regionIds={regionIds} setRegionIds={setRegionIds} close={close} />
             <div className="form-group">
                 <label htmlFor="custom-item-name">Item Name</label>
-                <input type="text" id="custom-item-name" placeholder="e.g., Moonlit Charm" autoFocus value={name} onChange={e => setName(e.target.value)} />
+                <input type="text" id="custom-item-name" maxLength={NAME_MAX} placeholder="e.g., Moonlit Charm" autoFocus value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="form-group">
                 <label>Artwork</label>
@@ -210,7 +211,7 @@ function CustomMoveDialog({ index, libraryId, sheet, close }: DialogProps<{ inde
             <Head title={editing ? 'Edit Custom Move' : 'Create Custom Move'} regionIds={draft.regionIds} setRegionIds={regionIds => set({ regionIds })} close={close} />
             <div className="form-group">
                 <label htmlFor="custom-move-name">Move Name</label>
-                <input type="text" id="custom-move-name" placeholder="e.g., Ember Fang" autoFocus value={draft.name} onChange={e => set({ name: e.target.value })} />
+                <input type="text" id="custom-move-name" maxLength={NAME_MAX} placeholder="e.g., Ember Fang" autoFocus value={draft.name} onChange={e => set({ name: e.target.value })} />
             </div>
             <div className="form-group">
                 <label>Image <span className="label-optional">(optional, for previews)</span></label>

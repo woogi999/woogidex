@@ -8,6 +8,7 @@ import { api, state } from '../../core/app.ts';
 import { registerDialog, type DialogProps } from '../dialogs.tsx';
 import { Modal } from '../components/Modal.tsx';
 import { useStore } from '../store.ts';
+import { NAME_MAX } from '../../core/data.ts';
 
 function NewFakemonDialog({ close }: DialogProps) {
     const [name, setName] = useState('');
@@ -20,7 +21,7 @@ function NewFakemonDialog({ close }: DialogProps) {
         <Modal onClose={close} title="New Fakemon" className="new-fakemon-modal" labelledBy="new-fakemon-title">
             <div className="form-group" style={{ marginBottom: 18 }}>
                 <label htmlFor="new-fakemon-name">Enter your Fakemon's name</label>
-                <input id="new-fakemon-name" type="text" placeholder="e.g., Flareon" autoComplete="off" autoFocus value={name}
+                <input id="new-fakemon-name" type="text" maxLength={NAME_MAX} placeholder="e.g., Flareon" autoComplete="off" autoFocus value={name}
                     onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); create(); } }} />
             </div>
             <div className="new-fakemon-actions">

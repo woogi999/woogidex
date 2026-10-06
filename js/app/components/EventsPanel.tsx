@@ -8,12 +8,12 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { api, state } from '../../core/app.ts';
 import { routeUrl } from '../../core/router.ts';
 import { confirmDialog } from '../../core/confirm-dialog.ts';
-import { SELECTABLE_TYPES } from '../../core/data.ts';
+import { SELECTABLE_TYPES, NAME_MAX } from '../../core/data.ts';
 import {
     isPrivateField, CATEGORIES, DEFAULT_CRITERIA, FIELD_TYPES, SLUG_PATTERN, VOTE_FIELD_TYPES, answered, criteriaOf, detailFor, formPages, hasOptions, voteAnswersOk, isGuestView, remarksOk, saveResultsPost, standingsMarkdown, toggleEventRepost, PHASES, STAGE_LABEL, addHelper, autofillFor, ballotEntries,
     canCreateEvents, castVote, clearEventDraft, closeBallot, computeWinners, copyLink, createEvent, dashboardLink, deleteEvent,
     describeWinnerRules, effectivePhase, entryAllowance, entryImage, entryTitle, events, exportEntriesCsv, exportVotesJson,
-    fakemonForEntry, fakemonFromFile, fmtDate, hasSubmittedBallot, isLive, isPast, loadEvent, loadEventsList, permsFor,
+    fakemonForEntry, fakemonFromFile, fakemonFromText, fmtDate, hasSubmittedBallot, isLive, isPast, loadEvent, loadEventsList, permsFor,
     previewEventFakemon, ranked, readEventDraft, relTime, removeEntry, removeEntryLimit, removeHelper, saveEvent, scoresComplete,
     setEntryLimit, setPhase, setPlacement, shareLink, showEventView, shrinkImage, startBallot, submitBallot, submitEntry,
     readEventTemplates, saveEventTemplate, deleteEventTemplate, removeEntryAsTeam, findPeople,
@@ -25,7 +25,7 @@ import {
     type DashTab, type Detail, type Entry, type EventRow, type Field, type FieldType, type Helper, type Person, type Phase,
     createEventCode, deleteEventCode, randomCode, redeemEventCode, voteDisplay,
     canSeeEntries, entriesPublic, VARIABLES, variablesFor, fillVariables, setFollowing, postAnnouncement, deleteAnnouncement,
-    requestEntryEdit, publishResults, createSheetLink, deleteSheetLink, sheetUrl, sheetFormula,
+    requestEntryEdit, publishResults, createSheetLink, deleteSheetLink, sheetUrl, sheetFormula, toggleEventReaction, loadAuditLog, type AuditRow,
     type Announcement, type HelperPerms, type TeamPick,
     TIE_RULES, placeLabel, loadFullEntry, fullAnswers, sampleVariables, sendFeedback, votesFor, compileFeedback, exportVotesCsv,
     templateContents, eventTemplatesStatus, pendingTemplate, type EventTemplate, type RankRow, type TieRule,
@@ -39,7 +39,12 @@ import { PokedexBoard } from './board/PokedexBoard.tsx';
 import { EvoStrip } from './board/CommunityEvoStrip.tsx';
 import { openDialog, registerDialog, type DialogProps } from '../dialogs.tsx';
 import { cropThen } from '../dialogs/cropImage.tsx';
-import { useStore } from '../store.ts';
+import { notify, useStore } from '../store.ts';
+import { CommentThread, ReactionSummary } from './comments.tsx';
+import { BasicTab } from './editor/BasicTab.tsx';
+import { StatsTab } from './editor/StatsTab.tsx';
+import { MovesTab } from './editor/MovesTab.tsx';
+import { EditorBoard } from './board/EditorBoard.tsx';
 
 export function EventsPanel() {
     useStore();
@@ -353,11 +358,13 @@ function Announcements({ ev, d }: { ev: EventRow; d: Detail }) {
 
 function AnnouncementItem({ ev, d, a, manage = false }: { ev: EventRow; d: Detail; a: Announcement; manage?: boolean }) {
     const who = a.author_id ? d.people[a.author_id] : undefined;
+    // posted as the event: its name stands where the poster's would
+    const by = a.show_author === false ? (ev.title || 'The organizers') : who ? personName(who) : '';
     return (
         <li className="ev-announce">
             <div className="ev-announce-head">
                 <strong>{a.title}</strong>
-                <span className="ev-hint ev-inline-hint">{who ? `${personName(who)} · ` : ''}<time dateTime={a.created_at} title={fmtDate(a.created_at)}>{relTime(a.created_at)}</time></span>
+                <span className="ev-hint ev-inline-hint">{by ? `${by} · ` : ''}<time dateTime={a.created_at} title={fmtDate(a.created_at)}>{relTime(a.created_at)}</time></span>
                 {manage && <button type="button" className="ev-icon-btn" aria-label={`Delete "${a.title}"`} onClick={() => deleteAnnouncement(a)}><Icon name="trash-2" size={14} /></button>}
             </div>
             {a.body && <EventText ev={ev} d={d} text={a.body} />}
@@ -374,7 +381,7 @@ function EventPage({ id, tab }: { id: string; tab: EventTab }) {
 const emptyDetail = (ev: EventRow): Detail => ({
     id: ev.id, status: 'ready', error: '', event: ev, entries: [], privateAnswers: {}, myVotes: {}, votes: [], ballots: [], limits: [],
     results: null, helpers: [], people: {}, resultsPost: null, share: null, codes: [], announcements: [], following: false, editRequests: {}, sheet: null,
-    full: {}, feedback: {}
+    full: {}, feedback: {}, reactions: {}, myReactions: []
 });
 
 /** Previews set this: variables fill with made-up values instead of the event's real (often still empty) ones. */
@@ -544,8 +551,34 @@ function AboutTab({ ev, d, preview, mine, perms, onTab }: { ev: EventRow; d: Det
             {ev.description
                 ? <section className="ev-block"><h3>About</h3><EventText ev={ev} d={d} text={ev.description} /></section>
                 : <p className="ev-hint">The organizers haven't written a description.</p>}
+            {!preview && state.user && ev.phase !== 'draft' && (
+                <div className="ev-reactions">
+                    <ReactionSummary kind="event" id={ev.id} counts={d.reactions} mine={d.myReactions} onToggle={toggleEventReaction} />
+                </div>
+            )}
             {d.announcements.length > 0 && <Announcements ev={ev} d={d} />}
+            {!preview && <EventComments ev={ev} perms={perms} />}
         </>
+    );
+}
+
+/** Talk about the event, under its announcements: the same threads posts have, replies and all. */
+function EventComments({ ev, perms }: { ev: EventRow; perms: ReturnType<typeof permsFor> }) {
+    const [count, setCount] = useState<number | null>(null);
+    if (!state.user) {
+        return (
+            <section className="ev-block ev-comments" aria-label="Comments">
+                <h3><Icon name="chat-bubble-left-right" size={16} />Comments</h3>
+                <p className="comment-signin"><button type="button" className="link-btn" onClick={() => api.openAuthModal?.('signin')}>Sign in</button> to read and join the conversation.</p>
+            </section>
+        );
+    }
+    return (
+        <section className="ev-block ev-comments" aria-label="Comments">
+            <h3><Icon name="chat-bubble-left-right" size={16} />Comments{count ? <span className="ev-count">{count}</span> : null}</h3>
+            <CommentThread kind="event" parentId={ev.id} ownerId={ev.owner_id} targetName={ev.title} onCount={setCount} composer="top"
+                placeholder="Ask a question or say something about this event…" moderator={perms.edit} />
+        </section>
     );
 }
 
@@ -553,18 +586,25 @@ function AboutTab({ ev, d, preview, mine, perms, onTab }: { ev: EventRow; d: Det
  * While `dirty`: closing or reloading the tab gets the browser's "Leave site?",
  * and the site's own ways out (the header, the hub's menu, a [data-leave-guard]
  * button) ask first.
+ * The Community page stays mounted while hidden, so once you've left it the
+ * guard stands down (it used to ask on every header click until the form was
+ * sent), and stands up again when you come back to the unfinished work.
  * ponytail: the browser's Back button isn't asked about; the autosave keeps the work.
  */
 const LEAVING = '.logo-button, .header-nav-btn, .header-messages-btn, .notification-item, .header-profile-popover-identity, '
     + 'button.header-profile-popover-item, .header-profile-popover-legal button, .hub-nav button, [data-leave-guard]';
+const eventsOnScreen = () => {
+    const view = document.getElementById('community-view');
+    return !view || view.getClientRects().length > 0;
+};
 function useLeaveGuard(dirty: boolean, message: string) {
     useEffect(() => {
         if (!dirty) return;
         let passing = false;
-        const unload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+        const unload = (e: BeforeUnloadEvent) => { if (eventsOnScreen()) { e.preventDefault(); e.returnValue = ''; } };
         const click = (e: MouseEvent) => {
             const el = (e.target as Element | null)?.closest?.(LEAVING) as HTMLElement | null;
-            if (passing || !el || el.closest('.modal-overlay, #react-dialogs')) return;
+            if (passing || !el || el.closest('.modal-overlay, #react-dialogs') || !eventsOnScreen()) return;
             e.preventDefault();
             e.stopImmediatePropagation();
             confirmDialog({ title: 'Leave without finishing?', message, confirmLabel: 'Leave', cancelLabel: 'Keep going', danger: false }).then(yes => {
@@ -619,11 +659,11 @@ function EnterTab({ ev, d, preview, mine, allowance }: { ev: EventRow; d: Detail
                 </section>
             ))}
             {canEnter && <EntryForm ev={ev} d={d} left={allowance - mine.length} preview={preview} />}
-            {!preview && takingEntries(ev) && !canEnter && <p className="ev-notice"><Icon name="check-circle" size={15} />You've used all {plural(allowance, 'entry', 'entries')}. Withdraw one to enter something else.</p>}
+            {!preview && takingEntries(ev) && !canEnter && <p className="ev-notice"><Icon name="check-circle" size={15} />You've used all {plural(allowance, 'entry', 'entries')}. Withdraw one to enter something else, or use an entry code below if an organizer gave you one.</p>}
             {!preview && !takingEntries(ev) && (
                 <p className="ev-notice"><Icon name="clock" size={15} />{stage === 'upcoming' ? (ev.submissions_open_at ? `Entries open ${fmtDate(ev.submissions_open_at)} (${relTime(ev.submissions_open_at)}).` : 'Entries aren\'t open yet. Check back soon.') : stage === 'draft' ? 'Entries open when the organizer publishes this event.' : 'Entries are closed.'}</p>
             )}
-            {!preview && state.user && ['upcoming', 'open'].includes(stage) && <CodeBox ev={ev} />}
+            {!preview && state.user && ['upcoming', 'open'].includes(stage) && <CodeBox ev={ev} startOpen={takingEntries(ev) && !canEnter} />}
             {!preview && !state.user && !ev.public_access && takingEntries(ev) && (
                 <p className="ev-notice"><Icon name="user" size={15} /><span>Sign in to enter this event.</span><button type="button" className="ev-link" onClick={() => api.openAuthModal?.('signin')}>Sign in</button></p>
             )}
@@ -632,8 +672,8 @@ function EnterTab({ ev, d, preview, mine, allowance }: { ev: EventRow; d: Detail
 }
 
 /** Redeem an entry code an organizer gave you. */
-function CodeBox({ ev }: { ev: EventRow }) {
-    const [open, setOpen] = useState(false);
+function CodeBox({ ev, startOpen = false }: { ev: EventRow; startOpen?: boolean }) {
+    const [open, setOpen] = useState(startOpen);
     const [code, setCode] = useState('');
     const [busy, setBusy] = useState(false);
     if (!open) return <button type="button" className="ev-link ev-code-toggle" onClick={() => setOpen(true)}><Icon name="ticket" size={14} />Have an entry code?</button>;
@@ -1161,7 +1201,10 @@ function EntryForm({ ev, d, left, preview, editing, onDone }: { ev: EventRow; d:
     const [filled, setFilled] = useState<Record<string, string>>({});
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
-    const [sent, setSent] = useState(false);
+    // how many entries you had once this one went in; withdrawing below that (or a guest's "send another") opens the form again
+    const [sentAt, setSentAt] = useState<number | null>(null);
+    const mineNow = state.user ? d.entries.filter(e => e.user_id === state.user!.id).length : 0;
+    const sent = sentAt !== null && mineNow >= sentAt;
     const [page, setPage] = useState(0);
     const [token, setToken] = useState('');
     const [tries, setTries] = useState(0);
@@ -1239,7 +1282,8 @@ function EntryForm({ ev, d, left, preview, editing, onDone }: { ev: EventRow; d:
         if (editing) { onDone?.(); return; }
         setAnswers({ ...filled });
         setPage(0);
-        setSent(true);
+        const after = events.detail?.entries.filter(x => !!state.user && x.user_id === state.user.id).length ?? 0;
+        setSentAt(after);
     }
 
     if (sent) {
@@ -1248,7 +1292,7 @@ function EntryForm({ ev, d, left, preview, editing, onDone }: { ev: EventRow; d:
                 <Icon name="check-circle" size={28} />
                 <h3>{state.user ? 'You\'re in!' : 'Your response was recorded'}</h3>
                 <p className="ev-hint">{state.user ? 'Your entry is above. You can change it until entries close.' : 'Thanks for taking part. The organizers will take it from here.'}</p>
-                {(!state.user || left > 1) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSent(false)}>{state.user ? 'Enter again' : 'Send another response'}</button>}
+                {(!state.user || left > 1) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSentAt(null)}>{state.user ? 'Enter again' : 'Send another response'}</button>}
             </section>
         );
     }
@@ -1323,7 +1367,7 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
     // (an event that takes one Fakémon only gets just the one)
     const pickMon = (mon: any) => run(async () => onChange(f.rules?.maxLine === 1 ? await fakemonForEntry(mon) : await fakemonLineForEntry(mon)));
     const checkMon = (mon: any) => run(async () => openDialog('event-fakemon-details', { mon: await fakemonForEntry(mon), imported: true, rules: f.rules, onSave: onChange }));
-    const makeMon = () => openDialog('event-fakemon-details', { mon: {}, rules: f.rules, onSave: onChange });
+    const makeMon = () => openDialog('event-fakemon-editor', { mon: {}, rules: f.rules, onSave: onChange });
     const kinds = kindsOf(f);
     const nouns = kinds.map(k => libLabel(k).toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' or $1');
     const pickLib = (x: any) => run(async () => onChange(await libraryForEntry(x)));
@@ -1333,8 +1377,8 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
         if (found.length === 1) checkLib(found[0]);
         else openDialog('event-library-picker', { items: found, onPick: checkLib, title: 'Which one from that file?' });
     });
-    const uploadMon = (file?: File | null) => file && run(async () => {
-        const mons = await fakemonFromFile(file);
+    const uploadMon = (file?: File | null) => file && run(async () => takeMons(await fakemonFromFile(file)));
+    const takeMons = (mons: any[]) => {
         // a collection export carries the line too: connected ones in the file come along
         const take = (mon: any) => run(async () => {
             const v = f.rules?.maxLine === 1 ? null : await fakemonLineForEntry(mon, mons);
@@ -1343,7 +1387,7 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
         });
         if (mons.length === 1) checkMon(mons[0]);
         else openDialog('event-fakemon-picker', { mons, onPick: take });
-    });
+    };
     let input: ReactNode;
     switch (f.type) {
         case 'long': input = <textarea id={id} rows={5} maxLength={4000} value={value || ''} onChange={e => onChange(e.target.value)} required={f.required} />; break;
@@ -1403,7 +1447,8 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
                                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(null)}>{line.length > 1 ? 'Remove all' : 'Remove'}</button>
                             </span> : <span className="ev-mon-actions">
                                 <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-picker', { onPick: pickMon })}><Icon name="squares-2x2" size={14} />From my collection</button>
-                                <label className="btn btn-secondary btn-sm" htmlFor={`${id}-file`}><Icon name="arrow-up-tray" size={14} />Import a file</label>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => openDialog('event-fakemon-import', { fileInput: `${id}-file`, onText: (text: string) => takeMons(fakemonFromText(text)) })}>
+                                    <Icon name="arrow-up-tray" size={14} />Import</button>
                                 <button type="button" className="btn btn-secondary btn-sm" onClick={makeMon}><Icon name="plus" size={14} />Make one here</button>
                             </span>}
                         </span>
@@ -1471,7 +1516,7 @@ function FieldInput({ field: f, value, autofilled, onChange }: { field: Field; v
         <div className="ev-field">{label}{input}{help}
             {ruleList.length > 0 && <ul className="ev-mon-rules" aria-label="Rules">{ruleList.map(r => <li key={r}><Icon name="shield-check" size={12} />{r}</li>)}</ul>}
             {f.type === 'library' && <small className="ev-field-help">Takes a {nouns}. Pick one you've made, import a Woogidex export (.json), or make one right here.</small>}
-            {f.type === 'fakemon' && <small className="ev-field-help">Pick one from your collection and its evolution line comes with it. No Woogidex collection? Import a Woogidex export (.json or .txt), or make one right here; you'll be asked for anything it's missing. Your entry holds its own copy, so it doesn't count toward your Community uploads or cloud storage.</small>}
+            {f.type === 'fakemon' && <small className="ev-field-help">Pick one from your collection and its evolution line comes with it. No Woogidex collection? Import a Woogidex export (paste its plain text, or a .json or .txt file), or make one right here in the editor. Your entry holds its own copy, so it doesn't count toward your Community uploads or cloud storage.</small>}
         </div>
     );
 }
@@ -1727,7 +1772,7 @@ function FakemonDetailsDialog({ close, mon, imported = false, rules, face = true
                 <div className="ev-mon-fields">
                     <div className="ev-two">
                         <div className={`ev-field${missingClass('name')}`}><label className="ev-field-label" htmlFor="ev-mon-name">Name<span className="ev-req" aria-hidden="true"> *</span></label>
-                            <input id="ev-mon-name" maxLength={40} value={m.name || ''} onChange={e => set({ name: e.target.value })} /></div>
+                            <input id="ev-mon-name" maxLength={NAME_MAX} value={m.name || ''} onChange={e => set({ name: e.target.value })} /></div>
                         <div className="ev-field"><label className="ev-field-label" htmlFor="ev-mon-species">Species</label>
                             <input id="ev-mon-species" maxLength={40} value={m.species || ''} onChange={e => set({ species: e.target.value })} placeholder="Seed Pokémon" /></div>
                     </div>
@@ -1751,7 +1796,7 @@ function FakemonDetailsDialog({ close, mon, imported = false, rules, face = true
                 <span className="ev-field-label">Abilities</span>
                 <div className="ev-mon-abilities">
                     {m.abilities.map((a: any, i: number) => (
-                        <input key={i} maxLength={40} value={a.name} aria-label={`Ability ${i + 1}`} placeholder={i === 2 ? 'Hidden ability' : `Ability ${i + 1}`}
+                        <input key={i} maxLength={NAME_MAX} value={a.name} aria-label={`Ability ${i + 1}`} placeholder={i === 2 ? 'Hidden ability' : `Ability ${i + 1}`}
                             onChange={e => set({ abilities: m.abilities.map((x: any, j: number) => j === i ? { ...x, name: e.target.value, ...abilitySource(e.target.value) } : x) })} />
                     ))}
                 </div>
@@ -1768,6 +1813,8 @@ function FakemonDetailsDialog({ close, mon, imported = false, rules, face = true
                 ? 'That covers what judges look at first. For moves, sample sets and the rest, make it in the Woogidex editor and import it.'
                 : 'Moves, sets and everything else come along as they are. To change those, edit it in Woogidex and import it again.'}</p>
             <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" title="Moves, sample sets, the cry and everything else, in the Woogidex editor"
+                    onClick={() => { close(); openDialog('event-fakemon-editor', { mon: cleaned(), rules, face, onSave }); }}><Icon name="pencil-square" size={15} />Full editor</button>
                 <button type="button" className="btn btn-secondary" onClick={() => openDialog('event-fakemon-board', { mon: cleaned() })}><Icon name="book-open" size={15} />Preview</button>
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Preparing…' : 'Use this Fakémon'}</button>
             </div>
@@ -1775,6 +1822,126 @@ function FakemonDetailsDialog({ close, mon, imported = false, rules, face = true
     );
 }
 registerDialog('event-fakemon-details', FakemonDetailsDialog);
+
+type MakerTab = 'basic' | 'stats' | 'moves' | 'preview';
+const MAKER_TABS: Array<[MakerTab, string, string]> = [['basic', 'Basic Info', 'Basics'], ['stats', 'Stats & Abilities', 'Stats'], ['moves', 'Moves & Sets', 'Moves'], ['preview', 'Preview', 'Preview']];
+
+/**
+ * "Make one here", with the Woogidex editor itself: its Basic Info, Stats &
+ * Abilities and Moves & Sets tabs and the live Pokédex board. The draft lives
+ * in the editor's form with the editor in preview mode, which autosave
+ * refuses, so nothing lands in the collection unless you ask: "Continue in
+ * the editor" saves it there and opens the full editor to finish it (then
+ * pick it from your collection here). Evolutions stay with the entry's own
+ * line editor.
+ */
+function EventFakemonEditorDialog({ close, mon, rules, face = true, onSave }: DialogProps<{ mon: any; rules?: MonRules; face?: boolean; onSave: (m: any) => void }>) {
+    useStore();
+    const [tab, setTab] = useState<MakerTab>('basic');
+    const [ready, setReady] = useState(false);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        let live = true;
+        Promise.resolve(api.fetchShowdownData?.()).catch(() => {}).finally(() => {
+            if (!live) return;
+            if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
+            state.isCommunityPreview = true;
+            state.editingId = null;
+            api.resetEditor();
+            api.setVisitingTypes?.(mon?.customTypes || []);
+            if (mon && (mon.name || mon.type1)) api.loadFakemonIntoEditor({ ...mon });
+            // it's a draft: the editor owns no saved record
+            state.editorLoadedId = null;
+            notify();
+            setReady(true);
+        });
+        return () => { live = false; };
+    }, []);
+    const draft = ready ? api.buildFakemonObject() : null;
+    const problems = draft ? memberRuleProblems(draft, rules, face) : [];
+    const nameFirst = () => { api.showToast?.('Give your Fakémon a name first (Basic Info).', 'warning'); setTab('basic'); };
+
+    async function use() {
+        const m = api.buildFakemonObject();
+        if (!m) { nameFirst(); return; }
+        if (!m.type1) { api.showToast?.('Give your Fakémon a type.', 'warning'); setTab('basic'); return; }
+        setBusy(true);
+        try { onSave(await fakemonForEntry(m)); close(); }
+        catch (e: any) { api.showToast?.(e?.message || 'That Fakémon could not be used.', 'error'); }
+        setBusy(false);
+    }
+    async function toEditor() {
+        const m = api.buildFakemonObject();
+        if (!m) { nameFirst(); return; }
+        setBusy(true);
+        // a new Fakémon of yours, saved the way an import is, then opened like any other
+        // (the draft's evolution board belonged to no saved record; it starts fresh)
+        const id = `${Date.now()}`;
+        state.isCommunityPreview = false;
+        state.fakemonDB.push({ ...m, id, folderId: null, evolutionGraph: null, evolutionStage: 1, createdAt: Date.now(), updatedAt: Date.now() });
+        const saved = await api.saveToStorage?.();
+        setBusy(false);
+        if (saved === false) {
+            state.fakemonDB = state.fakemonDB.filter((f: any) => f.id !== id);
+            api.showToast?.('It couldn\'t be saved to your collection. Use it here instead, or try again.', 'error');
+            return;
+        }
+        close();
+        api.editFakemon?.(id);
+        api.showToast?.('It\'s in your collection now. Finish it here, then pick it with "From my collection" on the entry form.', 'success');
+    }
+
+    return (
+        <Modal onClose={close} className="ev-maker-modal" title={mon?.name ? `Edit ${mon.name}` : 'Make a Fakémon'} dismissible={!busy}>
+            <div className="tabs editor-tabs ev-maker-tabs" role="tablist" aria-label="Editor sections">
+                {MAKER_TABS.map(([key, long, short]) => (
+                    <button key={key} className={`tab${tab === key ? ' active' : ''}${key === 'preview' ? ' editor-preview-tab' : ''}`} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
+                        {key === 'preview' && <Icon name="eye" />}<span className="tab-long">{long}</span><span className="tab-short">{short}</span>
+                    </button>
+                ))}
+            </div>
+            {problems.length > 0 && <p className="ev-notice is-problem"><Icon name="shield-exclamation" size={15} /><span>{monRuleSentence(problems)}</span></p>}
+            <div className="ev-maker-body editor-form-col">
+                {!ready ? <span className="skel" style={{ display: 'block', height: 360, borderRadius: 'var(--panel-r)' }} /> : (
+                    <>
+                        {tab === 'basic' && <div className="tab-content"><BasicTab /></div>}
+                        {tab === 'stats' && <div className="tab-content"><StatsTab evolutions={false} /></div>}
+                        {tab === 'moves' && <div className="tab-content"><MovesTab /></div>}
+                        {tab === 'preview' && <div className="tab-content editor-preview-pane"><EditorBoard id="pokedex-board-event-maker" /></div>}
+                    </>
+                )}
+            </div>
+            <div className="modal-actions ev-maker-actions">
+                <span className="ev-hint ev-inline-hint">{draft ? `${draft.name}${draft.type1 ? ` · ${[draft.type1, draft.type2].filter(Boolean).join(' / ')}` : ''}` : 'Not named yet'}</span>
+                <button type="button" className="btn btn-secondary" disabled={!ready || busy} onClick={toEditor}
+                    title="Saves it to your collection and opens the Woogidex editor (evolutions, exports and the rest)"><Icon name="arrow-top-right-on-square" size={15} />Continue in the editor</button>
+                <button type="button" className="btn btn-primary" disabled={!ready || busy} onClick={use}>{busy ? 'Preparing…' : 'Use this Fakémon'}</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-fakemon-editor', EventFakemonEditorDialog);
+
+/** Importing a Fakémon: paste a Woogidex export's plain text (or its JSON), or choose the file. */
+function FakemonImportDialog({ close, fileInput, onText }: DialogProps<{ fileInput: string; onText: (text: string) => void }>) {
+    const [text, setText] = useState('');
+    function go() {
+        try { onText(text); close(); }
+        catch (e: any) { api.showToast?.(e?.message || 'That couldn\'t be read.', 'error'); }
+    }
+    return (
+        <Modal onClose={close} title="Import a Fakémon" className="ev-import-modal">
+            <p className="ev-hint">Paste a Woogidex export: the plain text from <strong>Export as Plain Text</strong>, or a JSON export. A whole collection works too; you'll pick which one.</p>
+            <textarea className="ev-import-text" rows={12} value={text} onChange={e => setText(e.target.value)} autoFocus spellCheck={false}
+                placeholder={'Name: Flarewisp, the Ember Pokemon\nTypes: Fire / -\nStats: 60/70/55/85/60/90 (BST 420)\n…'} aria-label="Woogidex export to import" />
+            <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => { close(); document.getElementById(fileInput)?.click(); }}><Icon name="document-arrow-up" size={15} />Choose a file instead</button>
+                <button type="button" className="btn btn-primary" disabled={!text.trim()} onClick={go}>Import</button>
+            </div>
+        </Modal>
+    );
+}
+registerDialog('event-fakemon-import', FakemonImportDialog);
 
 // ---- moves, abilities, items and types as answers ----
 
@@ -1870,7 +2037,7 @@ function LibraryEditDialog({ close, kinds, item, imported = false, onSave }: Dia
                 </div>
             )}
             <div className="ev-field"><label className="ev-field-label" htmlFor="ev-lib-name">Name<span className="ev-req" aria-hidden="true"> *</span></label>
-                <input id="ev-lib-name" maxLength={v.kind === 'type' ? 16 : 40} value={v.name || ''} onChange={e => set({ name: e.target.value })} autoFocus /></div>
+                <input id="ev-lib-name" maxLength={v.kind === 'type' ? 16 : NAME_MAX} value={v.name || ''} onChange={e => set({ name: e.target.value })} autoFocus /></div>
             {v.kind === 'move' && <>
                 <div className="ev-two">
                     <div className="ev-field"><label className="ev-field-label" htmlFor="ev-lib-type">Type</label>
@@ -2015,6 +2182,7 @@ const TABS: Array<[DashTab, string, string, keyof ReturnType<typeof permsFor>]> 
     ['announcements', 'Announcements', 'megaphone', 'edit'],
     ['results', 'Results', 'chart-bar', 'results'],
     ['team', 'Team', 'users', 'view'],
+    ['audit', 'Audit log', 'clipboard-document-list', 'view'],
     ['settings', 'Settings', 'cog-6-tooth', 'edit']
 ];
 
@@ -2032,7 +2200,8 @@ function Dashboard({ id, tab }: { id: string; tab: DashTab }) {
             </>
         );
     }
-    const tabs = TABS.filter(t => perms[t[3]]);
+    // Responses: the submissions need Entries; the votes alone are there for Results
+    const tabs = TABS.filter(t => perms[t[3]] || (t[0] === 'entries' && perms.results && ev.voting !== 'none'));
     const current = tabs.find(t => t[0] === tab) ? tab : 'overview';
     return (
         <div className="ev-dash">
@@ -2057,6 +2226,7 @@ function Dashboard({ id, tab }: { id: string; tab: DashTab }) {
             {current === 'announcements' && <AnnouncementsTab ev={ev} d={d} />}
             {current === 'results' && <ResultsTab ev={ev} d={d} />}
             {current === 'team' && <TeamTab ev={ev} d={d} />}
+            {current === 'audit' && <AuditLogTab ev={ev} d={d} />}
             {current === 'settings' && <EventEditor event={ev} />}
         </div>
     );
@@ -2126,12 +2296,18 @@ function ShareRow({ label, hint, url }: { label: string; hint: string; url: stri
 }
 
 // ---- responses, Google Forms style ----
-// Summary: every question with its answers added up. Question: one question,
-// everyone's answer. Individual: one response at a time, with what the team
-// can do about it. Plus a live Google Sheets link and the CSV.
+// An event that votes has two forms, like a contest run on two Google Forms:
+// the submissions and the votes, each with its own responses.
+// Submissions: Summary (every question added up), Question (one question,
+// everyone's answer), Individual (one response at a time, with what the team
+// can do about it), plus a live Google Sheets link and the CSV.
+// Votes: Summary, Voters (one voter at a time: who they voted for, so the team
+// can check each voter by hand) and By entry (what voters wrote, as feedback).
 
-type ResponsesView = 'summary' | 'question' | 'individual' | 'votes';
-const RESPONSE_VIEWS: Array<[ResponsesView, string, string]> = [['summary', 'Summary', 'chart-pie'], ['question', 'Question', 'queue-list'], ['individual', 'Individual', 'document-text'], ['votes', 'Voter feedback', 'chat-bubble-left-right']];
+type ResponsesView = 'summary' | 'question' | 'individual';
+const RESPONSE_VIEWS: Array<[ResponsesView, string, string]> = [['summary', 'Summary', 'chart-pie'], ['question', 'Question', 'queue-list'], ['individual', 'Individual', 'document-text']];
+type VotesView = 'summary' | 'voters' | 'entries';
+const VOTE_VIEWS: Array<[VotesView, string, string]> = [['summary', 'Summary', 'chart-pie'], ['voters', 'Voters', 'user'], ['entries', 'By entry', 'chat-bubble-left-right']];
 
 /** One entry's answer to one question, from the public or the private side. */
 const answerOf = (d: Detail, en: Entry, f: Field) => isPrivateField(f) ? d.privateAnswers[en.id]?.[f.id] : en.answers[f.id];
@@ -2139,21 +2315,33 @@ const answerOf = (d: Detail, en: Entry, f: Field) => isPrivateField(f) ? d.priva
 function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
     const perms = permsFor(ev, d.helpers);
     const questions = ev.form.filter(f => f.type !== 'section');
+    // the votes are their own form's responses: for events that vote, to the team that sees results
+    const votesShown = ev.voting !== 'none' && perms.results;
+    const [form, setForm] = useState<'submissions' | 'votes'>('submissions');
     const [view, setView] = useState<ResponsesView>('summary');
     const [at, setAt] = useState(0);
     const [qid, setQid] = useState(questions[0]?.id || '');
     const open = (entryId: string) => { setAt(Math.max(0, d.entries.findIndex(e => e.id === entryId))); setView('individual'); };
-    // what voters wrote: for events that vote, to the team that sees results
-    const views = RESPONSE_VIEWS.filter(([k]) => k !== 'votes' || (ev.voting !== 'none' && perms.results));
+    const voters = new Set(d.votes.map(v => v.voter_id)).size;
+    const formSwitch = votesShown && (
+        <div className="ev-form-switch" role="tablist" aria-label="Which form's responses">
+            <button type="button" role="tab" aria-selected={form === 'submissions'} className={form === 'submissions' ? 'active' : ''} onClick={() => setForm('submissions')}>
+                <Icon name="paper-airplane" size={15} /><span>Submissions</span><small>{d.entries.length}</small></button>
+            <button type="button" role="tab" aria-selected={form === 'votes'} className={form === 'votes' ? 'active' : ''} onClick={() => setForm('votes')}>
+                <Icon name="star" size={15} /><span>Votes</span><small>{ev.voting === 'ballot' ? d.ballots.length : voters}</small></button>
+        </div>
+    );
+    if (votesShown && (form === 'votes' || !perms.entries)) return <>{perms.entries && formSwitch}<VoteResponses ev={ev} d={d} perms={perms} /></>;
     return (
         <>
+            {formSwitch}
             <section className="ev-block ev-responses">
                 <div className="ev-block-head">
-                    <h3>{plural(d.entries.length, 'response')}</h3>
+                    <h3>{plural(d.entries.length, votesShown ? 'submission' : 'response')}</h3>
                     <button className="btn btn-secondary btn-sm" type="button" onClick={exportEntriesCsv} disabled={!d.entries.length}><Icon name="arrow-down-tray" size={14} />Download CSV</button>
                 </div>
                 <div className="ev-segmented ev-responses-tabs" role="tablist" aria-label="How to look at the responses">
-                    {views.map(([key, label, icon]) => (
+                    {RESPONSE_VIEWS.map(([key, label, icon]) => (
                         <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? 'active' : ''} onClick={() => setView(key)}><Icon name={icon} size={14} />{label}</button>
                     ))}
                 </div>
@@ -2166,7 +2354,6 @@ function EntriesTab({ ev, d }: { ev: EventRow; d: Detail }) {
                 )}
                 {d.entries.length > 0 && view === 'question' && <QuestionResponses d={d} questions={questions} qid={qid} onQid={setQid} onOpen={open} />}
                 {d.entries.length > 0 && view === 'individual' && <IndividualResponse ev={ev} d={d} perms={perms} at={Math.min(at, d.entries.length - 1)} onAt={setAt} />}
-                {d.entries.length > 0 && view === 'votes' && <VoterFeedback ev={ev} d={d} perms={perms} at={Math.min(at, d.entries.length - 1)} onAt={setAt} />}
             </section>
             <SheetLink ev={ev} d={d} />
             {perms.edit && <ExtraEntries ev={ev} d={d} />}
@@ -2325,6 +2512,270 @@ function IndividualResponse({ ev, d, perms, at, onAt }: { ev: EventRow; d: Detai
     );
 }
 
+/** Every vote, grouped by who cast it, in the order they voted. */
+function votersOf(d: Detail): Array<{ id: string; votes: Detail['votes']; at: string }> {
+    const m = new Map<string, Detail['votes']>();
+    d.votes.forEach(v => m.set(v.voter_id, [...(m.get(v.voter_id) || []), v]));
+    return [...m.entries()]
+        .map(([id, votes]) => ({ id, votes, at: d.ballots.find(b => b.voter_id === id)?.submitted_at || votes.map(v => v.created_at).sort()[0] || '' }))
+        .sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/** Voters the team has checked by hand (on Showdown, say): kept on this device, per event. */
+const checkedKey = (eventId: string) => `woogidex.eventVotersChecked.${state.user?.id || ''}.${eventId}`;
+function useCheckedVoters(eventId: string): [Set<string>, (voter: string, on: boolean) => void] {
+    const [set, setSet] = useState<Set<string>>(() => {
+        try { return new Set(JSON.parse(localStorage.getItem(checkedKey(eventId)) || '[]')); } catch { return new Set(); }
+    });
+    const toggle = (voter: string, on: boolean) => setSet(prev => {
+        const next = new Set(prev);
+        if (on) next.add(voter); else next.delete(voter);
+        try { localStorage.setItem(checkedKey(eventId), JSON.stringify([...next])); } catch { /* private mode */ }
+        return next;
+    });
+    return [set, toggle];
+}
+
+/** The voting form's responses: a summary, each voter's votes, and what voters wrote about each entry. */
+function VoteResponses({ ev, d, perms }: { ev: EventRow; d: Detail; perms: ReturnType<typeof permsFor> }) {
+    const [view, setView] = useState<VotesView>('voters');
+    const [at, setAt] = useState(0);
+    const [entryAt, setEntryAt] = useState(0);
+    const voters = useMemo(() => votersOf(d), [d.votes, d.ballots]);
+    const [checked, setChecked] = useCheckedVoters(ev.id);
+    const openVoter = (id: string) => { setAt(Math.max(0, voters.findIndex(v => v.id === id))); setView('voters'); };
+    return (
+        <section className="ev-block ev-responses">
+            <div className="ev-block-head">
+                <h3>{plural(voters.length, 'voter')} · {plural(d.votes.length, 'vote')}</h3>
+                <span className="ev-head-actions">
+                    <button className="btn btn-secondary btn-sm" type="button" onClick={exportVotesCsv} disabled={!d.votes.length}><Icon name="arrow-down-tray" size={14} />Download CSV</button>
+                    {ev.voting !== 'community' && <button className="btn btn-secondary btn-sm" type="button" onClick={exportVotesJson} disabled={!d.votes.length}><Icon name="arrow-down-tray" size={14} />JSON</button>}
+                </span>
+            </div>
+            <div className="ev-segmented ev-responses-tabs" role="tablist" aria-label="How to look at the votes">
+                {VOTE_VIEWS.map(([key, label, icon]) => (
+                    <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? 'active' : ''} onClick={() => setView(key)}><Icon name={icon} size={14} />{label}</button>
+                ))}
+            </div>
+            {!d.votes.length && <p className="ev-hint">{effectivePhase(ev) === 'voting' ? 'No votes yet. They show up here as people vote.' : 'Votes show up here once voting opens.'}</p>}
+            {d.votes.length > 0 && view === 'summary' && <VotesSummary ev={ev} d={d} voters={voters} checked={checked} onOpen={openVoter} />}
+            {d.votes.length > 0 && view === 'voters' && <VoterResponse ev={ev} d={d} voters={voters} at={Math.min(at, voters.length - 1)} onAt={setAt} checked={checked} onCheck={setChecked} />}
+            {d.votes.length > 0 && view === 'entries' && (d.entries.length
+                ? <VoterFeedback ev={ev} d={d} perms={perms} at={Math.min(entryAt, d.entries.length - 1)} onAt={setEntryAt} />
+                : <p className="ev-hint">No entries to show votes for.</p>)}
+        </section>
+    );
+}
+
+/** Who voted, how many each entry got, and which voters are still to be checked. */
+function VotesSummary({ ev, d, voters, checked, onOpen }: { ev: EventRow; d: Detail; voters: ReturnType<typeof votersOf>; checked: Set<string>; onOpen: (voter: string) => void }) {
+    const perEntry = d.entries.map(en => ({ en, n: d.votes.filter(v => v.entry_id === en.id).length })).sort((a, b) => b.n - a.n);
+    const top = Math.max(1, ...perEntry.map(x => x.n));
+    return (
+        <div className="ev-summary">
+            <article className="ev-sum-card">
+                <header><strong>Voters</strong><small>{checked.size ? `${voters.filter(v => checked.has(v.id)).length} of ${voters.length} checked` : plural(voters.length, 'voter')}</small></header>
+                <ul className="ev-voter-chips">
+                    {voters.map(v => {
+                        const p = d.people[v.id];
+                        return (
+                            <li key={v.id}>
+                                <button type="button" className={`ev-voter-chip${checked.has(v.id) ? ' is-checked' : ''}`} onClick={() => onOpen(v.id)} title="Open their votes">
+                                    <Avatar userId={v.id} url={p?.avatar_url} name={personName(p)} className="ev-avatar ev-avatar-xs" />
+                                    <span>@{p?.username || 'unknown'}</span>
+                                    {checked.has(v.id) && <Icon name="check" size={12} />}
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </article>
+            <article className="ev-sum-card">
+                <header><strong>Votes per entry</strong><small>{plural(d.votes.length, 'vote')}</small></header>
+                <ul className="ev-sum-bars">
+                    {perEntry.map(({ en, n }) => (
+                        <li key={en.id}>
+                            <span className="ev-sum-label">{entryTitle(ev, en, d.people)}</span>
+                            <span className="ev-sum-track" aria-hidden="true"><span style={{ transform: `scaleX(${n / top})` }} /></span>
+                            <span className="ev-sum-num">{n}</span>
+                        </li>
+                    ))}
+                </ul>
+            </article>
+        </div>
+    );
+}
+
+/** One voter at a time: every entry they voted on and how, and a mark for having checked them. */
+function VoterResponse({ ev, d, voters, at, onAt, checked, onCheck }: {
+    ev: EventRow; d: Detail; voters: ReturnType<typeof votersOf>; at: number; onAt: (i: number) => void; checked: Set<string>; onCheck: (voter: string, on: boolean) => void;
+}) {
+    const v = voters[at];
+    if (!v) return null;
+    const p = d.people[v.id];
+    const scored = ev.voting === 'judges' || ev.voting === 'ballot';
+    return (
+        <div className="ev-individual">
+            <div className="ev-pager">
+                <button type="button" className="ev-icon-btn" disabled={at === 0} onClick={() => onAt(at - 1)} aria-label="Previous voter"><Icon name="chevron-left" size={16} /></button>
+                <select value={v.id} onChange={e => onAt(voters.findIndex(x => x.id === e.target.value))} aria-label="Voter">
+                    {voters.map((x, i) => <option key={x.id} value={x.id}>{i + 1}. @{d.people[x.id]?.username || 'unknown'}{checked.has(x.id) ? ' ✓' : ''}</option>)}
+                </select>
+                <span className="ev-pager-count">{at + 1} of {voters.length}</span>
+                <button type="button" className="ev-icon-btn" disabled={at === voters.length - 1} onClick={() => onAt(at + 1)} aria-label="Next voter"><Icon name="chevron-right" size={16} /></button>
+            </div>
+            <div className="ev-individual-card">
+                <header className="ev-individual-head">
+                    <Avatar userId={v.id} url={p?.avatar_url} name={personName(p)} className="ev-avatar ev-table-avatar" />
+                    <span className="ev-table-main">
+                        <strong>{personName(p)}</strong>
+                        <small>@{p?.username || 'unknown'} · {plural(v.votes.length, 'vote')} · {fmtDate(v.at)}</small>
+                    </span>
+                    <label className={`ev-check ev-voter-check${checked.has(v.id) ? ' is-on' : ''}`} title="Only you see this, on this device">
+                        <input type="checkbox" checked={checked.has(v.id)} onChange={e => onCheck(v.id, e.target.checked)} />Checked
+                    </label>
+                </header>
+                {p?.username && <p className="ev-hint">Their profile: <button type="button" className="ev-link" onClick={() => api.showUserProfile?.(v.id)}>@{p.username}</button>. Tick "Checked" once you've looked them up (on your Showdown server, say); the mark stays on this device.</p>}
+                <ol className="ev-vote-list">
+                    {v.votes.map(vote => {
+                        const en = d.entries.find(e => e.id === vote.entry_id);
+                        const entrant = en ? authorOf(d, en) : undefined;
+                        return (
+                            <li key={vote.entry_id}>
+                                <strong>{en ? entryTitle(ev, en, d.people) : 'Removed entry'}</strong>
+                                <span className="ev-hint ev-inline-hint">{en ? (en.user_id ? `by @${entrant?.username || 'member'}` : 'by a guest') : ''}{scored ? ` · ${criteriaOf(ev).map(c => `${c.name} ${vote.scores?.[c.name] ?? '-'}/${c.max}`).join(' · ')}` : ''}</span>
+                                {(ev.vote_form || []).filter(q => q.type !== 'section' && answered(vote.answers?.[q.id])).map(q => (
+                                    <p key={q.id}><span className="ev-muted">{q.label}:</span> {Array.isArray(vote.answers![q.id]) ? vote.answers![q.id].join(', ') : String(vote.answers![q.id])}</p>
+                                ))}
+                                {vote.remarks && <p className="ev-vote-remarks">{vote.remarks}</p>}
+                            </li>
+                        );
+                    })}
+                </ol>
+            </div>
+        </div>
+    );
+}
+
+// ---- the audit log ----
+
+/** Each action in words: what was done, given who it was done to. */
+function auditText(ev: EventRow, d: Detail, r: AuditRow): ReactNode {
+    const x = r.detail || {};
+    const who = (id?: string | null) => {
+        const p = id ? d.people[id] : undefined;
+        return p ? `@${p.username}` : id ? 'someone' : 'a guest';
+    };
+    const entry = () => {
+        const en = d.entries.find(e => e.id === x.entry_id);
+        return en ? `"${entryTitle(ev, en, d.people)}"` : 'an entry';
+    };
+    const phase = (p: string) => (PHASES.find(([k]) => k === p)?.[1] || p).toLowerCase();
+    const perms = () => [x.organizer && 'organizer', x.edit && 'edit', x.entries && 'entries', x.judge && 'judge', x.results && 'results', x.add && 'add people'].filter(Boolean).join(', ') || 'no permissions';
+    switch (r.action) {
+        case 'event_created': return 'created the event';
+        case 'event_edited': return <>edited the event <span className="ev-muted">({(x.fields || []).map((f: string) => f.replace(/_/g, ' ')).join(', ')})</span></>;
+        case 'phase_changed': return `moved the event from ${phase(x.from)} to ${phase(x.to)}`;
+        case 'results_published': return 'published the results';
+        case 'results_post_saved': return 'saved the results post';
+        case 'entry_submitted': return `sent in ${entry()}`;
+        case 'entry_withdrawn': return 'withdrew their entry';
+        case 'entry_removed': return `removed ${who(x.user_id)}'s entry`;
+        case 'entry_edited': return `edited ${entry()}`;
+        case 'placement_set': return x.placement ? `placed ${entry()} ${placeLabel(x.placement)}` : `cleared the placement of ${entry()}`;
+        case 'team_added': return `added ${who(x.user_id)} to the team (${perms()})`;
+        case 'team_changed': return `changed ${who(x.user_id)}'s permissions (${perms()})`;
+        case 'team_removed': return r.actor_id === x.user_id ? 'left the team' : `removed ${who(x.user_id)} from the team`;
+        case 'code_created': return `made the entry code ${x.code} (${plural(x.max_entries, 'entry', 'entries')}${x.max_uses ? `, ${plural(x.max_uses, 'use')}` : ''})`;
+        case 'code_deleted': return `deleted the entry code ${x.code}`;
+        case 'code_redeemed': return `used the entry code ${x.code}`;
+        case 'limit_set': return `let ${who(x.user_id)} send ${plural(x.max_entries, 'entry', 'entries')}`;
+        case 'limit_removed': return `reset ${who(x.user_id)}'s entries to the default`;
+        case 'announcement_posted': return <>posted the announcement "{x.title}"{x.as_event ? <span className="ev-muted"> (as the event)</span> : null}</>;
+        case 'announcement_deleted': return `deleted the announcement "${x.title}"`;
+        case 'edit_requested': return `asked ${who(x.user_id)} to change ${entry()}${x.reason ? `: "${x.reason}"` : ''}`;
+        case 'edit_request_withdrawn': return `withdrew the change request on ${entry()}`;
+        case 'feedback_sent': return `sent feedback on ${entry()}`;
+        case 'ballot_submitted': return 'sent in their ballot';
+        case 'vote_cast': return `voted for ${entry()}`;
+        case 'vote_changed': return `changed their vote on ${entry()}`;
+        case 'vote_removed': return `took back their vote on ${entry()}`;
+        case 'comment_removed': return <>removed a comment by {who(x.user_id)}{x.excerpt ? <span className="ev-muted">: "{x.excerpt}"</span> : null}</>;
+        default: return r.action.replace(/_/g, ' ');
+    }
+}
+
+const AUDIT_ICONS: Record<string, string> = {
+    event_created: 'sparkles', event_edited: 'pencil-square', phase_changed: 'arrow-right-circle', results_published: 'trophy', results_post_saved: 'document-text',
+    entry_submitted: 'paper-airplane', entry_withdrawn: 'arrow-uturn-left', entry_removed: 'trash-2', entry_edited: 'pencil', placement_set: 'trophy',
+    team_added: 'user-plus', team_changed: 'adjustments-horizontal', team_removed: 'user-minus', code_created: 'ticket', code_deleted: 'ticket', code_redeemed: 'ticket',
+    limit_set: 'hashtag', limit_removed: 'hashtag', announcement_posted: 'megaphone', announcement_deleted: 'megaphone', edit_requested: 'pencil-square',
+    edit_request_withdrawn: 'pencil-square', feedback_sent: 'chat-bubble-left-right', ballot_submitted: 'star', vote_cast: 'star', vote_changed: 'star',
+    vote_removed: 'star', comment_removed: 'chat-bubble-left-right'
+};
+type AuditFilter = 'all' | 'team' | 'entries' | 'votes';
+const AUDIT_FILTERS: Array<[AuditFilter, string, (a: string) => boolean]> = [
+    ['all', 'Everything', () => true],
+    ['team', 'The team', a => !/^(entry_submitted|entry_withdrawn|entry_edited|code_redeemed|ballot_submitted|vote_)/.test(a)],
+    ['entries', 'Entries', a => /^(entry_|code_redeemed|placement_set|edit_request|feedback_sent|limit_)/.test(a)],
+    ['votes', 'Votes', a => /^(ballot_submitted|vote_)/.test(a)]
+];
+
+/** Everything done on the event, by whom and when: written by the database, so nobody can tidy it up. */
+function AuditLogTab({ ev, d }: { ev: EventRow; d: Detail }) {
+    const [rows, setRows] = useState<AuditRow[] | null>(null);
+    const [error, setError] = useState('');
+    const [more, setMore] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [filter, setFilter] = useState<AuditFilter>('all');
+    async function load(append = false) {
+        setBusy(true);
+        try {
+            const got = await loadAuditLog(ev.id, append && rows?.length ? rows[rows.length - 1].id : null);
+            setRows(prev => append ? [...(prev || []), ...got] : got);
+            setMore(got.length === 100);
+            setError('');
+        } catch (e: any) {
+            setError(/event_audit_log/.test(e?.message || '') ? 'The audit log isn\'t switched on for this site yet.' : e?.message || String(e));
+        }
+        setBusy(false);
+    }
+    useEffect(() => { load(); }, [ev.id]);
+    const test = AUDIT_FILTERS.find(f => f[0] === filter)![2];
+    const shown = (rows || []).filter(r => test(r.action));
+    return (
+        <section className="ev-block ev-audit">
+            <div className="ev-block-head">
+                <h3><Icon name="clipboard-document-list" size={16} />Audit log</h3>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => load()} disabled={busy}><Icon name="arrow-path" size={14} className={busy ? 'spin' : ''} />Refresh</button>
+            </div>
+            <p className="ev-hint">Everything done on this event and by whom, newest first: settings, phases, the team, codes, entries, announcements and votes. The database writes it as things happen, so nobody on the team (the organizer included) can change or remove a line.</p>
+            <div className="ev-segmented ev-responses-tabs" role="tablist" aria-label="Which actions">
+                {AUDIT_FILTERS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? 'active' : ''} onClick={() => setFilter(key)}>{label}</button>)}
+            </div>
+            {error && <p className="ev-error">{error}</p>}
+            {!rows && !error && <p className="ev-hint">Loading…</p>}
+            {rows && !shown.length && <p className="ev-hint">Nothing here yet.</p>}
+            <ol className="ev-audit-list">
+                {shown.map(r => {
+                    const p = r.actor_id ? d.people[r.actor_id] : undefined;
+                    return (
+                        <li key={r.id}>
+                            <span className="ev-audit-icon"><Icon name={AUDIT_ICONS[r.action] || 'clock'} size={14} /></span>
+                            <span className="ev-audit-main">
+                                <span><strong>{r.actor_id ? (p ? personName(p) : 'Someone') : r.action === 'entry_submitted' ? 'A guest' : 'Woogidex'}</strong> {auditText(ev, d, r)}</span>
+                                <time dateTime={r.created_at} title={fmtDate(r.created_at)}>{fmtDate(r.created_at)} · {relTime(r.created_at)}</time>
+                            </span>
+                        </li>
+                    );
+                })}
+            </ol>
+            {more && <div className="ev-form-actions"><button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => load(true)}>Load older</button></div>}
+        </section>
+    );
+}
+
 /** Placements by hand: only on events that don't vote (the votes are the result), and only until they end. */
 const canPlace = (ev: EventRow) => ev.voting === 'none' && effectivePhase(ev) !== 'ended';
 
@@ -2347,8 +2798,7 @@ function VoterFeedback({ ev, d, perms, at, onAt }: { ev: EventRow; d: Detail; pe
     async function send() { setBusy(true); await sendFeedback(en, text); setBusy(false); }
     return (
         <div className="ev-individual ev-voter-feedback">
-            <p className="ev-hint">What voters wrote about each entry, from your voter questions and their remarks. It starts compiled; edit it, then send it to the entry's creator (they get a notification, and read it with their entry) or copy it. {plural(withWords, 'entry has', 'entries have')} written feedback so far.
-                {' '}<button type="button" className="ev-link" onClick={exportVotesCsv} disabled={!d.votes.length}><Icon name="arrow-down-tray" size={13} />Download every vote (CSV)</button></p>
+            <p className="ev-hint">What voters wrote about each entry, from your voter questions and their remarks. It starts compiled; edit it, then send it to the entry's creator (they get a notification, and read it with their entry) or copy it. {plural(withWords, 'entry has', 'entries have')} written feedback so far.</p>
             <div className="ev-pager">
                 <button type="button" className="ev-icon-btn" disabled={at === 0} onClick={() => onAt(at - 1)} aria-label="Previous entry"><Icon name="chevron-left" size={16} /></button>
                 <select value={en.id} onChange={e => onAt(d.entries.findIndex(x => x.id === e.target.value))} aria-label="Entry">
@@ -2471,6 +2921,10 @@ function AnnouncementsTab({ ev, d }: { ev: EventRow; d: Detail }) {
     const [draft, setDraft] = useState<{ title: string; body: string }>(() => {
         try { return JSON.parse(localStorage.getItem(announceKey(ev.id)) || 'null') || { title: '', body: '' }; } catch { return { title: '', body: '' }; }
     });
+    // whether readers see you as the poster, or the event (remembered per event on this device)
+    const asEventKey = `${announceKey(ev.id)}.asEvent`;
+    const [asEvent, setAsEventState] = useState(() => { try { return localStorage.getItem(asEventKey) === '1'; } catch { return false; } });
+    const setAsEvent = (on: boolean) => { setAsEventState(on); try { localStorage.setItem(asEventKey, on ? '1' : '0'); } catch { /* private mode */ } };
     const [mode, setMode] = useState<'write' | 'preview'>('write');
     const [busy, setBusy] = useState(false);
     const [sample, setSample] = useState(false);
@@ -2480,7 +2934,7 @@ function AnnouncementsTab({ ev, d }: { ev: EventRow; d: Detail }) {
     useLeaveGuard(!!(draft.title.trim() || draft.body.trim()), 'Your announcement stays saved on this device until you post it.');
     async function post() {
         setBusy(true);
-        if (await postAnnouncement(ev.id, draft.title, draft.body)) setDraft({ title: '', body: '' });
+        if (await postAnnouncement(ev.id, draft.title, draft.body, asEvent)) setDraft({ title: '', body: '' });
         setBusy(false);
     }
     return (
@@ -2506,10 +2960,13 @@ function AnnouncementsTab({ ev, d }: { ev: EventRow; d: Detail }) {
                 ) : (
                     <div className="ev-preview-box">
                         <SampleSwitch on={sample} onChange={setSample} />
-                        <SampleVars.Provider value={sample}><ol className="ev-announce-list"><AnnouncementItem ev={ev} d={d} a={{ id: 'preview', event_id: ev.id, author_id: state.user?.id || null, title: draft.title || 'Untitled', body: draft.body, created_at: new Date().toISOString() }} /></ol></SampleVars.Provider>
+                        <SampleVars.Provider value={sample}><ol className="ev-announce-list"><AnnouncementItem ev={ev} d={d} a={{ id: 'preview', event_id: ev.id, author_id: asEvent ? null : state.user?.id || null, show_author: !asEvent, title: draft.title || 'Untitled', body: draft.body, created_at: new Date().toISOString() }} /></ol></SampleVars.Provider>
                     </div>
                 )}
                 <div className="ev-form-actions">
+                    <label className="ev-check ev-as-event" title="Readers see the event's name instead of yours. The team's audit log still records who posted it.">
+                        <input type="checkbox" checked={asEvent} onChange={e => setAsEvent(e.target.checked)} />Post as {ev.title ? `"${ev.title}"` : 'the event'} (hide my name)
+                    </label>
                     <button type="button" className="btn btn-primary btn-sm" disabled={busy || !draft.title.trim()} onClick={post}><Icon name="megaphone" size={14} />{busy ? 'Posting…' : 'Post announcement'}</button>
                 </div>
             </section>
@@ -3501,7 +3958,7 @@ function EventEditor({ event }: { event: EventRow | null }) {
                 <section className="ev-block">
                     <h3>Basics</h3>
                     <div className="ev-field"><label className="ev-field-label" htmlFor="ev-title">Name</label>
-                        <input id="ev-title" required minLength={3} maxLength={120} value={f.title} onChange={e => set({ title: e.target.value })} placeholder="New PoA Contest!" /></div>
+                        <input id="ev-title" required minLength={3} maxLength={NAME_MAX} value={f.title} onChange={e => set({ title: e.target.value })} placeholder="New PoA Contest!" /></div>
                     <div className="ev-field"><label className="ev-field-label" htmlFor="ev-tagline">One-line pitch <span className="ev-optional">(optional)</span></label>
                         <input id="ev-tagline" maxLength={200} value={f.tagline} onChange={e => set({ tagline: e.target.value })} placeholder="Bring your best Fakémon to this round's PoA" /></div>
                     <div className="ev-field"><label className="ev-field-label" htmlFor="ev-slug">Link <span className="ev-optional">(optional)</span></label>

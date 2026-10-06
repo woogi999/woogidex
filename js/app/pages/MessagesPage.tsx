@@ -14,6 +14,7 @@ import { registerDialog, openDialog, type DialogProps } from '../dialogs.tsx';
 import { timeAgo } from '../components/feed.tsx';
 import { useStore } from '../store.ts';
 import type { Attachment, ChatMessage, Conversation, ChatMember, Outgoing } from '../../features/messaging.ts';
+import { NAME_MAX } from '../../core/data.ts';
 
 export function MessagesPage() {
     useStore();
@@ -564,7 +565,7 @@ function ChatInfo({ convo, onClose }: { convo: Conversation; onClose: () => void
                 <div className="chat-info-section">
                     <label htmlFor="chat-title">Group name</label>
                     <div className="chat-info-rename">
-                        <input id="chat-title" type="text" maxLength={60} value={title} placeholder="Name this group" onChange={e => setTitle(e.target.value)} />
+                        <input id="chat-title" type="text" maxLength={NAME_MAX} value={title} placeholder="Name this group" onChange={e => setTitle(e.target.value)} />
                         <button type="button" className="btn btn-secondary btn-sm" disabled={title === convo.title} onClick={() => api.renameGroupChat(convo.id, title)}>Save</button>
                     </div>
                 </div>
@@ -653,7 +654,7 @@ function FollowerPicker({ exclude = [], onPick, actionLabel, title, withName = f
     return (
         <Modal onClose={close} title={title} className="chat-dialog">
             <p className="field-hint">You can add people who follow you.</p>
-            {withName && <input type="text" maxLength={60} placeholder="Group name (optional)" value={name} onChange={e => setName(e.target.value)} />}
+            {withName && <input type="text" maxLength={NAME_MAX} placeholder="Group name (optional)" value={name} onChange={e => setName(e.target.value)} />}
             <input type="search" placeholder="Search your followers" value={query} onChange={e => setQuery(e.target.value)} />
             <div className="chat-dialog-list">
                 {followers === null ? <div className="community-empty">Loading…</div>

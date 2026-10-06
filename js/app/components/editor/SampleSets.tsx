@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { api, state } from '../../../core/app.ts';
-import { NATURES, getNatureOptionLabel } from '../../../core/data.ts';
+import { NATURES, getNatureOptionLabel, NAME_MAX } from '../../../core/data.ts';
 import { form } from '../../../editor/draft.ts';
 import { Icon } from '../Icon.tsx';
 import { CommitInput } from '../CommitInput.tsx';
@@ -79,7 +79,7 @@ function SampleSetCard({ set, index }: { set: any; index: number }) {
         <div className="sample-set-card" data-set-index={index}>
             <button type="button" className="sample-set-delete" onClick={() => api.removeSampleSet(index)} title="Delete" aria-label="Delete set"><Icon name="trash-2" size={16} /></button>
             <div className="sample-set-header">
-                <input type="text" className="sample-set-name" value={set.name || ''} placeholder="Set name" aria-label="Set name" onChange={e => api.updateSampleSet(index, 'name', e.target.value)} />
+                <input type="text" className="sample-set-name" maxLength={NAME_MAX} value={set.name || ''} placeholder="Set name" aria-label="Set name" onChange={e => api.updateSampleSet(index, 'name', e.target.value)} />
             </div>
             <div className="sample-set-row">
                 <div className="sample-set-field">

@@ -426,7 +426,7 @@
 .type-group-chip.dragging { opacity: .35; }
 .type-group-chip.picked { outline: 2px solid var(--accent); outline-offset: 2px; }
 .type-group-ghost {
-    position: fixed; z-index: 5000; pointer-events: none;
+    position: fixed; z-index: 12950; pointer-events: none;
     transform: translate(-50%, -60%) rotate(-3deg);
     box-shadow: var(--shadow-md);
 }

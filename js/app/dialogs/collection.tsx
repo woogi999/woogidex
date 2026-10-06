@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from 'react';
 import { api, state } from '../../core/app.ts';
-import { POKEMON_COLORS } from '../../core/data.ts';
+import { POKEMON_COLORS, NAME_MAX } from '../../core/data.ts';
 import { DEFAULT_POOLS, POOL_KINDS, POOL_LABEL, REGION_COLORS, regionPickerEntries } from '../../features/regions.ts';
 import { registerDialog, type DialogProps } from '../dialogs.tsx';
 import { Modal } from '../components/Modal.tsx';
@@ -25,7 +25,7 @@ function FolderNameDialog({ folderId, close }: DialogProps<{ folderId?: string }
         <Modal onClose={close} title={folder ? 'Rename Folder' : 'New Folder'} className="folder-name-dialog" labelledBy="folder-name-title">
             <div className="form-group">
                 <label htmlFor="folder-name-input">Folder Name</label>
-                <input type="text" id="folder-name-input" placeholder="e.g., Legendaries" value={name} autoFocus
+                <input type="text" id="folder-name-input" maxLength={NAME_MAX} placeholder="e.g., Legendaries" value={name} autoFocus
                     onFocus={e => e.target.select()}
                     onChange={e => setName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }} />
@@ -66,7 +66,7 @@ function RegionCreateDialog({ color: startColor, close }: DialogProps<{ color?: 
         <Modal onClose={close} title="New region" labelledBy="region-create-title" className="region-create-dialog">
             <div className="form-group">
                 <label htmlFor="region-name-input">Name</label>
-                <input type="text" id="region-name-input" maxLength={40} placeholder="e.g., Kanto" value={name} autoFocus
+                <input type="text" id="region-name-input" maxLength={NAME_MAX} placeholder="e.g., Kanto" value={name} autoFocus
                     onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }} />
             </div>
             <div className="form-group">

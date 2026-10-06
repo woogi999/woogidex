@@ -35,7 +35,7 @@ export function CommentsTab() {
                 <h3>Comment stream</h3>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={load}><Icon name="refresh-cw" /> Reload</button>
             </div>
-            <p className="admin-section-sub">Every comment on the site, newest first: Fakemon comments and profile comments together. Deleting one notifies its author with your reason and records the deletion in the mod log.</p>
+            <p className="admin-section-sub">Every comment on the site, newest first: on Fakemon, posts, profiles and events, replies included. Deleting one (and its replies) notifies its author with your reason and records the deletion in the mod log.</p>
             <form className="admin-search-bar" onSubmit={e => { e.preventDefault(); load(); }}>
                 <input type="text" placeholder="Search comment text or author" autoComplete="off" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search comments" />
                 <button type="submit" className="btn btn-primary"><Icon name="search" /> Search</button>
@@ -53,7 +53,8 @@ const LOG_PAGE = 60;
 const LOG_FILTERS: Array<[string, string]> = [
     ['', 'All actions'], ['warn', 'Warnings'], ['mute', 'Mutes'], ['unmute', 'Unmutes'], ['ban', 'Suspensions'], ['unban', 'Lifted suspensions'],
     ['automod_block', 'Automod blocks'], ['automod_flag', 'Automod flags'], ['delete_comment', 'Comment deletions'], ['purge_comments', 'Comment purges'],
-    ['delete_mon', 'Fakemon deletions'], ['purge_mons', 'Fakemon purges'], ['delete_user', 'Account deletions'], ['badge_change', 'Badge changes'],
+    ['delete_mon', 'Fakemon deletions'], ['purge_mons', 'Fakemon purges'], ['delete_post', 'Post deletions'],
+    ['delete_event', 'Event deletions'], ['unpublish_event', 'Events taken down'], ['delete_announcement', 'Announcement deletions'], ['delete_event_entry', 'Event entry removals'], ['delete_user', 'Account deletions'], ['badge_change', 'Badge changes'],
     ['badge_upsert', 'Badge edits'], ['site_limits_update', 'Limit changes'], ['term_added', 'Filter rules added'], ['term_updated', 'Filter rules edited'],
     ['term_removed', 'Filter rules removed']
 ];

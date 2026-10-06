@@ -10,6 +10,7 @@ import {
 import { Icon } from '../Icon.tsx';
 import { ColorSwatchPicker, RollButton, RowHeading, TypeDropdown, TypePill } from './fields.tsx';
 import { CommitInput } from '../CommitInput.tsx';
+import { NAME_MAX } from '../../../core/data.ts';
 
 /** What the typing is weak to, resists and is immune to. */
 function TypeEffectiveness() {
@@ -143,7 +144,7 @@ export function BasicTab() {
             <div className="form-group">
                 <label htmlFor="fakemon-name">Pokemon Name</label>
                 <div className="name-input-row">
-                    <input type="text" id="fakemon-name" placeholder="e.g., Flareon" value={form.name} onChange={e => editForm({ name: e.target.value })} />
+                    <input type="text" id="fakemon-name" maxLength={NAME_MAX} placeholder="e.g., Flareon" value={form.name} onChange={e => editForm({ name: e.target.value })} />
                     <RollButton id="name-roll-btn" title="Suggest a name based on this Fakemon's type, ability, and species" onRoll={e => api.openNameRollPopover(e)} />
                 </div>
             </div>

@@ -10,6 +10,7 @@ import { LEGAL_DOCS, loadLegalDoc, type LegalKey } from '../../features/legal.ts
 import { registerDialog, type DialogProps } from '../dialogs.tsx';
 import { Modal } from '../components/Modal.tsx';
 import { Icon } from '../components/Icon.tsx';
+import { NAME_MAX } from '../../core/data.ts';
 
 /** The policy-style dialog these share: title, body, and an action row. */
 function PolicyDialog({ title, close, children, dismissible = true }: { title: string; close: () => void; children: ReactNode; dismissible?: boolean }) {
@@ -53,7 +54,7 @@ function AccountSetupDialog({ error: startError = '', username: startName = '', 
                 </div>
                 <div className="form-group">
                     <label htmlFor="account-setup-display-name">Display Name</label>
-                    <input type="text" id="account-setup-display-name" maxLength={40} placeholder="e.g., AshK"
+                    <input type="text" id="account-setup-display-name" maxLength={NAME_MAX} placeholder="e.g., AshK"
                         value={displayName} onChange={e => setDisplayName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submit(); }} />
                     <div className="profile-field-hint">Shown on your Fakémon, comments, and profile.</div>
                 </div>

@@ -15,6 +15,8 @@ import { confirmDialog } from '../core/confirm-dialog.ts';
 import { myIdentities } from './oauth.ts';
 import { notify } from '../app/store.ts';
 import { ALL_VANILLA_TYPES } from './custom-types.ts';
+import { NAME_MAX } from '../core/data.ts';
+import { applyMyReaction } from './comments.ts';
 
 /** 'announced': visible to everyone, entries not open yet (they open on the date, or by hand). */
 export type Phase = 'draft' | 'announced' | 'open' | 'voting' | 'ended';
@@ -111,7 +113,10 @@ export interface Helper {
     is_organizer?: boolean;
     added_by?: string | null;
 }
-export interface Announcement { id: string; event_id: string; author_id: string | null; title: string; body: string; created_at: string; }
+/** show_author false: posted as the event (author_id is empty then; the audit log says who). */
+export interface Announcement { id: string; event_id: string; author_id: string | null; title: string; body: string; created_at: string; show_author?: boolean; }
+/** One line of an event's audit log (event_audit_log, written by triggers). */
+export interface AuditRow { id: number; event_id: string; actor_id: string | null; action: string; detail: Record<string, any>; created_at: string; }
 /** the team asked the entrant to change their entry (event_entry_private) */
 export interface EditRequest { reason: string; at: string; }
 export interface Result {
@@ -144,6 +149,9 @@ export interface Detail {
     full: Record<string, Record<string, any>>;
     /** feedback the team sent the entrant, by entry id (yours, or every one with Entries access) */
     feedback: Record<string, { text: string; at: string }>;
+    /** reactions on the event, by emoji, and yours (one each) */
+    reactions: Record<string, number>;
+    myReactions: string[];
 }
 
 /** An event's page has tabs: what it is, entering it, voting, and the results. */
@@ -154,7 +162,7 @@ export type View =
     | { kind: 'event'; id: string; tab?: EventTab }
     | { kind: 'dashboard'; id: string; tab?: DashTab }
     | { kind: 'new' };
-export type DashTab = 'overview' | 'entries' | 'announcements' | 'results' | 'team' | 'settings';
+export type DashTab = 'overview' | 'entries' | 'announcements' | 'results' | 'team' | 'audit' | 'settings';
 
 export const FIELD_TYPES: Array<[FieldType, string, string]> = [
     ['short', 'Short answer', 'pencil'],
@@ -529,7 +537,7 @@ export async function loadEvent(key: string) {
         limits: keep?.limits || [], results: keep?.results || null, helpers: keep?.helpers || [], people: keep?.people || {},
         resultsPost: keep?.resultsPost ?? null, share: keep?.share || null, codes: keep?.codes || [],
         announcements: keep?.announcements || [], following: keep?.following || false, editRequests: keep?.editRequests || {}, sheet: keep?.sheet || null,
-        full: keep?.full || {}, feedback: keep?.feedback || {}
+        full: keep?.full || {}, feedback: keep?.feedback || {}, reactions: keep?.reactions || {}, myReactions: keep?.myReactions || []
     };
     notify();
     const d = events.detail;
@@ -542,7 +550,8 @@ export async function loadEvent(key: string) {
         id = ev.id;
         const none = Promise.resolve({ data: [] });
         // votes, ballots, private answers: your own, or everyone's where the team may see them (RLS decides)
-        const [entries, authors, helpers, votes, priv, results, ballots, limits, post, share, codes, news, follow, sheet] = await Promise.all([
+        const announceCols = 'id,event_id,author_id,title,body,created_at';
+        const [entries, authors, helpers, votes, priv, results, ballots, limits, post, share, codes, news, follow, sheet, reacts] = await Promise.all([
             // who sent each one comes from event_entry_authors: hidden where the event hides it (blind voting)
             lightEntries(c, id),
             me() ? c.rpc('event_entry_authors', { p_event: id }) : none,
@@ -559,10 +568,14 @@ export async function loadEvent(key: string) {
             me() && ev.phase !== 'draft' ? c.rpc('repost_embed', { p_kind: 'event', p_id: id }) : Promise.resolve({ data: null }),
             // RLS: only the team members who can edit see codes
             me() ? c.from('event_codes').select('*').eq('event_id', id).order('created_at', { ascending: true }) : none,
-            c.from('event_announcements').select('id,event_id,author_id,title,body,created_at').eq('event_id', id).order('created_at', { ascending: false }).limit(50),
+            // show_author: until that migration is in, the columns from before it
+            c.from('event_announcements').select(`${announceCols},show_author`).eq('event_id', id).order('created_at', { ascending: false }).limit(50)
+                .then((r: any) => r.error ? c.from('event_announcements').select(announceCols).eq('event_id', id).order('created_at', { ascending: false }).limit(50) : r),
             me() ? c.from('event_follows').select('event_id').eq('event_id', id).eq('user_id', me()).maybeSingle() : Promise.resolve({ data: null }),
             // RLS: the team members who see entries
-            me() ? c.from('event_sheet_links').select('token,include_private').eq('event_id', id).maybeSingle() : Promise.resolve({ data: null })
+            me() ? c.from('event_sheet_links').select('token,include_private').eq('event_id', id).maybeSingle() : Promise.resolve({ data: null }),
+            // signed-in readers only; none until the reactions migration is in
+            me() ? c.from('event_reactions').select('user_id,emoji').eq('event_id', id).limit(5000) : none
         ]);
         if (entries.error) throw entries.error;
         const by = new Map<string, string>(((authors as any).data || []).map((a: any) => [a.entry_id, a.user_id]));
@@ -583,6 +596,12 @@ export async function loadEvent(key: string) {
         d.resultsPost = (post as any).data?.body ?? null;
         d.share = (share as any).data || null;
         d.codes = (codes as any).data || [];
+        d.reactions = {};
+        d.myReactions = [];
+        for (const r of ((reacts as any).data || []) as Array<{ user_id: string; emoji: string }>) {
+            d.reactions[r.emoji] = (d.reactions[r.emoji] || 0) + 1;
+            if (r.user_id === me()) d.myReactions.push(r.emoji);
+        }
         // profiles are for signed-in readers only; a guest sees no names
         if (me()) d.people = await fetchPeople([ev.owner_id, ...d.entries.map(e => e.user_id || ''), ...d.helpers.map(h => h.user_id),
             ...d.limits.map(l => l.user_id), ...d.votes.map(v => v.voter_id), ...d.announcements.map(a => a.author_id || '')]);
@@ -924,8 +943,11 @@ export async function deleteEventCode(code: EventCode) {
 export async function redeemEventCode(eventId: string, code: string): Promise<boolean> {
     if (!state.user) { api.requireAccount?.('Sign in to use a code.'); return false; }
     try {
-        const { data, error } = await (await client()).rpc('redeem_event_code', { p_event: eventId, p_code: code });
+        const { data, error } = await (await client()).rpc('redeem_event_code', { p_event: eventId, p_code: code.trim() });
         if (error) throw error;
+        // failures come back as numbers, so the try still counts toward the guessing limit
+        const refused: Record<number, string> = { [-1]: 'That code doesn\'t work for this event.', [-2]: 'That code has been used up.', [-3]: 'Too many tries. Try again in a while.' };
+        if (refused[data]) throw new Error(refused[data]);
         toast(`Code accepted. You can send ${data} ${data === 1 ? 'entry' : 'entries'}.`, 'success');
         await loadEvent(eventId);
         return true;
@@ -1038,11 +1060,14 @@ export async function setFollowing(eventId: string, on: boolean): Promise<boolea
     } catch (e) { fail(e); return false; }
 }
 
-/** Posts an announcement: followers are notified, and emailed if they asked for that. */
-export async function postAnnouncement(eventId: string, title: string, body: string): Promise<boolean> {
+/**
+ * Posts an announcement: followers are notified, and emailed if they asked for
+ * that. `asEvent`: readers see the event as its poster, not you.
+ */
+export async function postAnnouncement(eventId: string, title: string, body: string, asEvent = false): Promise<boolean> {
     try {
         const c = await client();
-        const { data: id, error } = await c.rpc('post_event_announcement', { p_event: eventId, p_title: title.trim(), p_body: body.trim() });
+        const { data: id, error } = await c.rpc('post_event_announcement', { p_event: eventId, p_title: title.trim(), p_body: body.trim(), ...(asEvent ? { p_show_author: false } : {}) });
         if (error) throw error;
         toast('Announcement posted. Followers have been notified.', 'success');
         // the emails go out from the server; if that fails, the announcement stands
@@ -1062,6 +1087,48 @@ export async function deleteAnnouncement(a: Announcement) {
         if (!data?.length) throw new Error('You do not have permission to delete announcements.');
         await loadEvent(a.event_id);
     } catch (e) { fail(e); }
+}
+
+// ---- reactions ----
+
+/** Your reaction on the event, one each: the same emoji takes it back, another swaps it. */
+export async function toggleEventReaction(emoji: string) {
+    const d = events.detail;
+    if (!d?.event || !api.requireAccount?.('Sign in to react.')) return;
+    const had = d.myReactions.includes(emoji);
+    const before = { reactions: d.reactions, myReactions: d.myReactions };
+    const next = applyMyReaction(d.reactions, d.myReactions, had ? null : emoji);
+    d.reactions = next.reactions;
+    d.myReactions = next.my_reactions;
+    notify();
+    try {
+        const c = await client();
+        const mine = { event_id: d.event.id, user_id: me() };
+        const { error } = had ? await c.from('event_reactions').delete().match(mine) : await c.from('event_reactions').insert({ ...mine, emoji });
+        if (error && error.code !== '23505') throw error;
+    } catch (e: any) {
+        Object.assign(d, before);
+        notify();
+        toast(api.friendlyModerationError?.(e) || e?.message || 'Could not react.', 'error');
+    }
+}
+
+// ---- the audit log ----
+
+/** What the team has done on an event, newest first (the team reads it; triggers write it). */
+export async function loadAuditLog(eventId: string, before: number | null = null): Promise<AuditRow[]> {
+    let q = (await client()).from('event_audit_log').select('*').eq('event_id', eventId).order('id', { ascending: false }).limit(100);
+    if (before) q = q.lt('id', before);
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = (data || []) as AuditRow[];
+    // names for whoever acted, and whoever it was done to
+    const d = detailFor(eventId);
+    if (d) {
+        const ids = rows.flatMap(r => [r.actor_id || '', r.detail?.user_id || '', r.detail?.posted_by || '']).filter(id => id && !d.people[id]);
+        if (ids.length) Object.assign(d.people, await fetchPeople(ids));
+    }
+    return rows;
 }
 
 // ---- asking for changes ----
@@ -1394,6 +1461,7 @@ export async function fakemonForEntry(mon: any, maxArt = ART_MAX): Promise<any> 
     const copy = JSON.parse(JSON.stringify(mon));
     // the board it was drawn on points at the rest of the collection; the line goes in as `family` instead
     for (const k of ['id', 'createdAt', 'updatedAt', 'regionIds', 'folderId', 'pinned', 'pendingVanilla', 'family', 'evolutionGraph', 'sourceId']) delete copy[k];
+    if (typeof copy.name === 'string') copy.name = copy.name.trim().slice(0, NAME_MAX);
     for (const k of ['artwork', 'shinyArtwork']) {
         if (typeof copy[k] === 'string' && copy[k].startsWith('data:image/')) copy[k] = await shrinkImage(copy[k], 1200, maxArt).catch(() => '');
         else delete copy[k];
@@ -1533,7 +1601,12 @@ export const lineLabel = (m: LineMember) => m.isMega ? 'Mega' : m.isFormeChange 
 
 /** The Fakémon in a Woogidex export (one Fakémon, a list, or a whole collection backup) or a plain-text export. */
 export async function fakemonFromFile(file: File): Promise<any[]> {
-    const text = await file.text();
+    return fakemonFromText(await file.text());
+}
+
+/** fakemonFromFile's reading, for text pasted in (a plain-text export, or the JSON itself). */
+export function fakemonFromText(text: string): any[] {
+    if (!String(text || '').trim()) throw new Error('Paste a Woogidex export first.');
     let parsed: any;
     try { parsed = JSON.parse(text); } catch { try { parsed = api.parsePlainTextFakemon?.(text); } catch { parsed = null; } }
     const list = Array.isArray(parsed) ? parsed
@@ -1543,7 +1616,7 @@ export async function fakemonFromFile(file: File): Promise<any[]> {
         : parsed?.fakemon ? [parsed.fakemon] : [parsed];
     // a text export can be missing its name; the details dialog asks for it
     const mons = list.filter((m: any) => m && typeof m === 'object' && (m.name || m.species || m.type1));
-    if (!mons.length) throw new Error('No Fakémon found in that file. Use a Woogidex export (.json or .txt).');
+    if (!mons.length) throw new Error('No Fakémon found in that. Use a Woogidex export (plain text or .json).');
     return mons;
 }
 
@@ -1683,7 +1756,7 @@ export function myLibrary(kinds: LibKind[]): any[] {
 export async function libraryForEntry(item: any): Promise<any> {
     const copy = JSON.parse(JSON.stringify(item));
     for (const k of ['id', 'createdAt', 'updatedAt', 'regionIds', 'folderId', 'pinned', 'vanillaOf', 'customId']) delete copy[k];
-    copy.name = String(copy.name || '').trim();
+    copy.name = String(copy.name || '').trim().slice(0, NAME_MAX);
     if (typeof copy.artwork === 'string' && copy.artwork.startsWith('data:image/')) copy.artwork = await shrinkImage(copy.artwork, 512, 380_000).catch(() => '');
     if (!copy.artwork) delete copy.artwork;
     if (JSON.stringify(copy).length > 550_000) throw new Error('That one is too large to enter.');

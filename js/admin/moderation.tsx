@@ -5,7 +5,7 @@
 // js/features/moderation-model.ts.
 
 import { Icon } from '../app/components/Icon.tsx';
-import { commentLocation, logEntry, timeAgo, userStanding } from '../features/moderation-model.ts';
+import { commentKindLabel, commentLocation, logEntry, timeAgo, userStanding } from '../features/moderation-model.ts';
 import { ListState } from './ui.tsx';
 
 export function StandingPills({ user }: { user: any }) {
@@ -25,7 +25,7 @@ export function CommentRows({ comments, showAuthor = false, onDelete, loading, e
                 <div className="admin-comment-row" key={c.id}>
                     <div>
                         <div className="admin-comment-meta">
-                            <span className="admin-comment-kind">{c.kind === 'profile' ? 'profile' : 'fakemon'}</span>
+                            <span className="admin-comment-kind">{commentKindLabel(c.kind)}</span>
                             {showAuthor && <strong>{c.author_name || 'unknown'}</strong>}
                             <span>{commentLocation(c)}</span>
                             <span>{timeAgo(c.created_at)}</span>

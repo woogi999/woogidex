@@ -8,6 +8,7 @@ import { api, state } from '../../../core/app.ts';
 import { abilityRole, accuracyText } from '../../../editor/learnset-model.ts';
 import { Icon } from '../Icon.tsx';
 import { TypeDropdown, useClickAway } from './fields.tsx';
+import { NAME_MAX } from '../../../core/data.ts';
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 const CATEGORY_ICON: Record<string, string> = {
@@ -40,7 +41,7 @@ export function Autocomplete({ id, placeholder, text, setText, suggest, onPick, 
     const done = () => { if (!keepText) setText(''); setOpen(false); };
     return (
         <>
-            <input type="text" id={id} placeholder={placeholder} autoComplete="off" value={text}
+            <input type="text" id={id} placeholder={placeholder} autoComplete="off" maxLength={NAME_MAX} value={text}
                 onChange={e => { setText(e.target.value); setOpen(!!e.target.value.trim()); }}
                 onKeyDown={e => {
                     if (e.key !== 'Enter') return;
@@ -95,7 +96,7 @@ function AbilityEditRow({ ability, index, role, desc, dragProps, dragState }: an
             <div className="ability-body">
                 <div className="ability-name-wrap">
                     {/* uncontrolled: the list redraws on each keystroke and would fight the caret */}
-                    <input className="ability-name-input" type="text" defaultValue={ability.name || ''} placeholder="Ability name"
+                    <input className="ability-name-input" type="text" maxLength={NAME_MAX} defaultValue={ability.name || ''} placeholder="Ability name"
                         onChange={e => api.updateAbility(index, 'name', e.target.value)} />
                     <RoleLabel role={role} />
                 </div>

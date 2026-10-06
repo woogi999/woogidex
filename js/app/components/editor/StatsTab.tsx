@@ -122,7 +122,8 @@ function BulkComparison() {
     );
 }
 
-export function StatsTab() {
+/** evolutions: false leaves out the evolution board (an event entry's line is edited on its form instead). */
+export function StatsTab({ evolutions = true }: { evolutions?: boolean } = {}) {
     return (
         <>
             <div className="stat-toolbar-row">
@@ -151,8 +152,8 @@ export function StatsTab() {
                 </div>
             </div>
 
-            <div className="section-divider" />
-            <div className="evolution-section">
+            {evolutions && <div className="section-divider" />}
+            {evolutions && <div className="evolution-section">
                 <div className="evolution-section-header">
                     <div>
                         <div className="section-title">Evolutions and formes</div>
@@ -166,7 +167,7 @@ export function StatsTab() {
                 </div>
                 <EvolutionBoard />
                 <div className="evolution-help">Drag Pokémon to arrange them. Drag from a <strong>right handle</strong> to a <strong>left handle</strong> to connect them. Hover a connection and click the scissors to sever it. Stages are calculated automatically.</div>
-            </div>
+            </div>}
         </>
     );
 }

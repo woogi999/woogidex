@@ -37,9 +37,9 @@ export function Modal({ onClose, title, className = '', overlayClassName = '', c
         }
         const onKey = (event: KeyboardEvent) => {
             if (event.key === 'Escape' && dismissible && !event.defaultPrevented) {
-                // only the topmost dialog answers
+                // only the topmost dialog answers; a move or ability popup open on top of it closes first
                 const overlays = document.querySelectorAll('.modal-overlay.active');
-                if (overlays[overlays.length - 1] !== box.current?.parentElement) return;
+                if (overlays[overlays.length - 1] !== box.current?.parentElement || document.querySelector('.move-detail-popup')) return;
                 event.preventDefault();
                 closeRef.current();
             }

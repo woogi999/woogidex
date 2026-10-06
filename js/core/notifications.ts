@@ -119,6 +119,11 @@ function notificationText(n) {
     if (n.type === 'event_feedback') return `sent you feedback on your entry in ${n.target_name || 'an event'}:`;
     if (n.type === 'event_announcement') return `posted an announcement in ${n.target_name || 'an event'}:`;
     if (n.type === 'mention') return `mentioned you in ${n.target_name || 'a post'}`;
+    if (n.type === 'comment_reply') return 'replied to your comment';
+    if (n.type === 'mod_post_deleted') return 'removed one of your posts';
+    if (n.type === 'mod_profile_edited') return `${n.target_name === 'bio' ? 'cleared your profile bio' : 'reset your display name'}${n.preview ? '. Reason:' : ''}`;
+    if (n.type === 'mod_event_deleted') return `deleted your event${n.target_name ? ` "${n.target_name}"` : ''}`;
+    if (n.type === 'mod_event_unpublished') return `took your event${n.target_name ? ` "${n.target_name}"` : ''} off the site; it's a draft again`;
     return `commented on ${n.target_name || 'your Fakemon'}`;
 }
 
@@ -257,12 +262,15 @@ async function openNotification(id) {
         await api.openEvents?.(String(n.target_id).replace(/^event:/, ''));
     } else if ((n.type === 'event_edit_request' || n.type === 'event_feedback') && n.target_id) {
         await api.openEvents?.(`${String(n.target_id).replace(/^event:/, '')}/enter`);
-    } else if (n.type === 'mention' && n.target_id) {
-        // "post:<id>", "mon:<id>" or "profile:<id>": where you were mentioned
+    } else if ((n.type === 'mention' || n.type === 'comment_reply') && n.target_id) {
+        // "post:<id>", "mon:<id>", "profile:<id>" or "event:<id>": where it was
         const [kind, id] = String(n.target_id).split(':');
         if (kind === 'mon') await api.openPublishedMonById?.(id);
         else if (kind === 'profile') await api.showProfileView?.(id);
+        else if (kind === 'event') await api.openEvents?.(id);
         else await api.openPost?.(id);
+    } else if (n.type === 'mod_event_unpublished' && n.target_id) {
+        await api.openEvents?.(`${String(n.target_id).replace(/^event:/, '')}/dashboard`);
     } else if (n.type === 'repost' && n.target_id) {
         // "mon:<id>", "post:<id>" or "event:<id>": what was reposted
         const [kind, id] = String(n.target_id).split(':');
@@ -285,6 +293,7 @@ export const NOTIFICATION_KINDS: Array<[string, string, string]> = [
     ['profile_comment', 'Posts on your wall', 'When someone writes on your profile.'],
     ['repost', 'Reposts and shares', 'When someone reposts or shares your Fakémon or posts.'],
     ['mention', 'Mentions', 'When someone @mentions you in a post or comment.'],
+    ['comment_reply', 'Replies', 'When someone replies to one of your comments.'],
     ['event_announcement', 'Event announcements', 'When an event you follow posts an announcement. Entering an event follows it.']
 ];
 
