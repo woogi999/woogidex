@@ -227,7 +227,9 @@ export const events: {
     detail: Detail | null;
     /** a ballot in progress (Fakémon-contest scoring); kept in sessionStorage until it's sent */
     ballot: null | { eventId: string; order: string[]; index: number; scores: Record<string, Record<string, number>>; remarks: Record<string, string>; answers: Record<string, Record<string, any>> };
-} = { status: 'idle', error: '', list: [], helping: [], view: { kind: 'list' }, detail: null, ballot: null };
+    /** the list's tickets: reactions by emoji and how many comments, by event id (signed in) */
+    stats: Record<string, { reactions: Record<string, number>; comments: number }>;
+} = { status: 'idle', error: '', list: [], helping: [], view: { kind: 'list' }, detail: null, ballot: null, stats: {} };
 
 const client = () => api.getClient();
 /** Everything of an entry but who sent it (event_entry_authors hands that out). */
@@ -512,7 +514,19 @@ export async function fetchEvents(): Promise<EventRow[]> {
     events.list = (data || []).map((e: any) => ({ form: [], vote_form: [], criteria: [], winner_criteria: {}, vote_display: { fields: null, author: true }, description: '', ...e, cover_image: e.cover_image ?? null }));
     events.helping = (helping as any).data || [];
     notify();
+    loadListStats(events.list.map(e => e.id));
     return events.list;
+}
+
+/** Reactions and comment counts for the tickets; nice to have, so a failure (or no migration yet) just leaves them off. */
+async function loadListStats(ids: string[]) {
+    if (!me() || !ids.length) return;
+    try {
+        const { data, error } = await (await client()).rpc('event_list_stats', { p_ids: ids });
+        if (error) return;
+        for (const r of (data || []) as any[]) events.stats[r.event_id] = { reactions: r.reactions || {}, comments: Number(r.comments) || 0 };
+        notify();
+    } catch { /* offline */ }
 }
 
 export async function loadEventsList() {
@@ -608,6 +622,8 @@ export async function loadEvent(key: string) {
             d.reactions[r.emoji] = (d.reactions[r.emoji] || 0) + 1;
             if (r.user_id === me()) d.myReactions.push(r.emoji);
         }
+        // the list's ticket shows what the page now knows
+        if (events.stats[ev.id]) events.stats[ev.id].reactions = { ...d.reactions };
         // profiles are for signed-in readers only; a guest sees no names
         if (me()) d.people = await fetchPeople([ev.owner_id, ...d.entries.map(e => e.user_id || ''), ...d.helpers.map(h => h.user_id),
             ...d.limits.map(l => l.user_id), ...d.votes.map(v => v.voter_id), ...d.announcements.map(a => a.author_id || '')]);

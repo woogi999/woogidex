@@ -19,6 +19,13 @@ User-agent: *
 Allow: /
 Disallow: /js/
 Disallow: /supabase/
+# an event team's private spreadsheet links: nothing for a search result.
+# (/sb/, the Supabase proxy, stays allowed on purpose: it's where the app
+# loads its data from, and a crawler that renders the page needs it.)
+Disallow: /sheets/
+
+# every page worth a search result (worker/index.js builds it from the database)
+Sitemap: https://dex.woogi.xyz/sitemap.xml
 
 # NOT disallowed here on purpose: /admin.html. It carries
 # <meta name="robots" content="noindex, nofollow">, and a crawler that is

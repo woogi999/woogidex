@@ -8,6 +8,7 @@ import {
     type Poll, type PollDraft, type PollParent
 } from '../../features/polls.ts';
 import { Icon } from './Icon.tsx';
+import { EmojiInput, EmojiText } from './EmojiInput.tsx';
 import { useStore } from '../store.ts';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -46,7 +47,7 @@ function PollCard({ poll }: { poll: Poll }) {
     };
     return (
         <div className={`poll${results ? ' is-results' : ''}`} role="group" aria-label={poll.question || 'Poll'}>
-            {poll.question && <p className="poll-question">{poll.question}</p>}
+            {poll.question && <p className="poll-question"><EmojiText text={poll.question} /></p>}
             {poll.multi && !results && <p className="poll-hint">Pick as many as you like.</p>}
             <ul className="poll-options">
                 {poll.options.map((o, i) => {
@@ -60,12 +61,12 @@ function PollCard({ poll }: { poll: Poll }) {
                                     disabled={closed || !state.user} onClick={() => choose(i)} aria-pressed={mineHere}
                                     title={closed ? undefined : mineHere ? 'Your vote. Click to take it back.' : 'Vote for this'}>
                                     <span className="poll-bar" style={{ transform: `scaleX(${pct / 100})` }} aria-hidden="true" />
-                                    <span className="poll-label">{mineHere && <Icon name="check-circle" size={15} />}{o}</span>
+                                    <span className="poll-label">{mineHere && <Icon name="check-circle" size={15} />}<EmojiText text={o} /></span>
                                     <span className="poll-pct">{pct}%</span>
                                 </button>
                             ) : (
                                 <button type="button" className={`poll-choice${mineHere ? ' is-picked' : ''}`} aria-pressed={mineHere} onClick={() => choose(i)}>
-                                    <span className={`poll-mark${poll.multi ? ' is-box' : ''}`} aria-hidden="true">{mineHere && <Icon name="check" size={12} />}</span>{o}
+                                    <span className={`poll-mark${poll.multi ? ' is-box' : ''}`} aria-hidden="true">{mineHere && <Icon name="check" size={12} />}</span><EmojiText text={o} />
                                 </button>
                             )}
                         </li>
@@ -94,10 +95,11 @@ export function PollEditor({ value, onChange, onRemove, compact = false }: { val
                 <span><Icon name="chart-bar" size={15} />Poll</span>
                 <button type="button" className="link-btn" onClick={onRemove}>Remove poll</button>
             </div>
-            <input type="text" maxLength={200} value={value.question} onChange={e => set({ question: e.target.value })} placeholder="Ask a question (optional)" aria-label="Poll question" />
+            {/* our emojis and Apple's, the :name autocomplete and the picker, as everywhere else */}
+            <EmojiInput singleLine rows={1} mentions={false} maxLength={200} value={value.question} onChange={question => set({ question })} placeholder="Ask a question (optional)" ariaLabel="Poll question" className="poll-editor-input" />
             {value.options.map((o, i) => (
                 <div className="poll-editor-option" key={i}>
-                    <input type="text" maxLength={80} value={o} onChange={e => setOption(i, e.target.value)} placeholder={`Option ${i + 1}`} aria-label={`Option ${i + 1}`} />
+                    <EmojiInput singleLine rows={1} mentions={false} maxLength={80} value={o} onChange={text => setOption(i, text)} placeholder={`Option ${i + 1}`} ariaLabel={`Option ${i + 1}`} className="poll-editor-input" />
                     {value.options.length > 2 && <button type="button" className="poll-editor-x" aria-label={`Remove option ${i + 1}`} onClick={() => set({ options: value.options.filter((_, j) => j !== i) })}><Icon name="x-mark" size={14} /></button>}
                 </div>
             ))}

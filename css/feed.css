@@ -497,3 +497,31 @@
 .pick-post-event-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pick-post-event-text strong { font-size: 14px; overflow-wrap: anywhere; }
 .pick-post-event-text small { font-size: 12px; color: var(--text-muted); }
+
+/* ---- open Fakemon: the choice when publishing, and its badge ---- */
+.community-open-choice { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-panel); cursor: pointer; }
+.community-open-choice.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.community-open-choice input { margin-top: 3px; flex: 0 0 auto; }
+.community-open-choice-text { display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+.community-open-choice-text strong { display: inline-flex; align-items: center; gap: 6px; color: var(--text-primary); font-size: 14px; }
+.community-open-badge { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .02em; vertical-align: 1px; text-transform: none; }
+.community-signed-out-note { padding: 14px 16px; border-radius: 12px; background: var(--bg-panel); color: var(--text-secondary); font-size: 14px; }
+
+/* ---- a Fakemon's public preview, signed out (CommunityDetailPage MonTeaser) ---- */
+.mon-teaser-card { max-width: 760px; margin: 0 auto; padding: var(--sp-5, 24px); border: 1px solid var(--border); border-radius: var(--panel-r, 18px); background: var(--bg-card); box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 18px; }
+.mon-teaser-head h1 { margin: 0; font-size: 30px; line-height: 1.15; letter-spacing: -0.01em; }
+.mon-teaser-species { margin: 4px 0 8px; color: var(--text-secondary); font-weight: 600; }
+.mon-teaser-by { margin: 8px 0 0; color: var(--text-secondary); font-size: 14px; }
+.mon-teaser-section h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); display: flex; align-items: center; gap: 10px; }
+.mon-teaser-section p { margin: 0 0 6px; line-height: 1.6; }
+.mon-teaser-bst { padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); letter-spacing: .02em; }
+.mon-teaser-abilities { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.mon-teaser-abilities li { padding: 4px 10px; border-radius: 999px; background: var(--bg-panel); font-weight: 600; font-size: 13px; }
+.mon-teaser-stats { margin: 0; display: grid; gap: 6px; }
+.mon-teaser-stats > div { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 10px; font-size: 13px; }
+.mon-teaser-stats dt { color: var(--text-secondary); font-weight: 600; }
+.mon-teaser-stats dd { margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mon-teaser-bar { display: block; height: 8px; border-radius: 4px; background: var(--accent); opacity: .75; }
+.mon-teaser-cta { padding: 16px; border-radius: 14px; background: var(--accent-soft); display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.mon-teaser-cta p { margin: 0; line-height: 1.5; }
+.mon-teaser-head .card-types { display: flex; gap: 6px; flex-wrap: wrap; }

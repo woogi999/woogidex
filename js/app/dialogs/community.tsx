@@ -11,15 +11,17 @@ import type { Fakemon } from '../types.ts';
 
 // ==================== rules ====================
 
-type RulesProps = DialogProps<{ requireAgreement?: boolean; onAccept?: (() => void) | null }>;
+type RulesProps = DialogProps<{ requireAgreement?: boolean; offerOpen?: boolean; onAccept?: ((choice?: { open: boolean }) => void) | null }>;
 
-function CommunityRulesDialog({ close, requireAgreement = false, onAccept = null }: RulesProps) {
+function CommunityRulesDialog({ close, requireAgreement = false, offerOpen = false, onAccept = null }: RulesProps) {
     const [agreed, setAgreed] = useState(false);
+    // publishing: whether to make it open (off unless they choose it)
+    const [open, setOpen] = useState(false);
     function accept() {
         if (!agreed) { api.showToast?.('Please agree to the Community Rules first.', 'warning'); return; }
         api.markCommunityRulesAccepted?.();
         close();
-        onAccept?.();
+        onAccept?.({ open: offerOpen && open });
     }
     return (
         <Modal onClose={close} className="policy-modal community-rules-modal" labelledBy="community-rules-title"
@@ -38,6 +40,15 @@ function CommunityRulesDialog({ close, requireAgreement = false, onAccept = null
                     <li><strong>Do not upload malicious or harmful files.</strong></li>
                 </ul>
                 <p>Breaking these rules may result in content removal, account termination, and a permanent ban from the Community Hub and Woogidex.</p>
+                {offerOpen && (
+                    <label className={`community-open-choice${open ? ' is-on' : ''}`}>
+                        <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} />
+                        <span className="community-open-choice-text">
+                            <strong><Icon name="lock-open" size={15} /> Make it open</strong>
+                            <span>Share it freely: its artwork shows without the art shield, anyone can export it, and its page opens for people who aren't signed in and in search results. Only this Fakémon is opened, nothing else of yours. You can close it again later from its page, but copies people already exported stay out there.</span>
+                        </span>
+                    </label>
+                )}
                 <div className="policy-actions">
                     <div className="policy-check-row" style={{ display: 'flex' }}>
                         <label className="auth-terms-check">
@@ -45,7 +56,7 @@ function CommunityRulesDialog({ close, requireAgreement = false, onAccept = null
                             <span>I have read and agree to the Community Rules.</span>
                         </label>
                     </div>
-                    <button type="button" className="btn btn-primary" onClick={accept}>I Agree and Continue</button>
+                    <button type="button" className="btn btn-primary" onClick={accept}>{offerOpen && open ? 'I Agree and Publish as Open' : 'I Agree and Continue'}</button>
                 </div>
             </div>
         </Modal>

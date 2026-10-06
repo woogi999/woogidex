@@ -74,9 +74,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Inconsolata:wght@400;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Inconsolata:wght@400;600;700;800&display=swap" rel="stylesheet"></noscript>
     <link rel="icon" type="image/png" href="assets/favicon.png">
-    <!-- artwork is hand-drawn; asks well-behaved crawlers to stay out of it
-         (robots.txt carries the same refusal in full) -->
-    <meta name="robots" content="noai, noimageai, max-image-preview:standard">
+    <!-- pages are welcome in search results; the artwork is hand-drawn and
+         stays out of image search and AI training (robots.txt carries the
+         same refusal in full). worker/index.js sets this per page, and lifts
+         the image rules for a Fakemon its author made open -->
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:none, noimageindex, noai, noimageai">
     <!-- stylesheets, in cascade order -- THE ORDER IS LOAD-BEARING: later
          files restyle classes from earlier ones, and responsive.css sits
          after the desktop rules it overrides. Adding a file is fine;

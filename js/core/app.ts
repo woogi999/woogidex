@@ -231,8 +231,27 @@ function setPageTitle(subtitle) {
 // own tags in step, which the browser's share sheet and some apps read.
 const DEFAULT_SHARE = (() => {
     const read = (sel: string) => document.querySelector<HTMLMetaElement>(sel)?.content || '';
-    return { description: read('meta[name="description"]'), image: read('meta[property="og:image"]') };
+    return { description: read('meta[name="description"]'), image: read('meta[property="og:image"]'), robots: read('meta[name="robots"]') };
 })();
+
+/**
+ * What search engines may do with this page (the <meta name="robots"> the
+ * worker also sets on the first load, worker/index.js). '' puts back the
+ * page's default; every route change does that, so a "noindex" set for a
+ * missing page can't stick to the next one.
+ */
+function setRobots(content = '') {
+    let el = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (!el) { el = document.createElement('meta'); el.name = 'robots'; document.head.appendChild(el); }
+    el.content = content || DEFAULT_SHARE.robots || 'noai, noimageai, noimageindex';
+}
+
+/** The page's one true address, for search engines (no query, no trailing slash). */
+function setCanonical(path = window.location.pathname) {
+    let el = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (!el) { el = document.createElement('link'); el.rel = 'canonical'; document.head.appendChild(el); }
+    el.href = window.location.origin + (String(path).replace(/\/+$/, '') || '/');
+}
 function setMeta(key: string, value: string) {
     const attr = key.startsWith('og:') ? 'property' : 'name';
     const el = document.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
@@ -248,7 +267,7 @@ function setShareMeta({ title = '', description = '', image = '' }: { title?: st
     setMeta('twitter:image', image || DEFAULT_SHARE.image);
     setMeta('og:url', window.location.href.split('#')[0]);
 }
-router.onRouteChange(() => setMeta('og:url', window.location.href.split('#')[0]));
+router.onRouteChange(() => { setMeta('og:url', window.location.href.split('#')[0]); setRobots(); setCanonical(); });
 
 function setRoute(path, title) {
     setPageTitle(title);
@@ -362,7 +381,7 @@ const battleStubs = {
 
 Object.assign(api, data, editor, sampleSets, editorCore, pokedex, storage, exporter, showdownExport, essentialsExport, evolution, analysis, auth, community, notifications, moderation, events, battleStubs, abilityBlocks, nameRoll, fieldRoll, protect, router, recovery, cloudSave, legal, accountDeletion, oauth, globalSearch, regions, customTypes, entityArt, feedback, moveInheritance, social, messaging, updates, settingsApi, {
     loadDarkMode, toggleDarkMode, updateDarkModeUI, openSettings, takeSettingsTab, isDarkModeEnabled,
-    setRoute, setPageTitle, setShareMeta, activateTopLevelView,
+    setRoute, setPageTitle, setShareMeta, setRobots, setCanonical, showNotFound, activateTopLevelView,
     updateSettingsUI, loadSettings, showToast
 });
 
@@ -540,6 +559,8 @@ async function handleRoute(route) {
 function showNotFound(path) {
     activateTopLevelView('not-found-view');
     setPageTitle('Page not found');
+    // a page that isn't there shouldn't end up in search results as one that is
+    setRobots('noindex, nofollow');
     log.info('ROUTER', 'No route for this path', { path });
 }
 

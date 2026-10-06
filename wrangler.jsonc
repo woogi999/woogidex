@@ -17,9 +17,11 @@
     "not_found_handling": "single-page-application",
     "binding": "ASSETS",
     "run_worker_first": [
-      "/sb/*", "/og-image/*", "/og-event/*", "/sheets/*", "/turn-credentials",
+      "/sb/*", "/og-image/*", "/og-event/*", "/sheets/*", "/turn-credentials", "/sitemap.xml",
       "/community/*", "/post/*", "/profile/*", "/events/*",
-      "/", "/collection", "/community", "/events", "/battle", "/updates", "/messages", "/privacy", "/terms"
+      "/", "/collection", "/community", "/events", "/battle", "/updates", "/messages", "/privacy", "/terms",
+      // signed-in-only pages, served with "noindex" so they stay out of search results
+      "/collection/*", "/messages/*", "/settings", "/settings/*", "/search", "/search/*", "/editor", "/editor/*", "/ability-editor", "/ability-editor/*"
     ]
   }
 }

@@ -8,8 +8,9 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { appleEmojiUrl, emojiByName, emojiCategories, isUnicodeKey, loadUnicodeEmoji, replaceShortcodes, searchEmojis, searchUnicodeEmojis, unicodeChar, type Emoji, type UnicodeEmoji } from '../../core/emoji.ts';
+import { appleEmojiUrl, emojifyHtml, emojiByName, emojiCategories, isUnicodeKey, loadUnicodeEmoji, replaceShortcodes, scoreEmoji, searchEmojis, searchUnicodeEmojis, setSkinTone, skinTone, unicodeChar, withTone, type Emoji, type UnicodeEmoji } from '../../core/emoji.ts';
 import { renderCommentMarkdown } from '../../core/data.ts';
+import { esc } from '../../core/html.ts';
 import { api } from '../../core/app.ts';
 import { Avatar } from './Avatar.tsx';
 import { Icon } from './Icon.tsx';
@@ -26,6 +27,12 @@ function rememberEmoji(name: string) {
 
 export function EmojiImg({ emoji, size = 22 }: { emoji: Emoji; size?: number }) {
     return <img className="emoji" src={emoji.src} alt={`:${emoji.name}:`} title={`:${emoji.name}:`} width={size} height={size} loading="lazy" decoding="async" draggable={false} />;
+}
+
+/** One line of plain text with its emojis drawn (ours and Apple's), no markdown: a poll's question and options. */
+export function EmojiText({ text, className = '' }: { text: string; className?: string }) {
+    const html = useMemo(() => emojifyHtml(esc(text)), [text]);
+    return <span className={`emoji-text ${className}`.trim()} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /** Text with markdown and emojis, the way comments and posts read. An @name opens that profile. */
@@ -62,13 +69,19 @@ export function EmojiGlyph({ code, size = 22 }: { code: string; size?: number })
     return e ? <EmojiImg emoji={e} size={size} /> : null;
 }
 
-/**
- * Our emojis first (Woogidex, Pokémon, ...), then the standard ones by group.
- * onPick gets a custom emoji's name, or a standard one's "u_..." key.
- */
 /** The quick row reaction pickers open with, Facebook style. */
 export const QUICK_REACTIONS = ['heart', 'u_1f602', 'u_1f62e', 'u_1f622', 'u_1f525', 'u_1f44d', 'u_1f389'];
 
+/** The skin tone chooser's hand, in each tone (0 is the plain yellow). */
+const TONE_HAND = ['u_270b', 'u_270b_1f3fb', 'u_270b_1f3fc', 'u_270b_1f3fd', 'u_270b_1f3fe', 'u_270b_1f3ff'];
+const TONE_NAMES = ['Default', 'Light', 'Medium-light', 'Medium', 'Medium-dark', 'Dark'];
+
+/**
+ * Our emojis first (Woogidex, Pokémon, ...), then the standard ones by group,
+ * in the skin tone picked here. The search box ranks ours and the standard
+ * ones together, by shortcode, name or synonym, typos forgiven.
+ * onPick gets a custom emoji's name, or a standard one's "u_..." key.
+ */
 export function EmojiPicker({ onPick, onClose, quick }: { onPick: (code: string) => void; onClose?: () => void; quick?: string[] }) {
     const [query, setQuery] = useState('');
     const categories = useMemo(() => emojiCategories(), []);
@@ -79,26 +92,36 @@ export function EmojiPicker({ onPick, onClose, quick }: { onPick: (code: string)
         return () => { live = false; };
     }, []);
     const [tab, setTab] = useState<string>(() => (recentEmojis().length ? 'recent' : categories[0]?.key || ''));
-    const pick = (code: string) => { rememberEmoji(code); onPick(code); };
+    const [tone, setTone] = useState(skinTone);
+    const [toneOpen, setToneOpen] = useState(false);
+    const chooseTone = (n: number) => { setSkinTone(n); setTone(n); setToneOpen(false); };
+    const pick = (code: string, plain?: string) => {
+        // reactions are stored as keys of at most 48 characters; the few toned
+        // couples longer than that react in their plain yellow
+        const sent = quick && code.length > 48 && plain ? plain : code;
+        rememberEmoji(sent);
+        onPick(sent);
+    };
 
-    type Cell = { code: string; title: string };
+    type Cell = { code: string; title: string; plain?: string };
     const ours = (list: Emoji[]): Cell[] => list.map(e => ({ code: e.name, title: `:${e.name}:` }));
-    const theirs = (list: UnicodeEmoji[]): Cell[] => list.map(e => ({ code: e.key, title: `:${e.codes[0]}:` }));
+    const theirs = (e: UnicodeEmoji, code?: string): Cell => {
+        const shown = withTone(e, tone);
+        const c = code || shown.codes[0];
+        return { code: shown.key, title: c ? `:${c}: ${e.name}` : e.name, plain: (e.base || e).key };
+    };
     const q = query.trim().toLowerCase().replace(/^:|:$/g, '');
-    let shown: Cell[];
-    if (q) {
-        // by Discord shortcode (sob) or by name (crying)
-        const all = standard.flatMap(g => g.emojis);
-        const starts = all.filter(e => e.codes.some(c => c.startsWith(q)) || e.name.startsWith(q) || e.name.includes(' ' + q));
-        const contains = all.filter(e => !starts.includes(e) && (e.name.includes(q) || e.codes.some(c => c.includes(q))));
-        shown = [...ours(searchEmojis(q, 80)), ...theirs([...starts, ...contains].slice(0, 120))];
-    } else if (tab === 'recent') {
-        shown = recentEmojis().filter(c => isUnicodeKey(c) || emojiByName(c)).map(c => ({ code: c, title: isUnicodeKey(c) ? unicodeChar(c) : `:${c}:` }));
-    } else if (tab.startsWith('std:')) {
-        shown = theirs(standard.find(g => g.label === tab.slice(4))?.emojis || []);
-    } else {
-        shown = ours(categories.find(c => c.key === tab)?.emojis || []);
-    }
+    const shown: Cell[] = useMemo(() => {
+        if (q) {
+            // ours and the standard ones in one ranking
+            const mine = categories.flatMap(c => c.emojis).map(e => ({ cell: ours([e])[0], score: scoreEmoji(e, q) })).filter(x => x.score > 0);
+            const std = searchUnicodeEmojis(q, 160).map(r => ({ cell: { ...theirs(r.emoji, r.code) }, score: r.score }));
+            return [...mine, ...std].sort((a, b) => b.score - a.score).slice(0, 160).map(x => x.cell);
+        }
+        if (tab === 'recent') return recentEmojis().filter(c => isUnicodeKey(c) || emojiByName(c)).map(c => ({ code: c, title: isUnicodeKey(c) ? unicodeChar(c) : `:${c}:` }));
+        if (tab.startsWith('std:')) return (standard.find(g => g.label === tab.slice(4))?.emojis || []).map(e => theirs(e));
+        return ours(categories.find(c => c.key === tab)?.emojis || []);
+    }, [q, tab, tone, standard, categories]);
     return (
         <div className="emoji-picker" role="dialog" aria-label="Emoji picker" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose?.(); } }}>
             {quick && quick.length > 0 && (
@@ -110,8 +133,24 @@ export function EmojiPicker({ onPick, onClose, quick }: { onPick: (code: string)
                     ))}
                 </div>
             )}
-            <input className="emoji-picker-search" type="search" placeholder="Find an emoji" value={query} autoFocus
-                onChange={e => setQuery(e.target.value)} aria-label="Search emojis" />
+            <div className="emoji-picker-searchrow">
+                <input className="emoji-picker-search" type="search" placeholder="Find an emoji (try “sad” or “thumbs”)" value={query} autoFocus
+                    onChange={e => setQuery(e.target.value)} aria-label="Search emojis" />
+                <button type="button" className="emoji-tone-button" aria-haspopup="true" aria-expanded={toneOpen}
+                    title={`Skin tone: ${TONE_NAMES[tone]}`} aria-label={`Skin tone: ${TONE_NAMES[tone]}`} onClick={() => setToneOpen(o => !o)}>
+                    <EmojiGlyph code={TONE_HAND[tone]} size={20} />
+                </button>
+            </div>
+            {toneOpen && (
+                <div className="emoji-tone-row" role="radiogroup" aria-label="Skin tone">
+                    {TONE_HAND.map((code, n) => (
+                        <button key={code} type="button" role="radio" aria-checked={tone === n} className={`emoji-tone-option${tone === n ? ' active' : ''}`}
+                            title={TONE_NAMES[n]} aria-label={TONE_NAMES[n]} onClick={() => chooseTone(n)}>
+                            <EmojiGlyph code={code} size={22} />
+                        </button>
+                    ))}
+                </div>
+            )}
             {!q && (
                 <div className="emoji-picker-tabs" role="tablist">
                     {recentEmojis().length > 0 && <button type="button" className={tab === 'recent' ? 'active' : ''} onClick={() => setTab('recent')} title="Recently used"><Icon name="clock" size={16} /></button>}
@@ -130,10 +169,10 @@ export function EmojiPicker({ onPick, onClose, quick }: { onPick: (code: string)
             )}
             <div className="emoji-picker-grid">
                 {shown.length ? shown.map(c => (
-                    <button key={c.code} type="button" className="emoji-picker-cell" title={c.title} onClick={() => pick(c.code)}>
+                    <button key={c.code} type="button" className="emoji-picker-cell" title={c.title} onClick={() => pick(c.code, c.plain)}>
                         <EmojiGlyph code={c.code} size={28} />
                     </button>
-                )) : <div className="emoji-picker-empty">{tab.startsWith('std:') && !standard.length ? 'Loading…' : 'No emoji called that.'}</div>}
+                )) : <div className="emoji-picker-empty">{(q || tab.startsWith('std:')) && !standard.length ? 'Loading…' : 'No emoji called that.'}</div>}
             </div>
         </div>
     );
@@ -227,6 +266,8 @@ interface EmojiInputProps {
     variables?: Array<[string, string]>;
     /** "@na" offers people to mention (on unless turned off) */
     mentions?: boolean;
+    /** one line, like a text field: Enter never adds a line break (a poll option) */
+    singleLine?: boolean;
 }
 
 /** The "@na" being typed right before the caret, if any. */
@@ -325,13 +366,15 @@ interface EmojiMatch { code: string; label: string; insert: string; }
 
 /** Ours and the standard ones (by Discord shortcode) for a ":ta", ours first but never crowding the others out. */
 function emojiMatches(query: string, limit = 8): EmojiMatch[] {
-    const ours = searchEmojis(query, limit).map(e => ({ code: e.name, label: e.name, insert: `:${e.name}:` }));
-    const theirs = searchUnicodeEmojis(query, limit).map(({ code, emoji }) => ({ code: emoji.key, label: code, insert: emoji.char }));
-    const keep = Math.max(limit - theirs.length, Math.min(ours.length, limit / 2));
-    return [...ours.slice(0, keep), ...theirs].slice(0, limit);
+    // one ranking for both (js/core/fuzzy.ts); a typo still matches, a stray
+    // letters-in-order hit doesn't crowd the list
+    const MIN = 40;
+    const ours = searchEmojis(query, limit).map(e => ({ m: { code: e.name, label: e.name, insert: `:${e.name}:` }, score: scoreEmoji(e, query) }));
+    const theirs = searchUnicodeEmojis(query, limit, MIN).map(({ code, emoji, score }) => ({ m: { code: emoji.key, label: code, insert: emoji.char }, score }));
+    return [...ours.filter(x => x.score >= MIN), ...theirs].sort((a, b) => b.score - a.score).slice(0, limit).map(x => x.m);
 }
 
-export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, className = '', autoFocus, disabled, onSubmit, tools, ariaLabel, onPaste, toolbar = false, variables, mentions = true }: EmojiInputProps) {
+export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, className = '', autoFocus, disabled, onSubmit, tools, ariaLabel, onPaste, toolbar = false, variables, mentions = true, singleLine = false }: EmojiInputProps) {
     const box = useRef<HTMLTextAreaElement>(null);
     const [caret, setCaret] = useState(0);
     const [active, setActive] = useState(0);
@@ -439,6 +482,7 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
             if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); complete(matches[active] || matches[0]); return; }
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(true); return; }
         }
+        if (singleLine && e.key === 'Enter' && !onSubmit) { e.preventDefault(); return; }
         if (onSubmit && e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             onSubmit();
@@ -448,7 +492,7 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
     const track = () => setCaret(box.current?.selectionStart ?? 0);
 
     return (
-        <div className={`emoji-input${toolbar ? ' has-toolbar' : ''} ${className}`.trim()}>
+        <div className={`emoji-input${toolbar ? ' has-toolbar' : ''}${singleLine ? ' is-single-line' : ''} ${className}`.trim()}>
             {toolbar && <FormatBar apply={applyFormat} variables={variables} onVariable={insertVariable} />}
             {peopleShown.length > 0 && (
                 <div className="emoji-autocomplete mention-autocomplete" role="listbox" aria-label="People to mention">
@@ -479,7 +523,7 @@ export function EmojiInput({ value, onChange, placeholder, maxLength, rows = 3, 
                 onChange={e => {
                     setDismissed(false);
                     // a finished :sob: becomes 😭 as it's typed (or pasted), like Discord
-                    const typed = e.target.value;
+                    const typed = singleLine ? e.target.value.replace(/\r?\n/g, ' ') : e.target.value;
                     const done = replaceShortcodes(typed, e.target.selectionStart);
                     onChange(done.text);
                     setCaret(done.caret);

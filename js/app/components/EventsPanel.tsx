@@ -32,7 +32,7 @@ import {
     type Criterion, type EventCode, type EventTab, type Remarks, type Stage, type Voting, type WinnerRules
 } from '../../features/events.ts';
 import { Avatar } from './Avatar.tsx';
-import { EmojiInput, RichText } from './EmojiInput.tsx';
+import { EmojiGlyph, EmojiInput, RichText } from './EmojiInput.tsx';
 import { Icon } from './Icon.tsx';
 import { Modal } from './Modal.tsx';
 import { PokedexBoard } from './board/PokedexBoard.tsx';
@@ -188,6 +188,51 @@ function keyDate(ev: EventRow): [string, string | null] {
 
 const stubDate = (v: string | null) => v ? new Date(v).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
 
+const fullDate = (v: string) => new Date(v).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+/** Every stage's dates in full, for the ticket's body (the stub keeps the one that matters now). */
+function TicketSchedule({ ev }: { ev: EventRow }) {
+    const rows: Array<[string, string | null, string | null]> = [
+        ['Entries', ev.submissions_open_at, ev.submissions_close_at],
+        ...(ev.voting !== 'none' ? [['Voting', ev.voting_open_at, ev.voting_close_at] as [string, string | null, string | null]] : []),
+        ['Results', ev.results_at, null]
+    ];
+    const shown = rows.filter(([, a, b]) => a || b);
+    if (!shown.length) return null;
+    return (
+        <span className="ev-ticket-dates">
+            {shown.map(([label, a, b]) => (
+                <span key={label} className="ev-ticket-date">
+                    <span className="ev-ticket-date-label">{label}</span>
+                    <span>{a && <time dateTime={a}>{fullDate(a)}</time>}{a && b && ' – '}{b && <time dateTime={b}>{fullDate(b)}</time>}</span>
+                </span>
+            ))}
+        </span>
+    );
+}
+
+/** The reactions (top three, and how many) and comment count. */
+function TicketStats({ ev }: { ev: EventRow }) {
+    const st = events.stats[ev.id];
+    if (!st) return null;
+    const top = Object.entries(st.reactions).sort((a, b) => b[1] - a[1]);
+    const total = top.reduce((n, [, c]) => n + c, 0);
+    if (!total && !st.comments) return null;
+    return (
+        <span className="ev-ticket-stats">
+            {total > 0 && (
+                <span className="ev-ticket-reacts" title={`${total} reaction${total === 1 ? '' : 's'}`}>
+                    <span className="ev-ticket-react-icons">{top.slice(0, 3).map(([k]) => <span key={k} className="ev-ticket-react-icon"><EmojiGlyph code={k} size={16} /></span>)}</span>
+                    {total}
+                </span>
+            )}
+            <span className="ev-ticket-comments" title={`${st.comments} comment${st.comments === 1 ? '' : 's'}`}>
+                <Icon name="chat-bubble-left-right" size={14} />{st.comments}
+            </span>
+        </span>
+    );
+}
+
 /** An event as a ticket: the event on the left, where it's at on the tear-off stub. */
 function Ticket({ ev, manage = false }: { ev: EventRow; manage?: boolean }) {
     const p = permsFor(ev);
@@ -202,6 +247,8 @@ function Ticket({ ev, manage = false }: { ev: EventRow; manage?: boolean }) {
                     <span className="ev-meta-line">{ev.category || 'Event'}</span>
                     <strong className="ev-ticket-title">{ev.title}</strong>
                     {ev.tagline && <span className="ev-ticket-tagline">{ev.tagline}</span>}
+                    <TicketSchedule ev={ev} />
+                    <TicketStats ev={ev} />
                 </span>
             </button>
             <div className="ev-ticket-stub">

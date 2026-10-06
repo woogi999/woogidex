@@ -331,6 +331,13 @@ export function tagsIn(text: string): string[] {
     return [...tags].slice(0, 8);
 }
 
+/** The database's "a post needs something in it" rule (community_posts_check), in words. */
+function emptyPostMessage(error: any): string {
+    return error?.code === '23514' && /community_posts_check/.test(error?.message || '')
+        ? 'A post needs some text, a Fakémon, an event or a poll.'
+        : '';
+}
+
 export async function createPost({ body = '', monIds = [] as string[], eventIds = [] as string[], poll = null as PollDraft | null }): Promise<string | null> {
     if (!api.requireAccount?.('Sign in to post.')) return null;
     const text = String(body || '').trim();
@@ -340,12 +347,15 @@ export async function createPost({ body = '', monIds = [] as string[], eventIds 
     if (text.length > 4000) { api.showToast?.('Posts can be up to 4000 characters.', 'warning'); return null; }
     if (text && !(await api.guardContent?.(text, 'community post') ?? true)) return null;
     const client = await api.getClient();
+    // a post that's only a poll: the poll goes in after the post, so has_poll
+    // tells the database's "a post needs something in it" rule one is coming
+    const pollOnly = !!poll && !text && !monIds.length && !eventIds.length;
     const { data, error } = await client.from('community_posts')
-        .insert({ user_id: state.user!.id, body: text, mon_ids: monIds.slice(0, 12), tags: tagsIn(text), ...(eventIds.length ? { event_ids: eventIds.slice(0, 4) } : {}) })
+        .insert({ user_id: state.user!.id, body: text, mon_ids: monIds.slice(0, 12), tags: tagsIn(text), ...(eventIds.length ? { event_ids: eventIds.slice(0, 4) } : {}), ...(pollOnly ? { has_poll: true } : {}) })
         .select('id').single();
     if (error) {
         log.error('SOCIAL', 'Post failed', error);
-        api.showToast?.(api.friendlyModerationError?.(error) || error.message || 'Could not post.', 'error');
+        api.showToast?.(emptyPostMessage(error) || api.friendlyModerationError?.(error) || error.message || 'Could not post.', 'error');
         return null;
     }
     // a post whose poll didn't attach comes back down, so the composer keeps it all for another try
@@ -369,7 +379,7 @@ export async function editPost(postId: string, body: string): Promise<boolean> {
     if (text && !(await api.guardContent?.(text, 'community post') ?? true)) return false;
     const client = await api.getClient();
     const { data, error } = await client.from('community_posts').update({ body: text, tags: tagsIn(text) }).eq('id', postId).select('id, body, tags, edited_at');
-    if (error || !data?.length) { api.showToast?.(api.friendlyModerationError?.(error) || error?.message || 'Could not edit that post.', 'error'); return false; }
+    if (error || !data?.length) { api.showToast?.(emptyPostMessage(error) || api.friendlyModerationError?.(error) || error?.message || 'Could not edit that post.', 'error'); return false; }
     patchPostEverywhere(postId, data[0]);
     api.showToast?.('Post updated.', 'success');
     return true;

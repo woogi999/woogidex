@@ -98,3 +98,21 @@ span.avatar-frame { display: inline-block; overflow: hidden; flex-shrink: 0; pad
    edges, no smoothing), like Photoshop's Nearest Neighbor resample. Not
    avatars, emojis or anything else, which scale smoothly as normal. */
 canvas.shielded-art:not(.avatar-art) { image-rendering: pixelated; }
+
+/* ==================== open Fakemon ====================
+   its author shared it freely: an ordinary picture you can drag, save or
+   share, no blur when the tab loses focus (js/core/protect.ts leaves it too) */
+.is-open-mon .board-artwork-left img,
+.is-open-mon img.open-art {
+    -webkit-user-drag: auto;
+    user-drag: auto;
+    -webkit-touch-callout: default;
+    user-select: auto;
+}
+body.protect-shielded #pokedex-board-community .is-open-mon .board-artwork-left img,
+body.protect-shielded .is-open-mon .board-artwork-left img,
+body.protect-shielded .is-open-mon img { filter: none; }
+img.open-art { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; margin: 0 auto; }
+@media print {
+    #community-detail-view:has(.is-open-mon) { display: block !important; }
+}

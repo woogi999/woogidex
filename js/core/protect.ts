@@ -54,6 +54,8 @@ function armShieldBriefly(ms = 1200) {
 }
 
 function isProtectedImage(target) {
+    // an open Fakemon's author shared it freely (CommunityDetailPage.tsx)
+    if (target && target.closest && target.closest('.is-open-mon')) return false;
     return !!(target && target.closest && target.closest(PROTECTED_IMG));
 }
 

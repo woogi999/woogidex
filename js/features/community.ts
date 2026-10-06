@@ -6,7 +6,8 @@ import { openDialog, closeDialog } from '../app/dialogs.tsx';
 import '../app/dialogs/community.tsx';
 import { getCommunityDexNumber } from './community-feed-model.ts';
 import { getCachedArt, getCachedArtBatch, putCachedArt, dropCachedArt } from '../core/art-cache.ts';
-import { artworkBlob, frameCount, maskedArtwork, artworkDataUri } from '../core/art-shield.ts';
+import { artworkBlob, frameCount, maskedArtwork, artworkDataUri, isMaskedArtwork } from '../core/art-shield.ts';
+import { confirmDialog } from '../core/confirm-dialog.ts';
 import { cloudLimits, refreshCloudLimits, asCap } from './cloud-save.ts';
 
 // ==================== live roles ====================
@@ -78,6 +79,7 @@ function ensureCommunityState() {
             loading: false,
             openMonId: null as any,   // currently open detail page, if any
             openMonRow: null as any,  // the full row object for the open detail page
+            teaser: null as any,      // signed out, not open: the public preview (seo_mon)
             search: '',
             sortBy: 'activity',
             sortOrder: 'desc',
@@ -210,7 +212,7 @@ function describeCooldown(seconds) {
     return `once every ${seconds} seconds`;
 }
 
-async function publishSnapshot(mon, rulesChecked = false) {
+async function publishSnapshot(mon, rulesChecked = false, open = false) {
     // the database refuses longer names too (guard_mon_name); say so before the rules dialog
     if (String(mon?.name || '').trim().length > NAME_MAX) {
         api.showToast?.(`Names can be up to ${NAME_MAX} characters. Shorten "${String(mon.name).trim()}" in the editor first.`, 'warning');
@@ -218,7 +220,8 @@ async function publishSnapshot(mon, rulesChecked = false) {
     }
     // show rules on every upload, even if previously accepted.
     if (!rulesChecked) {
-        openCommunityRulesModal({ requireAgreement: true, onAccept: () => publishSnapshot(mon, true) });
+        // the rules dialog also asks whether to make it open (no art shield, anyone can export it)
+        openCommunityRulesModal({ requireAgreement: true, offerOpen: true, onAccept: (choice?: { open?: boolean }) => publishSnapshot(mon, true, !!choice?.open) });
         return;
     }
     const client = await api.getClient();
@@ -274,7 +277,9 @@ async function publishSnapshot(mon, rulesChecked = false) {
         fakemon_data: { ...(await withThumbnail(display.mon)), customTypes: postCustomTypes(family) },
         evolution_stage: display.stage || display.mon.evolutionStage || 1,
         family_snapshots: isFamily ? buildFamilySnapshotsPayload(family) : [],
-        family_full: isFamily ? buildFamilyFullPayload(family) : []
+        family_full: isFamily ? buildFamilyFullPayload(family) : [],
+        // only sent when chosen, so publishing still works before the open-mons migration
+        ...(open ? { is_open: true } : {})
     };
     // scan authored text only (not artwork) - same fields the server-side scan reads.
     if (!(await api.guardContent?.(monTextForScreening(payload), 'published Fakemon') ?? true)) return;
@@ -295,7 +300,7 @@ async function publishSnapshot(mon, rulesChecked = false) {
     }
     const copied = published?.id ? await copyCommunityShareLink(published.id, true) : false;
     const extra = isFamily ? ` (with its ${family.length - 1} other evolution stage${family.length - 1 === 1 ? '' : 's'})` : '';
-    api.showToast?.(`${mon.name} published to the Community Hub!${extra}${copied ? ' Share link copied.' : ''}`, 'success');
+    api.showToast?.(`${mon.name} published to the Community Hub${open ? ' as open' : ''}!${extra}${copied ? ' Share link copied.' : ''}`, 'success');
     log.info('COMMUNITY', 'Published', { id: published?.id, name: mon.name, familySize: family.length });
     // feed and profile gallery changed - invalidate caches.
     ensureCommunityState().fetchedAt = 0;
@@ -430,15 +435,24 @@ function updateOpenCommunityMon() {
 }
 
 async function openPublishedMonById(publishedId, options: Record<string, any> = {}) {
-    // Shared links land here - hold the link, sign the visitor in, then open
-    // the Fakemon they came for.
-    if (!api.requireAccount?.('Sign in to view this Fakemon.',
+    // Shared links land here. An open Fakemon opens for anyone; any other
+    // holds the link, signs the visitor in, then opens the Fakemon they came for.
+    const open = !state.user ? await fetchMonDetailRow(publishedId).catch(() => null) : null;
+    // signed out and not open: the public preview (text only, no artwork)
+    // with a way to sign in, rather than nothing but a sign-in box. It's
+    // also what a search engine reads.
+    if (!open && !state.user) {
+        const shown = await openMonTeaser(publishedId);
+        if (shown !== undefined) return shown;
+    }
+    if (!open && !api.requireAccount?.('Sign in to view this Fakemon.',
         () => openPublishedMonById(publishedId, options))) return false;
-    const data = await fetchMonDetailRow(publishedId);
+    const data = open || await fetchMonDetailRow(publishedId);
     if (!data) { api.showToast?.('Could not load that Fakemon.', 'error'); return false; }
+    if (open) data.__full = true;
     const cs = ensureCommunityState();
     cs.mons = [data, ...(cs.mons || []).filter(x => x.id !== data.id)];
-    await attachLiveAuthorInfo(cs.mons);
+    if (state.user) await attachLiveAuthorInfo(cs.mons);
     await openMonDetail(publishedId, options);
     return true;
 }
@@ -667,8 +681,8 @@ function hasAcceptedCommunityRules() {
 }
 
 /** The rules dialog (js/app/dialogs/community.tsx); onAccept runs once they're agreed to. */
-function openCommunityRulesModal({ requireAgreement = false, onAccept = null }: { requireAgreement?: any; onAccept?: any } = {}) {
-    openDialog('community-rules', { requireAgreement, onAccept: typeof onAccept === 'function' ? onAccept : null });
+function openCommunityRulesModal({ requireAgreement = false, onAccept = null, offerOpen = false }: { requireAgreement?: any; onAccept?: any; offerOpen?: boolean } = {}) {
+    openDialog('community-rules', { requireAgreement, offerOpen, onAccept: typeof onAccept === 'function' ? onAccept : null });
 }
 
 function closeCommunityRulesModal() {
@@ -1234,6 +1248,14 @@ function switchCommunityPreviewMon(sourceId) {
 // nothing in it is a viewable image.
 async function fetchMonDetailRow(publishedId) {
     const client = await api.getClient();
+    // signed out, the only way in is an open Fakemon: open_mon_detail() hands
+    // out that one row (its artwork as ordinary images, since it's open) and
+    // nothing for any other
+    if (!state.user) {
+        const { data, error } = await client.rpc('open_mon_detail', { p_id: publishedId });
+        if (error) { log.debug('COMMUNITY', 'Not an open Fakemon', error); return null; }
+        return data || null;
+    }
     const [detail, images] = await Promise.all([
         client.rpc('community_mon_detail', { p_id: publishedId }),
         client.rpc('community_mon_images', { p_id: publishedId })
@@ -1261,8 +1283,44 @@ async function fetchMonDetailRow(publishedId) {
     return row;
 }
 
+/**
+ * The public preview of a Fakemon for someone signed out: what seo_mon()
+ * hands anyone (name, types, dex entries, abilities, stats, author; never
+ * artwork). Returns whether it opened, or undefined when the preview isn't
+ * available (no migration yet, offline) and the sign-in box should stand in.
+ */
+async function openMonTeaser(publishedId): Promise<boolean | undefined> {
+    let teaser: any;
+    try {
+        const client = await api.getClient();
+        const { data, error } = await client.rpc('seo_mon', { p_id: publishedId });
+        if (error) { log.debug('COMMUNITY', 'No public preview', error); return undefined; }
+        teaser = data;
+    } catch { return undefined; }
+    if (!teaser) { api.showNotFound?.(`community/${publishedId}`); return true; }
+    const cs = ensureCommunityState();
+    cs.openMonId = null;
+    cs.openMonRow = null;
+    cs.teaser = teaser;
+    api.activateTopLevelView?.('community-detail-view');
+    const types = (teaser.types || []).join(' / ');
+    api.setShareMeta?.({
+        title: `${teaser.name} by ${teaser.author}`,
+        description: [types && `${types} type Fakémon.`, teaser.species && `The ${teaser.species}.`, teaser.dex1].filter(Boolean).join(' ').slice(0, 200)
+    });
+    notify();
+    return true;
+}
+
+/** Sign in from the public preview, then open the Fakemon in full. */
+function signInForTeaser() {
+    const id = ensureCommunityState().teaser?.id;
+    api.requireAccount?.('Sign in to see this Fakémon in full.', id ? () => openPublishedMonById(id, { preserveRoute: true }) : null);
+}
+
 async function openMonDetail(publishedId, options: Record<string, any> = {}) {
     const cs = ensureCommunityState();
+    cs.teaser = null;
     let row = cs.mons.find(m => m.id === publishedId);
     if (!row) return;
     // feed only loads slim fields; fetch the full row now that this one mon
@@ -1300,6 +1358,8 @@ async function openMonDetail(publishedId, options: Record<string, any> = {}) {
     renderCommunityPreviewBoard(mon, row);
     notify();
 
+    // views count signed-in visits (the function is theirs alone)
+    if (!state.user) return;
     try {
         const client = await api.getClient();
         const { data: nextViewCount, error: viewError } = await client.rpc('increment_published_mon_view', { p_published_id: publishedId });
@@ -1341,6 +1401,55 @@ function ownsOpenCommunityMon() {
     return !!(row && state.user && row.user_id === state.user.id);
 }
 
+/** Its author made it open: anyone may export it (and add it to their collection). */
+function openCommunityMonIsOpen() {
+    return !!ensureCommunityState().openMonRow?.is_open;
+}
+
+/** Whether the open post's export and add-to-collection buttons apply to this viewer. */
+function canTakeOpenCommunityMon() {
+    return ownsOpenCommunityMon() || openCommunityMonIsOpen();
+}
+
+/**
+ * The records with their pictures as ordinary images. Signed in, artwork
+ * arrives masked (js/core/art-shield.ts), which a file would carry as
+ * gibberish; decoded here, in memory, for the ones this viewer may take.
+ */
+async function unmaskedRecords(records: any[]) {
+    return Promise.all(records.map(async r => {
+        const out = { ...r };
+        for (const [k, v] of Object.entries(out)) if (isMaskedArtwork(v)) out[k] = await artworkDataUri(v as string);
+        return out;
+    }));
+}
+
+/**
+ * The author opens or closes their post. Open: no art shield, anyone can
+ * export it, and its page reads signed out and in search results.
+ */
+async function setOpenCommunityMon(open: boolean) {
+    const row = ensureCommunityState().openMonRow;
+    if (!row || !ownsOpenCommunityMon()) { api.showToast?.('Only the author can change this.', 'error'); return; }
+    if (open && !await confirmDialog({
+        title: 'Make this Fakémon open?',
+        message: 'Anyone will be able to see its artwork without the art shield, export it with its artwork, and open its page without signing in. Search engines can show it, artwork included. You can close it again later, but copies already exported stay out there.',
+        confirmLabel: 'Make it open'
+    })) return;
+    const client = await api.getClient();
+    const { data, error } = await client.from('published_mons').update({ is_open: open }).eq('id', row.id).eq('user_id', state.user!.id).select('id, is_open');
+    if (error || !data?.length) {
+        log.error('COMMUNITY', 'Could not change open', error);
+        api.showToast?.(/is_open/.test(error?.message || '') ? 'Open Fakémon are not set up on this site yet.' : 'Could not change that. Try again in a moment.', 'error');
+        return;
+    }
+    row.is_open = !!data[0].is_open;
+    const listed = ensureCommunityState().mons.find(m => m.id === row.id);
+    if (listed) listed.is_open = row.is_open;
+    api.showToast?.(row.is_open ? 'It’s open: anyone can see and export it.' : 'It’s closed again: shielded, and for members only.', 'success');
+    notify();
+}
+
 // the post's own mon plus every family member it carries, in publish order
 function openCommunityMonRecords() {
     const row = ensureCommunityState().openMonRow;
@@ -1352,12 +1461,12 @@ function openCommunityMonRecords() {
     return [primary, ...family].filter(Boolean);
 }
 
-function exportOpenCommunityMon() {
-    if (!ownsOpenCommunityMon()) {
-        api.showToast?.('You can only export your own published Fakemon.', 'error');
+async function exportOpenCommunityMon() {
+    if (!canTakeOpenCommunityMon()) {
+        api.showToast?.('You can only export your own published Fakemon, or one its author made open.', 'error');
         return;
     }
-    const records = openCommunityMonRecords();
+    const records = await unmaskedRecords(openCommunityMonRecords());
     if (!records.length) { api.showToast?.('Nothing to export!', 'error'); return; }
     const name = String(records[0].name || 'fakemon');
     // same shape the file importer already reads, so this needs no new path
@@ -1368,16 +1477,16 @@ function exportOpenCommunityMon() {
         primaryName: name,
         fakemonDB: records
     });
-    log.info('COMMUNITY', 'Owner exported their published mon', { id: ensureCommunityState().openMonId });
+    log.info('COMMUNITY', 'Exported a published mon', { id: ensureCommunityState().openMonId, own: ownsOpenCommunityMon() });
     api.showToast?.(`${name} exported!`, 'success');
 }
 
 async function addOpenCommunityMonToCollection() {
-    if (!ownsOpenCommunityMon()) {
-        api.showToast?.('You can only add your own published Fakemon to your collection.', 'error');
+    if (!canTakeOpenCommunityMon()) {
+        api.showToast?.('You can only add your own published Fakemon to your collection, or one its author made open.', 'error');
         return;
     }
-    const records = openCommunityMonRecords();
+    const records = await unmaskedRecords(openCommunityMonRecords());
     if (!records.length) { api.showToast?.('Nothing to add!', 'error'); return; }
     try {
         const added = await api.addFakemonToCollection(records);
@@ -1411,6 +1520,6 @@ export {
     requestCardArtwork,
     showCommunityLanding, browseCommunityFakemon, renderCommunityLanding, featuredThisWeek,
     showCommunityPanel, renderCommunityUploads, openCommunityPublishModal, openCommunityUpdateModalFor,
-    exportOpenCommunityMon, addOpenCommunityMonToCollection, communityState, publishLimits, describeCooldown,
+    exportOpenCommunityMon, addOpenCommunityMonToCollection, setOpenCommunityMon, signInForTeaser, canTakeOpenCommunityMon, communityState, publishLimits, describeCooldown,
     attachLiveAuthorInfo, ensureCommunityState,
 };
